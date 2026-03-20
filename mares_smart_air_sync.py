@@ -53,12 +53,31 @@ DC_STATUS_DONE = 1  # iterator end / not-an-error in libdivecomputer docs
 DC_FIELD_DIVETIME = 0
 DC_FIELD_MAXDEPTH = 1
 DC_FIELD_AVGDEPTH = 2
+DC_FIELD_GASMIX_COUNT = 3
+DC_FIELD_GASMIX = 4
+DC_FIELD_SALINITY = 5
+DC_FIELD_ATMOSPHERIC = 6
+DC_FIELD_TEMPERATURE_SURFACE = 7
+DC_FIELD_TEMPERATURE_MINIMUM = 8
+DC_FIELD_TEMPERATURE_MAXIMUM = 9
+DC_FIELD_TANK_COUNT = 10
+DC_FIELD_TANK = 11
+DC_FIELD_DIVEMODE = 12
 
 DC_SAMPLE_TIME = 0
 DC_SAMPLE_DEPTH = 1
 DC_SAMPLE_PRESSURE = 2
 DC_SAMPLE_TEMPERATURE = 3
-DC_SAMPLE_GASMIX = 12
+DC_SAMPLE_EVENT = 4
+DC_SAMPLE_RBT = 5
+DC_SAMPLE_HEARTBEAT = 6
+DC_SAMPLE_BEARING = 7
+DC_SAMPLE_VENDOR = 8
+DC_SAMPLE_SETPOINT = 9
+DC_SAMPLE_PPO2 = 10
+DC_SAMPLE_CNS = 11
+DC_SAMPLE_DECO = 12
+DC_SAMPLE_GASMIX = 13
 
 
 # ----------------------------
@@ -101,6 +120,32 @@ class dc_datetime_t(Structure):
         ("minute", c_int),
         ("second", c_int),
         ("timezone", c_int),
+    ]
+
+
+class dc_gasmix_t(Structure):
+    _fields_ = [
+        ("oxygen", c_double),
+        ("helium", c_double),
+        ("nitrogen", c_double),
+    ]
+
+
+class dc_salinity_t(Structure):
+    _fields_ = [
+        ("type", c_uint),
+        ("density", c_double),
+    ]
+
+
+class dc_tank_t(Structure):
+    _fields_ = [
+        ("gasmix", c_uint),
+        ("type", c_uint),
+        ("volume", c_double),
+        ("workpressure", c_double),
+        ("beginpressure", c_double),
+        ("endpressure", c_double),
     ]
 
 
@@ -299,6 +344,7 @@ CREATE TABLE IF NOT EXISTS dives (
     duration_seconds INTEGER,
     max_depth_m REAL,
     avg_depth_m REAL,
+    fields_json TEXT NOT NULL DEFAULT '{}',
     raw_sha256 TEXT NOT NULL,
     raw_data BLOB NOT NULL,
     samples_json TEXT NOT NULL,
@@ -309,7 +355,14 @@ CREATE TABLE IF NOT EXISTS dives (
 
 def init_db(conn: sqlite3.Connection) -> None:
     conn.executescript(SCHEMA)
+    ensure_column(conn, "dives", "fields_json", "TEXT NOT NULL DEFAULT '{}'")
     conn.commit()
+
+
+def ensure_column(conn: sqlite3.Connection, table: str, column: str, definition: str) -> None:
+    columns = {row[1] for row in conn.execute(f"PRAGMA table_info({table})")}
+    if column not in columns:
+        conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
 
 
 def get_saved_fingerprint(conn: sqlite3.Connection, vendor: str, product: str) -> bytes | None:
@@ -346,6 +399,7 @@ def insert_dive(
     duration_seconds: int | None,
     max_depth_m: float | None,
     avg_depth_m: float | None,
+    fields: dict,
     raw_data: bytes,
     samples: list[dict],
 ) -> bool:
@@ -362,10 +416,10 @@ def insert_dive(
             """
             INSERT INTO dives(
                 vendor, product, fingerprint_hex, dive_uid, started_at,
-                duration_seconds, max_depth_m, avg_depth_m,
+                duration_seconds, max_depth_m, avg_depth_m, fields_json,
                 raw_sha256, raw_data, samples_json, imported_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 vendor,
@@ -376,6 +430,7 @@ def insert_dive(
                 duration_seconds,
                 max_depth_m,
                 avg_depth_m,
+                json.dumps(fields, separators=(",", ":")),
                 raw_sha256,
                 raw_data,
                 json.dumps(samples, separators=(",", ":")),
@@ -395,6 +450,87 @@ def insert_dive(
 def check(status: int, what: str) -> None:
     if status != DC_STATUS_SUCCESS:
         raise RuntimeError(f"{what} failed with libdivecomputer status={status}")
+
+
+def get_parser_field(parser: POINTER(dc_parser_t), field_type: int, value, flags: int = 0):
+    status = LIB.dc_parser_get_field(parser, field_type, flags, byref(value))
+    if status == DC_STATUS_SUCCESS:
+        return value
+    return None
+
+
+def get_uint_parser_field(parser: POINTER(dc_parser_t), field_type: int, flags: int = 0) -> int | None:
+    value = get_parser_field(parser, field_type, c_uint(), flags)
+    return int(value.value) if value is not None else None
+
+
+def get_double_parser_field(parser: POINTER(dc_parser_t), field_type: int, flags: int = 0) -> float | None:
+    value = get_parser_field(parser, field_type, c_double(), flags)
+    return float(value.value) if value is not None else None
+
+
+def extract_dive_fields(parser: POINTER(dc_parser_t)) -> dict:
+    fields = {
+        "divetime_seconds": get_uint_parser_field(parser, DC_FIELD_DIVETIME),
+        "max_depth_m": get_double_parser_field(parser, DC_FIELD_MAXDEPTH),
+        "avg_depth_m": get_double_parser_field(parser, DC_FIELD_AVGDEPTH),
+        "gasmix_count": get_uint_parser_field(parser, DC_FIELD_GASMIX_COUNT),
+        "gasmixes": None,
+        "salinity": None,
+        "atmospheric_bar": get_double_parser_field(parser, DC_FIELD_ATMOSPHERIC),
+        "temperature_surface_c": get_double_parser_field(parser, DC_FIELD_TEMPERATURE_SURFACE),
+        "temperature_minimum_c": get_double_parser_field(parser, DC_FIELD_TEMPERATURE_MINIMUM),
+        "temperature_maximum_c": get_double_parser_field(parser, DC_FIELD_TEMPERATURE_MAXIMUM),
+        "tank_count": get_uint_parser_field(parser, DC_FIELD_TANK_COUNT),
+        "tanks": None,
+        "dive_mode_code": get_uint_parser_field(parser, DC_FIELD_DIVEMODE),
+    }
+
+    if fields["gasmix_count"] is not None:
+        gasmixes = []
+        for index in range(fields["gasmix_count"]):
+            gasmix = get_parser_field(parser, DC_FIELD_GASMIX, dc_gasmix_t(), index)
+            if gasmix is None:
+                gasmixes.append(None)
+                continue
+            gasmixes.append(
+                {
+                    "index": index,
+                    "oxygen_fraction": float(gasmix.oxygen),
+                    "helium_fraction": float(gasmix.helium),
+                    "nitrogen_fraction": float(gasmix.nitrogen),
+                }
+            )
+        fields["gasmixes"] = gasmixes
+
+    salinity = get_parser_field(parser, DC_FIELD_SALINITY, dc_salinity_t())
+    if salinity is not None:
+        fields["salinity"] = {
+            "type_code": int(salinity.type),
+            "density": float(salinity.density),
+        }
+
+    if fields["tank_count"] is not None:
+        tanks = []
+        for index in range(fields["tank_count"]):
+            tank = get_parser_field(parser, DC_FIELD_TANK, dc_tank_t(), index)
+            if tank is None:
+                tanks.append(None)
+                continue
+            tanks.append(
+                {
+                    "index": index,
+                    "gasmix_index": int(tank.gasmix),
+                    "type_code": int(tank.type),
+                    "volume": float(tank.volume),
+                    "workpressure_bar": float(tank.workpressure),
+                    "beginpressure_bar": float(tank.beginpressure),
+                    "endpressure_bar": float(tank.endpressure),
+                }
+            )
+        fields["tanks"] = tanks
+
+    return fields
 
 
 def find_descriptor(context: POINTER(dc_context_t), vendor: str, product: str) -> POINTER(dc_descriptor_t):
@@ -457,22 +593,44 @@ _SAMPLE_CBS: list = []
 _DIVE_CBS: list = []
 
 
-def make_sample_collector(samples: list[dict]) -> DC_SAMPLE_CALLBACK:
-    current = {
-        "time_ms": None,
+def new_sample_row() -> dict:
+    return {
+        "time_seconds": None,
         "depth_m": None,
         "temperature_c": None,
         "tank_pressure_bar": {},
+        "events": [],
+        "rbt_seconds": None,
+        "heartbeat_bpm": None,
+        "bearing_degrees": None,
+        "vendor_samples": [],
+        "setpoint_bar": None,
+        "ppo2_bar": {},
+        "cns_fraction": None,
+        "deco": None,
         "gasmix_index": None,
     }
 
+
+def make_sample_collector(samples: list[dict]):
+    current = new_sample_row()
+
     def flush_current() -> None:
-        if any(v is not None and v != {} for v in current.values()):
+        if any(v not in (None, {}, []) for v in current.values()):
             row = {
-                "time_ms": current["time_ms"],
+                "time_seconds": current["time_seconds"],
                 "depth_m": current["depth_m"],
                 "temperature_c": current["temperature_c"],
                 "tank_pressure_bar": current["tank_pressure_bar"] or None,
+                "events": current["events"] or None,
+                "rbt_seconds": current["rbt_seconds"],
+                "heartbeat_bpm": current["heartbeat_bpm"],
+                "bearing_degrees": current["bearing_degrees"],
+                "vendor_samples": current["vendor_samples"] or None,
+                "setpoint_bar": current["setpoint_bar"],
+                "ppo2_bar": current["ppo2_bar"] or None,
+                "cns_fraction": current["cns_fraction"],
+                "deco": current["deco"],
                 "gasmix_index": current["gasmix_index"],
             }
             samples.append(row)
@@ -483,16 +641,10 @@ def make_sample_collector(samples: list[dict]) -> DC_SAMPLE_CALLBACK:
 
         if sample_type == DC_SAMPLE_TIME:
             # Start a new row when time advances.
-            if current["time_ms"] is not None:
+            if current["time_seconds"] is not None:
                 flush_current()
-                current = {
-                    "time_ms": None,
-                    "depth_m": None,
-                    "temperature_c": None,
-                    "tank_pressure_bar": {},
-                    "gasmix_index": None,
-                }
-            current["time_ms"] = int(val.time)
+                current = new_sample_row()
+            current["time_seconds"] = int(val.time)
 
         elif sample_type == DC_SAMPLE_DEPTH:
             current["depth_m"] = float(val.depth)
@@ -503,12 +655,61 @@ def make_sample_collector(samples: list[dict]) -> DC_SAMPLE_CALLBACK:
         elif sample_type == DC_SAMPLE_PRESSURE:
             current["tank_pressure_bar"][str(int(val.pressure.tank))] = float(val.pressure.value)
 
+        elif sample_type == DC_SAMPLE_EVENT:
+            current["events"].append(
+                {
+                    "type_code": int(val.event.type),
+                    "time_seconds": int(val.event.time),
+                    "flags": int(val.event.flags),
+                    "value": int(val.event.value),
+                }
+            )
+
+        elif sample_type == DC_SAMPLE_RBT:
+            current["rbt_seconds"] = int(val.rbt)
+
+        elif sample_type == DC_SAMPLE_HEARTBEAT:
+            current["heartbeat_bpm"] = int(val.heartbeat)
+
+        elif sample_type == DC_SAMPLE_BEARING:
+            current["bearing_degrees"] = int(val.bearing)
+
+        elif sample_type == DC_SAMPLE_VENDOR:
+            size = int(val.vendor.size)
+            data_hex = None
+            if val.vendor.data and size > 0:
+                data_hex = ctypes.string_at(val.vendor.data, size).hex()
+            current["vendor_samples"].append(
+                {
+                    "type_code": int(val.vendor.type),
+                    "size": size,
+                    "data_hex": data_hex,
+                }
+            )
+
+        elif sample_type == DC_SAMPLE_SETPOINT:
+            current["setpoint_bar"] = float(val.setpoint)
+
+        elif sample_type == DC_SAMPLE_PPO2:
+            current["ppo2_bar"][str(int(val.ppo2.sensor))] = float(val.ppo2.value)
+
+        elif sample_type == DC_SAMPLE_CNS:
+            current["cns_fraction"] = float(val.cns)
+
+        elif sample_type == DC_SAMPLE_DECO:
+            current["deco"] = {
+                "type_code": int(val.deco.type),
+                "time_seconds": int(val.deco.time),
+                "depth_m": float(val.deco.depth),
+                "tts_seconds": int(val.deco.tts),
+            }
+
         elif sample_type == DC_SAMPLE_GASMIX:
             current["gasmix_index"] = int(val.gasmix)
 
     cb = DC_SAMPLE_CALLBACK(sample_cb)
     _SAMPLE_CBS.append(cb)
-    return cb
+    return cb, flush_current
 
 
 def make_dive_callback() -> DC_DIVE_CALLBACK:
@@ -542,25 +743,15 @@ def make_dive_callback() -> DC_DIVE_CALLBACK:
                 if LIB.dc_parser_get_datetime(parser, byref(dt)) == DC_STATUS_SUCCESS:
                     started_at = dt_to_iso(dt)
 
-                duration_seconds = None
-                max_depth_m = None
-                avg_depth_m = None
-
-                divetime = c_uint()
-                if LIB.dc_parser_get_field(parser, DC_FIELD_DIVETIME, 0, byref(divetime)) == DC_STATUS_SUCCESS:
-                    duration_seconds = int(divetime.value)
-
-                maxdepth = c_double()
-                if LIB.dc_parser_get_field(parser, DC_FIELD_MAXDEPTH, 0, byref(maxdepth)) == DC_STATUS_SUCCESS:
-                    max_depth_m = float(maxdepth.value)
-
-                avgdepth = c_double()
-                if LIB.dc_parser_get_field(parser, DC_FIELD_AVGDEPTH, 0, byref(avgdepth)) == DC_STATUS_SUCCESS:
-                    avg_depth_m = float(avgdepth.value)
+                fields = extract_dive_fields(parser)
+                duration_seconds = fields["divetime_seconds"]
+                max_depth_m = fields["max_depth_m"]
+                avg_depth_m = fields["avg_depth_m"]
 
                 samples: list[dict] = []
-                sample_cb = make_sample_collector(samples)
-                LIB.dc_parser_samples_foreach(parser, sample_cb, None)
+                sample_cb, finalize_samples = make_sample_collector(samples)
+                check(LIB.dc_parser_samples_foreach(parser, sample_cb, None), "dc_parser_samples_foreach")
+                finalize_samples()
 
                 inserted = insert_dive(
                     state.conn,
@@ -571,6 +762,7 @@ def make_dive_callback() -> DC_DIVE_CALLBACK:
                     duration_seconds,
                     max_depth_m,
                     avg_depth_m,
+                    fields,
                     raw_data,
                     samples,
                 )

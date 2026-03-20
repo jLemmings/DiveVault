@@ -39,7 +39,7 @@ def print_dives(db_path: str):
 
         if samples:
             print("First 3 samples:")
-            for s in samples[:3]:
+            for s in samples[:6]:
                 print(f"  {s}")
 
 def main():
