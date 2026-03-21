@@ -33,9 +33,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v6
         with:
-          images: |
-            ${{ env.DOCKER_IMAGE_REPOSITORY }}
-            ${{ env.GHCR_IMAGE_REPOSITORY }}
+          images: ${{ env.GHCR_IMAGE_REPOSITORY }}
           tags: |
             type=raw,value=${{ env.RELEASE }}
             type=raw,value=stable
