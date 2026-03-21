@@ -508,7 +508,7 @@ function shortFingerprint(value) {
 }
 
 const DashboardView = {
-  props: ["dives", "stats", "setView"],
+  props: ["dives", "stats", "setView", "backendHealthy"],
   methods: {
     dayOfMonth,
     monthShort,
@@ -523,157 +523,267 @@ const DashboardView = {
     surfaceTemperature,
     profileBars,
     diveModeLabel,
-    pressureUsedLabel
+    pressureUsedLabel,
+    decoStatusLabel
   },
   computed: {
     recentDives() {
       return this.dives.slice(0, 5);
+    },
+    featuredDive() {
+      return this.recentDives[0] || null;
+    },
+    dashboardStatus() {
+      if (!this.featuredDive) return "Nominal";
+      return this.decoStatusLabel(this.featuredDive) === "Deco Active" ? "Decompression" : "Nominal";
+    },
+    filledIconStyle() {
+      return filledIconStyle;
+    },
+    surfaceWindowLabel() {
+      if (!this.featuredDive) return "Surface 00:00h";
+      const hours = Math.max(2, Math.round(numberOrZero(this.featuredDive.duration_seconds) / 1200));
+      return `Surface 0${hours}:45h`;
+    },
+    mobileOxygenLabel() {
+      const value = oxygenToxicityPercent(this.featuredDive);
+      return typeof value === "number" ? `${value.toFixed(0)}%` : "94%";
+    },
+    mobileBars() {
+      return profileBars(this.featuredDive || {}).slice(0, 10);
     }
   },
   template: `
     <section class="space-y-10 text-on-surface">
-      <header class="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
-        <div>
-          <p class="font-label text-[10px] font-bold uppercase tracking-[0.3em] text-primary">Commander Dashboard</p>
-          <h3 class="mt-2 font-headline text-5xl font-bold tracking-tight">Diver: <span class="text-primary">VALKYRIE-09</span></h3>
-        </div>
-        <div class="glass-panel min-w-[220px] rounded-xl p-5 shadow-panel">
-          <p class="font-label text-[10px] font-bold uppercase tracking-[0.24em] text-secondary">System Status</p>
-          <p class="mt-3 flex items-center gap-2 font-headline text-2xl font-bold text-primary"><span class="h-2 w-2 rounded-full bg-primary shadow-[0_0_10px_rgba(156,202,255,0.65)]"></span>NOMINAL</p>
-        </div>
-      </header>
-      <div class="grid grid-cols-1 gap-4 md:grid-cols-4">
-        <div class="group flex h-48 flex-col justify-between bg-surface-container-low p-6 transition-colors hover:bg-surface-container-high">
-          <span class="material-symbols-outlined text-3xl text-primary/40">database</span>
-          <div>
-            <p class="font-label text-[10px] font-bold uppercase tracking-[0.24em] text-secondary">Mission Count</p>
-            <p class="mt-2 font-headline text-4xl font-bold group-hover:text-primary">{{ stats.totalDives }}</p>
-          </div>
-        </div>
-        <div class="group flex h-48 flex-col justify-between bg-surface-container-low p-6 transition-colors hover:bg-surface-container-high">
-          <span class="material-symbols-outlined text-3xl text-primary/40">timer</span>
-          <div>
-            <p class="font-label text-[10px] font-bold uppercase tracking-[0.24em] text-secondary">Bottom Time</p>
-            <p class="mt-2 font-headline text-4xl font-bold group-hover:text-primary">{{ Math.round(stats.totalHours * 60) }}<span class="ml-1 text-sm font-normal uppercase text-secondary">min</span></p>
-          </div>
-        </div>
-        <div class="group flex h-48 flex-col justify-between bg-surface-container-low p-6 transition-colors hover:bg-surface-container-high">
-          <span class="material-symbols-outlined text-3xl text-tertiary/50">straighten</span>
-          <div>
-            <p class="font-label text-[10px] font-bold uppercase tracking-[0.24em] text-secondary">Max Depth</p>
-            <p class="mt-2 font-headline text-4xl font-bold text-tertiary">{{ formatDepthNumber(stats.maxDepth) }}<span class="ml-1 text-sm font-normal uppercase text-secondary">m</span></p>
-          </div>
-        </div>
-        <div class="group flex h-48 flex-col justify-between border-l-2 border-primary/20 bg-surface-container-low p-6 transition-colors hover:bg-surface-container-high">
-          <span class="material-symbols-outlined text-3xl text-primary/40">water_drop</span>
-          <div>
-            <p class="font-label text-[10px] font-bold uppercase tracking-[0.24em] text-secondary">Consumption</p>
-            <p class="mt-2 font-headline text-4xl font-bold">{{ recentDives[0] ? pressureUsedLabel(recentDives[0]).replace(' bar used', '') : '--' }}<span class="ml-1 text-sm font-normal uppercase text-secondary">bar</span></p>
-          </div>
-        </div>
-      </div>
-      <section class="grid grid-cols-1 gap-6 xl:grid-cols-[1.4fr_0.8fr]">
-        <div class="space-y-6">
-          <div class="relative h-[400px] overflow-hidden bg-surface-container-low">
-            <div class="absolute inset-0 opacity-25 mix-blend-screen bg-[radial-gradient(circle_at_30%_40%,rgba(156,202,255,0.3),transparent_18rem),radial-gradient(circle_at_70%_60%,rgba(255,183,125,0.15),transparent_16rem),linear-gradient(180deg,#062135,#001525)]"></div>
-            <div class="absolute inset-0 bg-gradient-to-t from-surface-dim via-transparent to-transparent"></div>
-            <div class="absolute left-6 top-6 z-10">
-              <h4 class="font-headline text-xl font-bold tracking-tight">MISSION SECTOR: <span class="text-primary">EPSILON-9</span></h4>
-              <p class="font-label text-[10px] font-bold uppercase tracking-[0.24em] text-secondary">Telemetry coverage from imported dive archives</p>
+      <section class="space-y-6 md:hidden">
+        <div class="space-y-4">
+          <div class="flex items-end justify-between">
+            <div>
+              <p class="font-label text-[10px] font-bold uppercase tracking-[0.22em] text-on-surface-variant">Current Status</p>
+              <h3 class="mt-1 font-headline text-3xl font-bold uppercase tracking-tight text-primary">{{ dashboardStatus }}</h3>
             </div>
-            <div class="absolute left-[30%] top-[40%] h-3 w-3 rounded-full bg-primary shadow-[0_0_16px_rgba(156,202,255,0.9)]"></div>
-            <div class="absolute left-[68%] top-[62%] h-3 w-3 rounded-full bg-tertiary shadow-[0_0_16px_rgba(255,183,125,0.75)]"></div>
-            <div class="absolute bottom-6 right-6 z-10 flex gap-2">
-              <button class="bg-surface-container-high/80 p-2 text-secondary transition-colors hover:text-primary"><span class="material-symbols-outlined">zoom_in</span></button>
-              <button class="bg-surface-container-high/80 p-2 text-secondary transition-colors hover:text-primary"><span class="material-symbols-outlined">zoom_out</span></button>
+            <span class="inline-flex items-center rounded-full bg-tertiary-container/40 px-3 py-1 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-tertiary">{{ surfaceWindowLabel }}</span>
+          </div>
+          <div class="h-1 overflow-hidden rounded-full bg-surface-container-highest">
+            <div class="h-full bg-primary shadow-[0_0_8px_rgba(156,202,255,0.5)]" :style="{ width: stats.bottomTimeProgress + '%' }"></div>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div class="space-y-2 rounded-xl border-l-2 border-primary/30 bg-surface-container-low p-4">
+            <div class="flex items-start justify-between">
+              <span class="material-symbols-outlined text-xl text-primary">scuba_diving</span>
+              <span class="font-label text-[10px] text-on-surface-variant">LOGGED</span>
+            </div>
+            <div class="pt-2">
+              <div class="font-headline text-3xl font-bold">{{ stats.totalDives }}</div>
+              <div class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-on-surface-variant">Total Dives</div>
             </div>
           </div>
-          <div class="bg-surface-container-low p-6">
-            <div class="mb-6 flex items-center justify-between">
-              <div>
-                <p class="font-label text-[10px] font-bold uppercase tracking-[0.24em] text-primary">Recent Expeditions</p>
-                <h4 class="mt-2 font-headline text-2xl font-bold tracking-tight">Mission Feed</h4>
+          <div class="space-y-2 rounded-xl border-l-2 border-tertiary/30 bg-surface-container-low p-4">
+            <div class="flex items-start justify-between">
+              <span class="material-symbols-outlined text-xl text-tertiary">straighten</span>
+              <span class="font-label text-[10px] text-on-surface-variant">RECORD</span>
+            </div>
+            <div class="pt-2">
+              <div class="font-headline text-3xl font-bold">{{ formatDepthNumber(stats.maxDepth) }}<span class="ml-1 text-sm text-on-surface-variant">M</span></div>
+              <div class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-on-surface-variant">Max Depth</div>
+            </div>
+          </div>
+          <div class="col-span-2 flex items-center justify-between rounded-xl bg-surface-container-high p-4">
+            <div class="flex items-center gap-4">
+              <div class="rounded-lg bg-primary-container p-3 text-primary">
+                <span class="material-symbols-outlined" :style="filledIconStyle">schedule</span>
               </div>
-              <button @click="setView('logs')" class="font-label text-[10px] font-bold uppercase tracking-[0.2em] text-secondary transition-colors hover:text-primary">View All</button>
+              <div>
+                <div class="font-headline text-2xl font-bold">{{ stats.totalHours.toFixed(1) }}<span class="ml-1 text-sm text-on-surface-variant">HRS</span></div>
+                <div class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-on-surface-variant">Accumulated Bottom Time</div>
+              </div>
             </div>
-            <div class="space-y-4">
-              <article v-for="dive in recentDives" :key="dive.id" class="flex items-center justify-between gap-4 bg-surface-container-high/40 p-4 transition-colors hover:bg-surface-container-high">
-                <div class="flex min-w-0 items-center gap-4">
-                  <div class="flex h-12 w-12 items-center justify-center bg-primary/10 text-primary">
-                    <span class="material-symbols-outlined">anchor</span>
+            <span class="material-symbols-outlined text-on-surface-variant/40">chevron_right</span>
+          </div>
+        </div>
+
+        <section class="space-y-4">
+          <div class="flex items-center justify-between">
+            <h4 class="font-headline text-lg font-bold uppercase tracking-tight text-primary-fixed-dim">Recent Expeditions</h4>
+            <button @click="setView('logs')" class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-primary">View All</button>
+          </div>
+          <div class="space-y-3">
+            <article v-for="dive in recentDives.slice(0, 3)" :key="'mobile-' + dive.id" class="glass-panel flex items-center gap-4 rounded-xl p-4">
+              <div class="relative h-12 w-12 flex-shrink-0 overflow-hidden rounded-lg border border-outline-variant/20 bg-[radial-gradient(circle_at_30%_30%,rgba(156,202,255,0.35),transparent_35%),linear-gradient(180deg,#132c40,#000f1d)]">
+                <div class="absolute inset-0 bg-gradient-to-t from-surface-container-lowest to-transparent"></div>
+              </div>
+              <div class="min-w-0 flex-1">
+                <h5 class="truncate font-headline text-sm font-bold tracking-tight">{{ diveTitle(dive) }}</h5>
+                <p class="font-label text-[10px] font-bold uppercase tracking-[0.16em] text-on-surface-variant">{{ formatDate(dive.started_at) }} | {{ diveModeLabel(dive) }}</p>
+              </div>
+              <div class="text-right">
+                <div class="font-headline text-sm font-bold text-tertiary">{{ formatDepth(dive.max_depth_m) }}</div>
+                <div class="font-label text-[10px] font-bold uppercase tracking-[0.16em] text-on-surface-variant">{{ formatDurationShort(dive.duration_seconds) }}</div>
+              </div>
+            </article>
+          </div>
+        </section>
+
+        <section class="space-y-4">
+          <h4 class="font-headline text-lg font-bold uppercase tracking-tight text-primary-fixed-dim">Oxygen Saturation</h4>
+          <div class="relative h-32 overflow-hidden rounded-xl border-l-2 border-primary/20 bg-surface-container-low p-4">
+            <div class="absolute inset-x-2 bottom-2 top-8 flex items-end gap-1">
+              <div v-for="(bar, index) in mobileBars" :key="'bar-' + index" class="w-full rounded-sm bg-primary/20" :style="{ height: Math.max(20, bar) + '%' }"></div>
+            </div>
+            <div class="relative z-10 flex justify-between">
+              <span class="font-label text-[10px] font-bold uppercase tracking-[0.16em] text-primary/70">Avg {{ mobileOxygenLabel }}</span>
+              <span class="font-label text-[10px] font-bold uppercase tracking-[0.16em] text-primary/70">{{ backendHealthy ? 'Backend Synced' : 'Backend Pending' }}</span>
+            </div>
+          </div>
+        </section>
+      </section>
+
+      <section class="hidden space-y-10 md:block">
+        <header class="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+          <div>
+            <p class="font-label text-[10px] font-bold uppercase tracking-[0.3em] text-primary">Commander Dashboard</p>
+            <h3 class="mt-2 font-headline text-5xl font-bold tracking-tight">Diver: <span class="text-primary">VALKYRIE-09</span></h3>
+          </div>
+          <div class="glass-panel min-w-[220px] rounded-xl p-5 shadow-panel">
+            <p class="font-label text-[10px] font-bold uppercase tracking-[0.24em] text-secondary">System Status</p>
+            <p class="mt-3 flex items-center gap-2 font-headline text-2xl font-bold text-primary"><span class="h-2 w-2 rounded-full bg-primary shadow-[0_0_10px_rgba(156,202,255,0.65)]"></span>NOMINAL</p>
+          </div>
+        </header>
+        <div class="grid grid-cols-1 gap-4 md:grid-cols-4">
+          <div class="group flex h-48 flex-col justify-between bg-surface-container-low p-6 transition-colors hover:bg-surface-container-high">
+            <span class="material-symbols-outlined text-3xl text-primary/40">database</span>
+            <div>
+              <p class="font-label text-[10px] font-bold uppercase tracking-[0.24em] text-secondary">Mission Count</p>
+              <p class="mt-2 font-headline text-4xl font-bold group-hover:text-primary">{{ stats.totalDives }}</p>
+            </div>
+          </div>
+          <div class="group flex h-48 flex-col justify-between bg-surface-container-low p-6 transition-colors hover:bg-surface-container-high">
+            <span class="material-symbols-outlined text-3xl text-primary/40">timer</span>
+            <div>
+              <p class="font-label text-[10px] font-bold uppercase tracking-[0.24em] text-secondary">Bottom Time</p>
+              <p class="mt-2 font-headline text-4xl font-bold group-hover:text-primary">{{ Math.round(stats.totalHours * 60) }}<span class="ml-1 text-sm font-normal uppercase text-secondary">min</span></p>
+            </div>
+          </div>
+          <div class="group flex h-48 flex-col justify-between bg-surface-container-low p-6 transition-colors hover:bg-surface-container-high">
+            <span class="material-symbols-outlined text-3xl text-tertiary/50">straighten</span>
+            <div>
+              <p class="font-label text-[10px] font-bold uppercase tracking-[0.24em] text-secondary">Max Depth</p>
+              <p class="mt-2 font-headline text-4xl font-bold text-tertiary">{{ formatDepthNumber(stats.maxDepth) }}<span class="ml-1 text-sm font-normal uppercase text-secondary">m</span></p>
+            </div>
+          </div>
+          <div class="group flex h-48 flex-col justify-between border-l-2 border-primary/20 bg-surface-container-low p-6 transition-colors hover:bg-surface-container-high">
+            <span class="material-symbols-outlined text-3xl text-primary/40">water_drop</span>
+            <div>
+              <p class="font-label text-[10px] font-bold uppercase tracking-[0.24em] text-secondary">Consumption</p>
+              <p class="mt-2 font-headline text-4xl font-bold">{{ recentDives[0] ? pressureUsedLabel(recentDives[0]).replace(' bar used', '') : '--' }}<span class="ml-1 text-sm font-normal uppercase text-secondary">bar</span></p>
+            </div>
+          </div>
+        </div>
+        <section class="grid grid-cols-1 gap-6 xl:grid-cols-[1.4fr_0.8fr]">
+          <div class="space-y-6">
+            <div class="relative h-[400px] overflow-hidden bg-surface-container-low">
+              <div class="absolute inset-0 opacity-25 mix-blend-screen bg-[radial-gradient(circle_at_30%_40%,rgba(156,202,255,0.3),transparent_18rem),radial-gradient(circle_at_70%_60%,rgba(255,183,125,0.15),transparent_16rem),linear-gradient(180deg,#062135,#001525)]"></div>
+              <div class="absolute inset-0 bg-gradient-to-t from-surface-dim via-transparent to-transparent"></div>
+              <div class="absolute left-6 top-6 z-10">
+                <h4 class="font-headline text-xl font-bold tracking-tight">MISSION SECTOR: <span class="text-primary">EPSILON-9</span></h4>
+                <p class="font-label text-[10px] font-bold uppercase tracking-[0.24em] text-secondary">Telemetry coverage from imported dive archives</p>
+              </div>
+              <div class="absolute left-[30%] top-[40%] h-3 w-3 rounded-full bg-primary shadow-[0_0_16px_rgba(156,202,255,0.9)]"></div>
+              <div class="absolute left-[68%] top-[62%] h-3 w-3 rounded-full bg-tertiary shadow-[0_0_16px_rgba(255,183,125,0.75)]"></div>
+              <div class="absolute bottom-6 right-6 z-10 flex gap-2">
+                <button class="bg-surface-container-high/80 p-2 text-secondary transition-colors hover:text-primary"><span class="material-symbols-outlined">zoom_in</span></button>
+                <button class="bg-surface-container-high/80 p-2 text-secondary transition-colors hover:text-primary"><span class="material-symbols-outlined">zoom_out</span></button>
+              </div>
+            </div>
+            <div class="bg-surface-container-low p-6">
+              <div class="mb-6 flex items-center justify-between">
+                <div>
+                  <p class="font-label text-[10px] font-bold uppercase tracking-[0.24em] text-primary">Recent Expeditions</p>
+                  <h4 class="mt-2 font-headline text-2xl font-bold tracking-tight">Mission Feed</h4>
+                </div>
+                <button @click="setView('logs')" class="font-label text-[10px] font-bold uppercase tracking-[0.2em] text-secondary transition-colors hover:text-primary">View All</button>
+              </div>
+              <div class="space-y-4">
+                <article v-for="dive in recentDives" :key="dive.id" class="flex items-center justify-between gap-4 bg-surface-container-high/40 p-4 transition-colors hover:bg-surface-container-high">
+                  <div class="flex min-w-0 items-center gap-4">
+                    <div class="flex h-12 w-12 items-center justify-center bg-primary/10 text-primary">
+                      <span class="material-symbols-outlined">anchor</span>
+                    </div>
+                    <div class="min-w-0">
+                      <h5 class="truncate text-sm font-bold tracking-tight">{{ diveTitle(dive) }}</h5>
+                      <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">{{ formatDate(dive.started_at) }} | {{ diveModeLabel(dive) }}</p>
+                    </div>
                   </div>
-                  <div class="min-w-0">
-                    <h5 class="truncate text-sm font-bold tracking-tight">{{ diveTitle(dive) }}</h5>
-                    <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">{{ formatDate(dive.started_at) }} | {{ diveModeLabel(dive) }}</p>
+                  <div class="text-right">
+                    <p class="font-headline text-lg font-bold">{{ formatDepth(dive.max_depth_m) }}</p>
+                    <p class="font-label text-[10px] font-bold uppercase tracking-[0.2em] text-primary">{{ formatDurationShort(dive.duration_seconds) }}</p>
+                  </div>
+                </article>
+              </div>
+            </div>
+          </div>
+          <div class="space-y-6">
+            <div class="border-t-4 border-primary bg-surface-container-low p-6">
+              <h4 class="mb-6 font-label text-xs font-bold uppercase tracking-[0.24em] text-primary">Sector Forecast</h4>
+              <div class="mb-8 flex items-center justify-between">
+                <div class="flex items-center gap-4">
+                  <span class="material-symbols-outlined text-4xl text-on-surface">partly_cloudy_day</span>
+                  <div>
+                    <p class="font-headline text-3xl font-bold">24C</p>
+                    <p class="font-label text-[10px] font-bold uppercase tracking-[0.22em] text-secondary">Surface Temp</p>
                   </div>
                 </div>
                 <div class="text-right">
-                  <p class="font-headline text-lg font-bold">{{ formatDepth(dive.max_depth_m) }}</p>
-                  <p class="font-label text-[10px] font-bold uppercase tracking-[0.2em] text-primary">{{ formatDurationShort(dive.duration_seconds) }}</p>
+                  <p class="font-headline text-3xl font-bold text-primary">1.2m</p>
+                  <p class="font-label text-[10px] font-bold uppercase tracking-[0.22em] text-secondary">Swell Height</p>
                 </div>
-              </article>
+              </div>
+              <div class="space-y-4 text-xs">
+                <div class="flex items-center justify-between border-b border-outline-variant/20 pb-2"><span class="font-label uppercase tracking-[0.2em] text-secondary">Visibility</span><span class="font-bold text-on-surface">Excellent (30m+)</span></div>
+                <div class="flex items-center justify-between border-b border-outline-variant/20 pb-2"><span class="font-label uppercase tracking-[0.2em] text-secondary">Current</span><span class="font-bold text-on-surface">Mild (0.4 kn)</span></div>
+                <div class="flex items-center justify-between border-b border-outline-variant/20 pb-2"><span class="font-label uppercase tracking-[0.2em] text-secondary">Backend</span><span class="font-bold" :class="backendHealthy ? 'text-primary' : 'text-tertiary'">{{ backendHealthy ? 'Synced' : 'Pending' }}</span></div>
+              </div>
             </div>
-          </div>
-        </div>
-        <div class="space-y-6">
-          <div class="border-t-4 border-primary bg-surface-container-low p-6">
-            <h4 class="mb-6 font-label text-xs font-bold uppercase tracking-[0.24em] text-primary">Sector Forecast</h4>
-            <div class="mb-8 flex items-center justify-between">
-              <div class="flex items-center gap-4">
-                <span class="material-symbols-outlined text-4xl text-on-surface">partly_cloudy_day</span>
+            <div class="glass-panel p-6 shadow-panel">
+              <h4 class="mb-4 font-label text-xs font-bold uppercase tracking-[0.24em] text-secondary">Device Telemetry</h4>
+              <div class="space-y-6">
                 <div>
-                  <p class="font-headline text-3xl font-bold">24C</p>
-                  <p class="font-label text-[10px] font-bold uppercase tracking-[0.22em] text-secondary">Surface Temp</p>
+                  <div class="mb-2 flex items-center justify-between">
+                    <span class="font-label text-[10px] font-bold uppercase tracking-[0.2em] text-secondary">Primary Dive Computer</span>
+                    <span class="font-label text-[10px] font-bold uppercase tracking-[0.2em] text-primary">{{ dives.length ? 'Connected' : 'Standby' }}</span>
+                  </div>
+                  <div class="h-1 bg-surface-container-highest"><div class="h-full bg-primary shadow-[0_0_8px_rgba(156,202,255,0.75)]" :style="{ width: dives.length ? '88%' : '42%' }"></div></div>
+                </div>
+                <div>
+                  <div class="mb-2 flex items-center justify-between">
+                    <span class="font-label text-[10px] font-bold uppercase tracking-[0.2em] text-secondary">Dive Archive Load</span>
+                    <span class="font-label text-[10px] font-bold uppercase tracking-[0.2em] text-secondary">{{ dives.length }} dives</span>
+                  </div>
+                  <div class="h-1 bg-surface-container-highest"><div class="h-full bg-secondary" :style="{ width: Math.min(100, dives.length / 2) + '%' }"></div></div>
                 </div>
               </div>
-              <div class="text-right">
-                <p class="font-headline text-3xl font-bold text-primary">1.2m</p>
-                <p class="font-label text-[10px] font-bold uppercase tracking-[0.22em] text-secondary">Swell Height</p>
-              </div>
+              <button class="mt-6 w-full border border-primary/20 py-2 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-secondary transition-colors hover:bg-primary/10 hover:text-primary">Sync Hardware</button>
             </div>
-            <div class="space-y-4 text-xs">
-              <div class="flex items-center justify-between border-b border-outline-variant/20 pb-2"><span class="font-label uppercase tracking-[0.2em] text-secondary">Visibility</span><span class="font-bold text-on-surface">Excellent (30m+)</span></div>
-              <div class="flex items-center justify-between border-b border-outline-variant/20 pb-2"><span class="font-label uppercase tracking-[0.2em] text-secondary">Current</span><span class="font-bold text-on-surface">Mild (0.4 kn)</span></div>
-              <div class="flex items-center justify-between border-b border-outline-variant/20 pb-2"><span class="font-label uppercase tracking-[0.2em] text-secondary">Backend</span><span class="font-bold" :class="backendHealthy ? 'text-primary' : 'text-tertiary'">{{ backendHealthy ? 'Synced' : 'Pending' }}</span></div>
-            </div>
-          </div>
-          <div class="glass-panel p-6 shadow-panel">
-            <h4 class="mb-4 font-label text-xs font-bold uppercase tracking-[0.24em] text-secondary">Device Telemetry</h4>
-            <div class="space-y-6">
-              <div>
-                <div class="mb-2 flex items-center justify-between">
-                  <span class="font-label text-[10px] font-bold uppercase tracking-[0.2em] text-secondary">Primary Dive Computer</span>
-                  <span class="font-label text-[10px] font-bold uppercase tracking-[0.2em] text-primary">{{ dives.length ? 'Connected' : 'Standby' }}</span>
+            <div class="border-l-2 border-tertiary bg-tertiary-container/30 p-6">
+              <div class="flex items-start gap-3">
+                <span class="material-symbols-outlined text-tertiary">info</span>
+                <div>
+                  <h4 class="font-label text-[10px] font-bold uppercase tracking-[0.24em] text-tertiary">Advisory: Decompression</h4>
+                  <p class="mt-2 text-sm leading-relaxed text-on-surface-variant">System recommends a 24-hour mandatory surface interval before high-altitude transit or flight ops.</p>
                 </div>
-                <div class="h-1 bg-surface-container-highest"><div class="h-full bg-primary shadow-[0_0_8px_rgba(156,202,255,0.75)]" :style="{ width: dives.length ? '88%' : '42%' }"></div></div>
-              </div>
-              <div>
-                <div class="mb-2 flex items-center justify-between">
-                  <span class="font-label text-[10px] font-bold uppercase tracking-[0.2em] text-secondary">Dive Archive Load</span>
-                  <span class="font-label text-[10px] font-bold uppercase tracking-[0.2em] text-secondary">{{ dives.length }} dives</span>
-                </div>
-                <div class="h-1 bg-surface-container-highest"><div class="h-full bg-secondary" :style="{ width: Math.min(100, dives.length / 2) + '%' }"></div></div>
-              </div>
-            </div>
-            <button class="mt-6 w-full border border-primary/20 py-2 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-secondary transition-colors hover:bg-primary/10 hover:text-primary">Sync Hardware</button>
-          </div>
-          <div class="border-l-2 border-tertiary bg-tertiary-container/30 p-6">
-            <div class="flex items-start gap-3">
-              <span class="material-symbols-outlined text-tertiary">info</span>
-              <div>
-                <h4 class="font-label text-[10px] font-bold uppercase tracking-[0.24em] text-tertiary">Advisory: Decompression</h4>
-                <p class="mt-2 text-sm leading-relaxed text-on-surface-variant">System recommends a 24-hour mandatory surface interval before high-altitude transit or flight ops.</p>
               </div>
             </div>
           </div>
-        </div>
+        </section>
       </section>
     </section>
   `
 };
 
 const LogsView = {
-  props: ["dives", "searchText", "openDive", "openImportQueue"],
+  props: ["dives", "searchText", "openDive", "openImportQueue", "setSearchText"],
   data() {
     return {
       sortOption: "newest",
@@ -758,10 +868,69 @@ const LogsView = {
     formatTemperature,
     formatDurationShort: durationShort,
     surfaceTemperature,
-    diveModeLabel
+    diveModeLabel,
+    diveTitle
   },
   template: `
     <section class="space-y-8 text-on-surface">
+      <section class="space-y-6 md:hidden">
+        <div class="mb-2 flex gap-3">
+          <div class="relative flex-1">
+            <span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-lg text-on-surface-variant">search</span>
+            <input :value="searchText" @input="setSearchText($event.target.value)" type="text" class="w-full rounded-lg border-none bg-surface-container-high py-3 pl-10 pr-4 text-sm font-label tracking-[0.14em] text-on-surface placeholder:text-on-surface-variant/50 focus:ring-1 focus:ring-primary/20" placeholder="SEARCH LOGS..." />
+          </div>
+          <button class="flex w-12 items-center justify-center rounded-lg bg-surface-container-high active:scale-95">
+            <span class="material-symbols-outlined text-primary">filter_list</span>
+          </button>
+        </div>
+
+        <div class="flex items-end justify-between px-1">
+          <div class="flex flex-col">
+            <span class="font-label text-[10px] font-bold uppercase tracking-[0.2em] text-on-surface-variant">Mission Records</span>
+            <span class="font-headline text-2xl font-bold tracking-tight text-primary">TOTAL_DIVES: {{ filteredDives.length }}</span>
+          </div>
+          <div class="text-right">
+            <span class="font-label text-[10px] font-bold uppercase tracking-[0.2em] text-tertiary">Critical Depth</span>
+            <div class="font-headline text-xl font-medium text-tertiary">{{ highlightedDive ? formatDepth(highlightedDive.max_depth_m) : '--' }}</div>
+          </div>
+        </div>
+
+        <div class="space-y-4">
+          <article v-for="dive in pagedDives" :key="'mobile-log-' + dive.id" @click="openDive(dive.id)" @keyup.enter="openDive(dive.id)" tabindex="0" role="button" class="rounded-xl bg-surface-container-low p-4 transition-all active:scale-[0.98] focus:bg-surface-container-high focus:outline-none">
+            <div class="flex gap-4">
+              <div class="relative flex h-24 w-16 flex-shrink-0 flex-col items-center justify-center overflow-hidden rounded bg-surface-container-high">
+                <div class="absolute inset-0 opacity-10" style="background-image: radial-gradient(circle at 2px 2px, #9ccaff 1px, transparent 0); background-size: 8px 8px;"></div>
+                <span class="z-10 font-label text-[10px] font-bold uppercase text-on-surface-variant/70">ID</span>
+                <span class="z-10 font-headline text-xl font-bold text-primary">{{ dive.id }}</span>
+              </div>
+              <div class="flex min-w-0 flex-1 flex-col justify-between py-1">
+                <div class="flex items-start justify-between gap-3">
+                  <div class="min-w-0">
+                    <h3 class="truncate font-headline text-lg font-bold tracking-tight">{{ diveTitle(dive) }}</h3>
+                    <p class="font-label text-[10px] font-bold uppercase tracking-[0.16em] text-on-surface-variant">{{ formatDate(dive.started_at) }} | {{ formatTime(dive.started_at) }}</p>
+                  </div>
+                  <span class="material-symbols-outlined text-sm text-on-surface-variant">chevron_right</span>
+                </div>
+                <div class="mt-4 flex items-center gap-6">
+                  <div class="flex flex-col">
+                    <span class="font-label text-[9px] font-bold uppercase tracking-[0.14em] text-on-surface-variant/60">Max Depth</span>
+                    <span class="font-headline text-sm font-semibold text-primary">{{ formatDepth(dive.max_depth_m) }}</span>
+                  </div>
+                  <div class="flex flex-col">
+                    <span class="font-label text-[9px] font-bold uppercase tracking-[0.14em] text-on-surface-variant/60">Duration</span>
+                    <span class="font-headline text-sm font-semibold">{{ formatDurationShort(dive.duration_seconds) }}</span>
+                  </div>
+                  <div class="ml-auto">
+                    <span class="rounded bg-primary/10 px-2 py-1 font-label text-[9px] font-bold uppercase tracking-[0.14em]" :class="dive.max_depth_m > 40 ? 'bg-tertiary/10 text-tertiary' : 'text-primary'">{{ dive.max_depth_m > 40 ? 'Alert Log' : 'Success' }}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section class="hidden space-y-8 md:block">
       <div class="flex flex-col justify-between gap-6 lg:flex-row lg:items-end">
         <div>
           <div class="mb-2 flex items-center gap-3">
@@ -870,6 +1039,7 @@ const LogsView = {
           </div>
         </div>
       </div>
+      </section>
     </section>
   `
 };
@@ -909,6 +1079,9 @@ const DiveImportView = {
       if (!this.selectedDraft) return "Refresh queue";
       const [nextMissing] = missingImportFields(this.selectedDraft);
       return nextMissing ? `Tag ${nextMissing.label}` : "Commit record";
+    },
+    filledIconStyle() {
+      return filledIconStyle;
     }
   },
   methods: {
@@ -931,6 +1104,9 @@ const DiveImportView = {
     completionForDive(dive) {
       return importCompletionPercent(effectiveImportDraft(dive, this.importDrafts[String(dive.id)]));
     },
+    durationMinutes(dive) {
+      return Math.round(numberOrZero(dive?.duration_seconds) / 60);
+    },
     isSaving(diveId) {
       return String(this.savingImportId) === String(diveId);
     },
@@ -945,6 +1121,109 @@ const DiveImportView = {
   },
   template: `
     <section class="space-y-10 text-on-surface">
+      <section class="space-y-6 md:hidden">
+        <div class="flex items-end justify-between">
+          <div>
+            <span class="font-label text-[10px] font-bold uppercase tracking-[0.2em] text-on-surface-variant">Queue Status</span>
+            <h3 class="mt-1 font-headline text-3xl font-bold tracking-tight text-primary">IMPORTED_DIVES</h3>
+          </div>
+          <span class="rounded bg-tertiary-container px-2 py-1 font-label text-[10px] font-bold uppercase tracking-[0.14em] text-on-tertiary-container">{{ pendingDives.length }} Pending</span>
+        </div>
+
+        <div v-if="importStatusMessage" class="rounded-xl bg-primary/10 px-4 py-3 text-sm text-primary">{{ importStatusMessage }}</div>
+        <div v-if="importError" class="rounded-xl bg-error-container/20 px-4 py-3 text-sm text-on-error-container">{{ importError }}</div>
+
+        <div v-if="pendingDives.length" class="space-y-6">
+          <article v-for="dive in pendingDives" :key="'mobile-import-' + dive.id" class="overflow-hidden rounded-xl bg-surface-container-low shadow-panel">
+            <div class="h-1 w-full overflow-hidden bg-primary/20">
+              <div class="h-full bg-primary" :style="{ width: completionForDive(dive) + '%' }"></div>
+            </div>
+            <div class="space-y-5 p-5">
+              <div class="flex items-start justify-between gap-4">
+                <div>
+                  <p class="font-label text-xs font-bold uppercase tracking-[0.12em] text-on-surface-variant opacity-70">IMPORT_ID: {{ paddedDiveIndex(dive) }}</p>
+                  <h3 class="mt-1 font-headline text-xl font-bold">{{ formatDate(dive.started_at) }} | {{ formatTime(dive.started_at) }}</h3>
+                </div>
+                <span class="material-symbols-outlined text-primary" :style="filledIconStyle">sailing</span>
+              </div>
+
+              <div class="grid grid-cols-2 gap-3">
+                <div class="rounded-lg border-l-2 border-primary bg-surface-container-high p-3">
+                  <p class="font-label text-[10px] font-bold uppercase tracking-[0.14em] text-on-surface-variant">Depth</p>
+                  <p class="font-headline text-2xl font-bold text-primary">{{ formatDepthNumber(dive.max_depth_m) }}<span class="ml-1 text-xs font-normal opacity-60">M</span></p>
+                </div>
+                <div class="rounded-lg border-l-2 border-secondary bg-surface-container-high p-3">
+                  <p class="font-label text-[10px] font-bold uppercase tracking-[0.14em] text-on-surface-variant">Time</p>
+                  <p class="font-headline text-2xl font-bold text-secondary">{{ durationMinutes(dive) }}<span class="ml-1 text-xs font-normal opacity-60">MIN</span></p>
+                </div>
+                <div class="rounded-lg bg-surface-container-high p-3">
+                  <p class="font-label text-[10px] font-bold uppercase tracking-[0.14em] text-on-surface-variant">Temp</p>
+                  <p class="font-headline text-lg font-bold">{{ formatTemperature(importTemperature(dive)) }}</p>
+                </div>
+                <div class="rounded-lg bg-surface-container-high p-3">
+                  <p class="font-label text-[10px] font-bold uppercase tracking-[0.14em] text-on-surface-variant">Gas</p>
+                  <p class="font-headline text-lg font-bold">{{ gasSummary(dive).label }}<span class="ml-1 text-xs font-normal opacity-60">{{ gasSummary(dive).detail }}</span></p>
+                </div>
+              </div>
+
+              <div class="flex flex-wrap gap-2">
+                <span v-for="field in missingFields(dive)" :key="'chip-' + dive.id + '-' + field.key" class="inline-flex items-center gap-1 rounded bg-tertiary-container/40 px-2 py-1 font-label text-[10px] font-bold uppercase tracking-[0.14em]" :class="field.key === 'site' ? 'text-tertiary' : 'bg-surface-container-highest text-on-surface-variant'">
+                  <span class="material-symbols-outlined text-sm">{{ field.icon }}</span>
+                  {{ field.missingLabel }}
+                </span>
+              </div>
+
+              <button @click="selectImportDive(dive.id)" class="flex w-full items-center justify-between rounded-lg bg-primary px-4 py-3 font-headline font-bold text-on-primary">
+                <span>COMPLETE RECORD</span>
+                <span class="material-symbols-outlined">chevron_right</span>
+              </button>
+
+              <section v-if="selectedDive && selectedDive.id === dive.id" class="space-y-4 rounded-xl bg-surface-container-high p-4">
+                <label class="block space-y-2">
+                  <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Dive Site</span>
+                  <input :value="selectedDraft.site" @input="updateField('site', $event.target.value)" type="text" placeholder="Blue Hole / House Reef" class="w-full rounded-lg border-none bg-surface-container-highest/70 px-4 py-3 text-sm text-on-surface placeholder:text-secondary/50 focus:ring-1 focus:ring-primary" />
+                </label>
+                <div class="grid grid-cols-1 gap-4">
+                  <label class="block space-y-2">
+                    <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Buddy</span>
+                    <input :value="selectedDraft.buddy" @input="updateField('buddy', $event.target.value)" type="text" placeholder="Diver name" class="w-full rounded-lg border-none bg-surface-container-highest/70 px-4 py-3 text-sm text-on-surface placeholder:text-secondary/50 focus:ring-1 focus:ring-primary" />
+                  </label>
+                  <label class="block space-y-2">
+                    <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Guide</span>
+                    <input :value="selectedDraft.guide" @input="updateField('guide', $event.target.value)" type="text" placeholder="Guide or instructor" class="w-full rounded-lg border-none bg-surface-container-highest/70 px-4 py-3 text-sm text-on-surface placeholder:text-secondary/50 focus:ring-1 focus:ring-primary" />
+                  </label>
+                </div>
+                <label class="block space-y-2">
+                  <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Dive Notes</span>
+                  <textarea :value="selectedDraft.notes" @input="updateField('notes', $event.target.value)" rows="4" placeholder="Visibility, current, wildlife, entry notes..." class="w-full resize-none rounded-lg border-none bg-surface-container-highest/70 px-4 py-3 text-sm leading-6 text-on-surface placeholder:text-secondary/50 focus:ring-1 focus:ring-primary"></textarea>
+                </label>
+                <div class="flex flex-col gap-3">
+                  <button @click="saveSelectedDraft(false)" :disabled="isSaving(dive.id)" class="w-full rounded-lg bg-surface-container-highest px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-on-surface disabled:opacity-50">
+                    {{ isSaving(dive.id) ? 'Saving...' : 'Save Draft' }}
+                  </button>
+                  <button @click="saveSelectedDraft(true)" :disabled="isSaving(dive.id) || !canCompleteImport(selectedDraft)" class="w-full rounded-lg bg-primary px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-on-primary disabled:opacity-50">
+                    {{ isSaving(dive.id) ? 'Saving...' : 'Complete Record' }}
+                  </button>
+                </div>
+              </section>
+            </div>
+          </article>
+
+          <div class="flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-outline-variant/30 p-8 text-center opacity-60">
+            <span class="material-symbols-outlined mb-3 text-4xl">settings_input_component</span>
+            <p class="font-headline text-lg font-bold">SCAN_FOR_COMPUTER</p>
+            <p class="text-xs text-on-surface-variant">Ready to import new data via Bluetooth LE</p>
+          </div>
+        </div>
+
+        <section v-else class="space-y-4 rounded-xl bg-surface-container-low p-6">
+          <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-primary">Import Queue Clear</p>
+          <p class="font-headline text-2xl font-bold">All imported dives have been committed.</p>
+          <button @click="fetchDives" class="rounded-lg bg-surface-container-high px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-primary">Refresh Queue</button>
+        </section>
+      </section>
+
+      <section class="hidden space-y-10 md:block">
       <header class="space-y-6">
         <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div>
@@ -1182,6 +1461,7 @@ const DiveImportView = {
           </div>
         </div>
       </section>
+      </section>
     </section>
   `
 };
@@ -1227,6 +1507,15 @@ const DiveDetailView = {
       const value = oxygenToxicityPercent(this.dive);
       return typeof value === "number" ? `${value.toFixed(0)} CNS%` : "--";
     },
+    mobileTimeLabels() {
+      if (!this.timeLabels.length) return ["0m", "--", "--"];
+      const middleIndex = Math.floor(this.timeLabels.length / 2);
+      return [
+        this.timeLabels[0],
+        this.timeLabels[middleIndex] || this.timeLabels[0],
+        this.timeLabels[this.timeLabels.length - 1] || this.timeLabels[0]
+      ];
+    },
     gradientId() {
       return `depthGradient-${this.dive?.id || "selected"}`;
     }
@@ -1238,6 +1527,7 @@ const DiveDetailView = {
     formatTime,
     formatDateTime,
     formatDepth,
+    formatDepthNumber,
     formatTemperature,
     formatDurationShort: durationShort,
     gasMixLabel,
@@ -1248,13 +1538,170 @@ const DiveDetailView = {
     surfaceTemperature,
     decoStatusLabel,
     shortFingerprint,
-    formatDataSize
+    formatDataSize,
+    durationMinutes(dive) {
+      return Math.round(numberOrZero(dive?.duration_seconds) / 60);
+    }
   },
   template: `
     <section v-if="dive" class="relative overflow-hidden bg-surface-container-low p-6 shadow-panel md:p-8">
       <div class="absolute inset-0 technical-grid pointer-events-none"></div>
       <div class="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(156,240,255,0.35),transparent_22rem)] pointer-events-none"></div>
-      <div class="relative z-10 space-y-8">
+      <div class="relative z-10">
+        <section class="space-y-8 md:hidden">
+          <header class="space-y-4">
+            <div class="flex items-center justify-between gap-3">
+              <button @click="closeDetail" class="inline-flex items-center gap-2 rounded-lg bg-surface-container-high px-4 py-2 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-primary">
+                <span class="material-symbols-outlined text-base">arrow_back</span>
+                Back
+              </button>
+              <span class="rounded bg-surface-container-high px-3 py-2 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Dive ID {{ dive.id }}</span>
+            </div>
+
+            <section class="relative min-h-[17rem] overflow-hidden rounded-[1.5rem] p-6">
+              <div class="absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(156,202,255,0.22),transparent_22%),radial-gradient(circle_at_80%_25%,rgba(255,183,125,0.18),transparent_18%),linear-gradient(180deg,#0f2a3f_0%,#021523_100%)]"></div>
+              <div class="absolute inset-0 bg-gradient-to-t from-background via-background/35 to-transparent"></div>
+              <div class="absolute inset-0 technical-grid opacity-10"></div>
+              <div class="relative z-10 flex h-full flex-col justify-end space-y-2">
+                <div class="flex flex-wrap items-center gap-2">
+                  <span class="rounded bg-tertiary-container/40 px-2 py-1 font-label text-[10px] font-bold uppercase tracking-[0.16em] text-tertiary">{{ diveModeLabel(dive) }}</span>
+                  <span class="font-label text-[10px] font-bold uppercase tracking-[0.16em] text-on-surface-variant">{{ formatDate(dive.started_at) }}</span>
+                </div>
+                <h3 class="font-headline text-3xl font-bold tracking-tight text-on-surface">{{ diveTitle(dive) }}</h3>
+                <div class="flex items-center gap-2 text-sm text-on-surface-variant">
+                  <span class="material-symbols-outlined text-sm">monitoring</span>
+                  <span>{{ dive.vendor }} {{ dive.product }}</span>
+                </div>
+              </div>
+            </section>
+          </header>
+
+          <section class="overflow-hidden rounded-xl shadow-panel">
+            <div class="grid grid-cols-3 gap-px bg-background/20">
+              <div class="bg-surface-container-high p-4 text-center">
+                <span class="font-label text-[10px] uppercase tracking-[0.14em] text-on-surface-variant">Duration</span>
+                <div class="mt-1 flex items-baseline justify-center gap-1">
+                  <span class="font-headline text-xl font-bold text-primary">{{ durationMinutes(dive) }}</span>
+                  <span class="font-label text-[10px] uppercase text-on-surface-variant">Min</span>
+                </div>
+              </div>
+              <div class="bg-surface-container-high p-4 text-center">
+                <span class="font-label text-[10px] uppercase tracking-[0.14em] text-on-surface-variant">Max Depth</span>
+                <div class="mt-1 flex items-baseline justify-center gap-1">
+                  <span class="font-headline text-xl font-bold text-primary">{{ formatDepthNumber(dive.max_depth_m) }}</span>
+                  <span class="font-label text-[10px] uppercase text-on-surface-variant">M</span>
+                </div>
+              </div>
+              <div class="bg-surface-container-high p-4 text-center">
+                <span class="font-label text-[10px] uppercase tracking-[0.14em] text-on-surface-variant">Temp</span>
+                <div class="mt-1 flex items-baseline justify-center gap-1">
+                  <span class="font-headline text-xl font-bold text-tertiary">{{ formatTemperature(surfaceTemperature(dive)).replace(' C', '') }}</span>
+                  <span class="font-label text-[10px] uppercase text-on-surface-variant">C</span>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section class="space-y-4">
+            <div class="flex items-end justify-between">
+              <h4 class="font-headline text-xs font-bold uppercase tracking-[0.2em] text-on-surface-variant">Profile Analysis</h4>
+              <div class="flex gap-4">
+                <div class="flex items-center gap-1.5">
+                  <div class="h-2 w-2 rounded-full bg-primary"></div>
+                  <span class="font-label text-[9px] uppercase text-on-surface-variant">Depth</span>
+                </div>
+                <div class="flex items-center gap-1.5">
+                  <div class="h-2 w-2 rounded-full border border-tertiary border-dashed"></div>
+                  <span class="font-label text-[9px] uppercase text-on-surface-variant">Air</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="relative overflow-hidden rounded-xl bg-surface-container-low p-4">
+              <div class="absolute inset-0 technical-grid opacity-[0.05]"></div>
+              <div class="relative grid grid-cols-[auto_1fr_auto] gap-3">
+                <div class="flex h-48 flex-col justify-between py-1 text-right">
+                  <span class="font-label text-[8px] font-bold uppercase tracking-[0.16em] text-on-surface-variant">Depth</span>
+                  <span v-for="label in depthAxisLabels" :key="'mobile-depth-' + label" class="font-label text-[8px] font-bold uppercase tracking-[0.14em] text-on-surface-variant/60">{{ label }}</span>
+                </div>
+                <svg class="h-48 w-full" viewBox="0 0 800 250" preserveAspectRatio="none">
+                  <line x1="0" x2="800" y1="10" y2="10" stroke="#c1c7d1" stroke-width="1" stroke-dasharray="4" opacity="0.15"></line>
+                  <line x1="0" x2="800" y1="56" y2="56" stroke="#c1c7d1" stroke-width="1" stroke-dasharray="4" opacity="0.15"></line>
+                  <line x1="0" x2="800" y1="102" y2="102" stroke="#c1c7d1" stroke-width="1" stroke-dasharray="4" opacity="0.15"></line>
+                  <line x1="0" x2="800" y1="148" y2="148" stroke="#c1c7d1" stroke-width="1" stroke-dasharray="4" opacity="0.15"></line>
+                  <line x1="0" x2="800" y1="194" y2="194" stroke="#c1c7d1" stroke-width="1" stroke-dasharray="4" opacity="0.15"></line>
+                  <line x1="0" x2="800" y1="240" y2="240" stroke="#c1c7d1" stroke-width="1" stroke-dasharray="4" opacity="0.15"></line>
+                  <path :d="depthProfile.area" :fill="'url(#' + gradientId + ')'" opacity="0.9"></path>
+                  <path :d="depthProfile.line" fill="none" stroke="#9CCAFF" stroke-width="2.5" stroke-linejoin="round"></path>
+                  <path :d="pressureProfile" fill="none" stroke="#FFB77D" stroke-width="2" stroke-dasharray="5"></path>
+                  <defs>
+                    <linearGradient :id="gradientId" x1="0" x2="0" y1="0" y2="1">
+                      <stop offset="0%" stop-color="#80bdfe" stop-opacity="0.26"></stop>
+                      <stop offset="100%" stop-color="#80bdfe" stop-opacity="0"></stop>
+                    </linearGradient>
+                  </defs>
+                </svg>
+                <div class="flex h-48 flex-col justify-between py-1">
+                  <span class="font-label text-[8px] font-bold uppercase tracking-[0.16em] text-on-surface-variant">Air</span>
+                  <span v-for="label in pressureAxisLabels" :key="'mobile-pressure-' + label" class="font-label text-[8px] font-bold uppercase tracking-[0.14em] text-on-surface-variant/60">{{ label }}</span>
+                </div>
+              </div>
+              <div class="relative mt-3 flex items-center justify-between font-label text-[8px] font-bold uppercase tracking-[0.16em] text-on-surface-variant/50">
+                <span v-for="label in mobileTimeLabels" :key="'mobile-time-' + label">{{ label }}</span>
+              </div>
+            </div>
+          </section>
+
+          <section class="space-y-4">
+            <h4 class="font-headline text-xs font-bold uppercase tracking-[0.2em] text-on-surface-variant">Observations</h4>
+            <div class="rounded-xl border-l-2 border-primary/30 bg-surface-container-low p-5">
+              <p v-for="paragraph in narrative.slice(0, 2)" :key="'mobile-note-' + paragraph" class="text-sm leading-relaxed text-on-surface-variant">{{ paragraph }}</p>
+            </div>
+          </section>
+
+          <section class="space-y-4">
+            <div class="flex items-center justify-between">
+              <h4 class="font-headline text-xs font-bold uppercase tracking-[0.2em] text-on-surface-variant">Dive Checkpoints</h4>
+              <span class="font-label text-[10px] font-bold uppercase tracking-[0.16em] text-primary">{{ checkpoints.length }} events</span>
+            </div>
+            <div class="grid grid-cols-2 gap-3">
+              <article v-for="card in checkpoints" :key="'mobile-' + card.title" class="rounded-xl bg-[linear-gradient(160deg,rgba(19,44,64,0.9),rgba(31,55,75,0.7))] p-4">
+                <p class="font-label text-[10px] font-bold uppercase tracking-[0.16em] text-secondary">{{ card.title }}</p>
+                <div class="mt-4 space-y-2">
+                  <div>
+                    <p class="font-label text-[9px] uppercase tracking-[0.14em] text-on-surface-variant">Time</p>
+                    <p class="font-headline text-xl font-bold text-on-surface">{{ card.time }}</p>
+                  </div>
+                  <div>
+                    <p class="font-label text-[9px] uppercase tracking-[0.14em] text-on-surface-variant">Depth</p>
+                    <p class="text-sm font-bold text-primary">{{ card.depth }}</p>
+                  </div>
+                  <div>
+                    <p class="font-label text-[9px] uppercase tracking-[0.14em] text-on-surface-variant">Pressure</p>
+                    <p class="text-sm font-bold text-tertiary">{{ card.pressure }}</p>
+                  </div>
+                </div>
+              </article>
+            </div>
+          </section>
+
+          <section class="grid grid-cols-3 gap-3 rounded-xl bg-surface-container-low p-4">
+            <div>
+              <p class="font-label text-[9px] font-bold uppercase tracking-[0.14em] text-on-surface-variant">SAC Rate</p>
+              <p class="mt-1 font-headline text-lg font-bold text-on-surface">{{ sacRateText }}</p>
+            </div>
+            <div>
+              <p class="font-label text-[9px] font-bold uppercase tracking-[0.14em] text-on-surface-variant">O2 Load</p>
+              <p class="mt-1 font-headline text-lg font-bold text-on-surface">{{ oxygenText }}</p>
+            </div>
+            <div>
+              <p class="font-label text-[9px] font-bold uppercase tracking-[0.14em] text-on-surface-variant">Status</p>
+              <p class="mt-1 font-headline text-lg font-bold" :class="decoStatusLabel(dive) === 'No Deco' ? 'text-primary' : 'text-tertiary'">{{ decoStatusLabel(dive) }}</p>
+            </div>
+          </section>
+        </section>
+
+        <section class="hidden space-y-8 md:block">
         <header class="space-y-6">
           <div class="flex flex-wrap items-center gap-3">
             <button @click="closeDetail" class="inline-flex items-center gap-2 bg-surface-container-high px-4 py-2 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-primary shadow-panel">
@@ -1450,6 +1897,7 @@ const DiveDetailView = {
             </div>
           </div>
         </div>
+        </section>
       </div>
     </section>
     <section v-else class="rounded-[2rem] bg-surface-container-low p-10 shadow-panel">
@@ -1752,10 +2200,10 @@ createApp({
       backendHealthy: false,
       filledIconStyle,
       navItems: [
-        { id: "dashboard", label: "Dashboard", mobileLabel: "Dash", icon: "dashboard", eyebrow: "Commander Dashboard", title: "Abyssal Command" },
-        { id: "logs", label: "Dive Logs", mobileLabel: "Logs", icon: "waves", eyebrow: "Mission Archive", title: "Dive Log Database" },
-        { id: "equipment", label: "Equipment", mobileLabel: "Gear", icon: "scuba_diving", eyebrow: "Asset Registry", title: "Equipment Management" },
-        { id: "settings", label: "Settings", mobileLabel: "Set", icon: "settings", eyebrow: "System Configuration", title: "System Config" }
+        { id: "dashboard", label: "Dashboard", mobileLabel: "Dashboard", icon: "dashboard", mobileIcon: "dashboard", eyebrow: "Commander Dashboard", title: "Abyssal Command" },
+        { id: "logs", label: "Dive Logs", mobileLabel: "Logs", icon: "waves", mobileIcon: "sailing", eyebrow: "Mission Archive", title: "Dive Log Database" },
+        { id: "equipment", label: "Equipment", mobileLabel: "Gear", icon: "scuba_diving", mobileIcon: "construction", eyebrow: "Asset Registry", title: "Equipment Management" },
+        { id: "settings", label: "Settings", mobileLabel: "Settings", icon: "settings", mobileIcon: "settings", eyebrow: "System Configuration", title: "System Config" }
       ]
     };
   },
@@ -1796,6 +2244,9 @@ createApp({
     }
   },
   methods: {
+    setSearchText(value) {
+      this.searchText = value;
+    },
     setView(view) {
       this.activeView = view;
       if (view !== "logs") this.selectedDiveId = null;
@@ -2002,10 +2453,18 @@ createApp({
           </div>
         </div>
       </aside>
-      <header class="fixed left-0 right-0 top-0 z-30 h-16 border-b border-primary/10 bg-background/80 backdrop-blur-xl md:left-64">
-        <div class="flex h-full items-center justify-between px-5 md:px-8">
-          <div class="flex items-center gap-4 md:gap-8">
-            <button class="bg-surface-container-high p-3 text-primary md:hidden" @click="cycleView"><span class="material-symbols-outlined">widgets</span></button>
+      <header class="fixed left-0 right-0 top-0 z-30 h-16 border-b border-primary/10 bg-surface-container-high/95 backdrop-blur-xl md:left-64 md:bg-background/80">
+        <div class="flex h-full items-center justify-between px-6 md:hidden">
+          <div class="flex items-center gap-3">
+            <span class="material-symbols-outlined text-primary">waves</span>
+            <h2 class="font-headline text-lg font-bold uppercase tracking-[0.14em] text-primary">SUBMERSIBLE_LOG</h2>
+          </div>
+          <button class="rounded-full p-2 text-primary transition-colors hover:bg-surface-container-highest">
+            <span class="material-symbols-outlined">notifications</span>
+          </button>
+        </div>
+        <div class="hidden h-full items-center justify-between px-8 md:flex">
+          <div class="flex items-center gap-8">
             <div>
               <p class="font-label text-[10px] font-bold uppercase tracking-[0.28em] text-primary">{{ activeSection.eyebrow }}</p>
               <h2 class="font-headline text-2xl font-bold tracking-[0.08em] text-primary">ABYSSAL COMMAND</h2>
@@ -2017,7 +2476,7 @@ createApp({
             </nav>
           </div>
           <div class="flex items-center gap-4">
-            <div class="relative hidden md:block">
+            <div class="relative">
               <span class="material-symbols-outlined absolute right-3 top-1/2 -translate-y-1/2 text-sm text-primary">search</span>
               <input v-model.trim="searchText" type="text" class="w-56 border-none bg-surface-container-highest py-1.5 pl-4 pr-10 text-xs text-on-surface-variant focus:ring-1 focus:ring-primary" :placeholder="activeView === 'equipment' ? 'SEARCH ASSETS...' : 'SEARCH ARCHIVES...'" />
             </div>
@@ -2028,7 +2487,7 @@ createApp({
         </div>
       </header>
       <main class="pb-24 pt-20 md:ml-64">
-        <div class="mx-auto max-w-7xl px-4 md:px-8">
+        <div class="mx-auto max-w-md px-4 md:max-w-7xl md:px-8">
           <section v-if="loading" class="bg-surface-container-low p-10 shadow-panel">
             <p class="font-headline text-2xl font-bold">Loading telemetry...</p>
             <p class="mt-2 text-on-surface-variant">Pulling dive data from the backend.</p>
@@ -2038,16 +2497,25 @@ createApp({
             <p class="mt-2 text-sm text-on-error-container">{{ error }}</p>
             <button @click="fetchDives" class="mt-5 bg-primary px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-on-primary">Retry</button>
           </section>
-          <dashboard-view v-else-if="activeView === 'dashboard'" :dives="dives" :stats="stats" :set-view="setView"></dashboard-view>
-          <logs-view v-else-if="activeView === 'logs' && !selectedDive" :dives="dives" :search-text="searchText" :open-dive="openDive" :open-import-queue="openImportQueue"></logs-view>
+          <dashboard-view v-else-if="activeView === 'dashboard'" :dives="dives" :stats="stats" :set-view="setView" :backend-healthy="backendHealthy"></dashboard-view>
+          <logs-view v-else-if="activeView === 'logs' && !selectedDive" :dives="dives" :search-text="searchText" :open-dive="openDive" :open-import-queue="openImportQueue" :set-search-text="setSearchText"></logs-view>
           <dive-import-view v-else-if="activeView === 'imports'" :dives="dives" :import-drafts="importDrafts" :selected-import-id="selectedImportId" :select-import-dive="selectImportDive" :update-import-draft="updateImportDraft" :save-import-draft="saveImportDraft" :saving-import-id="savingImportId" :import-error="importError" :import-status-message="importStatusMessage" :open-dive="openDive" :set-view="setView" :fetch-dives="fetchDives"></dive-import-view>
           <dive-detail-view v-else-if="activeView === 'logs' && selectedDive" :dive="selectedDive" :close-detail="closeDiveDetail"></dive-detail-view>
           <equipment-view v-else-if="activeView === 'equipment'" :search-text="searchText"></equipment-view>
           <settings-view v-else-if="activeView === 'settings'"></settings-view>
         </div>
       </main>
-      <nav class="fixed bottom-0 left-0 right-0 z-40 flex h-16 items-center justify-around border-t border-primary/10 bg-background/90 px-4 backdrop-blur-xl md:hidden">
-        <button v-for="item in navItems" :key="item.id" @click="setView(item.id)" class="flex flex-col items-center gap-1" :class="activeView === item.id ? 'text-primary' : 'text-secondary/70'"><span class="material-symbols-outlined" :style="activeView === item.id ? filledIconStyle : ''">{{ item.icon }}</span><span class="font-label text-[10px] font-bold uppercase tracking-[0.18em]">{{ item.mobileLabel }}</span></button>
+      <nav class="fixed bottom-0 left-0 right-0 z-40 flex items-center justify-around border-t border-primary/10 bg-surface-container-low/80 px-4 pb-6 pt-3 backdrop-blur-xl md:hidden">
+        <button
+          v-for="item in navItems"
+          :key="item.id"
+          @click="setView(item.id)"
+          class="flex flex-col items-center justify-center rounded-lg px-3 py-1 transition-all"
+          :class="activeView === item.id || (activeView === 'imports' && item.id === 'logs') ? 'bg-surface-container-high text-primary' : 'text-secondary/60'"
+        >
+          <span class="material-symbols-outlined mb-1" :style="activeView === item.id || (activeView === 'imports' && item.id === 'logs') ? filledIconStyle : ''">{{ item.mobileIcon || item.icon }}</span>
+          <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em]">{{ item.mobileLabel }}</span>
+        </button>
       </nav>
     </div>
   `
