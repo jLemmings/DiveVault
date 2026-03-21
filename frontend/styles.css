@@ -1,0 +1,41 @@
+body {
+  font-family: "Manrope", sans-serif;
+  background:
+    radial-gradient(circle at top right, rgba(156, 202, 255, 0.12), transparent 24rem),
+    radial-gradient(circle at 20% 0%, rgba(255, 183, 125, 0.08), transparent 18rem),
+    linear-gradient(180deg, #001525 0%, #001827 38%, #021d30 100%);
+  color: #cde5ff;
+}
+
+.font-headline {
+  font-family: "Space Grotesk", sans-serif;
+}
+
+.material-symbols-outlined {
+  font-variation-settings: "FILL" 0, "wght" 500, "GRAD" 0, "opsz" 24;
+  vertical-align: middle;
+}
+
+.hide-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+.hide-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.depth-bar {
+  background: linear-gradient(180deg, rgba(156, 202, 255, 0.16), rgba(156, 202, 255, 0.92));
+}
+
+.technical-grid {
+  background-image: radial-gradient(circle, rgba(141, 145, 151, 0.34) 1px, transparent 1px);
+  background-size: 24px 24px;
+  opacity: 0.09;
+}
+
+.glass-panel {
+  background: rgba(19, 44, 64, 0.7);
+  backdrop-filter: blur(20px);
+}

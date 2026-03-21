@@ -1,0 +1,422 @@
+const DiveImportView = {
+  props: [
+    "dives",
+    "importDrafts",
+    "selectedImportId",
+    "selectImportDive",
+    "updateImportDraft",
+    "saveImportDraft",
+    "savingImportId",
+    "importError",
+    "importStatusMessage",
+    "openDive",
+    "setView",
+    "fetchDives"
+  ],
+  computed: {
+    pendingDives() {
+      return this.dives.filter((dive) => !isImportComplete(effectiveImportDraft(dive, this.importDrafts[String(dive.id)])));
+    },
+    selectedDive() {
+      return this.pendingDives.find((dive) => String(dive.id) === String(this.selectedImportId)) || this.pendingDives[0] || null;
+    },
+    selectedDraft() {
+      return this.selectedDive ? effectiveImportDraft(this.selectedDive, this.importDrafts[String(this.selectedDive.id)]) : null;
+    },
+    selectedGas() {
+      return this.selectedDive ? gasSummary(this.selectedDive) : { label: "--", detail: "" };
+    },
+    averageCompletion() {
+      return averageImportCompletion(this.pendingDives, this.importDrafts);
+    },
+    nextStepLabel() {
+      if (!this.selectedDraft) return "Refresh queue";
+      const [nextMissing] = missingImportFields(this.selectedDraft);
+      return nextMissing ? `Tag ${nextMissing.label}` : "Commit record";
+    },
+    filledIconStyle() {
+      return filledIconStyle;
+    }
+  },
+  methods: {
+    compactDateStamp,
+    paddedDiveIndex,
+    formatDate,
+    formatTime,
+    formatDepthNumber,
+    formatDurationShort: durationShort,
+    formatTemperature,
+    importTemperature,
+    gasSummary,
+    isNightDive,
+    canCompleteImport,
+    importCompletionPercent,
+    missingImportFields,
+    missingFields(dive) {
+      return missingImportFields(effectiveImportDraft(dive, this.importDrafts[String(dive.id)]));
+    },
+    completionForDive(dive) {
+      return importCompletionPercent(effectiveImportDraft(dive, this.importDrafts[String(dive.id)]));
+    },
+    durationMinutes(dive) {
+      return Math.round(numberOrZero(dive?.duration_seconds) / 60);
+    },
+    isSaving(diveId) {
+      return String(this.savingImportId) === String(diveId);
+    },
+    updateField(key, value) {
+      if (!this.selectedDive) return;
+      this.updateImportDraft(this.selectedDive.id, key, value);
+    },
+    saveSelectedDraft(commit = false) {
+      if (!this.selectedDive) return;
+      this.saveImportDraft(this.selectedDive.id, commit);
+    }
+  },
+  template: `
+    <section class="space-y-10 text-on-surface">
+      <section class="space-y-6 md:hidden">
+        <div class="flex items-end justify-between">
+          <div>
+            <span class="font-label text-[10px] font-bold uppercase tracking-[0.2em] text-on-surface-variant">Queue Status</span>
+            <h3 class="mt-1 font-headline text-3xl font-bold tracking-tight text-primary">IMPORTED_DIVES</h3>
+          </div>
+          <span class="rounded bg-tertiary-container px-2 py-1 font-label text-[10px] font-bold uppercase tracking-[0.14em] text-on-tertiary-container">{{ pendingDives.length }} Pending</span>
+        </div>
+
+        <div v-if="importStatusMessage" class="rounded-xl bg-primary/10 px-4 py-3 text-sm text-primary">{{ importStatusMessage }}</div>
+        <div v-if="importError" class="rounded-xl bg-error-container/20 px-4 py-3 text-sm text-on-error-container">{{ importError }}</div>
+
+        <div v-if="pendingDives.length" class="space-y-6">
+          <article v-for="dive in pendingDives" :key="'mobile-import-' + dive.id" class="overflow-hidden rounded-xl bg-surface-container-low shadow-panel">
+            <div class="h-1 w-full overflow-hidden bg-primary/20">
+              <div class="h-full bg-primary" :style="{ width: completionForDive(dive) + '%' }"></div>
+            </div>
+            <div class="space-y-5 p-5">
+              <div class="flex items-start justify-between gap-4">
+                <div>
+                  <p class="font-label text-xs font-bold uppercase tracking-[0.12em] text-on-surface-variant opacity-70">IMPORT_ID: {{ paddedDiveIndex(dive) }}</p>
+                  <h3 class="mt-1 font-headline text-xl font-bold">{{ formatDate(dive.started_at) }} | {{ formatTime(dive.started_at) }}</h3>
+                </div>
+                <span class="material-symbols-outlined text-primary" :style="filledIconStyle">sailing</span>
+              </div>
+
+              <div class="grid grid-cols-2 gap-3">
+                <div class="rounded-lg border-l-2 border-primary bg-surface-container-high p-3">
+                  <p class="font-label text-[10px] font-bold uppercase tracking-[0.14em] text-on-surface-variant">Depth</p>
+                  <p class="font-headline text-2xl font-bold text-primary">{{ formatDepthNumber(dive.max_depth_m) }}<span class="ml-1 text-xs font-normal opacity-60">M</span></p>
+                </div>
+                <div class="rounded-lg border-l-2 border-secondary bg-surface-container-high p-3">
+                  <p class="font-label text-[10px] font-bold uppercase tracking-[0.14em] text-on-surface-variant">Time</p>
+                  <p class="font-headline text-2xl font-bold text-secondary">{{ durationMinutes(dive) }}<span class="ml-1 text-xs font-normal opacity-60">MIN</span></p>
+                </div>
+                <div class="rounded-lg bg-surface-container-high p-3">
+                  <p class="font-label text-[10px] font-bold uppercase tracking-[0.14em] text-on-surface-variant">Temp</p>
+                  <p class="font-headline text-lg font-bold">{{ formatTemperature(importTemperature(dive)) }}</p>
+                </div>
+                <div class="rounded-lg bg-surface-container-high p-3">
+                  <p class="font-label text-[10px] font-bold uppercase tracking-[0.14em] text-on-surface-variant">Gas</p>
+                  <p class="font-headline text-lg font-bold">{{ gasSummary(dive).label }}<span class="ml-1 text-xs font-normal opacity-60">{{ gasSummary(dive).detail }}</span></p>
+                </div>
+              </div>
+
+              <div class="flex flex-wrap gap-2">
+                <span v-for="field in missingFields(dive)" :key="'chip-' + dive.id + '-' + field.key" class="inline-flex items-center gap-1 rounded bg-tertiary-container/40 px-2 py-1 font-label text-[10px] font-bold uppercase tracking-[0.14em]" :class="field.key === 'site' ? 'text-tertiary' : 'bg-surface-container-highest text-on-surface-variant'">
+                  <span class="material-symbols-outlined text-sm">{{ field.icon }}</span>
+                  {{ field.missingLabel }}
+                </span>
+              </div>
+
+              <button @click="selectImportDive(dive.id)" class="flex w-full items-center justify-between rounded-lg bg-primary px-4 py-3 font-headline font-bold text-on-primary">
+                <span>COMPLETE RECORD</span>
+                <span class="material-symbols-outlined">chevron_right</span>
+              </button>
+
+              <section v-if="selectedDive && selectedDive.id === dive.id" class="space-y-4 rounded-xl bg-surface-container-high p-4">
+                <label class="block space-y-2">
+                  <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Dive Site</span>
+                  <input :value="selectedDraft.site" @input="updateField('site', $event.target.value)" type="text" placeholder="Blue Hole / House Reef" class="w-full rounded-lg border-none bg-surface-container-highest/70 px-4 py-3 text-sm text-on-surface placeholder:text-secondary/50 focus:ring-1 focus:ring-primary" />
+                </label>
+                <div class="grid grid-cols-1 gap-4">
+                  <label class="block space-y-2">
+                    <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Buddy</span>
+                    <input :value="selectedDraft.buddy" @input="updateField('buddy', $event.target.value)" type="text" placeholder="Diver name" class="w-full rounded-lg border-none bg-surface-container-highest/70 px-4 py-3 text-sm text-on-surface placeholder:text-secondary/50 focus:ring-1 focus:ring-primary" />
+                  </label>
+                  <label class="block space-y-2">
+                    <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Guide</span>
+                    <input :value="selectedDraft.guide" @input="updateField('guide', $event.target.value)" type="text" placeholder="Guide or instructor" class="w-full rounded-lg border-none bg-surface-container-highest/70 px-4 py-3 text-sm text-on-surface placeholder:text-secondary/50 focus:ring-1 focus:ring-primary" />
+                  </label>
+                </div>
+                <label class="block space-y-2">
+                  <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Dive Notes</span>
+                  <textarea :value="selectedDraft.notes" @input="updateField('notes', $event.target.value)" rows="4" placeholder="Visibility, current, wildlife, entry notes..." class="w-full resize-none rounded-lg border-none bg-surface-container-highest/70 px-4 py-3 text-sm leading-6 text-on-surface placeholder:text-secondary/50 focus:ring-1 focus:ring-primary"></textarea>
+                </label>
+                <div class="flex flex-col gap-3">
+                  <button @click="saveSelectedDraft(false)" :disabled="isSaving(dive.id)" class="w-full rounded-lg bg-surface-container-highest px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-on-surface disabled:opacity-50">
+                    {{ isSaving(dive.id) ? 'Saving...' : 'Save Draft' }}
+                  </button>
+                  <button @click="saveSelectedDraft(true)" :disabled="isSaving(dive.id) || !canCompleteImport(selectedDraft)" class="w-full rounded-lg bg-primary px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-on-primary disabled:opacity-50">
+                    {{ isSaving(dive.id) ? 'Saving...' : 'Complete Record' }}
+                  </button>
+                </div>
+              </section>
+            </div>
+          </article>
+
+          <div class="flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-outline-variant/30 p-8 text-center opacity-60">
+            <span class="material-symbols-outlined mb-3 text-4xl">settings_input_component</span>
+            <p class="font-headline text-lg font-bold">SCAN_FOR_COMPUTER</p>
+            <p class="text-xs text-on-surface-variant">Ready to import new data via Bluetooth LE</p>
+          </div>
+        </div>
+
+        <section v-else class="space-y-4 rounded-xl bg-surface-container-low p-6">
+          <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-primary">Import Queue Clear</p>
+          <p class="font-headline text-2xl font-bold">All imported dives have been committed.</p>
+          <button @click="fetchDives" class="rounded-lg bg-surface-container-high px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-primary">Refresh Queue</button>
+        </section>
+      </section>
+
+      <section class="hidden space-y-10 md:block">
+      <header class="space-y-6">
+        <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <div class="mb-2 flex items-center gap-2 text-primary/60">
+              <span class="material-symbols-outlined text-sm">file_download</span>
+              <span class="font-label text-[10px] font-bold uppercase tracking-[0.28em]">Synchronization Module / Queued Data</span>
+            </div>
+            <h3 class="font-headline text-5xl font-bold tracking-tight">Imported Dives</h3>
+          </div>
+          <button @click="fetchDives" class="inline-flex items-center gap-2 bg-surface-container-high px-5 py-3 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-primary transition-colors hover:bg-surface-container-highest">
+            <span class="material-symbols-outlined text-sm">sync</span>
+            Refresh Queue
+          </button>
+        </div>
+        <div class="glass-panel bg-surface-container-high/40 p-5 shadow-panel md:p-6">
+          <div class="flex flex-col gap-6 xl:flex-row xl:items-center xl:justify-between">
+            <p class="max-w-3xl text-sm leading-7 text-on-surface-variant">
+              Imported dives remain in a pending state until the diver adds the required registry details. Complete the
+              dive site, buddy, and guide fields below before committing the record to the permanent logbook.
+            </p>
+            <div class="grid grid-cols-3 gap-3 text-center">
+              <div class="min-w-[90px] bg-background/40 px-4 py-3">
+                <p class="font-headline text-2xl font-bold text-primary">{{ pendingDives.length }}</p>
+                <p class="font-label text-[9px] font-bold uppercase tracking-[0.22em] text-secondary">Pending</p>
+              </div>
+              <div class="min-w-[90px] bg-background/40 px-4 py-3">
+                <p class="font-headline text-2xl font-bold text-secondary">{{ dives.length }}</p>
+                <p class="font-label text-[9px] font-bold uppercase tracking-[0.22em] text-secondary">Total Logs</p>
+              </div>
+              <div class="min-w-[90px] bg-background/40 px-4 py-3">
+                <p class="font-headline text-2xl font-bold text-tertiary">{{ averageCompletion }}%</p>
+                <p class="font-label text-[9px] font-bold uppercase tracking-[0.22em] text-secondary">Completion</p>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div v-if="importStatusMessage" class="bg-primary/10 px-5 py-4 text-sm text-primary shadow-panel">{{ importStatusMessage }}</div>
+        <div v-if="importError" class="bg-error-container/20 px-5 py-4 text-sm text-on-error-container shadow-panel">{{ importError }}</div>
+      </header>
+
+      <div v-if="pendingDives.length" class="grid grid-cols-1 gap-6 xl:grid-cols-[1.15fr_0.85fr]">
+        <section class="space-y-4">
+          <article
+            v-for="dive in pendingDives"
+            :key="dive.id"
+            class="relative overflow-hidden bg-surface-container-low transition-all duration-300"
+            :class="selectedDive && selectedDive.id === dive.id ? 'shadow-[0_0_0_1px_rgba(156,202,255,0.22)]' : 'hover:bg-surface-container'"
+          >
+            <div class="absolute right-4 top-4 flex flex-wrap gap-2">
+              <span v-if="isNightDive(dive)" class="bg-primary/10 px-3 py-1 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-primary">Night Dive</span>
+              <span class="bg-tertiary-container/40 px-3 py-1 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-tertiary">Pending</span>
+            </div>
+            <div class="flex flex-col lg:flex-row">
+              <div class="w-full bg-surface-container-highest/30 p-6 lg:w-48">
+                <div class="mb-5">
+                  <p class="font-label text-[10px] font-bold uppercase tracking-[0.2em] text-secondary/50">Date</p>
+                  <p class="mt-1 font-headline text-lg font-bold text-primary">{{ compactDateStamp(dive.started_at) }}</p>
+                  <p class="text-[10px] text-secondary/60">{{ formatTime(dive.started_at) }}</p>
+                </div>
+                <div>
+                  <p class="font-label text-[10px] font-bold uppercase tracking-[0.2em] text-secondary/50">Index</p>
+                  <p class="mt-1 font-headline text-lg font-bold">{{ paddedDiveIndex(dive) }}</p>
+                </div>
+              </div>
+              <div class="flex-1 p-6 lg:p-8">
+                <div class="mb-8 grid grid-cols-2 gap-6 lg:grid-cols-4">
+                  <div>
+                    <p class="font-label text-[10px] font-bold uppercase tracking-[0.2em] text-secondary/50">Max Depth</p>
+                    <p class="mt-2 font-headline text-3xl font-bold">{{ formatDepthNumber(dive.max_depth_m) }}<span class="ml-1 text-xs font-normal text-secondary">M</span></p>
+                  </div>
+                  <div>
+                    <p class="font-label text-[10px] font-bold uppercase tracking-[0.2em] text-secondary/50">Duration</p>
+                    <p class="mt-2 font-headline text-3xl font-bold">{{ formatDurationShort(dive.duration_seconds) }}<span class="ml-1 text-xs font-normal text-secondary"> / Dive</span></p>
+                  </div>
+                  <div>
+                    <p class="font-label text-[10px] font-bold uppercase tracking-[0.2em] text-secondary/50">Min Temp</p>
+                    <p class="mt-2 font-headline text-3xl font-bold">{{ formatTemperature(importTemperature(dive)) }}</p>
+                  </div>
+                  <div>
+                    <p class="font-label text-[10px] font-bold uppercase tracking-[0.2em] text-secondary/50">Gas Mix</p>
+                    <p class="mt-2 font-headline text-3xl font-bold">{{ gasSummary(dive).label }}<span class="ml-1 text-xs font-normal text-secondary">{{ gasSummary(dive).detail }}</span></p>
+                  </div>
+                </div>
+                <div class="flex flex-wrap gap-3">
+                  <span
+                    v-for="field in missingFields(dive)"
+                    :key="field.key"
+                    class="inline-flex items-center gap-2 bg-surface-container-highest/50 px-3 py-1 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-error"
+                  >
+                    <span class="material-symbols-outlined text-[12px]">{{ field.icon }}</span>
+                    {{ field.missingLabel }}
+                  </span>
+                </div>
+              </div>
+              <div class="flex w-full flex-col justify-center gap-4 bg-surface-container-high/20 p-6 lg:w-64 lg:p-8">
+                <button @click="selectImportDive(dive.id)" class="w-full bg-primary px-5 py-4 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-on-primary transition-all hover:brightness-110">
+                  Complete Record
+                </button>
+                <div>
+                  <div class="mb-2 flex items-center justify-between">
+                    <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Progress</span>
+                    <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-primary">{{ completionForDive(dive) }}%</span>
+                  </div>
+                  <div class="h-1 bg-surface-container-highest">
+                    <div class="h-full bg-primary transition-all" :style="{ width: completionForDive(dive) + '%' }"></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </article>
+        </section>
+
+        <aside class="xl:sticky xl:top-24">
+          <section v-if="selectedDive" class="space-y-6 bg-surface-container-low p-6 shadow-panel md:p-8">
+            <div class="flex items-start justify-between gap-4">
+              <div>
+                <p class="font-label text-[10px] font-bold uppercase tracking-[0.22em] text-primary">Metadata Completion</p>
+                <h4 class="mt-2 font-headline text-3xl font-bold tracking-tight">{{ paddedDiveIndex(selectedDive) }}</h4>
+                <p class="mt-2 text-sm text-on-surface-variant">{{ formatDate(selectedDive.started_at) }} | {{ selectedDive.vendor }} {{ selectedDive.product }}</p>
+              </div>
+              <span class="bg-surface-container-high px-3 py-2 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-secondary">{{ importCompletionPercent(selectedDraft) }}% Ready</span>
+            </div>
+
+            <div class="grid grid-cols-2 gap-4">
+              <div class="bg-surface-container-high p-4">
+                <p class="font-label text-[10px] font-bold uppercase tracking-[0.2em] text-secondary">Max Depth</p>
+                <p class="mt-2 font-headline text-2xl font-bold text-primary">{{ formatDepthNumber(selectedDive.max_depth_m) }}m</p>
+              </div>
+              <div class="bg-surface-container-high p-4">
+                <p class="font-label text-[10px] font-bold uppercase tracking-[0.2em] text-secondary">Duration</p>
+                <p class="mt-2 font-headline text-2xl font-bold">{{ formatDurationShort(selectedDive.duration_seconds) }}</p>
+              </div>
+            </div>
+
+            <div class="space-y-4">
+              <label class="block space-y-2">
+                <span class="font-label text-[10px] font-bold uppercase tracking-[0.2em] text-secondary">Dive Site</span>
+                <input :value="selectedDraft.site" @input="updateField('site', $event.target.value)" type="text" placeholder="Blue Hole / House Reef" class="w-full border-none bg-surface-container-highest/70 px-4 py-3 text-sm text-on-surface placeholder:text-secondary/50 focus:ring-1 focus:ring-primary" />
+              </label>
+              <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <label class="block space-y-2">
+                  <span class="font-label text-[10px] font-bold uppercase tracking-[0.2em] text-secondary">Buddy</span>
+                  <input :value="selectedDraft.buddy" @input="updateField('buddy', $event.target.value)" type="text" placeholder="Diver name" class="w-full border-none bg-surface-container-highest/70 px-4 py-3 text-sm text-on-surface placeholder:text-secondary/50 focus:ring-1 focus:ring-primary" />
+                </label>
+                <label class="block space-y-2">
+                  <span class="font-label text-[10px] font-bold uppercase tracking-[0.2em] text-secondary">Guide</span>
+                  <input :value="selectedDraft.guide" @input="updateField('guide', $event.target.value)" type="text" placeholder="Guide or instructor" class="w-full border-none bg-surface-container-highest/70 px-4 py-3 text-sm text-on-surface placeholder:text-secondary/50 focus:ring-1 focus:ring-primary" />
+                </label>
+              </div>
+              <label class="block space-y-2">
+                <span class="font-label text-[10px] font-bold uppercase tracking-[0.2em] text-secondary">Dive Notes</span>
+                <textarea :value="selectedDraft.notes" @input="updateField('notes', $event.target.value)" rows="5" placeholder="Visibility, current, wildlife, entry notes, incidents..." class="w-full resize-none border-none bg-surface-container-highest/70 px-4 py-3 text-sm leading-6 text-on-surface placeholder:text-secondary/50 focus:ring-1 focus:ring-primary"></textarea>
+              </label>
+            </div>
+
+            <div class="space-y-3 bg-surface-container-high p-4">
+              <div class="flex items-center justify-between gap-4">
+                <span class="font-label text-[10px] font-bold uppercase tracking-[0.2em] text-secondary">Next Required Step</span>
+                <span class="font-label text-[10px] font-bold uppercase tracking-[0.2em] text-tertiary">{{ nextStepLabel }}</span>
+              </div>
+              <div class="flex flex-wrap gap-2">
+                <span
+                  v-for="field in missingImportFields(selectedDraft)"
+                  :key="'selected-' + field.key"
+                  class="inline-flex items-center gap-2 bg-background/40 px-3 py-2 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-error"
+                >
+                  <span class="material-symbols-outlined text-[12px]">{{ field.icon }}</span>
+                  {{ field.missingLabel }}
+                </span>
+                <span v-if="!missingImportFields(selectedDraft).length" class="inline-flex items-center gap-2 bg-primary/10 px-3 py-2 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-primary">
+                  <span class="material-symbols-outlined text-[12px]">task_alt</span>
+                  Ready To Commit
+                </span>
+              </div>
+            </div>
+
+            <div class="flex flex-col gap-3 md:flex-row">
+              <button @click="saveSelectedDraft(false)" :disabled="isSaving(selectedDive.id)" class="flex-1 bg-surface-container-high px-5 py-4 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-on-surface transition-colors hover:text-primary disabled:opacity-50">
+                {{ isSaving(selectedDive.id) ? 'Saving...' : 'Save Draft' }}
+              </button>
+              <button @click="saveSelectedDraft(true)" :disabled="isSaving(selectedDive.id) || !canCompleteImport(selectedDraft)" class="flex-1 bg-primary px-5 py-4 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-on-primary transition-all hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50">
+                {{ isSaving(selectedDive.id) ? 'Saving...' : 'Complete Record' }}
+              </button>
+            </div>
+
+            <div class="flex items-center justify-between gap-4 bg-surface-container-high/50 p-4">
+              <div>
+                <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Telemetry Ready</p>
+                <p class="mt-1 text-sm text-on-surface-variant">{{ selectedGas.label }} {{ selectedGas.detail }} | {{ formatTemperature(importTemperature(selectedDive)) }} min</p>
+              </div>
+              <button @click="openDive(selectedDive.id)" class="font-label text-[10px] font-bold uppercase tracking-[0.2em] text-primary">Open Detail</button>
+            </div>
+          </section>
+        </aside>
+      </div>
+
+      <section v-else class="space-y-6 bg-surface-container-low p-10 shadow-panel">
+        <p class="font-label text-[10px] font-bold uppercase tracking-[0.24em] text-primary">Import Queue Clear</p>
+        <h4 class="font-headline text-4xl font-bold tracking-tight">All imported dives have been committed.</h4>
+        <p class="max-w-2xl text-sm leading-7 text-on-surface-variant">The pending import queue is empty. Continue with the dive log or inspect the most recent telemetry detail.</p>
+        <div class="flex flex-wrap gap-3">
+          <button @click="setView('logs')" class="bg-primary px-5 py-3 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-on-primary">Return To Logs</button>
+          <button @click="fetchDives" class="bg-surface-container-high px-5 py-3 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-primary">Refresh Queue</button>
+        </div>
+      </section>
+
+      <section class="grid grid-cols-1 gap-6 md:grid-cols-3">
+        <div class="bg-surface-container-low p-8">
+          <h4 class="font-label text-[10px] font-bold uppercase tracking-[0.22em] text-secondary">Device Sync</h4>
+          <div class="mt-6 flex items-center justify-between gap-3">
+            <span class="text-sm font-semibold">{{ dives[0] ? dives[0].vendor + ' ' + dives[0].product : 'No device synced' }}</span>
+            <span class="bg-primary/10 px-2 py-1 font-label text-[9px] font-bold uppercase tracking-[0.18em] text-primary">Connected</span>
+          </div>
+          <div class="mt-4 h-1 bg-surface-container-highest"><div class="h-full bg-primary" :style="{ width: Math.min(100, dives.length * 12) + '%' }"></div></div>
+          <p class="mt-2 text-[10px] text-secondary/60">Imported depth: {{ dives.length }} logs cached locally</p>
+        </div>
+        <div class="bg-surface-container-low p-8">
+          <h4 class="font-label text-[10px] font-bold uppercase tracking-[0.22em] text-secondary">Incomplete Logs</h4>
+          <div class="mt-6 flex items-end gap-3">
+            <span class="font-headline text-4xl font-bold">{{ pendingDives.length }}</span>
+            <span class="pb-1 text-xs text-secondary/60">logs remaining</span>
+          </div>
+          <p class="mt-2 text-[10px] text-secondary/60">Average data completion: {{ averageCompletion }}%</p>
+        </div>
+        <div class="bg-surface-container-low p-8">
+          <h4 class="font-label text-[10px] font-bold uppercase tracking-[0.22em] text-secondary">Next Step</h4>
+          <div class="mt-6 flex items-center gap-4">
+            <div class="flex h-11 w-11 items-center justify-center bg-surface-container-highest text-primary">
+              <span class="material-symbols-outlined">map</span>
+            </div>
+            <div>
+              <p class="text-sm font-bold">{{ nextStepLabel }}</p>
+              <p class="text-[10px] text-secondary/60">Geo-tagging and buddy validation recommended</p>
+            </div>
+          </div>
+        </div>
+      </section>
+      </section>
+    </section>
+  `
+};
+
