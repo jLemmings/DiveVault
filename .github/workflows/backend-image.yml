@@ -7,10 +7,6 @@ on:
   pull_request:
   workflow_dispatch:
 
-permissions:
-  contents: write
-  packages: write
-
 env:
   REGISTRY: ghcr.io
   REPO_NAME: ${{ github.event.repository.name }}
@@ -21,48 +17,35 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Derive image metadata
-        id: vars
-        shell: bash
-        run: |
-          IMAGE_REPOSITORY="${REGISTRY}/${GITHUB_REPOSITORY_OWNER,,}/${REPO_NAME,,}-backend"
-          CHART_REGISTRY="oci://${REGISTRY}/${GITHUB_REPOSITORY_OWNER,,}/charts"
-          PAGES_URL="https://${GITHUB_REPOSITORY_OWNER,,}.github.io/${REPO_NAME}"
-          IMAGE_TAG="${GITHUB_SHA}"
-          CHART_VERSION="0.1.${GITHUB_RUN_NUMBER}"
-          echo "image_repository=${IMAGE_REPOSITORY}" >> "$GITHUB_OUTPUT"
-          echo "chart_registry=${CHART_REGISTRY}" >> "$GITHUB_OUTPUT"
-          echo "pages_url=${PAGES_URL}" >> "$GITHUB_OUTPUT"
-          echo "image_tag=${IMAGE_TAG}" >> "$GITHUB_OUTPUT"
-          echo "chart_version=${CHART_VERSION}" >> "$GITHUB_OUTPUT"
+        uses: actions/checkout@v5
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Log in to GHCR
-        if: github.event_name != 'pull_request'
-        uses: docker/login-action@v3
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v4
         with:
-          registry: ${{ env.REGISTRY }}
+          registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build backend image
+      - name: Docker meta
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: |
+            ${{ env.DOCKER_IMAGE_REPOSITORY }}
+            ${{ env.GHCR_IMAGE_REPOSITORY }}
+          tags: |
+            type=raw,value=${{ env.RELEASE }}
+            type=raw,value=stable
+            type=raw,value=latest
+
+      - name: Build and push Docker image
         uses: docker/build-push-action@v6
         with:
-          context: .
-          file: ./Dockerfile
-          push: ${{ github.event_name != 'pull_request' }}
-          tags: |
-            ${{ steps.vars.outputs.image_repository }}:${{ steps.vars.outputs.image_tag }}
-            ${{ steps.vars.outputs.image_repository }}:latest
-
-      - name: Set up Helm
-        uses: azure/setup-helm@v4
-
-      - name: Run chart-releaser
-        uses: helm/chart-releaser-action@v1.2.1
-        env:
-          CR_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
+          platforms: linux/amd64,linux/arm/v7,linux/arm64
+          pull: true
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
