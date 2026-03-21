@@ -1,4 +1,7 @@
-{{- if .Values.ingress.enabled }}
+{{- if and .Values.ingress.enabled .Values.traefikIngressRoute.enabled }}
+{{- fail "Only one of ingress.enabled or traefikIngressRoute.enabled may be true" }}
+{{- end }}
+{{- if and .Values.ingress.enabled (not .Values.traefikIngressRoute.enabled) }}
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:

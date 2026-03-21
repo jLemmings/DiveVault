@@ -1,8 +1,8 @@
 replicaCount: 1
 
 image:
-  repository: ghcr.io/example/dive-backend
-  tag: dev
+  repository: ghcr.io/jlemmings/divevault-backend
+  tag: latest
   pullPolicy: IfNotPresent
 
 service:
@@ -35,3 +35,18 @@ ingress:
         - path: /
           pathType: Prefix
   tls: []
+
+traefikIngressRoute:
+  enabled: false
+  annotations: {}
+  entryPoints:
+    - websecure
+  routes:
+    - match: Host(`dive.example.com`)
+      kind: Rule
+      middlewares: []
+      services:
+        - name: ""
+          port: null
+          scheme: ""
+  tls: {}
