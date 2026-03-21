@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
   packages: write
 
 env:
@@ -29,10 +29,12 @@ jobs:
         run: |
           IMAGE_REPOSITORY="${REGISTRY}/${GITHUB_REPOSITORY_OWNER,,}/${REPO_NAME,,}-backend"
           CHART_REGISTRY="oci://${REGISTRY}/${GITHUB_REPOSITORY_OWNER,,}/charts"
+          PAGES_URL="https://${GITHUB_REPOSITORY_OWNER,,}.github.io/${REPO_NAME}"
           IMAGE_TAG="${GITHUB_SHA}"
           CHART_VERSION="0.1.${GITHUB_RUN_NUMBER}"
           echo "image_repository=${IMAGE_REPOSITORY}" >> "$GITHUB_OUTPUT"
           echo "chart_registry=${CHART_REGISTRY}" >> "$GITHUB_OUTPUT"
+          echo "pages_url=${PAGES_URL}" >> "$GITHUB_OUTPUT"
           echo "image_tag=${IMAGE_TAG}" >> "$GITHUB_OUTPUT"
           echo "chart_version=${CHART_VERSION}" >> "$GITHUB_OUTPUT"
 
@@ -60,30 +62,7 @@ jobs:
       - name: Set up Helm
         uses: azure/setup-helm@v4
 
-      - name: Package Helm chart with built image
-        shell: bash
-        run: |
-          mkdir -p dist
-          cp -R charts/dive-backend dist/dive-backend
-          sed -i "s|^  repository: .*|  repository: ${{ steps.vars.outputs.image_repository }}|" dist/dive-backend/values.yaml
-          sed -i "s|^  tag: .*|  tag: ${{ steps.vars.outputs.image_tag }}|" dist/dive-backend/values.yaml
-          sed -i "s|^version: .*|version: ${{ steps.vars.outputs.chart_version }}|" dist/dive-backend/Chart.yaml
-          sed -i "s|^appVersion: .*|appVersion: \"${{ steps.vars.outputs.image_tag }}\"|" dist/dive-backend/Chart.yaml
-          helm lint dist/dive-backend
-          helm package dist/dive-backend --destination dist
-
-      - name: Upload Helm chart artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: dive-backend-chart
-          path: dist/*.tgz
-
-      - name: Log in Helm OCI registry
-        if: github.event_name != 'pull_request'
-        shell: bash
-        run: echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ${{ env.REGISTRY }} -u "${{ github.actor }}" --password-stdin
-
-      - name: Push Helm chart to GHCR OCI
-        if: github.event_name != 'pull_request'
-        shell: bash
-        run: helm push dist/dive-backend-${{ steps.vars.outputs.chart_version }}.tgz ${{ steps.vars.outputs.chart_registry }}
+      - name: Run chart-releaser
+        uses: helm/chart-releaser-action@v1.2.1
+        env:
+          CR_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
