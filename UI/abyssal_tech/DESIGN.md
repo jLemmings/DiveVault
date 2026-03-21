@@ -34,7 +34,7 @@ To avoid a flat, "dead" dark mode, use **Glassmorphism**. Floating panels should
 ## 3. Typography: Technical Precision
 We pair the geometric, high-tech rigors of **Space Grotesk** with the utilitarian readability of **Manrope**.
 
-*   **The Display Scale (Space Grotesk):** Use `display-lg` (3.5rem) for hero moments. These should feel like coordinates or mission headers—bold, tracking-heavy, and authoritative.
+*   **The Display Scale (Space Grotesk):** Use `display-lg` (3.5rem) for hero moments. These should feel like coordinates or dive headers—bold, tracking-heavy, and authoritative.
 *   **The Narrative Scale (Manrope):** Use `body-md` (0.875rem) for all functional text. Manrope’s neutrality balances the "loudness" of the display face.
 *   **Technical Labels:** All `label-sm` elements should be in Space Grotesk, Uppercase, with +5% letter spacing. This mimics the "engraved" look of hardware interfaces.
 
