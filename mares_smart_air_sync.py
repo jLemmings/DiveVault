@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 """
-Download dives from a Mares Smart Air using libdivecomputer and store them in SQLite.
+Download dives from a Mares Smart Air using libdivecomputer and store them in PostgreSQL
+or send them to a backend API.
 
 Tested logic-wise against the libdivecomputer v0.9.0 public headers/API layout,
 but you should still expect to do a little hardware-specific debugging the first time.
 
 Usage:
-    python mares_smart_air_sync.py --port /dev/ttyUSB0 --db dives.db
+    python mares_smart_air_sync.py --port /dev/ttyUSB0 --database-url postgresql://dive:dive@localhost:5432/dive
+    python mares_smart_air_sync.py --port COM3 --backend-url http://localhost:8000
 
 Notes:
 - This example uses SERIAL transport (clip/cable). The Mares Smart Air also supports BLE,
@@ -17,6 +19,7 @@ Notes:
 from __future__ import annotations
 
 import argparse
+import base64
 import ctypes
 from ctypes import (
     POINTER,
@@ -37,10 +40,12 @@ from ctypes import (
 import ctypes.util
 import hashlib
 import json
-import sqlite3
 import sys
 import os
 from datetime import datetime, timezone
+from urllib import error, parse, request
+
+from postgres_store import get_device_state, insert_dive_record, open_db, save_device_state
 
 
 # ----------------------------
@@ -321,77 +326,7 @@ LIB.dc_parser_samples_foreach.argtypes = [POINTER(dc_parser_t), DC_SAMPLE_CALLBA
 LIB.dc_parser_samples_foreach.restype = c_int
 
 
-# ----------------------------
-# SQLite
-# ----------------------------
-
-SCHEMA = """
-CREATE TABLE IF NOT EXISTS device_state (
-    vendor TEXT NOT NULL,
-    product TEXT NOT NULL,
-    fingerprint_hex TEXT,
-    updated_at TEXT NOT NULL,
-    PRIMARY KEY (vendor, product)
-);
-
-CREATE TABLE IF NOT EXISTS dives (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    vendor TEXT NOT NULL,
-    product TEXT NOT NULL,
-    fingerprint_hex TEXT,
-    dive_uid TEXT NOT NULL UNIQUE,
-    started_at TEXT,
-    duration_seconds INTEGER,
-    max_depth_m REAL,
-    avg_depth_m REAL,
-    fields_json TEXT NOT NULL DEFAULT '{}',
-    raw_sha256 TEXT NOT NULL,
-    raw_data BLOB NOT NULL,
-    samples_json TEXT NOT NULL,
-    imported_at TEXT NOT NULL
-);
-"""
-
-
-def init_db(conn: sqlite3.Connection) -> None:
-    conn.executescript(SCHEMA)
-    ensure_column(conn, "dives", "fields_json", "TEXT NOT NULL DEFAULT '{}'")
-    conn.commit()
-
-
-def ensure_column(conn: sqlite3.Connection, table: str, column: str, definition: str) -> None:
-    columns = {row[1] for row in conn.execute(f"PRAGMA table_info({table})")}
-    if column not in columns:
-        conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
-
-
-def get_saved_fingerprint(conn: sqlite3.Connection, vendor: str, product: str) -> bytes | None:
-    row = conn.execute(
-        "SELECT fingerprint_hex FROM device_state WHERE vendor=? AND product=?",
-        (vendor, product),
-    ).fetchone()
-    if not row or not row[0]:
-        return None
-    return bytes.fromhex(row[0])
-
-
-def save_fingerprint(conn: sqlite3.Connection, vendor: str, product: str, fp: bytes | None) -> None:
-    fp_hex = fp.hex() if fp else None
-    now = datetime.now(timezone.utc).isoformat()
-    conn.execute(
-        """
-        INSERT INTO device_state(vendor, product, fingerprint_hex, updated_at)
-        VALUES (?, ?, ?, ?)
-        ON CONFLICT(vendor, product)
-        DO UPDATE SET fingerprint_hex=excluded.fingerprint_hex, updated_at=excluded.updated_at
-        """,
-        (vendor, product, fp_hex, now),
-    )
-    conn.commit()
-
-
-def insert_dive(
-    conn: sqlite3.Connection,
+def build_dive_record(
     vendor: str,
     product: str,
     fingerprint: bytes | None,
@@ -402,45 +337,99 @@ def insert_dive(
     fields: dict,
     raw_data: bytes,
     samples: list[dict],
-) -> bool:
-    raw_sha256 = hashlib.sha256(raw_data).hexdigest()
+) -> dict:
     fingerprint_hex = fingerprint.hex() if fingerprint else None
+    raw_sha256 = hashlib.sha256(raw_data).hexdigest()
+    return {
+        "vendor": vendor,
+        "product": product,
+        "fingerprint_hex": fingerprint_hex,
+        "dive_uid": f"{vendor}:{product}:{fingerprint_hex or raw_sha256}",
+        "started_at": started_at,
+        "duration_seconds": duration_seconds,
+        "max_depth_m": max_depth_m,
+        "avg_depth_m": avg_depth_m,
+        "fields": fields,
+        "raw_sha256": raw_sha256,
+        "raw_data_b64": base64.b64encode(raw_data).decode("ascii"),
+        "samples": samples,
+    }
 
-    # Stable per-dive UID:
-    # prefer fingerprint if present; otherwise fall back to raw hash.
-    dive_uid = f"{vendor}:{product}:{fingerprint_hex or raw_sha256}"
-    imported_at = datetime.now(timezone.utc).isoformat()
 
-    try:
-        conn.execute(
-            """
-            INSERT INTO dives(
-                vendor, product, fingerprint_hex, dive_uid, started_at,
-                duration_seconds, max_depth_m, avg_depth_m, fields_json,
-                raw_sha256, raw_data, samples_json, imported_at
-            )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                vendor,
-                product,
-                fingerprint_hex,
-                dive_uid,
-                started_at,
-                duration_seconds,
-                max_depth_m,
-                avg_depth_m,
-                json.dumps(fields, separators=(",", ":")),
-                raw_sha256,
-                raw_data,
-                json.dumps(samples, separators=(",", ":")),
-                imported_at,
-            ),
+class PostgresDiveStore:
+    def __init__(self, database_url: str) -> None:
+        self.conn = open_db(database_url)
+
+    def get_saved_fingerprint(self, vendor: str, product: str) -> bytes | None:
+        state = get_device_state(self.conn, vendor, product)
+        fingerprint_hex = state.get("fingerprint_hex")
+        return bytes.fromhex(fingerprint_hex) if fingerprint_hex else None
+
+    def save_fingerprint(self, vendor: str, product: str, fp: bytes | None) -> None:
+        save_device_state(self.conn, vendor, product, fp.hex() if fp else None)
+
+    def insert_dive_record(self, record: dict) -> bool:
+        return insert_dive_record(self.conn, record)
+
+    def close(self) -> None:
+        self.conn.close()
+
+
+class BackendDiveStore:
+    def __init__(self, base_url: str) -> None:
+        self.base_url = base_url.rstrip("/")
+
+    def _request_json(self, method: str, path: str, payload: dict | None = None, query: dict | None = None) -> dict:
+        url = f"{self.base_url}{path}"
+        if query:
+            url = f"{url}?{parse.urlencode(query)}"
+
+        data = None
+        headers = {"Accept": "application/json"}
+        if payload is not None:
+            data = json.dumps(payload).encode("utf-8")
+            headers["Content-Type"] = "application/json"
+
+        req = request.Request(url, data=data, method=method, headers=headers)
+        try:
+            with request.urlopen(req, timeout=30) as response:
+                body = response.read()
+        except error.HTTPError as exc:
+            details = exc.read().decode("utf-8", errors="replace")
+            raise RuntimeError(f"Backend request failed: {method} {url} -> {exc.code} {details}") from exc
+        except error.URLError as exc:
+            raise RuntimeError(f"Could not reach backend at {self.base_url}: {exc.reason}") from exc
+
+        if not body:
+            return {}
+        return json.loads(body.decode("utf-8"))
+
+    def get_saved_fingerprint(self, vendor: str, product: str) -> bytes | None:
+        payload = self._request_json(
+            "GET",
+            "/api/device-state",
+            query={"vendor": vendor, "product": product},
         )
-        conn.commit()
-        return True
-    except sqlite3.IntegrityError:
-        return False
+        fingerprint_hex = payload.get("fingerprint_hex")
+        return bytes.fromhex(fingerprint_hex) if fingerprint_hex else None
+
+    def save_fingerprint(self, vendor: str, product: str, fp: bytes | None) -> None:
+        self._request_json(
+            "PUT",
+            "/api/device-state",
+            payload={
+                "vendor": vendor,
+                "product": product,
+                "fingerprint_hex": fp.hex() if fp else None,
+            },
+        )
+
+    def insert_dive_record(self, record: dict) -> bool:
+        payload = self._request_json("POST", "/api/dives", payload=record)
+        return bool(payload.get("inserted"))
+
+    def close(self) -> None:
+        return None
 
 
 # ----------------------------
@@ -574,12 +563,12 @@ def dt_to_iso(dt: dc_datetime_t) -> str:
 class ImportState:
     def __init__(
         self,
-        conn: sqlite3.Connection,
+        store,
         device: POINTER(dc_device_t),
         vendor: str,
         product: str,
     ) -> None:
-        self.conn = conn
+        self.store = store
         self.device = device
         self.vendor = vendor
         self.product = product
@@ -753,8 +742,7 @@ def make_dive_callback() -> DC_DIVE_CALLBACK:
                 check(LIB.dc_parser_samples_foreach(parser, sample_cb, None), "dc_parser_samples_foreach")
                 finalize_samples()
 
-                inserted = insert_dive(
-                    state.conn,
+                record = build_dive_record(
                     state.vendor,
                     state.product,
                     fingerprint,
@@ -766,6 +754,7 @@ def make_dive_callback() -> DC_DIVE_CALLBACK:
                     raw_data,
                     samples,
                 )
+                inserted = state.store.insert_dive_record(record)
                 if inserted:
                     state.imported += 1
                 else:
@@ -789,9 +778,19 @@ def make_dive_callback() -> DC_DIVE_CALLBACK:
 # Main sync routine
 # ----------------------------
 
-def sync_dives(port: str, db_path: str, vendor: str = "Mares", product: str = "Smart Air") -> None:
-    conn = sqlite3.connect(db_path)
-    init_db(conn)
+def sync_dives(
+    port: str,
+    vendor: str = "Mares",
+    product: str = "Smart Air",
+    database_url: str | None = None,
+    backend_url: str | None = None,
+) -> None:
+    if backend_url:
+        store = BackendDiveStore(backend_url)
+    elif database_url:
+        store = PostgresDiveStore(database_url)
+    else:
+        raise ValueError("Provide either --database-url or --backend-url.")
 
     context = POINTER(dc_context_t)()
     check(LIB.dc_context_new(byref(context)), "dc_context_new")
@@ -806,7 +805,7 @@ def sync_dives(port: str, db_path: str, vendor: str = "Mares", product: str = "S
         check(LIB.dc_serial_open(byref(iostream), context, port.encode("utf-8")), "dc_serial_open")
         check(LIB.dc_device_open(byref(device), context, descriptor, iostream), "dc_device_open")
 
-        saved_fp = get_saved_fingerprint(conn, vendor, product)
+        saved_fp = store.get_saved_fingerprint(vendor, product)
         if saved_fp:
             fp_buf = (c_ubyte * len(saved_fp)).from_buffer_copy(saved_fp)
             check(
@@ -814,7 +813,7 @@ def sync_dives(port: str, db_path: str, vendor: str = "Mares", product: str = "S
                 "dc_device_set_fingerprint",
             )
 
-        state = ImportState(conn, device, vendor, product)
+        state = ImportState(store, device, vendor, product)
         state_box = py_object(state)
         state_ptr = ctypes.pointer(state_box)
 
@@ -823,7 +822,7 @@ def sync_dives(port: str, db_path: str, vendor: str = "Mares", product: str = "S
 
         # Save newest fingerprint for next run.
         if state.first_fingerprint is not None:
-            save_fingerprint(conn, vendor, product, state.first_fingerprint)
+            store.save_fingerprint(vendor, product, state.first_fingerprint)
 
         print(f"Imported: {state.imported}")
         print(f"Skipped existing: {state.skipped}")
@@ -839,18 +838,28 @@ def sync_dives(port: str, db_path: str, vendor: str = "Mares", product: str = "S
             LIB.dc_descriptor_free(descriptor)
         if context:
             LIB.dc_context_free(context)
-        conn.close()
+        store.close()
 
 
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--port", required=True, help="Serial port, e.g. /dev/ttyUSB0 or /dev/tty.SLAB_USBtoUART")
-    parser.add_argument("--db", required=True, help="SQLite database path")
+    parser.add_argument("--database-url", help="PostgreSQL connection string")
+    parser.add_argument("--backend-url", help="Backend base URL, e.g. http://localhost:8000")
     parser.add_argument("--vendor", default="Mares")
     parser.add_argument("--product", default="Smart Air")
     args = parser.parse_args()
 
-    sync_dives(args.port, args.db, args.vendor, args.product)
+    if not args.database_url and not args.backend_url:
+        parser.error("Provide either --database-url or --backend-url.")
+
+    sync_dives(
+        port=args.port,
+        vendor=args.vendor,
+        product=args.product,
+        database_url=args.database_url,
+        backend_url=args.backend_url,
+    )
 
 
 if __name__ == "__main__":

@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Abyssal Command - System Configuration</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&amp;family=Manrope:wght@300;400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              "tertiary-container": "#2b1300",
+              "surface-tint": "#9ccaff",
+              "error-container": "#93000a",
+              "on-primary-fixed": "#001d35",
+              "surface-container-lowest": "#000f1d",
+              "surface-container": "#062135",
+              "on-tertiary-fixed-variant": "#6e3900",
+              "tertiary-fixed": "#ffdcc3",
+              "on-surface": "#cde5ff",
+              "inverse-on-surface": "#1a3246",
+              "primary-fixed": "#d0e4ff",
+              "error": "#ffb4ab",
+              "inverse-surface": "#cde5ff",
+              "outline": "#8d9197",
+              "on-error-container": "#ffdad6",
+              "on-surface-variant": "#c3c7cd",
+              "surface-dim": "#001525",
+              "primary-fixed-dim": "#9ccaff",
+              "primary": "#9ccaff",
+              "background": "#001525",
+              "secondary": "#b3cad6",
+              "on-tertiary-container": "#c56b00",
+              "surface-container-high": "#132c40",
+              "on-secondary": "#1e333d",
+              "on-background": "#cde5ff",
+              "surface-container-highest": "#1f374b",
+              "inverse-primary": "#14629d",
+              "tertiary": "#ffb77d",
+              "on-tertiary-fixed": "#2f1500",
+              "secondary-fixed-dim": "#b3cad6",
+              "surface-variant": "#1f374b",
+              "on-primary-container": "#4686c3",
+              "on-primary-fixed-variant": "#00497b",
+              "surface-container-low": "#021d30",
+              "on-secondary-fixed": "#071e27",
+              "surface-bright": "#233b50",
+              "on-primary": "#003257",
+              "on-secondary-fixed-variant": "#354a54",
+              "outline-variant": "#43474c",
+              "surface": "#001525",
+              "primary-container": "#001a31",
+              "on-tertiary": "#4d2600",
+              "tertiary-fixed-dim": "#ffb77d",
+              "secondary-fixed": "#cfe6f2",
+              "secondary-container": "#374c56",
+              "on-error": "#690005",
+              "on-secondary-container": "#a5bcc8"
+            },
+            fontFamily: {
+              "headline": ["Space Grotesk"],
+              "body": ["Manrope"],
+              "label": ["Space Grotesk"]
+            },
+            borderRadius: {"DEFAULT": "0.125rem", "lg": "0.25rem", "xl": "0.5rem", "full": "0.75rem"},
+          },
+        },
+      }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+            vertical-align: middle;
+        }
+        body {
+            font-family: 'Manrope', sans-serif;
+            background-color: #001525;
+            color: #cde5ff;
+        }
+        .font-headline { font-family: 'Space Grotesk', sans-serif; }
+        .glass-panel {
+            background: rgba(19, 44, 64, 0.7);
+            backdrop-filter: blur(20px);
+        }
+    </style>
+</head>
+<body class="bg-background text-on-background min-h-screen">
+<!-- SideNavBar -->
+<aside class="fixed left-0 top-0 h-full z-50 flex flex-col items-stretch bg-[#001525] dark:bg-[#001525] h-screen w-20 md:w-64 border-r-0 shadow-[40px_0_40px_-20px_rgba(0,15,29,0.4)]">
+<div class="p-6 mb-8">
+<div class="text-xl font-bold tracking-tighter text-[#9CCAFF] font-headline">DEEP-SEA 01</div>
+<div class="text-[10px] uppercase tracking-widest font-bold text-[#9CCAFF] opacity-60 font-label">OPERATIONAL</div>
+</div>
+<nav class="flex-1 space-y-1">
+<a class="flex items-center gap-4 text-[#B3CAD6] p-4 opacity-60 hover:bg-[#132C40] hover:text-[#9CCAFF] transition-all duration-300 group scale-95 active:scale-90" href="#">
+<span class="material-symbols-outlined" data-icon="dashboard">dashboard</span>
+<span class="hidden md:block text-[10px] uppercase tracking-widest font-bold font-label">Dashboard</span>
+</a>
+<a class="flex items-center gap-4 text-[#B3CAD6] p-4 opacity-60 hover:bg-[#132C40] hover:text-[#9CCAFF] transition-all duration-300 group scale-95 active:scale-90" href="#">
+<span class="material-symbols-outlined" data-icon="waves">waves</span>
+<span class="hidden md:block text-[10px] uppercase tracking-widest font-bold font-label">Dive Logs</span>
+</a>
+<a class="flex items-center gap-4 text-[#B3CAD6] p-4 opacity-60 hover:bg-[#132C40] hover:text-[#9CCAFF] transition-all duration-300 group scale-95 active:scale-90" href="#">
+<span class="material-symbols-outlined" data-icon="scuba_diving">scuba_diving</span>
+<span class="hidden md:block text-[10px] uppercase tracking-widest font-bold font-label">Equipment</span>
+</a>
+<a class="flex items-center gap-4 bg-[#132C40]/70 text-[#9CCAFF] rounded-r-none border-r-4 border-[#9CCAFF] p-4 transition-all duration-300 group scale-95 active:scale-90" href="#">
+<span class="material-symbols-outlined" data-icon="settings">settings</span>
+<span class="hidden md:block text-[10px] uppercase tracking-widest font-bold font-label">Settings</span>
+</a>
+</nav>
+<div class="p-6">
+<button class="w-full bg-[#132C40] text-[#9CCAFF] py-3 rounded text-[10px] font-bold tracking-widest uppercase font-label hover:bg-[#1f374b] transition-colors border border-[#9CCAFF]/20">
+                LOG NEW DIVE
+            </button>
+</div>
+</aside>
+<!-- TopNavBar -->
+<header class="fixed top-0 right-0 left-20 md:left-64 z-40 flex justify-between items-center px-8 bg-[#001525]/80 backdrop-blur-xl w-full h-16 border-b border-[#9CCAFF]/10">
+<div class="flex items-center gap-8">
+<span class="text-lg font-black tracking-[0.2em] text-[#9CCAFF] font-headline">ABYSSAL COMMAND</span>
+<nav class="hidden lg:flex gap-6">
+<a class="text-[#B3CAD6] opacity-70 hover:text-[#FFB77D] transition-colors font-body text-sm" href="#">Telemetry</a>
+<a class="text-[#B3CAD6] opacity-70 hover:text-[#FFB77D] transition-colors font-body text-sm" href="#">Coordinates</a>
+<a class="text-[#B3CAD6] opacity-70 hover:text-[#FFB77D] transition-colors font-body text-sm" href="#">Mission</a>
+</nav>
+</div>
+<div class="flex items-center gap-6">
+<div class="relative hidden sm:block">
+<input class="bg-[#021D30] border-none text-[10px] tracking-widest font-label text-primary px-4 py-2 w-48 rounded focus:ring-1 focus:ring-primary" placeholder="SEARCH SYSTEM..." type="text"/>
+</div>
+<div class="flex items-center gap-4">
+<span class="material-symbols-outlined text-secondary cursor-pointer hover:text-primary transition-colors" data-icon="notifications">notifications</span>
+<span class="material-symbols-outlined text-tertiary cursor-pointer hover:opacity-70 transition-opacity" data-icon="emergency_home">emergency_home</span>
+<div class="w-8 h-8 rounded bg-surface-container-high border border-outline-variant flex items-center justify-center overflow-hidden">
+<img alt="Diver Profile" class="w-full h-full object-cover" data-alt="Technical scuba diver profile portrait" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBIkdQYEcgEsz52g1DsaB_fhpsHIMzsTfsHFavwJvlmdFRB3pjauL8K7prtZ3nKPzZfR0yR9ty4JUZfNmdT0ObxgrEYOgCvkWwY36WHaNIjR0_RxTMooofqzrIopqbf_EraVaUt5Jz1CVR3fPJWASXmf-D3fNiN6y465V98ciJTbvE56O8k1KwcWYI9C46NZ9vLJr33WOtsNhyXOeUvKgbGsyYJgygt2rDy2xfCvBoBki15zRQQ2P-Wdix-9NOay-eS6pLxH7jU-obd"/>
+</div>
+</div>
+</div>
+</header>
+<!-- Main Content Canvas -->
+<main class="ml-20 md:ml-64 pt-24 px-8 pb-12 max-w-7xl mx-auto">
+<div class="flex flex-col gap-10">
+<!-- Header Section -->
+<section class="flex flex-col gap-2">
+<h1 class="text-5xl font-bold font-headline tracking-tighter text-primary">SYSTEM CONFIG</h1>
+<p class="text-secondary opacity-70 font-body max-w-2xl">Modify operational parameters, safety thresholds, and telemetry units for the Abyssal Command interface.</p>
+</section>
+<!-- Settings Grid -->
+<div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
+<!-- Left Column: Identity & Safety -->
+<div class="lg:col-span-8 flex flex-col gap-8">
+<!-- Profile Anchor -->
+<div class="bg-surface-container-low p-8 rounded relative overflow-hidden group">
+<div class="absolute top-0 right-0 w-32 h-32 bg-primary/5 rounded-full blur-3xl -mr-16 -mt-16"></div>
+<div class="flex items-start gap-6 relative z-10">
+<div class="w-24 h-24 rounded-lg bg-surface-container-highest border border-primary/20 p-1">
+<img alt="Diver Profile" class="w-full h-full object-cover rounded" data-alt="Close up of a deep sea diver portrait" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDyIFSIqcg0OjHr0qnyyXyk6XBWDUOusx-1xdfbAdrLsOs221hlpghf4aPLSuUWJurmRFMtvM26ZAC1kGssULyBs8qMZqjQewh46lJ2JDtqllJlG8NlJF8QIS1-z0X_Gfvo8AlO7xtM8P1lDatID-h8esyc7QMEi6DTb81ATTKsdWIJGyTs4xx1phrZlyGhUIqU7MZyOZx2goEYWZTekAFDZ2kHXQc4FDMlhnig7g78ojXm0pd85JNVRpxDb5NHhm3rctnmTR-NU0eV"/>
+</div>
+<div class="flex-1">
+<h3 class="text-[10px] font-bold tracking-widest text-primary uppercase font-label mb-2">Operational Identity</h3>
+<h2 class="text-2xl font-headline font-bold text-on-surface mb-1">COMMANDER J. VANCE</h2>
+<p class="text-sm text-secondary font-body mb-4">Master Diver • 428 Logged Descents</p>
+<div class="flex gap-3">
+<button class="bg-primary text-on-primary px-4 py-2 text-[10px] font-bold tracking-widest uppercase font-label rounded hover:opacity-90 transition-opacity">Edit Credentials</button>
+<button class="bg-surface-container-highest text-primary border border-primary/10 px-4 py-2 text-[10px] font-bold tracking-widest uppercase font-label rounded hover:bg-surface-bright transition-colors">Sync License</button>
+</div>
+</div>
+</div>
+</div>
+<!-- Safety Protocols Bento -->
+<div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+<div class="bg-surface-container-high p-6 rounded border-l-4 border-tertiary">
+<div class="flex items-center gap-3 mb-6">
+<span class="material-symbols-outlined text-tertiary" data-icon="security">security</span>
+<h3 class="text-[10px] font-bold tracking-widest uppercase font-label text-tertiary">Safety Protocols</h3>
+</div>
+<div class="space-y-6">
+<div class="flex justify-between items-center">
+<div>
+<div class="text-sm font-headline font-bold text-on-surface">Gas Mix Warning</div>
+<div class="text-[10px] text-secondary/60 font-body">Alert if pO2 exceeds 1.4 bar</div>
+</div>
+<div class="w-12 h-6 bg-tertiary-container rounded-full relative p-1 cursor-pointer">
+<div class="w-4 h-4 bg-tertiary rounded-full ml-auto"></div>
+</div>
+</div>
+<div class="flex justify-between items-center">
+<div>
+<div class="text-sm font-headline font-bold text-on-surface">Safety Stop Timer</div>
+<div class="text-[10px] text-secondary/60 font-body">Auto-start at 5m (15ft) depth</div>
+</div>
+<div class="w-12 h-6 bg-tertiary-container rounded-full relative p-1 cursor-pointer">
+<div class="w-4 h-4 bg-tertiary rounded-full ml-auto"></div>
+</div>
+</div>
+<div class="flex justify-between items-center">
+<div>
+<div class="text-sm font-headline font-bold text-on-surface">Ascent Rate Alarm</div>
+<div class="text-[10px] text-secondary/60 font-body">Critical threshold &gt; 9m/min</div>
+</div>
+<div class="w-12 h-6 bg-tertiary-container rounded-full relative p-1 cursor-pointer">
+<div class="w-4 h-4 bg-tertiary rounded-full ml-auto"></div>
+</div>
+</div>
+</div>
+</div>
+<div class="bg-surface-container-high p-6 rounded">
+<div class="flex items-center gap-3 mb-6">
+<span class="material-symbols-outlined text-primary" data-icon="settings_input_component">settings_input_component</span>
+<h3 class="text-[10px] font-bold tracking-widest uppercase font-label text-primary">Unit Systems</h3>
+</div>
+<div class="space-y-8">
+<div class="flex flex-col gap-4">
+<span class="text-[10px] font-bold tracking-widest text-secondary/60 uppercase font-label">Global Configuration</span>
+<div class="flex bg-surface-container-lowest p-1 rounded-lg">
+<button class="flex-1 bg-primary text-on-primary py-2 text-[10px] font-bold tracking-widest uppercase font-label rounded">Metric (M/KG)</button>
+<button class="flex-1 text-secondary py-2 text-[10px] font-bold tracking-widest uppercase font-label rounded hover:text-primary transition-colors">Imperial (FT/LB)</button>
+</div>
+</div>
+<div class="grid grid-cols-2 gap-4">
+<div class="bg-surface-container-lowest p-4 rounded border border-outline-variant/10">
+<div class="text-[10px] text-secondary/60 font-label mb-1">TEMP</div>
+<div class="text-lg font-headline font-bold text-on-surface">CELSIUS</div>
+</div>
+<div class="bg-surface-container-lowest p-4 rounded border border-outline-variant/10">
+<div class="text-[10px] text-secondary/60 font-label mb-1">PRESSURE</div>
+<div class="text-lg font-headline font-bold text-on-surface">BAR</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+<!-- Right Column: Data & Technical -->
+<div class="lg:col-span-4 flex flex-col gap-8">
+<!-- Data Management Panel -->
+<div class="bg-surface-container-high p-6 rounded glass-panel">
+<h3 class="text-[10px] font-bold tracking-widest text-primary uppercase font-label mb-6">Data Management</h3>
+<div class="flex flex-col gap-4">
+<button class="w-full flex items-center justify-between p-4 bg-surface-container-lowest hover:bg-surface-bright transition-colors rounded group">
+<div class="flex items-center gap-3">
+<span class="material-symbols-outlined text-secondary group-hover:text-primary transition-colors" data-icon="picture_as_pdf">picture_as_pdf</span>
+<span class="text-sm font-headline font-bold">Export Logs (PDF)</span>
+</div>
+<span class="material-symbols-outlined text-secondary opacity-40" data-icon="chevron_right">chevron_right</span>
+</button>
+<button class="w-full flex items-center justify-between p-4 bg-surface-container-lowest hover:bg-surface-bright transition-colors rounded group">
+<div class="flex items-center gap-3">
+<span class="material-symbols-outlined text-secondary group-hover:text-primary transition-colors" data-icon="csv">csv</span>
+<span class="text-sm font-headline font-bold">Raw Telemetry (CSV)</span>
+</div>
+<span class="material-symbols-outlined text-secondary opacity-40" data-icon="chevron_right">chevron_right</span>
+</button>
+<button class="w-full flex items-center justify-between p-4 bg-surface-container-lowest hover:bg-surface-bright transition-colors rounded group">
+<div class="flex items-center gap-3">
+<span class="material-symbols-outlined text-secondary group-hover:text-primary transition-colors" data-icon="cloud_sync">cloud_sync</span>
+<span class="text-sm font-headline font-bold">Cloud Synchronization</span>
+</div>
+<span class="text-[10px] font-bold text-primary font-label">ONLINE</span>
+</button>
+</div>
+<div class="mt-12 pt-8 border-t border-outline-variant/10">
+<h4 class="text-[10px] font-bold tracking-widest text-error uppercase font-label mb-4">Danger Zone</h4>
+<div class="flex flex-col gap-3">
+<button class="w-full p-4 border border-error/20 hover:bg-error-container text-error text-[10px] font-bold tracking-widest uppercase font-label rounded transition-all">
+                                    Purge All Mission Data
+                                </button>
+<button class="w-full p-4 text-secondary/40 hover:text-error text-[10px] font-bold tracking-widest uppercase font-label rounded transition-all">
+                                    Deactivate Operator Account
+                                </button>
+</div>
+</div>
+</div>
+<!-- System Status Widget -->
+<div class="bg-surface-container-low p-6 rounded border border-outline-variant/10">
+<div class="flex items-center gap-3 mb-4">
+<span class="w-2 h-2 rounded-full bg-primary animate-pulse"></span>
+<h3 class="text-[10px] font-bold tracking-widest text-secondary uppercase font-label">System Integrity</h3>
+</div>
+<div class="space-y-4">
+<div class="flex justify-between items-end">
+<span class="text-[10px] font-body text-secondary/60">Firmware</span>
+<span class="text-sm font-headline font-bold">v2.4.9-ABYSS</span>
+</div>
+<div class="w-full bg-surface-container-highest h-1 rounded-full overflow-hidden">
+<div class="bg-primary h-full w-[94%]"></div>
+</div>
+<div class="flex justify-between items-end">
+<span class="text-[10px] font-body text-secondary/60">Encrypted Storage</span>
+<span class="text-sm font-headline font-bold">1.2 GB / 5 GB</span>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</main>
+<!-- Footer Stats Overlay -->
+<footer class="fixed bottom-0 right-0 left-20 md:left-64 z-40 px-8 py-3 bg-[#001525] border-t border-[#9CCAFF]/5 flex justify-between items-center text-[10px] font-label tracking-[0.2em] text-[#B3CAD6] opacity-40 uppercase">
+<div class="flex gap-8">
+<span>Lat: 36.7783° N</span>
+<span>Lon: 119.4179° W</span>
+<span>Pressure: 1013 hPa</span>
+</div>
+<div class="flex gap-4">
+<span>Signal: Optimal</span>
+<span class="text-primary font-bold">Status: Synchronized</span>
+</div>
+</footer>
+</body></html>

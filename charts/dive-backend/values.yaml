@@ -1,0 +1,37 @@
+replicaCount: 1
+
+image:
+  repository: ghcr.io/example/dive-backend
+  tag: dev
+  pullPolicy: IfNotPresent
+
+service:
+  type: ClusterIP
+  port: 8000
+
+resources: {}
+
+database:
+  existingSecret: ""
+  secretName: ""
+  secretKey: database-url
+  url: postgresql://dive:dive@postgres:5432/dive
+
+env:
+  corsOrigin: "*"
+  logLevel: INFO
+
+serviceAccount:
+  create: false
+  name: ""
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    - host: dive.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []

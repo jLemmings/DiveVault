@@ -1,0 +1,14 @@
+.git
+.github
+UI
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+*.db
+*.sqlite
+*.sqlite3
+libdivecomputer.dll
+libusb-1.0.dll
+libhidapi-0.dll
+dctool.exe

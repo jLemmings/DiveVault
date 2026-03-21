@@ -1,0 +1,6 @@
+apiVersion: v2
+name: dive-backend
+description: Dive backend service with embedded frontend assets
+type: application
+version: 0.1.0
+appVersion: "dev"

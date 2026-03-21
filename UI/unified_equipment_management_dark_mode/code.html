@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Equipment Management | ABYSSAL COMMAND</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&amp;family=Manrope:wght@300;400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              "tertiary-container": "#2b1300",
+              "surface-tint": "#9ccaff",
+              "error-container": "#93000a",
+              "on-primary-fixed": "#001d35",
+              "surface-container-lowest": "#000f1d",
+              "surface-container": "#062135",
+              "on-tertiary-fixed-variant": "#6e3900",
+              "tertiary-fixed": "#ffdcc3",
+              "on-surface": "#cde5ff",
+              "inverse-on-surface": "#1a3246",
+              "primary-fixed": "#d0e4ff",
+              "error": "#ffb4ab",
+              "inverse-surface": "#cde5ff",
+              "outline": "#8d9197",
+              "on-error-container": "#ffdad6",
+              "on-surface-variant": "#c3c7cd",
+              "surface-dim": "#001525",
+              "primary-fixed-dim": "#9ccaff",
+              "primary": "#9ccaff",
+              "background": "#001525",
+              "secondary": "#b3cad6",
+              "on-tertiary-container": "#c56b00",
+              "surface-container-high": "#132c40",
+              "on-secondary": "#1e333d",
+              "on-background": "#cde5ff",
+              "surface-container-highest": "#1f374b",
+              "inverse-primary": "#14629d",
+              "tertiary": "#ffb77d",
+              "on-tertiary-fixed": "#2f1500",
+              "secondary-fixed-dim": "#b3cad6",
+              "surface-variant": "#1f374b",
+              "on-primary-container": "#4686c3",
+              "on-primary-fixed-variant": "#00497b",
+              "surface-container-low": "#021d30",
+              "on-secondary-fixed": "#071e27",
+              "surface-bright": "#233b50",
+              "on-primary": "#003257",
+              "on-secondary-fixed-variant": "#354a54",
+              "outline-variant": "#43474c",
+              "surface": "#001525",
+              "primary-container": "#001a31",
+              "on-tertiary": "#4d2600",
+              "tertiary-fixed-dim": "#ffb77d",
+              "secondary-fixed": "#cfe6f2",
+              "secondary-container": "#374c56",
+              "on-error": "#690005",
+              "on-secondary-container": "#a5bcc8"
+            },
+            fontFamily: {
+              "headline": ["Space Grotesk"],
+              "body": ["Manrope"],
+              "label": ["Space Grotesk"]
+            },
+            borderRadius: {"DEFAULT": "0.125rem", "lg": "0.25rem", "xl": "0.5rem", "full": "0.75rem"},
+          },
+        },
+      }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    </style>
+</head>
+<body class="bg-background text-on-background font-body selection:bg-primary/30 selection:text-primary">
+<!-- SideNavBar (Rail) -->
+<aside class="fixed left-0 top-0 h-full z-50 flex flex-col items-stretch bg-[#001525] dark:bg-[#001525] h-screen w-20 md:w-64 border-r-0 shadow-[40px_0_40px_-20px_rgba(0,15,29,0.4)]">
+<div class="p-6">
+<h1 class="text-xl font-bold tracking-tighter text-[#9CCAFF] font-headline">DEEP-SEA 01</h1>
+<p class="text-[10px] uppercase tracking-widest font-bold text-primary/60 font-label mt-1">OPERATIONAL</p>
+</div>
+<nav class="flex-1 mt-8">
+<ul class="space-y-2">
+<li>
+<a class="flex items-center gap-4 text-[#B3CAD6] p-4 opacity-60 hover:bg-[#132C40] hover:text-[#9CCAFF] transition-all duration-300 group" href="#">
+<span class="material-symbols-outlined group-active:scale-90 transition-transform">dashboard</span>
+<span class="hidden md:block font-label text-[10px] uppercase tracking-widest font-bold">Dashboard</span>
+</a>
+</li>
+<li>
+<a class="flex items-center gap-4 text-[#B3CAD6] p-4 opacity-60 hover:bg-[#132C40] hover:text-[#9CCAFF] transition-all duration-300 group" href="#">
+<span class="material-symbols-outlined group-active:scale-90 transition-transform">waves</span>
+<span class="hidden md:block font-label text-[10px] uppercase tracking-widest font-bold">Dive Logs</span>
+</a>
+</li>
+<li>
+<a class="flex items-center gap-4 bg-[#132C40]/70 text-[#9CCAFF] rounded-r-none border-r-4 border-[#9CCAFF] p-4 group" href="#">
+<span class="material-symbols-outlined group-active:scale-90 transition-transform" style="font-variation-settings: 'FILL' 1;">scuba_diving</span>
+<span class="hidden md:block font-label text-[10px] uppercase tracking-widest font-bold">Equipment</span>
+</a>
+</li>
+<li>
+<a class="flex items-center gap-4 text-[#B3CAD6] p-4 opacity-60 hover:bg-[#132C40] hover:text-[#9CCAFF] transition-all duration-300 group" href="#">
+<span class="material-symbols-outlined group-active:scale-90 transition-transform">settings</span>
+<span class="hidden md:block font-label text-[10px] uppercase tracking-widest font-bold">Settings</span>
+</a>
+</li>
+</ul>
+</nav>
+<div class="p-6 mt-auto">
+<button class="hidden md:flex w-full items-center justify-center gap-2 bg-primary text-on-primary font-label text-[10px] font-bold uppercase tracking-widest py-3 px-4 rounded-lg hover:brightness-110 active:scale-95 transition-all">
+<span class="material-symbols-outlined text-sm">add</span>
+                LOG NEW DIVE
+            </button>
+<div class="flex items-center gap-3 mt-6 p-2 md:p-0">
+<div class="w-10 h-10 rounded-full bg-surface-container-highest overflow-hidden border-2 border-primary/20">
+<img alt="Diver Profile" class="w-full h-full object-cover" data-alt="Portrait of a professional diver in gear" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCvBeveq4EI6JUP7fAmDMx-SGQojrjYWbXynOWxSOGycgEXtAFvZ5_BtCCLq_HLOVHljMavwlvYM0e9t6XK1E4ugBLte7UWb2rw3Zzo-Qvz9yCEboQDRigy-s_qop-F8ICdoTzAjO_us5LoO-xBpA6AJK0zNKdhIP_X4b2GkJyxocwfbuKMR2bjQGn07QR5lBhqE1EI7jnti9WXCIio877sQa0VatDVrq3nRww2fSJJuIBl7PjENnAYE8ktN7zZqI-msSSDu9THwHuy"/>
+</div>
+<div class="hidden md:block overflow-hidden">
+<p class="text-xs font-bold text-on-surface truncate uppercase tracking-tighter">CDR. V. THORNE</p>
+<p class="text-[10px] text-primary/50 font-label">ELITE EXPLORER</p>
+</div>
+</div>
+</div>
+</aside>
+<!-- TopNavBar -->
+<header class="fixed top-0 right-0 left-20 md:left-64 z-40 flex justify-between items-center px-8 bg-[#001525]/80 backdrop-blur-xl w-full h-16 border-b border-[#9CCAFF]/10">
+<div class="flex items-center gap-8">
+<span class="text-lg font-black tracking-[0.2em] text-[#9CCAFF] font-headline">ABYSSAL COMMAND</span>
+<nav class="hidden lg:flex items-center gap-6">
+<a class="text-[#B3CAD6] opacity-70 hover:text-[#FFB77D] transition-colors text-xs font-label uppercase tracking-widest" href="#">Telemetry</a>
+<a class="text-[#B3CAD6] opacity-70 hover:text-[#FFB77D] transition-colors text-xs font-label uppercase tracking-widest" href="#">Coordinates</a>
+<a class="text-[#9CCAFF] border-b-2 border-[#9CCAFF] pb-1 text-xs font-label uppercase tracking-widest" href="#">Mission</a>
+</nav>
+</div>
+<div class="flex items-center gap-6">
+<div class="hidden md:flex items-center bg-surface-container-low px-4 py-1.5 rounded-full border border-outline-variant/10">
+<span class="material-symbols-outlined text-sm text-secondary">search</span>
+<input class="bg-transparent border-none focus:ring-0 text-[10px] font-label tracking-widest w-32 placeholder:text-outline/40" placeholder="SEARCH ASSETS..." type="text"/>
+</div>
+<div class="flex items-center gap-4">
+<span class="material-symbols-outlined text-[#B3CAD6] cursor-pointer hover:text-[#FFB77D] transition-colors">notifications</span>
+<span class="material-symbols-outlined text-[#B3CAD6] cursor-pointer hover:text-[#FFB77D] transition-colors">emergency_home</span>
+</div>
+</div>
+</header>
+<!-- Main Content Canvas -->
+<main class="ml-20 md:ml-64 pt-24 pb-12 px-8 min-h-screen">
+<!-- Dashboard Summary Bento Grid -->
+<section class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-10">
+<div class="md:col-span-2 p-6 bg-surface-container-low rounded-xl relative overflow-hidden group">
+<div class="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
+<span class="material-symbols-outlined text-8xl">inventory_2</span>
+</div>
+<p class="text-[10px] font-label uppercase tracking-widest font-bold text-primary mb-4">ASSET TOTALS</p>
+<div class="flex items-baseline gap-2">
+<h2 class="text-5xl font-headline font-bold text-on-surface">42</h2>
+<span class="text-sm font-label text-secondary uppercase">Active Units</span>
+</div>
+<div class="mt-6 grid grid-cols-3 gap-2">
+<div class="bg-surface-container-high p-3 rounded-lg">
+<p class="text-[9px] font-label text-secondary uppercase mb-1">REGULATORS</p>
+<p class="text-lg font-headline font-bold text-primary">06</p>
+</div>
+<div class="bg-surface-container-high p-3 rounded-lg">
+<p class="text-[9px] font-label text-secondary uppercase mb-1">CYLINDERS</p>
+<p class="text-lg font-headline font-bold text-primary">14</p>
+</div>
+<div class="bg-surface-container-high p-3 rounded-lg">
+<p class="text-[9px] font-label text-secondary uppercase mb-1">COMPUTERS</p>
+<p class="text-lg font-headline font-bold text-primary">04</p>
+</div>
+</div>
+</div>
+<div class="p-6 bg-surface-container-low rounded-xl border-l-2 border-tertiary">
+<p class="text-[10px] font-label uppercase tracking-widest font-bold text-tertiary mb-4">NEXT MAINTENANCE</p>
+<div class="flex flex-col h-full">
+<h2 class="text-3xl font-headline font-bold text-on-surface">12 DAYS</h2>
+<p class="text-xs text-secondary mt-1">Primary Regulator Group A</p>
+<div class="mt-auto pb-4">
+<div class="w-full bg-surface-container-highest h-1 rounded-full overflow-hidden">
+<div class="bg-tertiary h-full w-4/5"></div>
+</div>
+</div>
+</div>
+</div>
+<div class="p-6 bg-surface-container-low rounded-xl flex flex-col justify-between">
+<div>
+<p class="text-[10px] font-label uppercase tracking-widest font-bold text-secondary mb-4">SYSTEM STATUS</p>
+<div class="flex items-center gap-2">
+<span class="w-2 h-2 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.5)]"></span>
+<span class="text-sm font-headline font-bold uppercase tracking-tighter">ALL CLEAR</span>
+</div>
+</div>
+<div class="bg-surface-container-high p-4 rounded-lg mt-4">
+<div class="flex justify-between items-center mb-1">
+<span class="text-[9px] font-label text-secondary uppercase">Operational Efficiency</span>
+<span class="text-[9px] font-label text-primary">98.2%</span>
+</div>
+<div class="w-full bg-surface-container-lowest h-1 rounded-full overflow-hidden">
+<div class="bg-primary h-full w-[98%]"></div>
+</div>
+</div>
+</div>
+</section>
+<div class="flex flex-col lg:flex-row gap-8 items-start">
+<!-- Asset Inventory Registry -->
+<div class="flex-1 w-full">
+<div class="flex justify-between items-end mb-6">
+<div>
+<h3 class="text-2xl font-headline font-bold text-on-surface tracking-tight">ASSET REGISTRY</h3>
+<p class="text-xs text-secondary/60 uppercase tracking-widest font-label">Deep-Sea Operational Hardware</p>
+</div>
+<div class="flex gap-2">
+<button class="p-2 bg-surface-container-high text-on-surface hover:text-primary transition-colors">
+<span class="material-symbols-outlined text-sm">filter_list</span>
+</button>
+<button class="p-2 bg-surface-container-high text-on-surface hover:text-primary transition-colors">
+<span class="material-symbols-outlined text-sm">grid_view</span>
+</button>
+</div>
+</div>
+<div class="grid grid-cols-1 xl:grid-cols-2 gap-4">
+<!-- Gear Card 1 -->
+<div class="bg-surface-container-low p-5 group hover:bg-surface-container-high transition-colors relative">
+<div class="flex gap-4">
+<div class="w-24 h-24 bg-surface-container-highest flex items-center justify-center rounded overflow-hidden">
+<img alt="Scuba Regulator" class="w-full h-full object-cover opacity-60 group-hover:opacity-100 transition-opacity" data-alt="Technical scuba diving regulator assembly" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCTxf3U6vN468LieHmd3oCUICecMexoUcgN897dUGhEv4_ZhuqptTmUOD4nDNeWyl6JymxsvrY_pWYCYwrH-URPYrTFQhHElq6548l8WxJVTeXWIIyMrFTJXj86oZiH1CTxC26Q4l1FpwSAnvjlk8ttAWwdbUsRWkpwT5GSsokyvQU8ib_i2oIER8eeNNcdcfrOEaJ0WWUtFWmSqblaZ94CdwZRBhunvRa2etAQzK3WRsbpt_U-Gv2JUVvJzTLQDjbsIH5EvB-o6oRu"/>
+</div>
+<div class="flex-1">
+<div class="flex justify-between items-start">
+<h4 class="font-headline font-bold text-lg text-on-surface leading-tight">MK25 EVO / S620 Ti</h4>
+<span class="text-[10px] font-label text-primary px-2 py-0.5 bg-primary/10 uppercase font-bold">READY</span>
+</div>
+<p class="text-[10px] font-label text-secondary uppercase tracking-widest mt-1">SN: AB-90031-LX</p>
+<div class="mt-4 flex gap-6 border-t border-outline-variant/10 pt-3">
+<div>
+<p class="text-[8px] font-label text-secondary uppercase">Purchased</p>
+<p class="text-[11px] font-headline text-on-surface">OCT 2023</p>
+</div>
+<div>
+<p class="text-[8px] font-label text-secondary uppercase">Dives</p>
+<p class="text-[11px] font-headline text-on-surface">128 CYCLES</p>
+</div>
+<div>
+<p class="text-[8px] font-label text-secondary uppercase">Location</p>
+<p class="text-[11px] font-headline text-on-surface">STORAGE A-1</p>
+</div>
+</div>
+</div>
+</div>
+</div>
+<!-- Gear Card 2 -->
+<div class="bg-surface-container-low p-5 group hover:bg-surface-container-high transition-colors relative">
+<div class="flex gap-4">
+<div class="w-24 h-24 bg-surface-container-highest flex items-center justify-center rounded overflow-hidden">
+<img alt="Dive Computer" class="w-full h-full object-cover opacity-60 group-hover:opacity-100 transition-opacity" data-alt="High-tech wrist mounted dive computer" src="https://lh3.googleusercontent.com/aida-public/AB6AXuA7m-cLm1O-kqjdvPyGWCNqVKh5l9sPqybTIqb1HqnQB_6sHCSnh6xuwfLRhMN5Qq4eAmXhhjpPOAnBGqcmrnQuzp6YjABNBSNTGz1eSnC-VH37vyhco65YCcKWCFdf8ABXAvA5btid5Y9q4nQhrMWd0j289IhXvGEASmhX5Dh84rLY5dQww-hzmeojHpBMKoPalbz4anY6EjRPRKHyFW9HkB7-RqcwOJuJe68Bq7_JKgM2DJlqEBzluVOPZ5T6tJTPv2rmF8MSLRuA"/>
+</div>
+<div class="flex-1">
+<div class="flex justify-between items-start">
+<h4 class="font-headline font-bold text-lg text-on-surface leading-tight">PERDIX 2 TI</h4>
+<span class="text-[10px] font-label text-tertiary px-2 py-0.5 bg-tertiary/10 uppercase font-bold">WARNING</span>
+</div>
+<p class="text-[10px] font-label text-secondary uppercase tracking-widest mt-1">SN: SH-88219-XP</p>
+<div class="mt-4 flex gap-6 border-t border-outline-variant/10 pt-3">
+<div>
+<p class="text-[8px] font-label text-secondary uppercase">Purchased</p>
+<p class="text-[11px] font-headline text-on-surface">FEB 2024</p>
+</div>
+<div>
+<p class="text-[8px] font-label text-secondary uppercase">Battery</p>
+<p class="text-[11px] font-headline text-tertiary">15% CRITICAL</p>
+</div>
+<div>
+<p class="text-[8px] font-label text-secondary uppercase">Firmware</p>
+<p class="text-[11px] font-headline text-on-surface">V3.1.2</p>
+</div>
+</div>
+</div>
+</div>
+</div>
+<!-- Gear Card 3 -->
+<div class="bg-surface-container-low p-5 group hover:bg-surface-container-high transition-colors relative">
+<div class="flex gap-4">
+<div class="w-24 h-24 bg-surface-container-highest flex items-center justify-center rounded overflow-hidden">
+<img alt="Dive Cylinder" class="w-full h-full object-cover opacity-60 group-hover:opacity-100 transition-opacity" data-alt="Brushed aluminum diving cylinder" src="https://lh3.googleusercontent.com/aida-public/AB6AXuB5tMfgMW0epRi8QMWxUp0UFEvCnp1cJh1s9Zue33lcsYoIDBmYDT9bFsYEs-aM5qtzj4Z6q3qUZfVQHnYFtBjfcM5Gl75mRcNrQFyF4-CmyFnZL9IIaRPfzLUvJYe8AgN7rztCFhWGjDkYU0d9Fgt-JmTRU_A0ROzgM955mLz5O-Trdt0OhfK3moKVk1n7QN-E2cLcXiWf8N_GoiXUK8uJcWHYEXWSWH5FmjeYE21RhUpfB4mhxMnXsyuDCBOqb5Z_iRTcgqOkJRf-"/>
+</div>
+<div class="flex-1">
+<div class="flex justify-between items-start">
+<h4 class="font-headline font-bold text-lg text-on-surface leading-tight">AL-80 LUXFER SILVER</h4>
+<span class="text-[10px] font-label text-secondary px-2 py-0.5 bg-secondary/10 uppercase font-bold">IN USE</span>
+</div>
+<p class="text-[10px] font-label text-secondary uppercase tracking-widest mt-1">SN: LX-4420-09</p>
+<div class="mt-4 flex gap-6 border-t border-outline-variant/10 pt-3">
+<div>
+<p class="text-[8px] font-label text-secondary uppercase">Hydro</p>
+<p class="text-[11px] font-headline text-on-surface">EXP 2026</p>
+</div>
+<div>
+<p class="text-[8px] font-label text-secondary uppercase">Pressure</p>
+<p class="text-[11px] font-headline text-on-surface">210 BAR</p>
+</div>
+<div>
+<p class="text-[8px] font-label text-secondary uppercase">Visual</p>
+<p class="text-[11px] font-headline text-on-surface">OK APR '24</p>
+</div>
+</div>
+</div>
+</div>
+</div>
+<!-- Gear Card 4 -->
+<div class="bg-surface-container-low p-5 group hover:bg-surface-container-high transition-colors relative">
+<div class="flex gap-4">
+<div class="w-24 h-24 bg-surface-container-highest flex items-center justify-center rounded overflow-hidden">
+<img alt="Wetsuit" class="w-full h-full object-cover opacity-60 group-hover:opacity-100 transition-opacity" data-alt="High performance neoprene diving suit" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDh3smfktJ9WxdHssRt0E2lwXEdsvGI2AGf5MSb9I5xKHz35t5K35a-7fiNi_bbQYp1eitp6nEem8mfhx4zwiX7y78xEIV7nuVqOZQ0tAUJlZgzaVx-uipUn4Ss52Va00Oty67DhaaxARcr6kfjRp6tsbkQGkfpFB5wXucbFt2AAII03QzyS-cR7fuz5dr7SoRAHEECCq7yNN9VhTaEo2p7xWry6h-6ummGWJ3TWLAGxgb3JglltXJPtkYQ38jaHNmI5crsyYllc9Ay"/>
+</div>
+<div class="flex-1">
+<div class="flex justify-between items-start">
+<h4 class="font-headline font-bold text-lg text-on-surface leading-tight">EVERFLEX 7/5MM</h4>
+<span class="text-[10px] font-label text-primary px-2 py-0.5 bg-primary/10 uppercase font-bold">READY</span>
+</div>
+<p class="text-[10px] font-label text-secondary uppercase tracking-widest mt-1">ID: WET-M-01</p>
+<div class="mt-4 flex gap-6 border-t border-outline-variant/10 pt-3">
+<div>
+<p class="text-[8px] font-label text-secondary uppercase">Size</p>
+<p class="text-[11px] font-headline text-on-surface">MEN'S L</p>
+</div>
+<div>
+<p class="text-[8px] font-label text-secondary uppercase">Last Used</p>
+<p class="text-[11px] font-headline text-on-surface">YESTERDAY</p>
+</div>
+<div>
+<p class="text-[8px] font-label text-secondary uppercase">Wear</p>
+<p class="text-[11px] font-headline text-on-surface">NOMINAL</p>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+<!-- Service Record Timeline Sidebar -->
+<aside class="w-full lg:w-80 bg-surface-container-low p-6 rounded-xl border border-outline-variant/5">
+<h3 class="text-lg font-headline font-bold text-on-surface mb-6 uppercase tracking-tight">SERVICE HISTORY</h3>
+<div class="space-y-6 relative before:content-[''] before:absolute before:left-[11px] before:top-2 before:bottom-0 before:w-px before:bg-outline-variant/30">
+<!-- Timeline Item 1 -->
+<div class="relative pl-8">
+<span class="absolute left-0 top-1.5 w-[24px] h-[24px] bg-primary text-on-primary rounded-full flex items-center justify-center z-10">
+<span class="material-symbols-outlined text-[14px]">build</span>
+</span>
+<div>
+<p class="text-[10px] font-label text-primary uppercase font-bold">24 MAY 2024</p>
+<h5 class="text-xs font-headline font-bold text-on-surface mt-1 uppercase">ANNUAL OVERHAUL</h5>
+<p class="text-[11px] text-secondary/70 mt-1 leading-relaxed">Primary Regulator Set (AB-90031). Full O-ring replacement and IP tuning completed by authorized technician.</p>
+<div class="mt-2 flex items-center gap-1.5">
+<span class="material-symbols-outlined text-[10px] text-primary">verified</span>
+<span class="text-[9px] font-label text-primary uppercase">CERTIFIED SERVICE</span>
+</div>
+</div>
+</div>
+<!-- Timeline Item 2 -->
+<div class="relative pl-8">
+<span class="absolute left-0 top-1.5 w-[24px] h-[24px] bg-surface-container-highest text-secondary rounded-full flex items-center justify-center z-10">
+<span class="material-symbols-outlined text-[14px]">battery_charging_full</span>
+</span>
+<div>
+<p class="text-[10px] font-label text-secondary uppercase font-bold">18 APR 2024</p>
+<h5 class="text-xs font-headline font-bold text-on-surface mt-1 uppercase">BATTERY EXCHANGE</h5>
+<p class="text-[11px] text-secondary/70 mt-1 leading-relaxed">Shearwater Perdix (SH-88219). User replaced AA alkaline with SAFT 14500 Lithium.</p>
+</div>
+</div>
+<!-- Timeline Item 3 -->
+<div class="relative pl-8">
+<span class="absolute left-0 top-1.5 w-[24px] h-[24px] bg-surface-container-highest text-secondary rounded-full flex items-center justify-center z-10">
+<span class="material-symbols-outlined text-[14px]">visibility</span>
+</span>
+<div>
+<p class="text-[10px] font-label text-secondary uppercase font-bold">02 MAR 2024</p>
+<h5 class="text-xs font-headline font-bold text-on-surface mt-1 uppercase">VISUAL INSPECTION</h5>
+<p class="text-[11px] text-secondary/70 mt-1 leading-relaxed">Al-80 Cylinders (x4). Internal inspection pass. No corrosion noted.</p>
+</div>
+</div>
+<!-- Timeline Item 4 -->
+<div class="relative pl-8">
+<span class="absolute left-0 top-1.5 w-[24px] h-[24px] bg-tertiary text-on-tertiary rounded-full flex items-center justify-center z-10">
+<span class="material-symbols-outlined text-[14px]">report</span>
+</span>
+<div>
+<p class="text-[10px] font-label text-tertiary uppercase font-bold">15 JAN 2024</p>
+<h5 class="text-xs font-headline font-bold text-on-surface mt-1 uppercase">REPAIR: BC LEAK</h5>
+<p class="text-[11px] text-secondary/70 mt-1 leading-relaxed">Hydros Pro BC. Dump valve spring replacement due to minor salt crystallization.</p>
+</div>
+</div>
+</div>
+<button class="w-full mt-8 py-3 border border-outline-variant/20 text-secondary font-label text-[10px] uppercase font-bold tracking-widest hover:bg-surface-container-high transition-colors">
+                    VIEW ARCHIVE
+                </button>
+</aside>
+</div>
+</main>
+<!-- FAB Action (Suppressed on detail view as per mandate, but this is a dashboard) -->
+<button class="fixed bottom-8 right-8 w-14 h-14 rounded-full bg-primary text-on-primary shadow-xl shadow-primary/20 flex items-center justify-center active:scale-90 transition-transform z-50">
+<span class="material-symbols-outlined text-3xl">add_box</span>
+</button>
+</body></html>

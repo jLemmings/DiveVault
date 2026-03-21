@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&amp;family=Manrope:wght@300;400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              "tertiary-container": "#2b1300",
+              "surface-tint": "#9ccaff",
+              "error-container": "#93000a",
+              "on-primary-fixed": "#001d35",
+              "surface-container-lowest": "#000f1d",
+              "surface-container": "#062135",
+              "on-tertiary-fixed-variant": "#6e3900",
+              "tertiary-fixed": "#ffdcc3",
+              "on-surface": "#cde5ff",
+              "inverse-on-surface": "#1a3246",
+              "primary-fixed": "#d0e4ff",
+              "error": "#ffb4ab",
+              "inverse-surface": "#cde5ff",
+              "outline": "#8d9197",
+              "on-error-container": "#ffdad6",
+              "on-surface-variant": "#c3c7cd",
+              "surface-dim": "#001525",
+              "primary-fixed-dim": "#9ccaff",
+              "primary": "#9ccaff",
+              "background": "#001525",
+              "secondary": "#b3cad6",
+              "on-tertiary-container": "#c56b00",
+              "surface-container-high": "#132c40",
+              "on-secondary": "#1e333d",
+              "on-background": "#cde5ff",
+              "surface-container-highest": "#1f374b",
+              "inverse-primary": "#14629d",
+              "tertiary": "#ffb77d",
+              "on-tertiary-fixed": "#2f1500",
+              "secondary-fixed-dim": "#b3cad6",
+              "surface-variant": "#1f374b",
+              "on-primary-container": "#4686c3",
+              "on-primary-fixed-variant": "#00497b",
+              "surface-container-low": "#021d30",
+              "on-secondary-fixed": "#071e27",
+              "surface-bright": "#233b50",
+              "on-primary": "#003257",
+              "on-secondary-fixed-variant": "#354a54",
+              "outline-variant": "#43474c",
+              "surface": "#001525",
+              "primary-container": "#001a31",
+              "on-tertiary": "#4d2600",
+              "tertiary-fixed-dim": "#ffb77d",
+              "secondary-fixed": "#cfe6f2",
+              "secondary-container": "#374c56",
+              "on-error": "#690005",
+              "on-secondary-container": "#a5bcc8"
+            },
+            fontFamily: {
+              "headline": ["Space Grotesk"],
+              "body": ["Manrope"],
+              "label": ["Space Grotesk"]
+            },
+            borderRadius: {"DEFAULT": "0.125rem", "lg": "0.25rem", "xl": "0.5rem", "full": "0.75rem"},
+          },
+        },
+      }
+    </script>
+<style>
+        body { font-family: 'Manrope', sans-serif; }
+        .font-headline { font-family: 'Space Grotesk', sans-serif; }
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+    </style>
+</head>
+<body class="bg-background text-on-background selection:bg-primary/30 min-h-screen">
+<!-- SideNavBar Shell -->
+<aside class="fixed left-0 top-0 h-full z-50 flex flex-col items-stretch bg-[#001525] dark:bg-[#001525] h-screen w-20 md:w-64 shadow-[40px_0_40px_-20px_rgba(0,15,29,0.4)]">
+<div class="p-6">
+<h1 class="text-xl font-bold tracking-tighter text-[#9CCAFF] font-headline">DEEP-SEA 01</h1>
+<p class="text-[10px] uppercase tracking-widest font-bold text-[#9CCAFF]/60 font-label mt-1">OPERATIONAL</p>
+</div>
+<nav class="mt-8 flex-1">
+<a class="flex items-center gap-4 text-[#B3CAD6] p-4 opacity-60 hover:bg-[#132C40] hover:text-[#9CCAFF] transition-all duration-300 group" href="#">
+<span class="material-symbols-outlined">dashboard</span>
+<span class="hidden md:block text-[10px] uppercase tracking-widest font-bold font-label">Dashboard</span>
+</a>
+<a class="flex items-center gap-4 bg-[#132C40]/70 text-[#9CCAFF] rounded-r-none border-r-4 border-[#9CCAFF] p-4 group" href="#">
+<span class="material-symbols-outlined">waves</span>
+<span class="hidden md:block text-[10px] uppercase tracking-widest font-bold font-label">Dive Logs</span>
+</a>
+<a class="flex items-center gap-4 text-[#B3CAD6] p-4 opacity-60 hover:bg-[#132C40] hover:text-[#9CCAFF] transition-all duration-300 group" href="#">
+<span class="material-symbols-outlined">scuba_diving</span>
+<span class="hidden md:block text-[10px] uppercase tracking-widest font-bold font-label">Equipment</span>
+</a>
+<a class="flex items-center gap-4 text-[#B3CAD6] p-4 opacity-60 hover:bg-[#132C40] hover:text-[#9CCAFF] transition-all duration-300 group" href="#">
+<span class="material-symbols-outlined">settings</span>
+<span class="hidden md:block text-[10px] uppercase tracking-widest font-bold font-label">Settings</span>
+</a>
+</nav>
+<div class="p-4 border-t border-outline-variant/10">
+<button class="w-full bg-primary text-on-primary py-3 px-4 rounded-lg font-bold text-[10px] uppercase tracking-widest transition-transform active:scale-95">
+                LOG NEW DIVE
+            </button>
+</div>
+</aside>
+<!-- TopNavBar Shell -->
+<header class="fixed top-0 right-0 left-20 md:left-64 z-40 flex justify-between items-center px-8 bg-[#001525]/80 backdrop-blur-xl w-full h-16 border-b border-[#9CCAFF]/10">
+<div class="flex items-center gap-8">
+<div class="text-lg font-black tracking-[0.2em] text-[#9CCAFF] font-headline">ABYSSAL COMMAND</div>
+<nav class="hidden lg:flex items-center gap-6">
+<a class="text-[#B3CAD6] opacity-70 hover:text-[#FFB77D] transition-colors text-sm font-medium" href="#">Telemetry</a>
+<a class="text-[#B3CAD6] opacity-70 hover:text-[#FFB77D] transition-colors text-sm font-medium" href="#">Coordinates</a>
+<a class="text-[#B3CAD6] opacity-70 hover:text-[#FFB77D] transition-colors text-sm font-medium" href="#">Mission</a>
+</nav>
+</div>
+<div class="flex items-center gap-4">
+<div class="relative hidden sm:block">
+<input class="bg-surface-container-highest border-none rounded-full py-1.5 pl-4 pr-10 text-xs text-on-surface-variant focus:ring-1 focus:ring-primary w-48 font-label" placeholder="SEARCH ARCHIVES..." type="text"/>
+<span class="material-symbols-outlined absolute right-3 top-1/2 -translate-y-1/2 text-sm text-[#9CCAFF]">search</span>
+</div>
+<span class="material-symbols-outlined text-[#B3CAD6] cursor-pointer hover:text-primary">notifications</span>
+<span class="material-symbols-outlined text-[#B3CAD6] cursor-pointer hover:text-primary">emergency_home</span>
+<div class="w-8 h-8 rounded-full overflow-hidden border border-primary/30">
+<img alt="Diver Profile" class="w-full h-full object-cover" data-alt="Close up of a professional scuba diver helmet" src="https://lh3.googleusercontent.com/aida-public/AB6AXuC43ISTcrjoGl0ck6JTGKM-DCMLT7Y1SWPEmbMqAT8TkgAfOwRbnnguqonkqtqCRSkl9PS0doW37xxH6HPJPA3WrvTgGhOPnQZmYNcsf9lY1Q5wsMPxOtHZfDnj6ZJaf0eHMMwyb-i0chZXw4i79ukziKpumgESnh5rc2Tr61n8JRHunpSebc3iltonjhA1Qm9znohO0IykXOWoi8QWOzrwH7EqvXeTYn7nh3-zWjyF3IIa_7ldJ4NNMdlKPnr_qJkeKgHeSfyBrhMU"/>
+</div>
+</div>
+</header>
+<!-- Main Content Canvas -->
+<main class="ml-20 md:ml-64 pt-20 px-4 md:px-10 pb-12">
+<!-- Hero Section / Breadcrumb -->
+<div class="mb-8">
+<div class="flex items-center gap-2 text-primary/60 text-xs font-label uppercase tracking-widest mb-2">
+<span>DIVE ARCHIVES</span>
+<span class="material-symbols-outlined text-[10px]">chevron_right</span>
+<span class="text-primary">LOG #284</span>
+</div>
+<div class="flex flex-col md:flex-row md:items-end justify-between gap-4">
+<div>
+<h2 class="text-4xl md:text-5xl font-bold font-headline text-on-surface leading-tight">Blue Hole, Dahab</h2>
+<p class="text-secondary font-medium mt-1">Egypt • Red Sea • Tech Recreational Dive</p>
+</div>
+<div class="flex gap-3">
+<button class="bg-surface-container-high hover:bg-surface-container-highest text-primary px-4 py-2 rounded-lg text-xs font-bold font-label transition-colors">EXPORT DATA</button>
+<button class="bg-tertiary text-on-tertiary px-4 py-2 rounded-lg text-xs font-bold font-label transition-transform active:scale-95">EMERGENCY FLAG</button>
+</div>
+</div>
+</div>
+<div class="grid grid-cols-12 gap-6">
+<!-- Left Column: Primary Metrics & Graph -->
+<div class="col-span-12 lg:col-span-8 space-y-6">
+<!-- Quick Metrics Grid -->
+<div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+<div class="bg-surface-container-low p-6 rounded-xl flex flex-col items-center justify-center text-center">
+<span class="text-primary/50 text-[10px] font-label uppercase tracking-widest mb-2">Duration</span>
+<div class="text-3xl font-headline font-bold text-on-surface">54:20</div>
+<span class="text-xs text-secondary/60">MINUTES</span>
+</div>
+<div class="bg-surface-container-low p-6 rounded-xl flex flex-col items-center justify-center text-center border-b-2 border-primary/20">
+<span class="text-primary/50 text-[10px] font-label uppercase tracking-widest mb-2">Max Depth</span>
+<div class="text-3xl font-headline font-bold text-on-surface">32.4</div>
+<span class="text-xs text-secondary/60">METERS</span>
+</div>
+<div class="bg-surface-container-low p-6 rounded-xl flex flex-col items-center justify-center text-center">
+<span class="text-primary/50 text-[10px] font-label uppercase tracking-widest mb-2">Temp (Min)</span>
+<div class="text-3xl font-headline font-bold text-on-surface">22°C</div>
+<span class="text-xs text-secondary/60">THERMOCLINE</span>
+</div>
+<div class="bg-surface-container-low p-6 rounded-xl flex flex-col items-center justify-center text-center">
+<span class="text-primary/50 text-[10px] font-label uppercase tracking-widest mb-2">Air Consum.</span>
+<div class="text-3xl font-headline font-bold text-on-surface">145</div>
+<span class="text-xs text-secondary/60">BAR USED</span>
+</div>
+</div>
+<!-- Mission Profile Graph -->
+<div class="bg-surface-container-high p-8 rounded-xl relative overflow-hidden">
+<div class="flex justify-between items-center mb-10">
+<h3 class="text-sm font-bold font-headline tracking-widest uppercase text-primary">Mission Profile Telemetry</h3>
+<div class="flex gap-4 text-[10px] font-label">
+<div class="flex items-center gap-2">
+<span class="w-3 h-3 rounded-full bg-primary"></span>
+<span class="text-secondary uppercase">Depth Profile</span>
+</div>
+<div class="flex items-center gap-2">
+<span class="w-3 h-3 rounded-full bg-tertiary"></span>
+<span class="text-secondary uppercase">Tank Pressure</span>
+</div>
+</div>
+</div>
+<!-- SVG Chart Mockup -->
+<div class="h-64 w-full relative">
+<svg class="w-full h-full overflow-visible" viewbox="0 0 800 200">
+<!-- Grid Lines -->
+<line stroke="white" stroke-opacity="0.05" x1="0" x2="800" y1="0" y2="0"></line>
+<line stroke="white" stroke-opacity="0.05" x1="0" x2="800" y1="50" y2="50"></line>
+<line stroke="white" stroke-opacity="0.05" x1="0" x2="800" y1="100" y2="100"></line>
+<line stroke="white" stroke-opacity="0.05" x1="0" x2="800" y1="150" y2="150"></line>
+<line stroke="white" stroke-opacity="0.05" x1="0" x2="800" y1="200" y2="200"></line>
+<!-- Depth Line (Blue) -->
+<path d="M0,20 L100,50 L200,120 L300,180 L450,160 L600,100 L700,40 L800,20" fill="none" stroke="#9CCAFF" stroke-linecap="round" stroke-linejoin="round" stroke-width="3"></path>
+<path d="M0,20 L100,50 L200,120 L300,180 L450,160 L600,100 L700,40 L800,20 V200 H0 Z" fill="url(#blue-grad)" opacity="0.1"></path>
+<!-- Pressure Line (Orange) -->
+<path d="M0,40 L200,60 L400,90 L600,130 L800,170" fill="none" stroke="#FFB77D" stroke-dasharray="8,4" stroke-width="2"></path>
+<defs>
+<lineargradient id="blue-grad" x1="0" x2="0" y1="0" y2="1">
+<stop offset="0%" stop-color="#9CCAFF"></stop>
+<stop offset="100%" stop-color="transparent"></stop>
+</lineargradient>
+</defs>
+</svg>
+<!-- Data Tooltip Anchor -->
+<div class="absolute left-1/3 top-1/4 group cursor-pointer">
+<div class="w-3 h-3 bg-primary rounded-full ring-4 ring-primary/20"></div>
+<div class="absolute bottom-6 left-1/2 -translate-x-1/2 bg-surface-bright p-3 rounded-lg border border-primary/20 w-32 shadow-xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
+<p class="text-[10px] text-primary font-label uppercase">Depth Peak</p>
+<p class="text-sm font-bold">32.4m @ 18:20</p>
+</div>
+</div>
+</div>
+<div class="flex justify-between mt-4 text-[10px] text-secondary/40 font-label uppercase">
+<span>Start: 09:12</span>
+<span>Entry: Shore</span>
+<span>Finish: 10:06</span>
+</div>
+</div>
+<!-- Observations Section -->
+<div class="bg-surface-container-low p-8 rounded-xl">
+<h3 class="text-sm font-bold font-headline tracking-widest uppercase text-primary mb-4 flex items-center gap-2">
+<span class="material-symbols-outlined text-sm">visibility</span>
+                        Visual Observations &amp; Log
+                    </h3>
+<div class="space-y-4 text-on-surface-variant leading-relaxed text-sm">
+<p>Initial descent through the Arch was crystal clear. Visibility measured at approx 30m+. Encountered a large school of Red Sea Anthias hovering near the reef wall at 15m. Significant thermocline detected at 22m mark, dropping water temperature from 25°C to 22°C within seconds.</p>
+<p>Air consumption remains efficient. Buoyancy control was nominal throughout the ascent. Safety stop completed at 5m for 3 minutes as per decompression protocol. No signs of nitrogen narcosis during the deepest phase of the dive.</p>
+</div>
+<div class="flex flex-wrap gap-2 mt-6">
+<span class="bg-surface-container-highest text-secondary px-3 py-1 rounded text-[10px] font-bold font-label uppercase">Coral Reef</span>
+<span class="bg-surface-container-highest text-secondary px-3 py-1 rounded text-[10px] font-bold font-label uppercase">Deep Arch</span>
+<span class="bg-surface-container-highest text-secondary px-3 py-1 rounded text-[10px] font-bold font-label uppercase">Visibility 30m+</span>
+</div>
+</div>
+</div>
+<!-- Right Column: Map & Gear & Gallery -->
+<div class="col-span-12 lg:col-span-4 space-y-6">
+<!-- Tactical Map View -->
+<div class="bg-surface-container-low rounded-xl overflow-hidden h-64 relative group">
+<img alt="Map of Dahab Coastline" class="w-full h-full object-cover opacity-60 group-hover:scale-110 transition-transform duration-700" data-location="Dahab, Egypt" src="https://lh3.googleusercontent.com/aida-public/AB6AXuC0C4SQyRsQ_xUdOimaxKbAXME68hvdl5fByzvXojofCwO7LCxhXjemWuayDOfB6K80wsCrdGCFWC562Emk1g9xfQBz38UdhGtkiT1iDOrb5Bxw1aLhChhZjtLoRDTZ5IV4f2-QmBKTP8br0s4ap74CRL6XozYrlzPDeEpX7onWQbkqC2qF4HI2qtkITZfzC52ktrCAu6QbYMWvtujhlrgpLhAJ7CB5UQBbhn8V7EQvSkjrnm1y0LKbfkJ2JTEq6k0NWBTcBueztMJ7"/>
+<div class="absolute inset-0 bg-gradient-to-t from-surface-dim to-transparent"></div>
+<div class="absolute bottom-4 left-4">
+<div class="flex items-center gap-2 mb-1">
+<span class="material-symbols-outlined text-primary text-sm">location_on</span>
+<span class="text-xs font-bold font-label uppercase text-primary">Dahab Blue Hole</span>
+</div>
+<p class="text-[10px] text-on-surface-variant uppercase tracking-wider">28.4518° N, 34.5375° E</p>
+</div>
+<div class="absolute top-4 right-4">
+<button class="bg-[#132C40]/80 backdrop-blur-md p-2 rounded-lg text-primary">
+<span class="material-symbols-outlined">fullscreen</span>
+</button>
+</div>
+</div>
+<!-- Equipment Configuration -->
+<div class="bg-surface-container-low p-8 rounded-xl">
+<h3 class="text-sm font-bold font-headline tracking-widest uppercase text-primary mb-6">Equipment Configuration</h3>
+<div class="space-y-4">
+<div class="flex justify-between items-center py-2 border-b border-outline-variant/10">
+<div class="flex items-center gap-3">
+<span class="material-symbols-outlined text-secondary/60">backpack</span>
+<span class="text-xs text-on-surface">BCU Shell</span>
+</div>
+<span class="text-[10px] font-label text-secondary uppercase">Scubapro Hydros</span>
+</div>
+<div class="flex justify-between items-center py-2 border-b border-outline-variant/10">
+<div class="flex items-center gap-3">
+<span class="material-symbols-outlined text-secondary/60">settings_input_component</span>
+<span class="text-xs text-on-surface">Regulator</span>
+</div>
+<span class="text-[10px] font-label text-secondary uppercase">Apeks XTX200</span>
+</div>
+<div class="flex justify-between items-center py-2 border-b border-outline-variant/10">
+<div class="flex items-center gap-3">
+<span class="material-symbols-outlined text-secondary/60">watch</span>
+<span class="text-xs text-on-surface">Dive Computer</span>
+</div>
+<span class="text-[10px] font-label text-secondary uppercase">Shearwater Teric</span>
+</div>
+<div class="flex justify-between items-center py-2 border-b border-outline-variant/10">
+<div class="flex items-center gap-3">
+<span class="material-symbols-outlined text-secondary/60">weight</span>
+<span class="text-xs text-on-surface">Ballast System</span>
+</div>
+<span class="text-[10px] font-label text-secondary uppercase">6KG Integrated</span>
+</div>
+</div>
+</div>
+<!-- Dive Gallery Grid -->
+<div class="bg-surface-container-low p-8 rounded-xl">
+<div class="flex justify-between items-center mb-6">
+<h3 class="text-sm font-bold font-headline tracking-widest uppercase text-primary">Mission Gallery</h3>
+<span class="text-[10px] font-label text-secondary/60 uppercase">12 Assets</span>
+</div>
+<div class="grid grid-cols-2 gap-3">
+<div class="aspect-square rounded-lg overflow-hidden group cursor-pointer relative">
+<img alt="Underwater coral" class="w-full h-full object-cover transition-transform group-hover:scale-110" data-alt="Vibrant soft corals underwater in deep blue sea" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDiMPp6vmlsYxYvAk994AeBSBCELrv17SGR8GUAiHlu90IyB_4t5LkXjLiAgJMPfzl3n17ZP1_owHswSPjIBZV_rdz46fu4oNteU9adgtClKdxK2tGN8-CMc7RZRmk88WvG0IECXSgsqNoWmJK3EIb7h20BoxT2307Gyy82pdQo9aQvqPdT_pVr82CkRcb_5gCoze9uuY7i2cLWby5-JFh_geMn7Ku2f3FgxE-wDb-FKt0gbQlcvKhFgkHx0BS5dClKg1YGTsme8L9-"/>
+<div class="absolute inset-0 bg-primary/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+<span class="material-symbols-outlined text-white">zoom_in</span>
+</div>
+</div>
+<div class="aspect-square rounded-lg overflow-hidden group cursor-pointer relative">
+<img alt="Diver profile" class="w-full h-full object-cover transition-transform group-hover:scale-110" data-alt="Silhouetted scuba diver against bright sun rays underwater" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDZOFqJ_xtLfjrqkGsIxrsI-wuNfCbpVyku7hACoH8u4FlwFIXJaYoZGJRSRm8_brcXxDKgDjy8fO9xF7BiG07fJOLxpE46KMDpts_QAFq3WTT0iBu6VId0KpjDt3lniJ0PxyBbUMNiNK9AlTa6pCApnsB2DpGaaLXmQi5UDqAes0pHSwiooixB0I1vcYws3TRXUP3OV68E1MjSwRNmjsdhOWWnYNOhhjXdlAmWQBBYF-0hvkDCmRHIkaj92aKFBriSrP_XqLcYfLRX"/>
+<div class="absolute inset-0 bg-primary/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+<span class="material-symbols-outlined text-white">zoom_in</span>
+</div>
+</div>
+<div class="aspect-square rounded-lg overflow-hidden group cursor-pointer relative">
+<img alt="Blue water column" class="w-full h-full object-cover transition-transform group-hover:scale-110" data-alt="Abstract view of bubbles rising through deep blue water" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDNbWlxcblfDvfiwLfK10CQnmEfP1_KS0OEbMHVaoRtpDAXRPKAIvE-TZm5xf51ci8ttowu8aw2a_So1lny2oSnvnjeyUtfIdI1yBVDX6BqVAeeCqhczjxYqpzGENpiFIM7rVHTYXRP764NBsrm-g9-hL3-Tr-UPFqy87gTvD6sNXOL8eJXm6yEGH5R3LqCAoceZs4NZLUiziJXv6wp46aH3tODawiM4e78aAyCA2tIcwrBs3uZLkVYD56iAIb_EcdZsLMxCzhgL_G5"/>
+<div class="absolute inset-0 bg-primary/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+<span class="material-symbols-outlined text-white">zoom_in</span>
+</div>
+</div>
+<div class="aspect-square rounded-lg overflow-hidden group cursor-pointer relative bg-surface-container-highest flex flex-col items-center justify-center text-primary/60 border border-dashed border-primary/30">
+<span class="material-symbols-outlined mb-1">add_a_photo</span>
+<span class="text-[8px] font-label uppercase">Upload</span>
+</div>
+</div>
+</div>
+</div>
+</div>
+</main>
+<!-- FAB Action (Suppressed on details per protocol, but adding contextually relevant "Verify Log" button as secondary anchor) -->
+<div class="fixed bottom-8 right-8 flex flex-col items-end gap-3 pointer-events-none">
+<button class="pointer-events-auto bg-primary text-on-primary w-14 h-14 rounded-full flex items-center justify-center shadow-2xl hover:scale-110 transition-transform active:scale-95 group">
+<span class="material-symbols-outlined">verified</span>
+<div class="absolute right-16 bg-surface-container-high px-3 py-1.5 rounded-lg text-[10px] font-label uppercase tracking-widest text-primary opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap border border-primary/20">
+                VERIFY LOG ENTRY
+            </div>
+</button>
+</div>
+</body></html>
