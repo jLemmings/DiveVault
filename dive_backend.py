@@ -43,8 +43,9 @@ from postgres_store import (
 
 
 LOGGER = logging.getLogger("dive_backend")
+PROJECT_ROOT = Path(__file__).resolve().parent
 
-load_dotenv()
+load_dotenv(PROJECT_ROOT / ".env")
 
 
 class ClerkAuthError(Exception):
@@ -387,6 +388,10 @@ class DiveBackendHandler(BaseHTTPRequestHandler):
             self._send_json(200, {"status": "ok"})
             return
 
+        if path == "/config.js":
+            self._send_config_js()
+            return
+
         if path == "/api/device-state":
             if self._require_auth() is None:
                 return
@@ -700,6 +705,19 @@ class DiveBackendHandler(BaseHTTPRequestHandler):
         self.send_header("Access-Control-Allow-Origin", self.server.cors_origin)
         self.send_header("Access-Control-Allow-Methods", "GET, POST, PUT, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "Authorization, Content-Type")
+
+    def _send_config_js(self) -> None:
+        body = (
+            "window.__APP_CONFIG__ = "
+            + json.dumps({"clerkPublishableKey": self.server.clerk_publishable_key})
+            + ";\n"
+        ).encode("utf-8")
+        self.send_response(200)
+        self.send_header("Content-Type", "application/javascript; charset=utf-8")
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
 
     def _serve_frontend(self, path: str) -> None:
         asset_path = frontend_asset_path(self.server.frontend_dir, path)

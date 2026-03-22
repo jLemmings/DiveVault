@@ -18,6 +18,10 @@ export default defineConfig(({ mode }) => {
     },
     server: {
       proxy: {
+        "/config.js": {
+          target: apiTarget,
+          changeOrigin: true
+        },
         "/api": {
           target: apiTarget,
           changeOrigin: true

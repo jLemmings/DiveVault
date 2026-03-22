@@ -4,19 +4,40 @@ import { clerkPlugin } from "@clerk/vue";
 import App from "./app.js";
 import "./styles.css";
 
-const publishableKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY
+async function loadRuntimeConfig() {
+  if (window.__APP_CONFIG__) {
+    return window.__APP_CONFIG__;
+  }
 
-if (!publishableKey) {
-  throw new Error("Add VITE_CLERK_PUBLISHABLE_KEY to the backend environment before starting the app.");
+  await new Promise((resolve, reject) => {
+    const script = document.createElement("script");
+    script.src = "/config.js";
+    script.async = false;
+    script.onload = resolve;
+    script.onerror = () => reject(new Error("Unable to load /config.js from the backend."));
+    document.head.append(script);
+  });
+
+  return window.__APP_CONFIG__;
 }
 
-const app = createApp(App);
+async function bootstrap() {
+  const publishableKey = (await loadRuntimeConfig())?.clerkPublishableKey;
 
-app.use(clerkPlugin, {
-  publishableKey,
-  afterSignOutUrl: "/",
-  signInFallbackRedirectUrl: "/",
-  signUpFallbackRedirectUrl: "/"
-});
+  if (!publishableKey) {
+    throw new Error("Add VITE_CLERK_PUBLISHABLE_KEY to the backend environment before starting the app.");
+  }
 
-app.mount("#app");
+  const app = createApp(App);
+
+  app.use(clerkPlugin, {
+    publishableKey,
+    afterSignOutUrl: "/",
+    signInFallbackRedirectUrl: "/",
+    signUpFallbackRedirectUrl: "/"
+  });
+
+  app.mount("#app");
+}
+
+bootstrap();
