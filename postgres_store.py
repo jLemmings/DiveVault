@@ -37,9 +37,6 @@ CREATE TABLE IF NOT EXISTS dives (
     samples_json JSONB NOT NULL DEFAULT '[]'::jsonb,
     imported_at TEXT NOT NULL
 );
-
-CREATE UNIQUE INDEX IF NOT EXISTS idx_dives_user_dive_uid ON dives (user_id, dive_uid);
-CREATE INDEX IF NOT EXISTS idx_dives_user_started_at ON dives (user_id, started_at DESC, id DESC);
 """
 
 
