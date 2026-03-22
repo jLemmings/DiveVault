@@ -393,7 +393,8 @@ class DiveBackendHandler(BaseHTTPRequestHandler):
             return
 
         if path == "/api/device-state":
-            if self._require_auth() is None:
+            user_id = self._require_principal_id()
+            if user_id is None:
                 return
             vendor = self._single_query_arg(query, "vendor")
             product = self._single_query_arg(query, "product")
@@ -405,9 +406,10 @@ class DiveBackendHandler(BaseHTTPRequestHandler):
             if conn is None:
                 return
             try:
-                state = get_device_state(conn, vendor, product)
+                state = get_device_state(conn, user_id, vendor, product)
                 LOGGER.info(
-                    "Returned device state vendor=%s product=%s fingerprint=%s",
+                    "Returned device state user_id=%s vendor=%s product=%s fingerprint=%s",
+                    user_id,
                     vendor,
                     product,
                     state.get("fingerprint_hex"),
@@ -446,7 +448,8 @@ class DiveBackendHandler(BaseHTTPRequestHandler):
             return
 
         if path == "/api/dives":
-            if self._require_auth() is None:
+            user_id = self._require_principal_id()
+            if user_id is None:
                 return
             include_samples = self._is_truthy(query.get("include_samples", ["0"])[0])
             include_raw_data = self._is_truthy(query.get("include_raw_data", ["0"])[0])
@@ -457,12 +460,13 @@ class DiveBackendHandler(BaseHTTPRequestHandler):
             if conn is None:
                 return
             try:
-                dives, total = list_dives(conn, include_samples, include_raw_data, limit, offset)
+                dives, total = list_dives(conn, user_id, include_samples, include_raw_data, limit, offset)
             finally:
                 conn.close()
 
             LOGGER.info(
-                "Returned dives count=%d total=%d include_samples=%s include_raw_data=%s limit=%d offset=%d",
+                "Returned dives user_id=%s count=%d total=%d include_samples=%s include_raw_data=%s limit=%d offset=%d",
+                user_id,
                 len(dives),
                 total,
                 include_samples,
@@ -483,7 +487,8 @@ class DiveBackendHandler(BaseHTTPRequestHandler):
 
         match = re.fullmatch(r"/api/dives/(\d+)", path)
         if match:
-            if self._require_auth() is None:
+            user_id = self._require_principal_id()
+            if user_id is None:
                 return
             dive_id = int(match.group(1))
             include_raw_data = self._is_truthy(query.get("include_raw_data", ["0"])[0])
@@ -492,7 +497,7 @@ class DiveBackendHandler(BaseHTTPRequestHandler):
             if conn is None:
                 return
             try:
-                dive = get_dive(conn, dive_id, include_raw_data)
+                dive = get_dive(conn, user_id, dive_id, include_raw_data)
             finally:
                 conn.close()
 
@@ -501,7 +506,7 @@ class DiveBackendHandler(BaseHTTPRequestHandler):
                 self._send_json(404, {"error": "Dive not found"})
                 return
 
-            LOGGER.info("Returned dive id=%d include_raw_data=%s", dive_id, include_raw_data)
+            LOGGER.info("Returned dive user_id=%s id=%d include_raw_data=%s", user_id, dive_id, include_raw_data)
             self._send_json(200, dive)
             return
 
@@ -548,7 +553,8 @@ class DiveBackendHandler(BaseHTTPRequestHandler):
             self._send_json(404, {"error": "Not found"})
             return
 
-        if self._require_auth() is None:
+        user_id = self._require_principal_id()
+        if user_id is None:
             return
 
         payload = self._read_json_body()
@@ -570,17 +576,18 @@ class DiveBackendHandler(BaseHTTPRequestHandler):
             return
         try:
             try:
-                inserted = insert_dive_record(conn, payload)
+                inserted = insert_dive_record(conn, user_id, payload)
             except ValueError as exc:
                 LOGGER.warning("Rejected dive upload invalid base64 uid=%s", payload.get("dive_uid"))
                 self._send_json(400, {"error": str(exc)})
                 return
-            dive_id = get_dive_id_by_uid(conn, payload["dive_uid"])
+            dive_id = get_dive_id_by_uid(conn, user_id, payload["dive_uid"])
         finally:
             conn.close()
 
         LOGGER.info(
-            "Processed dive upload uid=%s inserted=%s id=%s",
+            "Processed dive upload user_id=%s uid=%s inserted=%s id=%s",
+            user_id,
             payload["dive_uid"],
             inserted,
             dive_id,
@@ -591,7 +598,8 @@ class DiveBackendHandler(BaseHTTPRequestHandler):
         LOGGER.info("PUT %s", self.path)
         match = re.fullmatch(r"/api/dives/(\d+)/logbook", self.path)
         if match:
-            if self._require_auth() is None:
+            user_id = self._require_principal_id()
+            if user_id is None:
                 return
             payload = self._read_json_body()
             if payload is None:
@@ -602,7 +610,7 @@ class DiveBackendHandler(BaseHTTPRequestHandler):
             if conn is None:
                 return
             try:
-                dive = update_dive_logbook(conn, dive_id, payload)
+                dive = update_dive_logbook(conn, user_id, dive_id, payload)
             finally:
                 conn.close()
 
@@ -611,7 +619,12 @@ class DiveBackendHandler(BaseHTTPRequestHandler):
                 self._send_json(404, {"error": "Dive not found"})
                 return
 
-            LOGGER.info("Updated dive logbook id=%d status=%s", dive_id, dive.get("fields", {}).get("logbook", {}).get("status"))
+            LOGGER.info(
+                "Updated dive logbook user_id=%s id=%d status=%s",
+                user_id,
+                dive_id,
+                dive.get("fields", {}).get("logbook", {}).get("status"),
+            )
             self._send_json(200, dive)
             return
 
@@ -619,7 +632,8 @@ class DiveBackendHandler(BaseHTTPRequestHandler):
             self._send_json(404, {"error": "Not found"})
             return
 
-        if self._require_auth() is None:
+        user_id = self._require_principal_id()
+        if user_id is None:
             return
 
         payload = self._read_json_body()
@@ -637,13 +651,14 @@ class DiveBackendHandler(BaseHTTPRequestHandler):
         if conn is None:
             return
         try:
-            save_device_state(conn, vendor, product, payload.get("fingerprint_hex"))
-            state = get_device_state(conn, vendor, product)
+            save_device_state(conn, user_id, vendor, product, payload.get("fingerprint_hex"))
+            state = get_device_state(conn, user_id, vendor, product)
         finally:
             conn.close()
 
         LOGGER.info(
-            "Processed device-state update vendor=%s product=%s fingerprint=%s",
+            "Processed device-state update user_id=%s vendor=%s product=%s fingerprint=%s",
+            user_id,
             vendor,
             product,
             state.get("fingerprint_hex"),
@@ -681,6 +696,22 @@ class DiveBackendHandler(BaseHTTPRequestHandler):
             self._send_json(403, {"error": "Desktop sync approval requires an authenticated browser session"})
             return None
         return claims
+
+    @staticmethod
+    def _principal_id_from_claims(claims: dict | None) -> str | None:
+        if not isinstance(claims, dict):
+            return None
+        return claims.get("sub") or claims.get("user_id") or claims.get("subject")
+
+    def _require_principal_id(self) -> str | None:
+        claims = self._require_auth()
+        if claims is None:
+            return None
+        principal_id = self._principal_id_from_claims(claims)
+        if principal_id:
+            return principal_id
+        self._send_json(403, {"error": "Authenticated identity is missing a stable user identifier"})
+        return None
 
     def _read_json_body(self) -> dict | None:
         length = int(self.headers.get("Content-Length", "0"))

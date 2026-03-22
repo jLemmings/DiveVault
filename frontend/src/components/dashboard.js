@@ -2,7 +2,7 @@ import { dayOfMonth, monthShort, formatDate, diveTitle, diveSubtitle, formatDept
 
 export default {
   name: "DashboardView",
-  props: ["dives", "stats", "setView", "backendHealthy", "openDive"],
+  props: ["dives", "stats", "setView", "backendHealthy", "openDive", "currentUserName"],
   methods: {
     dayOfMonth,
     monthShort,
@@ -47,6 +47,9 @@ export default {
     },
     mobileBars() {
       return profileBars(this.featuredDive || {}).slice(0, 10);
+    },
+    dashboardUserName() {
+      return this.currentUserName || "Diver";
     }
   },
   template: `
@@ -148,7 +151,7 @@ export default {
         <header>
           <div>
             <p class="font-label text-[10px] font-bold uppercase tracking-[0.3em] text-primary">Dive Overview</p>
-            <h3 class="mt-2 font-headline text-5xl font-bold tracking-tight">Diver: <span class="text-primary">Josh :)</span></h3>
+            <h3 class="mt-2 font-headline text-5xl font-bold tracking-tight">Diver: <span class="text-primary">{{ dashboardUserName }}</span></h3>
           </div>
         </header>
         <div class="grid grid-cols-1 gap-4 md:grid-cols-4">

@@ -90,6 +90,11 @@ export default {
         || this.clerkUser?.emailAddresses?.[0]?.emailAddress
         || "";
     },
+    currentUserName() {
+      const firstName = this.clerkUser?.firstName?.trim() || "";
+      const lastName = this.clerkUser?.lastName?.trim() || "";
+      return [firstName, lastName].filter(Boolean).join(" ") || this.currentUserEmail || "Diver";
+    },
     activeSection() {
       if (this.activeView === "imports") {
         return { eyebrow: "Synchronization Module", title: "Imported Dives" };
@@ -438,7 +443,7 @@ export default {
             <p class="mt-2 text-sm text-on-error-container">{{ error }}</p>
             <button @click="fetchDives" class="mt-5 bg-primary px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-on-primary">Retry</button>
           </section>
-          <dashboard-view v-else-if="activeView === 'dashboard'" :dives="dives" :stats="stats" :set-view="setView" :backend-healthy="backendHealthy" :open-dive="openDive"></dashboard-view>
+          <dashboard-view v-else-if="activeView === 'dashboard'" :dives="dives" :stats="stats" :set-view="setView" :backend-healthy="backendHealthy" :open-dive="openDive" :current-user-name="currentUserName"></dashboard-view>
           <logs-view v-else-if="activeView === 'logs' && !selectedDive" :dives="dives" :search-text="searchText" :open-dive="openDive" :open-import-queue="openImportQueue" :set-search-text="setSearchText"></logs-view>
           <dive-import-view v-else-if="activeView === 'imports'" :dives="dives" :import-drafts="importDrafts" :selected-import-id="selectedImportId" :select-import-dive="selectImportDive" :update-import-draft="updateImportDraft" :save-import-draft="saveImportDraft" :saving-import-id="savingImportId" :import-error="importError" :import-status-message="importStatusMessage" :open-dive="openDive" :set-view="setView" :fetch-dives="fetchDives"></dive-import-view>
           <dive-detail-view v-else-if="activeView === 'logs' && selectedDive" :dive="selectedDive" :close-detail="closeDiveDetail"></dive-detail-view>
