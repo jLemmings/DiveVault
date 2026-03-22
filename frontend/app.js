@@ -1,6 +1,9 @@
 const { createApp } = Vue;
+const sessionStorageKey = "divevault.session";
+
 createApp({
   components: {
+    LoginView,
     DashboardView,
     LogsView,
     DiveImportView,
@@ -10,6 +13,14 @@ createApp({
   },
   data() {
     return {
+      isAuthenticated: false,
+      sessionEmail: "",
+      loginForm: {
+        email: "",
+        password: ""
+      },
+      loginError: "",
+      loginSubmitting: false,
       activeView: "dashboard",
       selectedDiveId: null,
       selectedImportId: null,
@@ -75,6 +86,70 @@ createApp({
     }
   },
   methods: {
+    updateLoginField(key, value) {
+      this.loginForm = {
+        ...this.loginForm,
+        [key]: value
+      };
+      this.loginError = "";
+    },
+    persistSession(email) {
+      const payload = JSON.stringify({
+        email,
+        authenticatedAt: new Date().toISOString()
+      });
+      try {
+        window.localStorage.setItem(sessionStorageKey, payload);
+      } catch (_error) {
+        // Ignore local storage failures and keep the in-memory session alive.
+      }
+    },
+    hydrateSession() {
+      try {
+        const raw = window.localStorage.getItem(sessionStorageKey);
+        if (!raw) return;
+        const session = JSON.parse(raw);
+        if (typeof session?.email === "string" && session.email.trim()) {
+          this.isAuthenticated = true;
+          this.sessionEmail = session.email.trim();
+          this.loginForm = {
+            email: session.email.trim(),
+            password: ""
+          };
+        }
+      } catch (_error) {
+        // Ignore invalid persisted session data.
+      }
+    },
+    async submitLogin() {
+      const email = this.loginForm.email.trim();
+      const password = this.loginForm.password;
+
+      if (!email || !password) {
+        this.loginError = "Enter both diver ID and access code to initiate the session.";
+        return;
+      }
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        this.loginError = "Use a valid email address for the diver ID field.";
+        return;
+      }
+
+      this.loginSubmitting = true;
+      this.loginError = "";
+      this.isAuthenticated = true;
+      this.sessionEmail = email;
+      this.loginForm = {
+        email,
+        password: ""
+      };
+      this.persistSession(email);
+      this.syncViewFromHash();
+      try {
+        await this.fetchDives();
+      } finally {
+        this.loginSubmitting = false;
+      }
+    },
     setSearchText(value) {
       this.searchText = value;
     },
@@ -214,6 +289,7 @@ createApp({
       this.setView(next.id);
     },
     syncViewFromHash() {
+      if (!this.isAuthenticated) return;
       const hash = window.location.hash.replace("#", "");
       const [view, diveId] = hash.split("/");
       if (view === "imports") {
@@ -250,15 +326,29 @@ createApp({
     }
   },
   mounted() {
+    this.hydrateSession();
     this.syncViewFromHash();
     window.addEventListener("hashchange", this.syncViewFromHash);
-    this.fetchDives();
+    if (this.isAuthenticated) {
+      this.fetchDives();
+    } else {
+      this.loading = false;
+    }
   },
   beforeUnmount() {
     window.removeEventListener("hashchange", this.syncViewFromHash);
   },
   template: `
-    <div class="min-h-screen bg-background text-on-background">
+    <login-view
+      v-if="!isAuthenticated"
+      :email="loginForm.email"
+      :password="loginForm.password"
+      :submit-login="submitLogin"
+      :update-login-field="updateLoginField"
+      :login-error="loginError"
+      :login-submitting="loginSubmitting"
+    ></login-view>
+    <div v-else class="min-h-screen bg-background text-on-background">
       <aside class="fixed inset-y-0 left-0 z-40 hidden w-20 flex-col bg-background shadow-[40px_0_40px_-20px_rgba(0,15,29,0.4)] md:flex md:w-64">
         <div class="p-6">
           <div class="flex h-14 w-14 items-center justify-center rounded-2xl border border-primary/20 bg-surface-container-high text-primary shadow-panel">
@@ -297,7 +387,12 @@ createApp({
             </div>
             <button class="text-secondary transition-colors hover:text-primary"><span class="material-symbols-outlined">notifications</span></button>
             <button class="text-secondary transition-colors hover:text-primary"><span class="material-symbols-outlined">emergency_home</span></button>
-            <div class="hidden h-8 w-8 rounded-full border border-primary/30 bg-surface-container-highest md:block"></div>
+            <div
+              class="hidden h-8 w-8 items-center justify-center rounded-full border border-primary/30 bg-surface-container-highest font-label text-[10px] font-bold uppercase tracking-[0.18em] text-primary md:flex"
+              :title="sessionEmail"
+            >
+              {{ sessionEmail ? sessionEmail.charAt(0) : 'D' }}
+            </div>
           </div>
         </div>
       </header>

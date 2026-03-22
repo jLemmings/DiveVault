@@ -1,0 +1,179 @@
+<!DOCTYPE html><html class="dark" lang="en"><head>
+<meta charset="utf-8">
+<meta content="width=device-width, initial-scale=1.0" name="viewport">
+<title>ABYSSAL_LOG | AUTHENTICATION</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&amp;family=Manrope:wght@300;400;500;600&amp;display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        body {
+            background-color: #001525;
+            overflow-x: hidden;
+        }
+        .abyssal-gradient {
+            background: radial-gradient(circle at 50% 50%, #062135 0%, #001525 100%);
+        }
+        .glass-panel {
+            backdrop-filter: blur(20px);
+            background: rgba(19, 44, 64, 0.7);
+        }
+    </style>
+<script id="tailwind-config">
+        tailwind.config = {
+          darkMode: "class",
+          theme: {
+            extend: {
+              colors: {
+                "surface-dim": "#001525",
+                "on-surface-variant": "#c3c7cd",
+                "on-tertiary-container": "#c56b00",
+                "surface-container-lowest": "#000f1d",
+                "on-surface": "#cde5ff",
+                "on-secondary-fixed": "#071e27",
+                "tertiary-fixed-dim": "#ffb77d",
+                "surface": "#001525",
+                "primary-fixed-dim": "#9ccaff",
+                "inverse-surface": "#cde5ff",
+                "on-secondary": "#1e333d",
+                "error-container": "#93000a",
+                "on-error-container": "#ffdad6",
+                "surface-container-low": "#021d30",
+                "surface-container": "#062135",
+                "secondary-container": "#374c56",
+                "tertiary-container": "#2b1300",
+                "on-tertiary-fixed": "#2f1500",
+                "surface-container-high": "#132c40",
+                "on-secondary-container": "#a5bcc8",
+                "on-primary-fixed-variant": "#00497b",
+                "on-tertiary": "#4d2600",
+                "secondary": "#b3cad6",
+                "outline-variant": "#43474c",
+                "tertiary-fixed": "#ffdcc3",
+                "on-primary-fixed": "#001d35",
+                "secondary-fixed": "#cfe6f2",
+                "surface-bright": "#233b50",
+                "primary-fixed": "#d0e4ff",
+                "surface-variant": "#1f374b",
+                "tertiary": "#ffb77d",
+                "on-secondary-fixed-variant": "#354a54",
+                "inverse-on-surface": "#1a3246",
+                "surface-container-highest": "#1f374b",
+                "on-error": "#690005",
+                "on-background": "#cde5ff",
+                "on-tertiary-fixed-variant": "#6e3900",
+                "on-primary": "#003257",
+                "secondary-fixed-dim": "#b3cad6",
+                "primary": "#9ccaff",
+                "on-primary-container": "#4686c3",
+                "surface-tint": "#9ccaff",
+                "background": "#001525",
+                "outline": "#8d9197",
+                "primary-container": "#001a31",
+                "inverse-primary": "#14629d",
+                "error": "#ffb4ab"
+              },
+              fontFamily: {
+                "headline": ["Space Grotesk"],
+                "body": ["Manrope"],
+                "label": ["Space Grotesk"]
+              },
+              borderRadius: {"DEFAULT": "0.125rem", "lg": "0.25rem", "xl": "0.5rem", "full": "0.75rem"},
+            },
+          },
+        }
+    </script>
+</head>
+<body class="bg-surface text-on-surface font-body flex flex-col min-h-screen abyssal-gradient">
+<!-- TopAppBar Replacement for Login (Focused Identity Only) -->
+<header class="flex justify-center items-center w-full py-10 px-8">
+<div class="flex flex-col items-center">
+<span class="font-headline text-3xl font-bold tracking-tighter text-primary" style="">DiveVault</span>
+<div class="h-[1px] w-12 bg-primary mt-2 opacity-50"></div>
+<span class="font-label tracking-[0.2em] uppercase text-[10px] mt-2 text-on-surface-variant" style="">Diving Logbook</span>
+</div>
+</header>
+<main class="flex-grow flex items-center justify-center px-6 pb-24">
+<!-- Main Auth Container -->
+<div class="w-full max-w-md relative">
+<!-- Decorative Technical Elements -->
+<div class="absolute -top-4 -left-4 w-8 h-8 border-t border-l border-primary/30"></div>
+<div class="absolute -bottom-4 -right-4 w-8 h-8 border-b border-r border-primary/30"></div>
+<div class="glass-panel p-8 md:p-10 shadow-2xl relative overflow-hidden group">
+<!-- Inner Glow Effect -->
+<div class="absolute inset-0 bg-gradient-to-br from-primary/5 to-transparent pointer-events-none"></div>
+<div class="relative z-10">
+<div class="mb-10 text-center">
+<h1 class="font-headline text-2xl font-semibold tracking-wide text-on-surface uppercase" style="">AUTHENTICATION</h1>
+<p class="font-label text-[10px] tracking-widest text-primary mt-1" style="">SECURE ENCRYPTED CHANNEL</p>
+</div>
+<form class="space-y-6">
+<!-- Field: DIVER_ID -->
+<div class="space-y-2">
+<label class="font-label text-xs tracking-widest text-on-surface-variant uppercase flex items-center gap-2" style=""><span class="material-symbols-outlined text-sm" style="">badge</span>E-Mail</label>
+<input class="w-full bg-surface-container-highest/50 border-none focus:ring-1 focus:ring-primary/40 text-on-surface placeholder:text-on-surface-variant/30 font-headline tracking-wider text-sm p-4 transition-all" placeholder="OPERATOR@SYSTEM.ABYSS" type="email">
+</div>
+<!-- Field: ACCESS_CODE -->
+<div class="space-y-2">
+<label class="font-label text-xs tracking-widest text-on-surface-variant uppercase flex items-center gap-2" style=""><span class="material-symbols-outlined text-sm" style="">key</span>Password</label>
+<input class="w-full bg-surface-container-highest/50 border-none focus:ring-1 focus:ring-primary/40 text-on-surface placeholder:text-on-surface-variant/30 font-headline tracking-widest text-sm p-4 transition-all" placeholder="••••••••••••" type="password">
+</div>
+<!-- Primary Action -->
+<div class="pt-4">
+<button class="w-full bg-primary text-on-primary font-headline font-bold tracking-[0.15em] text-xs py-5 uppercase hover:bg-primary-fixed-dim transition-all active:opacity-80 flex items-center justify-center gap-2 shadow-[0_0_15px_rgba(156,202,255,0.2)]" type="submit" style="">Login<span class="material-symbols-outlined text-lg" style="">arrow_right_alt</span>
+</button>
+</div>
+</form>
+<!-- Secondary Links -->
+<div class="mt-10 flex flex-col items-center gap-4">
+<a class="font-label text-[10px] tracking-widest text-primary hover:text-white transition-colors uppercase" href="#" style="">
+                            RECOVER_ACCESS
+                        </a>
+<div class="h-[1px] w-8 bg-outline-variant/30"></div>
+<p class="font-body text-[11px] text-on-surface-variant tracking-wide" style="">
+                            NEW Diver?<a class="font-label text-primary hover:text-white transition-colors uppercase ml-1 underline underline-offset-4" href="#" style="">REGISTER</a></p>
+</div>
+</div>
+<!-- Subtle Data Visualization Decor -->
+<div class="absolute bottom-0 left-0 w-full h-1 bg-surface-container-highest overflow-hidden">
+<div class="h-full bg-primary/40 w-1/3 animate-pulse"></div>
+</div>
+</div>
+<!-- Footnote / System Status Indicators -->
+<div class="mt-8 flex justify-between items-center px-2">
+<div class="flex items-center gap-2">
+<div class="w-1.5 h-1.5 rounded-full bg-primary animate-pulse"></div>
+<span class="font-label text-[9px] tracking-tighter text-on-surface-variant uppercase" style=""><br></span>
+</div>
+<div class="flex items-center gap-4">
+<span class="font-label text-[9px] tracking-tighter text-on-surface-variant uppercase opacity-40" style=""><br></span>
+<span class="font-label text-[9px] tracking-tighter text-on-surface-variant uppercase opacity-40" style="">LAT:-45.89 LON:12.33</span>
+</div>
+</div>
+</div>
+</main>
+<!-- Footer Segment -->
+<footer class="bg-surface-dim">
+<div class="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center px-12 py-8 gap-4 border-t border-outline-variant/10">
+<p class="font-body text-[10px] tracking-[0.05em] uppercase text-on-surface-variant opacity-50" style="">
+                © 2024 DEEP-SEA CARTOGRAPHY SYSTEMS. ALL RIGHTS RESERVED.
+            </p>
+<div class="flex gap-6">
+<a class="font-body text-[10px] tracking-[0.05em] uppercase text-on-surface-variant opacity-50 hover:opacity-100 hover:text-primary transition-all cursor-pointer" href="#" style="">TERMS_OF_SERVICE</a>
+<a class="font-body text-[10px] tracking-[0.05em] uppercase text-on-surface-variant opacity-50 hover:opacity-100 hover:text-primary transition-all cursor-pointer" href="#" style="">SYSTEM_STATUS</a>
+<a class="font-body text-[10px] tracking-[0.05em] uppercase text-on-surface-variant opacity-50 hover:opacity-100 hover:text-primary transition-all cursor-pointer" href="#" style="">ENCRYPTION_PROTOCOL</a>
+</div>
+</div>
+</footer>
+<!-- Background Ambiance -->
+<div class="fixed inset-0 pointer-events-none z-[-1] overflow-hidden">
+<!-- Atmospheric Depth Images -->
+<img class="absolute inset-0 object-cover w-full h-full opacity-20 mix-blend-screen" data-alt="Deep dark blue oceanic abyss with subtle light rays" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCll5D-QC_FVyzG-jVfeBCq25NdWQyGzhUfE5o284z9Tu3raN5Tukui20-j5Yp0ZVSrahsarDFAa63SU-kgvqDnAUFA_6HMk7kzyUfaEQ3o1EFLhlDvVv2zP_eSDEN_ieB30hfA4dSN96Wf_RAQ9rZ2wMpgXdf4lOi9VLk2au2N0yQrthaA5ArO2UbQfazKBQY-e2sXK1RuqT_kwqUz1SjgyYtIPfpkekPULfOWF2W7ov6GHyAXW9RFFwgZguiUeczSsdUUf_1VeC96" style="">
+<div class="absolute inset-0 bg-gradient-to-t from-surface-dim via-transparent to-surface-dim/80"></div>
+<!-- Technical Grid Overlay -->
+<div class="absolute inset-0 opacity-[0.03]" style="background-image: radial-gradient(#9CCAFF 0.5px, transparent 0.5px); background-size: 24px 24px;"></div>
+</div>
+</body></html>

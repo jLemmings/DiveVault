@@ -39,3 +39,37 @@ body {
   background: rgba(19, 44, 64, 0.7);
   backdrop-filter: blur(20px);
 }
+
+.abyssal-auth-shell::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at 50% 18%, rgba(35, 59, 80, 0.26), transparent 22rem),
+    radial-gradient(circle at 15% 20%, rgba(156, 202, 255, 0.08), transparent 26rem),
+    radial-gradient(circle at 85% 28%, rgba(156, 202, 255, 0.07), transparent 24rem),
+    linear-gradient(135deg, rgba(156, 202, 255, 0.035) 0, rgba(156, 202, 255, 0.035) 1px, transparent 1px, transparent 28px),
+    linear-gradient(45deg, rgba(156, 202, 255, 0.018) 0, rgba(156, 202, 255, 0.018) 1px, transparent 1px, transparent 22px);
+  background-size: auto, auto, auto, 180px 180px, 140px 140px;
+  opacity: 0.85;
+  pointer-events: none;
+}
+
+.abyssal-auth-shell::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at center, rgba(6, 33, 53, 0.2), transparent 28rem),
+    linear-gradient(180deg, rgba(0, 15, 29, 0.05), rgba(0, 15, 29, 0.32));
+  pointer-events: none;
+}
+
+.auth-panel {
+  background: rgba(19, 44, 64, 0.76);
+  backdrop-filter: blur(20px);
+}
+
+.auth-button-glow {
+  box-shadow: 0 0 15px rgba(156, 202, 255, 0.2);
+}
