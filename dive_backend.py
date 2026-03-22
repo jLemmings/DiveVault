@@ -710,6 +710,9 @@ class DiveBackendHandler(BaseHTTPRequestHandler):
 
         content_type, _ = mimetypes.guess_type(asset_path.name)
         body = asset_path.read_bytes()
+        if asset_path.name == "index.html":
+            app_config = json.dumps({"clerkPublishableKey": self.server.clerk_publishable_key})
+            body = body.replace(APP_CONFIG_PLACEHOLDER.encode("utf-8"), app_config.encode("utf-8"), 1)
         self.send_response(200)
         self.send_header("Content-Type", content_type or "application/octet-stream")
         self.send_header("Content-Length", str(len(body)))
@@ -746,6 +749,7 @@ def main() -> None:
     parser.add_argument("--port", type=int, default=int(os.getenv("PORT", "8000")), help="TCP port to bind")
     parser.add_argument("--cors-origin", default=os.getenv("CORS_ORIGIN", "*"), help="Allowed CORS origin for frontend requests")
     parser.add_argument("--frontend-dir", default=os.getenv("FRONTEND_DIR", "frontend/dist"), help="Path to static frontend assets")
+    parser.add_argument("--clerk-publishable-key", default=os.getenv("VITE_CLERK_PUBLISHABLE_KEY"), help="Clerk publishable key exposed to the frontend at runtime")
     parser.add_argument("--clerk-secret-key", default=os.getenv("CLERK_SECRET_KEY"), help="Clerk secret key, required to verify Clerk API keys")
     parser.add_argument("--clerk-api-url", default=os.getenv("CLERK_API_URL", "https://api.clerk.com"), help="Clerk Backend API base URL")
     parser.add_argument("--clerk-jwt-key", default=os.getenv("CLERK_JWT_KEY"), help="Clerk JWT public key in PEM format")
@@ -780,6 +784,7 @@ def main() -> None:
         token_ttl_seconds=args.cli_auth_token_ttl,
     )
     server.clerk_verifier = build_clerk_verifier(args, sync_token_manager=server.cli_auth_manager)
+    server.clerk_publishable_key = args.clerk_publishable_key
     server.cors_origin = args.cors_origin
     server.frontend_dir = resolve_frontend_dir(Path(args.frontend_dir))
 

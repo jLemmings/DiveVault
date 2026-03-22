@@ -4,10 +4,10 @@ import { clerkPlugin } from "@clerk/vue";
 import App from "./app.js";
 import "./styles.css";
 
-const publishableKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
+const publishableKey = window.__APP_CONFIG__?.clerkPublishableKey;
 
 if (!publishableKey) {
-  throw new Error("Add VITE_CLERK_PUBLISHABLE_KEY to the frontend environment before starting the app.");
+  throw new Error("Add VITE_CLERK_PUBLISHABLE_KEY to the backend environment before starting the app.");
 }
 
 const app = createApp(App);
