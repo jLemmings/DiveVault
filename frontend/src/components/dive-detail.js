@@ -1,4 +1,4 @@
-import { depthChartPath, numberOrZero, depthSeries, axisTicks, pressureRange, pressureSeries, profileTimeLabels, checkpointCards, diveNarrative, detailEquipmentTags, pressureRangeLabel, sacRate, oxygenToxicityPercent, diveModeLabel, diveTitle, formatDate, formatTime, formatDateTime, formatDepth, formatDepthNumber, formatTemperature, durationShort, gasMixLabel, primaryGasMix, primaryTank, tankLabel, surfaceTemperature, decoStatusLabel, shortFingerprint, formatDataSize, depthParts, durationParts, temperatureParts } from "../core.js";
+import { depthChartPath, pressureChartPath, numberOrZero, depthSeries, axisTicks, pressureRange, pressureSeries, profileTimeLabels, checkpointCards, diveNarrative, detailEquipmentTags, pressureRangeLabel, sacRate, oxygenToxicityPercent, diveModeLabel, diveTitle, formatDate, formatTime, formatDateTime, formatDepth, formatDepthNumber, formatTemperature, durationShort, gasMixLabel, primaryGasMix, primaryTank, tankLabel, surfaceTemperature, decoStatusLabel, shortFingerprint, formatDataSize, depthParts, durationParts, temperatureParts } from "../core.js";
 
 export default {
   name: "DiveDetailView",
