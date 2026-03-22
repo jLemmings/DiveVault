@@ -16,9 +16,14 @@ import logging
 import mimetypes
 import os
 import re
+import secrets
+import threading
+import time
 from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from urllib import error as urlerror
+from urllib import request as urlrequest
 from urllib.parse import parse_qs, urlparse
 
 import jwt
@@ -55,31 +60,65 @@ def normalize_pem_env(value: str | None) -> str | None:
     return value.strip().replace("\\n", "\n")
 
 
+def normalize_bearer_token(value: str | None) -> str | None:
+    if not value:
+        return None
+    normalized = value.strip()
+    if len(normalized) >= 2 and normalized[0] == normalized[-1] and normalized[0] in {'"', "'"}:
+        normalized = normalized[1:-1].strip()
+    if normalized.lower().startswith("bearer "):
+        normalized = normalized.split(" ", 1)[1].strip()
+    return normalized or None
+
+
 class ClerkTokenVerifier:
     def __init__(
         self,
         *,
+        secret_key: str | None,
         jwt_key: str | None,
         jwks_url: str | None,
+        api_url: str | None,
         issuer: str | None,
         audience: str | None,
         authorized_parties: set[str],
+        required_api_key_scopes: set[str],
+        sync_token_manager=None,
     ) -> None:
+        self.secret_key = secret_key.strip() if secret_key else None
         self.jwt_key = normalize_pem_env(jwt_key)
         self.jwks_url = jwks_url.strip() if jwks_url else None
+        self.api_url = (api_url or "https://api.clerk.com").rstrip("/")
         self.issuer = issuer.rstrip("/") if issuer else None
         self.audience = audience.strip() if audience else None
         self.authorized_parties = authorized_parties
+        self.required_api_key_scopes = required_api_key_scopes
+        self.sync_token_manager = sync_token_manager
         self.jwks_client = PyJWKClient(self.jwks_url) if self.jwks_url and not self.jwt_key else None
 
     @property
     def configured(self) -> bool:
-        return bool(self.jwt_key or self.jwks_client)
+        return bool(self.secret_key or self.jwt_key or self.jwks_client)
 
     def verify_request(self, headers) -> dict:
-        token = self._extract_token(headers)
+        token = normalize_bearer_token(self._extract_token(headers))
         if not token:
-            raise ClerkAuthError(401, "Missing Clerk session token")
+            raise ClerkAuthError(401, "Missing Clerk bearer token")
+
+        if token.startswith("dvsync_"):
+            return self._verify_sync_token(token)
+        if token.startswith("ak_"):
+            return self._verify_api_key(token)
+        if token.startswith("sk_"):
+            raise ClerkAuthError(401, "Received CLERK_SECRET_KEY instead of a Clerk API key secret. Use a user or organization API key that starts with ak_.")
+        if token.startswith("pk_"):
+            raise ClerkAuthError(401, "Received Clerk publishable key instead of an API credential. Use a Clerk API key secret that starts with ak_.")
+
+        return self._verify_session_token(token)
+
+    def _verify_session_token(self, token: str) -> dict:
+        if not self.jwt_key and not self.jwks_client:
+            raise ClerkAuthError(503, "Clerk session token verification is not configured on the backend")
 
         signing_key = self.jwt_key
         if not signing_key and self.jwks_client:
@@ -113,7 +152,55 @@ class ClerkTokenVerifier:
             if authorized_party not in self.authorized_parties:
                 raise ClerkAuthError(401, "Clerk session token origin is not allowed")
 
+        claims.setdefault("token_type", "session_token")
         return claims
+
+    def _verify_sync_token(self, token: str) -> dict:
+        if self.sync_token_manager is None:
+            raise ClerkAuthError(503, "Desktop sync login is not configured on the backend")
+
+        claims = self.sync_token_manager.verify_token(token)
+        if claims is None:
+            raise ClerkAuthError(401, "Desktop sync token is invalid or expired")
+        return claims
+
+    def _verify_api_key(self, token: str) -> dict:
+        if not self.secret_key:
+            raise ClerkAuthError(503, "Clerk API key verification requires CLERK_SECRET_KEY on the backend")
+
+        req = urlrequest.Request(
+            f"{self.api_url}/v1/api_keys/verify",
+            data=json.dumps({"secret": token}).encode("utf-8"),
+            headers={
+                "Authorization": f"Bearer {self.secret_key}",
+                "Content-Type": "application/json",
+                "Accept": "application/json",
+            },
+            method="POST",
+        )
+
+        try:
+            with urlrequest.urlopen(req, timeout=15) as response:
+                payload = json.loads(response.read().decode("utf-8"))
+        except urlerror.HTTPError as exc:
+            details = exc.read().decode("utf-8", errors="replace")
+            if exc.code == 403 and ("Cloudflare" in details or "Error 1010" in details or "Access denied" in details):
+                raise ClerkAuthError(
+                    503,
+                    "Clerk API key verification is blocked by Cloudflare from this network. The backend cannot validate API keys from the current IP.",
+                ) from exc
+            if exc.code >= 500:
+                raise ClerkAuthError(503, f"Clerk API key verification failed: {details}") from exc
+            raise ClerkAuthError(401, "Invalid Clerk API key") from exc
+        except (urlerror.URLError, TimeoutError, json.JSONDecodeError) as exc:
+            raise ClerkAuthError(503, f"Unable to verify Clerk API key: {exc}") from exc
+
+        api_key_scopes = set(payload.get("scopes") or [])
+        if self.required_api_key_scopes and not self.required_api_key_scopes.issubset(api_key_scopes):
+            raise ClerkAuthError(403, "Clerk API key is missing required scopes")
+
+        payload.setdefault("token_type", "api_key")
+        return payload
 
     @staticmethod
     def _extract_token(headers) -> str | None:
@@ -137,22 +224,110 @@ def parse_csv_env(value: str | None) -> set[str]:
     return {item.strip() for item in value.split(",") if item.strip()}
 
 
-def build_clerk_verifier(args: argparse.Namespace) -> ClerkTokenVerifier | None:
+class CliSyncTokenManager:
+    def __init__(self, *, request_ttl_seconds: int = 600, token_ttl_seconds: int = 1800) -> None:
+        self.request_ttl_seconds = request_ttl_seconds
+        self.token_ttl_seconds = token_ttl_seconds
+        self._pending_codes: dict[str, dict] = {}
+        self._active_tokens: dict[str, dict] = {}
+        self._lock = threading.Lock()
+
+    def _cleanup_locked(self, now: float) -> None:
+        expired_codes = [code for code, entry in self._pending_codes.items() if entry["expires_at"] <= now]
+        for code in expired_codes:
+            self._pending_codes.pop(code, None)
+
+        expired_tokens = [token for token, claims in self._active_tokens.items() if claims["expires_at"] <= now]
+        for token in expired_tokens:
+            self._active_tokens.pop(token, None)
+
+    def create_request(self) -> dict:
+        now = time.time()
+        code = secrets.token_urlsafe(24)
+        entry = {
+            "code": code,
+            "status": "pending",
+            "created_at": int(now),
+            "expires_at": int(now + self.request_ttl_seconds),
+            "token": None,
+            "token_expires_at": None,
+            "user_id": None,
+            "email": None,
+        }
+        with self._lock:
+            self._cleanup_locked(now)
+            self._pending_codes[code] = entry
+        return dict(entry)
+
+    def approve_request(self, code: str, claims: dict) -> dict | None:
+        now = time.time()
+        with self._lock:
+            self._cleanup_locked(now)
+            entry = self._pending_codes.get(code)
+            if not entry or entry["expires_at"] <= now:
+                return None
+
+            token = f"dvsync_{secrets.token_urlsafe(32)}"
+            token_expires_at = int(now + self.token_ttl_seconds)
+            self._active_tokens[token] = {
+                "token_type": "cli_sync",
+                "sub": claims.get("sub"),
+                "email": claims.get("email"),
+                "sid": claims.get("sid"),
+                "issued_at": int(now),
+                "expires_at": token_expires_at,
+            }
+            entry.update(
+                {
+                    "status": "approved",
+                    "approved_at": int(now),
+                    "token": token,
+                    "token_expires_at": token_expires_at,
+                    "user_id": claims.get("sub"),
+                    "email": claims.get("email"),
+                }
+            )
+            return dict(entry)
+
+    def get_request_status(self, code: str) -> dict | None:
+        now = time.time()
+        with self._lock:
+            self._cleanup_locked(now)
+            entry = self._pending_codes.get(code)
+            if entry is None:
+                return None
+            return dict(entry)
+
+    def verify_token(self, token: str) -> dict | None:
+        now = time.time()
+        with self._lock:
+            self._cleanup_locked(now)
+            claims = self._active_tokens.get(token)
+            if claims is None:
+                return None
+            return dict(claims)
+
+
+def build_clerk_verifier(args: argparse.Namespace, *, sync_token_manager: CliSyncTokenManager | None) -> ClerkTokenVerifier | None:
     frontend_api_url = args.clerk_frontend_api_url.rstrip("/") if args.clerk_frontend_api_url else None
     jwks_url = args.clerk_jwks_url or (f"{frontend_api_url}/.well-known/jwks.json" if frontend_api_url else None)
     issuer = args.clerk_issuer or frontend_api_url
     verifier = ClerkTokenVerifier(
+        secret_key=args.clerk_secret_key,
         jwt_key=args.clerk_jwt_key,
         jwks_url=jwks_url,
+        api_url=args.clerk_api_url,
         issuer=issuer,
         audience=args.clerk_audience,
         authorized_parties=parse_csv_env(args.clerk_authorized_parties),
+        required_api_key_scopes=parse_csv_env(args.clerk_api_key_scopes),
+        sync_token_manager=sync_token_manager,
     )
     if verifier.configured:
         return verifier
 
     LOGGER.warning(
-        "Clerk authentication is not configured. Set CLERK_JWT_KEY or CLERK_JWKS_URL (or CLERK_FRONTEND_API_URL) to protect API routes."
+        "Clerk authentication is not configured. Set CLERK_SECRET_KEY for API keys and CLERK_JWT_KEY or CLERK_JWKS_URL (or CLERK_FRONTEND_API_URL) for session tokens."
     )
     return None
 
@@ -244,10 +419,25 @@ class DiveBackendHandler(BaseHTTPRequestHandler):
             self._send_json(
                 200,
                 {
+                    "token_type": claims.get("token_type", "session_token"),
                     "session_id": claims.get("sid"),
                     "user_id": claims.get("sub"),
+                    "subject": claims.get("subject"),
+                    "scopes": claims.get("scopes"),
                 },
             )
+            return
+
+        if path == "/api/cli-auth/request":
+            code = self._single_query_arg(query, "code")
+            if not code:
+                self._send_json(400, {"error": "Missing code query parameter"})
+                return
+            payload = self.server.cli_auth_manager.get_request_status(code)
+            if payload is None:
+                self._send_json(404, {"error": "CLI auth request not found or expired"})
+                return
+            self._send_json(200, payload)
             return
 
         if path == "/api/dives":
@@ -319,6 +509,36 @@ class DiveBackendHandler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:
         LOGGER.info("POST %s", self.path)
+        if self.path == "/api/cli-auth/request":
+            payload = self.server.cli_auth_manager.create_request()
+            self._send_json(201, payload)
+            return
+
+        if self.path == "/api/cli-auth/approve":
+            claims = self._require_browser_session_auth()
+            if claims is None:
+                return
+            payload = self._read_json_body()
+            if payload is None:
+                return
+            code = (payload.get("code") or "").strip()
+            if not code:
+                self._send_json(400, {"error": "Missing CLI auth code"})
+                return
+            approval = self.server.cli_auth_manager.approve_request(code, claims)
+            if approval is None:
+                self._send_json(404, {"error": "CLI auth request not found or expired"})
+                return
+            self._send_json(
+                200,
+                {
+                    "status": approval["status"],
+                    "email": approval.get("email"),
+                    "token_expires_at": approval.get("token_expires_at"),
+                },
+            )
+            return
+
         if self.path != "/api/dives":
             self._send_json(404, {"error": "Not found"})
             return
@@ -448,6 +668,15 @@ class DiveBackendHandler(BaseHTTPRequestHandler):
             self._send_json(exc.status, {"error": exc.message})
             return None
 
+    def _require_browser_session_auth(self) -> dict | None:
+        claims = self._require_auth()
+        if claims is None:
+            return None
+        if claims.get("token_type") != "session_token":
+            self._send_json(403, {"error": "Desktop sync approval requires an authenticated browser session"})
+            return None
+        return claims
+
     def _read_json_body(self) -> dict | None:
         length = int(self.headers.get("Content-Length", "0"))
         body = self.rfile.read(length) if length > 0 else b""
@@ -517,12 +746,17 @@ def main() -> None:
     parser.add_argument("--port", type=int, default=int(os.getenv("PORT", "8000")), help="TCP port to bind")
     parser.add_argument("--cors-origin", default=os.getenv("CORS_ORIGIN", "*"), help="Allowed CORS origin for frontend requests")
     parser.add_argument("--frontend-dir", default=os.getenv("FRONTEND_DIR", "frontend/dist"), help="Path to static frontend assets")
+    parser.add_argument("--clerk-secret-key", default=os.getenv("CLERK_SECRET_KEY"), help="Clerk secret key, required to verify Clerk API keys")
+    parser.add_argument("--clerk-api-url", default=os.getenv("CLERK_API_URL", "https://api.clerk.com"), help="Clerk Backend API base URL")
     parser.add_argument("--clerk-jwt-key", default=os.getenv("CLERK_JWT_KEY"), help="Clerk JWT public key in PEM format")
     parser.add_argument("--clerk-jwks-url", default=os.getenv("CLERK_JWKS_URL"), help="Clerk JWKS URL")
     parser.add_argument("--clerk-frontend-api-url", default=os.getenv("CLERK_FRONTEND_API_URL"), help="Clerk frontend API URL, used to derive the JWKS URL and issuer")
     parser.add_argument("--clerk-issuer", default=os.getenv("CLERK_ISSUER"), help="Expected Clerk token issuer")
     parser.add_argument("--clerk-audience", default=os.getenv("CLERK_AUDIENCE"), help="Expected Clerk token audience")
     parser.add_argument("--clerk-authorized-parties", default=os.getenv("CLERK_AUTHORIZED_PARTIES"), help="Comma-separated allowed values for the Clerk azp claim")
+    parser.add_argument("--clerk-api-key-scopes", default=os.getenv("CLERK_API_KEY_SCOPES"), help="Comma-separated Clerk API key scopes required for backend access")
+    parser.add_argument("--cli-auth-request-ttl", type=int, default=int(os.getenv("CLI_AUTH_REQUEST_TTL", "600")), help="Seconds a desktop login request stays valid")
+    parser.add_argument("--cli-auth-token-ttl", type=int, default=int(os.getenv("CLI_AUTH_TOKEN_TTL", "1800")), help="Seconds an approved desktop sync token stays valid")
     parser.add_argument(
         "--log-level",
         default=os.getenv("LOG_LEVEL", "INFO"),
@@ -541,7 +775,11 @@ def main() -> None:
 
     server = ThreadingHTTPServer((args.host, args.port), DiveBackendHandler)
     server.database_url = args.database_url
-    server.clerk_verifier = build_clerk_verifier(args)
+    server.cli_auth_manager = CliSyncTokenManager(
+        request_ttl_seconds=args.cli_auth_request_ttl,
+        token_ttl_seconds=args.cli_auth_token_ttl,
+    )
+    server.clerk_verifier = build_clerk_verifier(args, sync_token_manager=server.cli_auth_manager)
     server.cors_origin = args.cors_origin
     server.frontend_dir = resolve_frontend_dir(Path(args.frontend_dir))
 

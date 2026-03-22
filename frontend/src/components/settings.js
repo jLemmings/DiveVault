@@ -1,5 +1,20 @@
+import { useAuth } from "@clerk/vue";
+
 export default {
   name: "SettingsView",
+  props: {
+    cliAuthCode: {
+      type: String,
+      default: ""
+    }
+  },
+  setup() {
+    const { getToken } = useAuth();
+
+    return {
+      clerkGetToken: getToken
+    };
+  },
   data() {
     return {
       settingsProfile: {
@@ -18,12 +33,55 @@ export default {
         stopDepth: 5,
         stopMinutes: 3
       },
+      desktopSyncStatus: "",
+      desktopSyncError: "",
+      desktopSyncApproving: false,
       unitCards: [
         { key: "depth", label: "Depth", icon: "waves", options: [{ value: "metric", label: "METRIC (M)" }, { value: "imperial", label: "IMPERIAL (FT)" }] },
         { key: "temperature", label: "Temperature", icon: "thermostat", options: [{ value: "celsius", label: "CELSIUS" }, { value: "fahrenheit", label: "FAHRENHEIT" }] },
         { key: "pressure", label: "Pressure", icon: "tire_repair", options: [{ value: "bar", label: "BAR" }, { value: "psi", label: "PSI" }] }
       ]
     };
+  },
+  computed: {
+    hasCliAuthCode() {
+      return Boolean(this.cliAuthCode);
+    }
+  },
+  methods: {
+    async approveDesktopSync() {
+      if (!this.cliAuthCode) {
+        return;
+      }
+
+      this.desktopSyncApproving = true;
+      this.desktopSyncStatus = "";
+      this.desktopSyncError = "";
+
+      try {
+        const token = await this.clerkGetToken({ skipCache: true });
+        const response = await fetch("/api/cli-auth/approve", {
+          method: "POST",
+          credentials: "include",
+          headers: {
+            "Content-Type": "application/json",
+            ...(token ? { Authorization: `Bearer ${token}` } : {})
+          },
+          body: JSON.stringify({ code: this.cliAuthCode })
+        });
+        const payload = await response.json().catch(() => null);
+        if (!response.ok) {
+          throw new Error(payload?.error || `API returned ${response.status}`);
+        }
+        this.desktopSyncStatus = payload?.email
+          ? `Desktop sync approved for ${payload.email}. Return to the Windows app to continue.`
+          : "Desktop sync approved. Return to the Windows app to continue.";
+      } catch (error) {
+        this.desktopSyncError = error?.message || "Could not approve the desktop sync client.";
+      } finally {
+        this.desktopSyncApproving = false;
+      }
+    }
   },
   template: `
     <section class="space-y-10 text-on-surface">
@@ -108,6 +166,26 @@ export default {
                 <span class="font-label text-[10px] font-bold uppercase tracking-[0.2em] text-primary">Online</span>
               </button>
             </div>
+            <div class="mt-8 border-t border-outline-variant/10 pt-8">
+              <h5 class="mb-3 font-label text-[10px] font-bold uppercase tracking-[0.24em] text-primary">Desktop Sync Login</h5>
+              <p class="text-sm leading-6 text-secondary" v-if="!hasCliAuthCode">Launch the Windows Dive Sync app and click Sign In. It will open this page with a one-time approval request so you can authorize the desktop sync session from your browser.</p>
+              <p class="text-sm leading-6 text-secondary" v-else>The Windows Dive Sync app is requesting access to your account. Approve it once, then return to the desktop app to start importing dives.</p>
+              <button
+                v-if="hasCliAuthCode"
+                @click="approveDesktopSync"
+                :disabled="desktopSyncApproving"
+                class="mt-4 flex w-full items-center justify-between rounded bg-primary px-4 py-4 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-on-primary transition-all hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <span class="flex items-center gap-3">
+                  <span class="material-symbols-outlined text-sm">verified_user</span>
+                  <span>{{ desktopSyncApproving ? 'Approving Desktop Sync' : 'Approve Desktop Sync' }}</span>
+                </span>
+                <span class="material-symbols-outlined text-sm">login</span>
+              </button>
+              <p v-if="desktopSyncStatus" class="mt-3 text-sm text-primary">{{ desktopSyncStatus }}</p>
+              <p v-if="desktopSyncError" class="mt-3 text-sm text-error">{{ desktopSyncError }}</p>
+              <p class="mt-3 text-[10px] uppercase tracking-[0.14em] text-secondary/60">Desktop sync approvals issue short-lived backend tokens. They are not Clerk API keys and do not depend on Clerk's API key feature.</p>
+            </div>
             <div class="mt-12 border-t border-outline-variant/10 pt-8">
               <h5 class="mb-4 font-label text-[10px] font-bold uppercase tracking-[0.24em] text-error">Danger Zone</h5>
               <div class="flex flex-col gap-3">
@@ -131,4 +209,3 @@ export default {
     </section>
   `
 };
-

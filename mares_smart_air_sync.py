@@ -9,11 +9,15 @@ but you should still expect to do a little hardware-specific debugging the first
 Usage:
     python mares_smart_air_sync.py --port /dev/ttyUSB0 --database-url postgresql://dive:dive@localhost:5432/dive
     python mares_smart_air_sync.py --port COM3 --backend-url http://localhost:8000
+    python mares_smart_air_sync.py --port COM3 --backend-url http://localhost:8000 --backend-auth-token <desktop_sync_token_or_session_token>
+    python mares_smart_air_sync.py --gui
 
 Notes:
 - This example uses SERIAL transport (clip/cable). The Mares Smart Air also supports BLE,
   but serial is simpler for a minimal first version.
 - It stores a per-device fingerprint so subsequent runs only import newer dives.
+- The Windows GUI can open your browser, let you sign in to the backend, and receive a short-lived
+  desktop sync token without using Clerk API keys.
 """
 
 from __future__ import annotations
@@ -42,10 +46,32 @@ import hashlib
 import json
 import sys
 import os
+import threading
+import time
+import webbrowser
 from datetime import datetime, timezone
+from queue import Empty, Queue
 from urllib import error, parse, request
 
+try:
+    import tkinter as tk
+    from tkinter import messagebox, ttk
+except ImportError:  # pragma: no cover - tkinter availability depends on local Python install
+    tk = None
+    messagebox = None
+    ttk = None
+
+try:
+    from serial.tools import list_ports
+except ImportError:  # pragma: no cover - optional dependency
+    list_ports = None
+
+from dotenv import load_dotenv
+
 from postgres_store import get_device_state, insert_dive_record, open_db, save_device_state
+
+
+load_dotenv()
 
 
 # ----------------------------
@@ -376,8 +402,9 @@ class PostgresDiveStore:
 
 
 class BackendDiveStore:
-    def __init__(self, base_url: str) -> None:
+    def __init__(self, base_url: str, auth_token: str | None = None) -> None:
         self.base_url = base_url.rstrip("/")
+        self.auth_token = normalize_bearer_token(auth_token)
 
     def _request_json(self, method: str, path: str, payload: dict | None = None, query: dict | None = None) -> dict:
         url = f"{self.base_url}{path}"
@@ -385,7 +412,12 @@ class BackendDiveStore:
             url = f"{url}?{parse.urlencode(query)}"
 
         data = None
-        headers = {"Accept": "application/json"}
+        headers = {
+            "Accept": "application/json",
+            "User-Agent": "mares-smart-air-sync/1.0",
+        }
+        if self.auth_token:
+            headers["Authorization"] = f"Bearer {self.auth_token}"
         if payload is not None:
             data = json.dumps(payload).encode("utf-8")
             headers["Content-Type"] = "application/json"
@@ -396,6 +428,12 @@ class BackendDiveStore:
                 body = response.read()
         except error.HTTPError as exc:
             details = exc.read().decode("utf-8", errors="replace")
+            if exc.code in {401, 403}:
+                raise RuntimeError(
+                    f"Backend authentication failed: {method} {url} -> {exc.code} {details}. "
+                    "Provide a valid desktop sync token or Clerk session token with --backend-auth-token, "
+                    "--backend-auth-token-file, or BACKEND_AUTH_TOKEN."
+                ) from exc
             raise RuntimeError(f"Backend request failed: {method} {url} -> {exc.code} {details}") from exc
         except error.URLError as exc:
             raise RuntimeError(f"Could not reach backend at {self.base_url}: {exc.reason}") from exc
@@ -430,6 +468,88 @@ class BackendDiveStore:
 
     def close(self) -> None:
         return None
+
+
+def load_auth_token(token: str | None = None, token_file: str | None = None) -> str | None:
+    if token:
+        return normalize_bearer_token(token)
+    if token_file:
+        with open(token_file, "r", encoding="utf-8") as handle:
+            return normalize_bearer_token(handle.read())
+    env_token = os.getenv("BACKEND_AUTH_TOKEN") or os.getenv("CLERK_SESSION_TOKEN")
+    return normalize_bearer_token(env_token)
+
+
+def normalize_bearer_token(token: str | None) -> str | None:
+    if not token:
+        return None
+    normalized = token.strip()
+    if len(normalized) >= 2 and normalized[0] == normalized[-1] and normalized[0] in {'"', "'"}:
+        normalized = normalized[1:-1].strip()
+    if normalized.lower().startswith("bearer "):
+        normalized = normalized.split(" ", 1)[1].strip()
+    return normalized or None
+
+
+def request_backend_json(
+    base_url: str,
+    method: str,
+    path: str,
+    *,
+    payload: dict | None = None,
+    query: dict | None = None,
+    auth_token: str | None = None,
+    timeout: int = 30,
+) -> dict:
+    url = f"{base_url.rstrip('/')}{path}"
+    if query:
+        url = f"{url}?{parse.urlencode(query)}"
+
+    data = None
+    headers = {
+        "Accept": "application/json",
+        "User-Agent": "mares-smart-air-sync/1.0",
+    }
+    token = normalize_bearer_token(auth_token)
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    if payload is not None:
+        data = json.dumps(payload).encode("utf-8")
+        headers["Content-Type"] = "application/json"
+
+    req = request.Request(url, data=data, method=method, headers=headers)
+    try:
+        with request.urlopen(req, timeout=timeout) as response:
+            body = response.read()
+    except error.HTTPError as exc:
+        details = exc.read().decode("utf-8", errors="replace")
+        raise RuntimeError(f"Backend request failed: {method} {url} -> {exc.code} {details}") from exc
+    except error.URLError as exc:
+        raise RuntimeError(f"Could not reach backend at {base_url}: {exc.reason}") from exc
+
+    if not body:
+        return {}
+    return json.loads(body.decode("utf-8"))
+
+
+def create_cli_auth_request(base_url: str) -> dict:
+    return request_backend_json(base_url, "POST", "/api/cli-auth/request")
+
+
+def poll_cli_auth_request(base_url: str, code: str) -> dict:
+    return request_backend_json(base_url, "GET", "/api/cli-auth/request", query={"code": code})
+
+
+def build_cli_auth_url(base_url: str, code: str) -> str:
+    return f"{base_url.rstrip('/')}/#settings/cli-auth/{parse.quote(code)}"
+
+
+def list_serial_ports() -> list[str]:
+    if list_ports is not None:
+        return [port.device for port in list_ports.comports()]
+    if os.name == "nt":
+        return [f"COM{index}" for index in range(1, 17)]
+    return []
 
 
 # ----------------------------
@@ -784,9 +904,10 @@ def sync_dives(
     product: str = "Smart Air",
     database_url: str | None = None,
     backend_url: str | None = None,
+    backend_auth_token: str | None = None,
 ) -> None:
     if backend_url:
-        store = BackendDiveStore(backend_url)
+        store = BackendDiveStore(backend_url, auth_token=backend_auth_token)
     elif database_url:
         store = PostgresDiveStore(database_url)
     else:
@@ -841,17 +962,206 @@ def sync_dives(
         store.close()
 
 
+class SyncDesktopApp:
+    def __init__(self, root: tk.Tk, defaults: dict[str, str]) -> None:
+        self.root = root
+        self.root.title("Dive Sync")
+        self.root.geometry("760x560")
+        self.root.minsize(720, 520)
+
+        self.events: Queue[tuple[str, object]] = Queue()
+        self.auth_token: str | None = load_auth_token()
+        self.auth_token_expires_at: int | None = None
+        self.current_code: str | None = None
+
+        self.backend_url_var = tk.StringVar(value=defaults.get("backend_url") or "http://localhost:8000")
+        self.vendor_var = tk.StringVar(value=defaults.get("vendor") or "Mares")
+        self.product_var = tk.StringVar(value=defaults.get("product") or "Smart Air")
+        self.port_var = tk.StringVar(value=defaults.get("port") or "")
+        self.status_var = tk.StringVar(value="Ready. Sign in to the backend to start syncing.")
+        self.auth_var = tk.StringVar(value="Not signed in")
+
+        self._build_ui()
+        self.refresh_ports()
+        self.root.after(150, self._pump_events)
+
+    def _build_ui(self) -> None:
+        frame = ttk.Frame(self.root, padding=18)
+        frame.pack(fill="both", expand=True)
+        frame.columnconfigure(1, weight=1)
+
+        ttk.Label(frame, text="Dive Sync", font=("Segoe UI", 18, "bold")).grid(row=0, column=0, columnspan=3, sticky="w")
+        ttk.Label(frame, text="Windows desktop login for the DiveVault backend.").grid(row=1, column=0, columnspan=3, sticky="w", pady=(0, 14))
+
+        ttk.Label(frame, text="Backend URL").grid(row=2, column=0, sticky="w")
+        ttk.Entry(frame, textvariable=self.backend_url_var).grid(row=2, column=1, columnspan=2, sticky="ew", pady=4)
+
+        ttk.Label(frame, text="Serial Port").grid(row=3, column=0, sticky="w")
+        self.port_combo = ttk.Combobox(frame, textvariable=self.port_var, values=[], state="normal")
+        self.port_combo.grid(row=3, column=1, sticky="ew", pady=4)
+        ttk.Button(frame, text="Refresh Ports", command=self.refresh_ports).grid(row=3, column=2, sticky="ew", padx=(10, 0))
+
+        ttk.Label(frame, text="Vendor").grid(row=4, column=0, sticky="w")
+        ttk.Entry(frame, textvariable=self.vendor_var).grid(row=4, column=1, columnspan=2, sticky="ew", pady=4)
+
+        ttk.Label(frame, text="Product").grid(row=5, column=0, sticky="w")
+        ttk.Entry(frame, textvariable=self.product_var).grid(row=5, column=1, columnspan=2, sticky="ew", pady=4)
+
+        status_panel = ttk.LabelFrame(frame, text="Authentication", padding=12)
+        status_panel.grid(row=6, column=0, columnspan=3, sticky="nsew", pady=(14, 10))
+        status_panel.columnconfigure(0, weight=1)
+        ttk.Label(status_panel, textvariable=self.auth_var, wraplength=640).grid(row=0, column=0, sticky="w")
+        ttk.Button(status_panel, text="Sign In To Backend", command=self.start_login).grid(row=1, column=0, sticky="w", pady=(10, 0))
+
+        actions = ttk.Frame(frame)
+        actions.grid(row=7, column=0, columnspan=3, sticky="ew", pady=(4, 10))
+        actions.columnconfigure(0, weight=1)
+        actions.columnconfigure(1, weight=1)
+        ttk.Button(actions, text="Start Sync", command=self.start_sync).grid(row=0, column=0, sticky="ew", padx=(0, 6))
+        ttk.Button(actions, text="Close", command=self.root.destroy).grid(row=0, column=1, sticky="ew", padx=(6, 0))
+
+        log_panel = ttk.LabelFrame(frame, text="Status", padding=12)
+        log_panel.grid(row=8, column=0, columnspan=3, sticky="nsew")
+        log_panel.columnconfigure(0, weight=1)
+        log_panel.rowconfigure(1, weight=1)
+        ttk.Label(log_panel, textvariable=self.status_var, wraplength=640).grid(row=0, column=0, sticky="w", pady=(0, 8))
+        self.log_text = tk.Text(log_panel, height=16, wrap="word", state="disabled")
+        self.log_text.grid(row=1, column=0, sticky="nsew")
+
+        frame.rowconfigure(8, weight=1)
+
+    def log(self, message: str) -> None:
+        self.status_var.set(message)
+        self.log_text.configure(state="normal")
+        self.log_text.insert("end", f"{message}\n")
+        self.log_text.see("end")
+        self.log_text.configure(state="disabled")
+
+    def refresh_ports(self) -> None:
+        ports = list_serial_ports()
+        self.port_combo["values"] = ports
+        if ports and not self.port_var.get():
+            self.port_var.set(ports[0])
+        self.log("Serial ports refreshed.")
+
+    def start_login(self) -> None:
+        backend_url = self.backend_url_var.get().strip()
+        if not backend_url:
+            messagebox.showerror("Missing backend URL", "Enter the backend URL before signing in.")
+            return
+
+        self.log("Creating desktop login request...")
+        thread = threading.Thread(target=self._login_worker, daemon=True)
+        thread.start()
+
+    def _login_worker(self) -> None:
+        try:
+            backend_url = self.backend_url_var.get().strip()
+            auth_request = create_cli_auth_request(backend_url)
+            code = auth_request["code"]
+            approval_url = build_cli_auth_url(backend_url, code)
+            self.events.put(("login_started", {"code": code, "approval_url": approval_url}))
+
+            while True:
+                time.sleep(2)
+                status = poll_cli_auth_request(backend_url, code)
+                if status.get("status") == "approved" and status.get("token"):
+                    self.events.put(("login_approved", status))
+                    return
+        except Exception as exc:
+            self.events.put(("error", f"Desktop login failed: {exc}"))
+
+    def start_sync(self) -> None:
+        port = self.port_var.get().strip()
+        if not port:
+            messagebox.showerror("Missing serial port", "Choose or enter the Mares Smart Air serial port.")
+            return
+        if not self.auth_token:
+            messagebox.showerror("Not signed in", "Sign in to the backend first.")
+            return
+
+        self.log("Starting sync...")
+        thread = threading.Thread(target=self._sync_worker, daemon=True)
+        thread.start()
+
+    def _sync_worker(self) -> None:
+        try:
+            sync_dives(
+                port=self.port_var.get().strip(),
+                vendor=self.vendor_var.get().strip() or "Mares",
+                product=self.product_var.get().strip() or "Smart Air",
+                backend_url=self.backend_url_var.get().strip(),
+                backend_auth_token=self.auth_token,
+            )
+            self.events.put(("sync_complete", "Sync completed successfully."))
+        except Exception as exc:
+            self.events.put(("error", f"Sync failed: {exc}"))
+
+    def _pump_events(self) -> None:
+        try:
+            while True:
+                event, payload = self.events.get_nowait()
+                if event == "login_started":
+                    self.current_code = payload["code"]
+                    self.auth_var.set("Browser approval pending. Finish login in the opened browser tab.")
+                    self.log(f"Opened browser for backend login approval: {payload['approval_url']}")
+                    webbrowser.open(payload["approval_url"])
+                elif event == "login_approved":
+                    self.auth_token = payload.get("token")
+                    self.auth_token_expires_at = payload.get("token_expires_at")
+                    email = payload.get("email") or "signed-in user"
+                    self.auth_var.set(f"Signed in as {email}. Desktop sync token ready.")
+                    self.log("Desktop login approved. You can start syncing now.")
+                elif event == "sync_complete":
+                    self.log(str(payload))
+                elif event == "error":
+                    self.log(str(payload))
+                    messagebox.showerror("Dive Sync", str(payload))
+        except Empty:
+            pass
+        finally:
+            self.root.after(150, self._pump_events)
+
+
+def run_gui(defaults: dict[str, str]) -> None:
+    if tk is None or ttk is None or messagebox is None:
+        raise RuntimeError("Tkinter is not available in this Python installation. Install tkinter or run the CLI mode instead.")
+
+    root = tk.Tk()
+    app = SyncDesktopApp(root, defaults)
+    app.log("Desktop UI ready.")
+    root.mainloop()
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--port", required=True, help="Serial port, e.g. /dev/ttyUSB0 or /dev/tty.SLAB_USBtoUART")
-    parser.add_argument("--database-url", help="PostgreSQL connection string")
-    parser.add_argument("--backend-url", help="Backend base URL, e.g. http://localhost:8000")
+    parser.add_argument("--gui", action="store_true", help="Launch the Windows desktop UI")
+    parser.add_argument("--port", help="Serial port, e.g. /dev/ttyUSB0 or COM3")
+    parser.add_argument("--database-url", default=os.getenv("DATABASE_URL"), help="PostgreSQL connection string")
+    parser.add_argument("--backend-url", default=os.getenv("BACKEND_URL"), help="Backend base URL, e.g. http://localhost:8000")
+    parser.add_argument("--backend-auth-token", help="Desktop sync token or Clerk session token for authenticated backend API access")
+    parser.add_argument("--backend-auth-token-file", help="Path to a file containing the backend desktop sync token or session token")
     parser.add_argument("--vendor", default="Mares")
     parser.add_argument("--product", default="Smart Air")
     args = parser.parse_args()
 
+    if args.gui:
+        run_gui(
+            {
+                "port": args.port or "",
+                "backend_url": args.backend_url or "http://localhost:8000",
+                "vendor": args.vendor,
+                "product": args.product,
+            }
+        )
+        return
+
+    if not args.port:
+        parser.error("Provide --port or run with --gui.")
     if not args.database_url and not args.backend_url:
         parser.error("Provide either --database-url or --backend-url.")
+
+    backend_auth_token = load_auth_token(args.backend_auth_token, args.backend_auth_token_file)
 
     sync_dives(
         port=args.port,
@@ -859,6 +1169,7 @@ def main() -> None:
         product=args.product,
         database_url=args.database_url,
         backend_url=args.backend_url,
+        backend_auth_token=backend_auth_token,
     )
 
 

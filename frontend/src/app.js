@@ -50,6 +50,7 @@ export default {
       error: "",
       backendHealthy: false,
       lastAuthenticatedSessionId: null,
+      cliAuthCode: "",
       filledIconStyle,
       navItems: [
         { id: "dashboard", label: "Dashboard", mobileLabel: "Dashboard", icon: "dashboard", mobileIcon: "dashboard", eyebrow: "Dive Overview", title: "Logbook" },
@@ -193,6 +194,7 @@ export default {
       this.activeView = view;
       if (view !== "logs") this.selectedDiveId = null;
       if (view !== "imports") this.selectedImportId = null;
+      if (view !== "settings") this.cliAuthCode = "";
       this.importError = "";
       this.importStatusMessage = "";
       window.location.hash = view;
@@ -327,16 +329,17 @@ export default {
     syncViewFromHash() {
       if (!this.isAuthenticated) return;
       const hash = window.location.hash.replace("#", "");
-      const [view, diveId] = hash.split("/");
+      const [view, segment, value] = hash.split("/");
+      this.cliAuthCode = view === "settings" && segment === "cli-auth" ? decodeURIComponent(value || "") : "";
       if (view === "imports") {
         this.activeView = "imports";
         this.selectedDiveId = null;
-        this.selectedImportId = diveId || this.selectedImportId;
+        this.selectedImportId = segment || this.selectedImportId;
         return;
       }
       if (this.navItems.some((item) => item.id === view)) {
         this.activeView = view;
-        this.selectedDiveId = view === "logs" && diveId ? diveId : null;
+        this.selectedDiveId = view === "logs" && segment ? segment : null;
         if (view !== "imports") this.selectedImportId = null;
       }
     },
@@ -440,7 +443,7 @@ export default {
           <dive-import-view v-else-if="activeView === 'imports'" :dives="dives" :import-drafts="importDrafts" :selected-import-id="selectedImportId" :select-import-dive="selectImportDive" :update-import-draft="updateImportDraft" :save-import-draft="saveImportDraft" :saving-import-id="savingImportId" :import-error="importError" :import-status-message="importStatusMessage" :open-dive="openDive" :set-view="setView" :fetch-dives="fetchDives"></dive-import-view>
           <dive-detail-view v-else-if="activeView === 'logs' && selectedDive" :dive="selectedDive" :close-detail="closeDiveDetail"></dive-detail-view>
           <equipment-view v-else-if="activeView === 'equipment'" :search-text="searchText"></equipment-view>
-          <settings-view v-else-if="activeView === 'settings'"></settings-view>
+          <settings-view v-else-if="activeView === 'settings'" :cli-auth-code="cliAuthCode"></settings-view>
         </div>
       </main>
       <nav class="fixed bottom-0 left-0 right-0 z-40 flex items-center justify-around border-t border-primary/10 bg-surface-container-low/80 px-4 pb-6 pt-3 backdrop-blur-xl md:hidden">
