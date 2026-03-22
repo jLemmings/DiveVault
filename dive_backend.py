@@ -710,9 +710,6 @@ class DiveBackendHandler(BaseHTTPRequestHandler):
 
         content_type, _ = mimetypes.guess_type(asset_path.name)
         body = asset_path.read_bytes()
-        if asset_path.name == "index.html":
-            app_config = json.dumps({"clerkPublishableKey": self.server.clerk_publishable_key})
-            body = body.replace(APP_CONFIG_PLACEHOLDER.encode("utf-8"), app_config.encode("utf-8"), 1)
         self.send_response(200)
         self.send_header("Content-Type", content_type or "application/octet-stream")
         self.send_header("Content-Length", str(len(body)))
