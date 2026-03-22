@@ -1,4 +1,7 @@
-const LogsView = {
+import { diveModeLabel, formatDate, numberOrZero, parseDate, formatTime, formatDepth, formatTemperature, durationShort, surfaceTemperature, diveTitle } from "../core.js";
+
+export default {
+  name: "LogsView",
   props: ["dives", "searchText", "openDive", "openImportQueue", "setSearchText"],
   data() {
     return {

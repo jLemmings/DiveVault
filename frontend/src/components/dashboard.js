@@ -1,4 +1,7 @@
-const DashboardView = {
+import { dayOfMonth, monthShort, formatDate, diveTitle, diveSubtitle, formatDepth, formatDepthNumber, formatDateTime, durationShort, formatTemperature, surfaceTemperature, profileBars, diveModeLabel, pressureUsedLabel, decoStatusLabel, formatAccumulatedDuration, formatBarTotal, filledIconStyle, numberOrZero, oxygenToxicityPercent } from "../core.js";
+
+export default {
+  name: "DashboardView",
   props: ["dives", "stats", "setView", "backendHealthy", "openDive"],
   methods: {
     dayOfMonth,

@@ -1,4 +1,5 @@
-const EquipmentView = {
+export default {
+  name: "EquipmentView",
   props: ["searchText"],
   data() {
     return {

@@ -12,3 +12,5 @@ libdivecomputer.dll
 libusb-1.0.dll
 libhidapi-0.dll
 dctool.exe
+frontend/node_modules
+frontend/dist

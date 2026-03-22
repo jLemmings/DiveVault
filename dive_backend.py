@@ -35,6 +35,23 @@ from postgres_store import (
 LOGGER = logging.getLogger("dive_backend")
 
 
+def resolve_frontend_dir(frontend_dir: Path) -> Path:
+    resolved = frontend_dir.resolve()
+    if resolved.exists():
+        return resolved
+
+    legacy_dir = resolved.parent if resolved.name == "dist" else None
+    if legacy_dir and (legacy_dir / "index.html").is_file():
+        LOGGER.warning(
+            "Configured frontend_dir=%s is missing; falling back to legacy frontend assets at %s",
+            resolved,
+            legacy_dir,
+        )
+        return legacy_dir
+
+    return resolved
+
+
 def frontend_asset_path(frontend_dir: Path, request_path: str) -> Path:
     relative = request_path.lstrip("/") or "index.html"
     candidate = (frontend_dir / relative).resolve()
@@ -318,7 +335,7 @@ def main() -> None:
     parser.add_argument("--host", default=os.getenv("HOST", "127.0.0.1"), help="Host interface to bind")
     parser.add_argument("--port", type=int, default=int(os.getenv("PORT", "8000")), help="TCP port to bind")
     parser.add_argument("--cors-origin", default=os.getenv("CORS_ORIGIN", "*"), help="Allowed CORS origin for frontend requests")
-    parser.add_argument("--frontend-dir", default=os.getenv("FRONTEND_DIR", "frontend"), help="Path to static frontend assets")
+    parser.add_argument("--frontend-dir", default=os.getenv("FRONTEND_DIR", "frontend/dist"), help="Path to static frontend assets")
     parser.add_argument(
         "--log-level",
         default=os.getenv("LOG_LEVEL", "INFO"),
@@ -338,7 +355,7 @@ def main() -> None:
     server = ThreadingHTTPServer((args.host, args.port), DiveBackendHandler)
     server.database_url = args.database_url
     server.cors_origin = args.cors_origin
-    server.frontend_dir = Path(args.frontend_dir).resolve()
+    server.frontend_dir = resolve_frontend_dir(Path(args.frontend_dir))
 
     LOGGER.info(
         "Starting backend host=%s port=%d database_url=%s cors_origin=%s frontend_dir=%s",

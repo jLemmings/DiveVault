@@ -1,7 +1,16 @@
-const { createApp } = Vue;
+import { filledIconStyle, importDraftSeed, isImportComplete, effectiveImportDraft, missingImportFields, paddedDiveIndex, numberOrZero, pressureRange } from "./core.js";
+import DashboardView from "./components/dashboard.js";
+import DiveDetailView from "./components/dive-detail.js";
+import DiveImportView from "./components/imports.js";
+import EquipmentView from "./components/equipment.js";
+import LoginView from "./components/login.js";
+import LogsView from "./components/logs.js";
+import SettingsView from "./components/settings.js";
+
 const sessionStorageKey = "divevault.session";
 
-createApp({
+export default {
+  name: "DiveVaultApp",
   components: {
     LoginView,
     DashboardView,
@@ -429,4 +438,4 @@ createApp({
       </nav>
     </div>
   `
-}).mount("#app");
+};

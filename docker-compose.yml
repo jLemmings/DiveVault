@@ -1,5 +1,3 @@
-version: "3.9"
-
 services:
   postgres:
     image: postgres:18-alpine
@@ -29,14 +27,13 @@ services:
       HOST: 0.0.0.0
       PORT: 8000
       CORS_ORIGIN: "*"
-      FRONTEND_DIR: frontend
+      FRONTEND_DIR: frontend/dist
       LOG_LEVEL: INFO
     ports:
       - "8000:8000"
     volumes:
       - ./dive_backend.py:/app/dive_backend.py
       - ./postgres_store.py:/app/postgres_store.py
-      - ./frontend:/app/frontend
 
 volumes:
   postgres-data:

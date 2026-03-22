@@ -1,4 +1,7 @@
-const DiveImportView = {
+import { isImportComplete, effectiveImportDraft, gasSummary, averageImportCompletion, missingImportFields, filledIconStyle, compactDateStamp, paddedDiveIndex, formatDate, formatTime, formatDepthNumber, durationShort, formatTemperature, importTemperature, isNightDive, canCompleteImport, importCompletionPercent, numberOrZero } from "../core.js";
+
+export default {
+  name: "DiveImportView",
   props: [
     "dives",
     "importDrafts",

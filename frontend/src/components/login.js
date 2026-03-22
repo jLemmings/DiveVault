@@ -1,4 +1,7 @@
-const LoginView = {
+import { filledIconStyle } from "../core.js";
+
+export default {
+  name: "LoginView",
   props: [
     "email",
     "password",

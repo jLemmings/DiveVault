@@ -1,4 +1,5 @@
-const SettingsView = {
+export default {
+  name: "SettingsView",
   data() {
     return {
       settingsProfile: {
