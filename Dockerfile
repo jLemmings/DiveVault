@@ -18,7 +18,7 @@ WORKDIR /app
 COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY dive_backend.py postgres_store.py print_dives.py migrate_sqlite_to_postgres.py ./
+COPY dive_backend.py postgres_store.py ./
 COPY --from=frontend-build /frontend/dist ./frontend/dist
 
 EXPOSE 8000
