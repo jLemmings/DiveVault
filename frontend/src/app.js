@@ -1,3 +1,4 @@
+import { UserButton, useAuth, useUser } from "@clerk/vue";
 import { filledIconStyle, importDraftSeed, isImportComplete, effectiveImportDraft, missingImportFields, paddedDiveIndex, numberOrZero, pressureRange } from "./core.js";
 import DashboardView from "./components/dashboard.js";
 import DiveDetailView from "./components/dive-detail.js";
@@ -6,8 +7,6 @@ import EquipmentView from "./components/equipment.js";
 import LoginView from "./components/login.js";
 import LogsView from "./components/logs.js";
 import SettingsView from "./components/settings.js";
-
-const sessionStorageKey = "divevault.session";
 
 export default {
   name: "DiveVaultApp",
@@ -18,18 +17,26 @@ export default {
     DiveImportView,
     DiveDetailView,
     EquipmentView,
-    SettingsView
+    SettingsView,
+    UserButton
+  },
+  setup() {
+    const { getToken, isLoaded, isSignedIn, sessionId, signOut } = useAuth();
+    const { user } = useUser();
+
+    return {
+      clerkGetToken: getToken,
+      clerkLoaded: isLoaded,
+      clerkSessionId: sessionId,
+      clerkSignOut: signOut,
+      clerkSignedIn: isSignedIn,
+      clerkUser: user
+    };
   },
   data() {
     return {
       isAuthenticated: false,
       sessionEmail: "",
-      loginForm: {
-        email: "",
-        password: ""
-      },
-      loginError: "",
-      loginSubmitting: false,
       activeView: "dashboard",
       selectedDiveId: null,
       selectedImportId: null,
@@ -42,6 +49,7 @@ export default {
       loading: true,
       error: "",
       backendHealthy: false,
+      lastAuthenticatedSessionId: null,
       filledIconStyle,
       navItems: [
         { id: "dashboard", label: "Dashboard", mobileLabel: "Dashboard", icon: "dashboard", mobileIcon: "dashboard", eyebrow: "Dive Overview", title: "Logbook" },
@@ -51,7 +59,36 @@ export default {
       ]
     };
   },
+  watch: {
+    clerkLoaded: {
+      handler() {
+        this.syncAuthState();
+      },
+      immediate: true
+    },
+    clerkSignedIn: {
+      handler() {
+        this.syncAuthState();
+      },
+      immediate: true
+    },
+    clerkSessionId() {
+      this.syncAuthState();
+    },
+    clerkUser: {
+      handler() {
+        this.sessionEmail = this.currentUserEmail;
+      },
+      deep: true,
+      immediate: true
+    }
+  },
   computed: {
+    currentUserEmail() {
+      return this.clerkUser?.primaryEmailAddress?.emailAddress
+        || this.clerkUser?.emailAddresses?.[0]?.emailAddress
+        || "";
+    },
     activeSection() {
       if (this.activeView === "imports") {
         return { eyebrow: "Synchronization Module", title: "Imported Dives" };
@@ -95,69 +132,59 @@ export default {
     }
   },
   methods: {
-    updateLoginField(key, value) {
-      this.loginForm = {
-        ...this.loginForm,
-        [key]: value
-      };
-      this.loginError = "";
+    resetAuthenticatedState() {
+      this.isAuthenticated = false;
+      this.sessionEmail = "";
+      this.selectedDiveId = null;
+      this.selectedImportId = null;
+      this.searchText = "";
+      this.dives = [];
+      this.importDrafts = {};
+      this.savingImportId = null;
+      this.importError = "";
+      this.importStatusMessage = "";
+      this.loading = false;
+      this.error = "";
+      this.backendHealthy = false;
+      this.lastAuthenticatedSessionId = null;
     },
-    persistSession(email) {
-      const payload = JSON.stringify({
-        email,
-        authenticatedAt: new Date().toISOString()
-      });
-      try {
-        window.localStorage.setItem(sessionStorageKey, payload);
-      } catch (_error) {
-        // Ignore local storage failures and keep the in-memory session alive.
-      }
-    },
-    hydrateSession() {
-      try {
-        const raw = window.localStorage.getItem(sessionStorageKey);
-        if (!raw) return;
-        const session = JSON.parse(raw);
-        if (typeof session?.email === "string" && session.email.trim()) {
-          this.isAuthenticated = true;
-          this.sessionEmail = session.email.trim();
-          this.loginForm = {
-            email: session.email.trim(),
-            password: ""
-          };
-        }
-      } catch (_error) {
-        // Ignore invalid persisted session data.
-      }
-    },
-    async submitLogin() {
-      const email = this.loginForm.email.trim();
-      const password = this.loginForm.password;
-
-      if (!email || !password) {
-        this.loginError = "Enter both diver ID and access code to initiate the session.";
-        return;
-      }
-      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-        this.loginError = "Use a valid email address for the diver ID field.";
+    async syncAuthState() {
+      if (!this.clerkLoaded) {
+        this.loading = true;
         return;
       }
 
-      this.loginSubmitting = true;
-      this.loginError = "";
-      this.isAuthenticated = true;
-      this.sessionEmail = email;
-      this.loginForm = {
-        email,
-        password: ""
-      };
-      this.persistSession(email);
+      this.isAuthenticated = Boolean(this.clerkSignedIn);
+      this.sessionEmail = this.currentUserEmail;
+
+      if (!this.isAuthenticated || !this.clerkSessionId) {
+        this.resetAuthenticatedState();
+        return;
+      }
+
+      if (this.lastAuthenticatedSessionId === this.clerkSessionId) {
+        return;
+      }
+
+      this.lastAuthenticatedSessionId = this.clerkSessionId;
       this.syncViewFromHash();
-      try {
-        await this.fetchDives();
-      } finally {
-        this.loginSubmitting = false;
+      await this.fetchDives();
+    },
+    async authenticatedFetch(resource, options = {}) {
+      const headers = new Headers(options.headers || {});
+      const token = typeof this.clerkGetToken === "function"
+        ? await this.clerkGetToken()
+        : null;
+
+      if (token) {
+        headers.set("Authorization", `Bearer ${token}`);
       }
+
+      return fetch(resource, {
+        ...options,
+        credentials: "include",
+        headers
+      });
     },
     setSearchText(value) {
       this.searchText = value;
@@ -250,7 +277,7 @@ export default {
       this.importError = "";
       this.importStatusMessage = "";
       try {
-        const response = await fetch(`/api/dives/${diveId}/logbook`, {
+        const response = await this.authenticatedFetch(`/api/dives/${diveId}/logbook`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -317,11 +344,12 @@ export default {
       this.loading = true;
       this.error = "";
       try {
-        const healthResponse = await fetch("/api/health");
+        const healthResponse = await this.authenticatedFetch("/api/health");
         this.backendHealthy = healthResponse.ok;
-        const diveResponse = await fetch("/api/dives?limit=250&include_samples=1");
+        const diveResponse = await this.authenticatedFetch("/api/dives?limit=250&include_samples=1");
         if (!diveResponse.ok) {
-          throw new Error(`API returned ${diveResponse.status}`);
+          const payload = await diveResponse.json().catch(() => null);
+          throw new Error(payload?.error || `API returned ${diveResponse.status}`);
         }
         const payload = await diveResponse.json();
         this.dives = Array.isArray(payload.dives) ? payload.dives : [];
@@ -335,28 +363,20 @@ export default {
     }
   },
   mounted() {
-    this.hydrateSession();
-    this.syncViewFromHash();
     window.addEventListener("hashchange", this.syncViewFromHash);
-    if (this.isAuthenticated) {
-      this.fetchDives();
-    } else {
-      this.loading = false;
-    }
+    this.syncAuthState();
   },
   beforeUnmount() {
     window.removeEventListener("hashchange", this.syncViewFromHash);
   },
   template: `
-    <login-view
-      v-if="!isAuthenticated"
-      :email="loginForm.email"
-      :password="loginForm.password"
-      :submit-login="submitLogin"
-      :update-login-field="updateLoginField"
-      :login-error="loginError"
-      :login-submitting="loginSubmitting"
-    ></login-view>
+    <div v-if="!clerkLoaded" class="flex min-h-screen items-center justify-center bg-background px-6 text-on-background">
+      <section class="bg-surface-container-low p-10 shadow-panel">
+        <p class="font-headline text-2xl font-bold">Loading secure access...</p>
+        <p class="mt-2 text-on-surface-variant">Waiting for Clerk to initialize the authenticated session.</p>
+      </section>
+    </div>
+    <login-view v-else-if="!isAuthenticated"></login-view>
     <div v-else class="min-h-screen bg-background text-on-background">
       <aside class="fixed inset-y-0 left-0 z-40 hidden w-20 flex-col bg-background shadow-[40px_0_40px_-20px_rgba(0,15,29,0.4)] md:flex md:w-64">
         <div class="p-6">
@@ -383,9 +403,7 @@ export default {
             <span class="material-symbols-outlined text-primary">waves</span>
             <h2 class="font-headline text-lg font-bold uppercase tracking-[0.14em] text-primary">DiveVault</h2>
           </div>
-          <button class="rounded-full p-2 text-primary transition-colors hover:bg-surface-container-highest">
-            <span class="material-symbols-outlined">notifications</span>
-          </button>
+          <user-button after-sign-out-url="/"></user-button>
         </div>
         <div class="hidden h-full items-center justify-between px-8 md:flex">
           <h2 class="font-headline text-2xl font-bold tracking-[0.08em] text-primary">DiveVault</h2>
@@ -402,6 +420,7 @@ export default {
             >
               {{ sessionEmail ? sessionEmail.charAt(0) : 'D' }}
             </div>
+            <user-button after-sign-out-url="/"></user-button>
           </div>
         </div>
       </header>

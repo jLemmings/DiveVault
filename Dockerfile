@@ -2,6 +2,9 @@ FROM node:24-slim AS frontend-build
 
 WORKDIR /frontend
 
+ARG VITE_CLERK_PUBLISHABLE_KEY
+ENV VITE_CLERK_PUBLISHABLE_KEY=${VITE_CLERK_PUBLISHABLE_KEY}
+
 COPY frontend/package*.json ./
 RUN npm ci
 

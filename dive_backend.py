@@ -16,9 +16,14 @@ import logging
 import mimetypes
 import os
 import re
+from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
+
+import jwt
+from dotenv import load_dotenv
+from jwt import InvalidTokenError, PyJWKClient
 
 from postgres_store import (
     get_device_state,
@@ -33,6 +38,123 @@ from postgres_store import (
 
 
 LOGGER = logging.getLogger("dive_backend")
+
+load_dotenv()
+
+
+class ClerkAuthError(Exception):
+    def __init__(self, status: int, message: str) -> None:
+        super().__init__(message)
+        self.status = status
+        self.message = message
+
+
+def normalize_pem_env(value: str | None) -> str | None:
+    if not value:
+        return None
+    return value.strip().replace("\\n", "\n")
+
+
+class ClerkTokenVerifier:
+    def __init__(
+        self,
+        *,
+        jwt_key: str | None,
+        jwks_url: str | None,
+        issuer: str | None,
+        audience: str | None,
+        authorized_parties: set[str],
+    ) -> None:
+        self.jwt_key = normalize_pem_env(jwt_key)
+        self.jwks_url = jwks_url.strip() if jwks_url else None
+        self.issuer = issuer.rstrip("/") if issuer else None
+        self.audience = audience.strip() if audience else None
+        self.authorized_parties = authorized_parties
+        self.jwks_client = PyJWKClient(self.jwks_url) if self.jwks_url and not self.jwt_key else None
+
+    @property
+    def configured(self) -> bool:
+        return bool(self.jwt_key or self.jwks_client)
+
+    def verify_request(self, headers) -> dict:
+        token = self._extract_token(headers)
+        if not token:
+            raise ClerkAuthError(401, "Missing Clerk session token")
+
+        signing_key = self.jwt_key
+        if not signing_key and self.jwks_client:
+            try:
+                signing_key = self.jwks_client.get_signing_key_from_jwt(token).key
+            except Exception as exc:  # pragma: no cover - network/JWKS failures are runtime-dependent
+                raise ClerkAuthError(503, f"Unable to resolve Clerk signing key: {exc}") from exc
+
+        if not signing_key:
+            raise ClerkAuthError(503, "Clerk authentication is not configured on the backend")
+
+        decode_kwargs = {
+            "algorithms": ["RS256"],
+            "issuer": self.issuer,
+            "options": {
+                "verify_aud": bool(self.audience),
+                "verify_iss": bool(self.issuer),
+            },
+            "leeway": 5,
+        }
+        if self.audience:
+            decode_kwargs["audience"] = self.audience
+
+        try:
+            claims = jwt.decode(token, signing_key, **decode_kwargs)
+        except InvalidTokenError as exc:
+            raise ClerkAuthError(401, f"Invalid Clerk session token: {exc}") from exc
+
+        if self.authorized_parties:
+            authorized_party = claims.get("azp")
+            if authorized_party not in self.authorized_parties:
+                raise ClerkAuthError(401, "Clerk session token origin is not allowed")
+
+        return claims
+
+    @staticmethod
+    def _extract_token(headers) -> str | None:
+        authorization = headers.get("Authorization", "")
+        if authorization.lower().startswith("bearer "):
+            return authorization.split(" ", 1)[1].strip() or None
+
+        cookie_header = headers.get("Cookie", "")
+        if not cookie_header:
+            return None
+
+        cookie = SimpleCookie()
+        cookie.load(cookie_header)
+        session_cookie = cookie.get("__session")
+        return session_cookie.value if session_cookie else None
+
+
+def parse_csv_env(value: str | None) -> set[str]:
+    if not value:
+        return set()
+    return {item.strip() for item in value.split(",") if item.strip()}
+
+
+def build_clerk_verifier(args: argparse.Namespace) -> ClerkTokenVerifier | None:
+    frontend_api_url = args.clerk_frontend_api_url.rstrip("/") if args.clerk_frontend_api_url else None
+    jwks_url = args.clerk_jwks_url or (f"{frontend_api_url}/.well-known/jwks.json" if frontend_api_url else None)
+    issuer = args.clerk_issuer or frontend_api_url
+    verifier = ClerkTokenVerifier(
+        jwt_key=args.clerk_jwt_key,
+        jwks_url=jwks_url,
+        issuer=issuer,
+        audience=args.clerk_audience,
+        authorized_parties=parse_csv_env(args.clerk_authorized_parties),
+    )
+    if verifier.configured:
+        return verifier
+
+    LOGGER.warning(
+        "Clerk authentication is not configured. Set CLERK_JWT_KEY or CLERK_JWKS_URL (or CLERK_FRONTEND_API_URL) to protect API routes."
+    )
+    return None
 
 
 def resolve_frontend_dir(frontend_dir: Path) -> Path:
@@ -91,13 +213,17 @@ class DiveBackendHandler(BaseHTTPRequestHandler):
             return
 
         if path == "/api/device-state":
+            if self._require_auth() is None:
+                return
             vendor = self._single_query_arg(query, "vendor")
             product = self._single_query_arg(query, "product")
             if not vendor or not product:
                 self._send_json(400, {"error": "vendor and product are required"})
                 return
 
-            conn = open_db(self.server.database_url)
+            conn = self._open_db()
+            if conn is None:
+                return
             try:
                 state = get_device_state(conn, vendor, product)
                 LOGGER.info(
@@ -111,13 +237,30 @@ class DiveBackendHandler(BaseHTTPRequestHandler):
                 conn.close()
             return
 
+        if path == "/api/auth/me":
+            claims = self._require_auth()
+            if claims is None:
+                return
+            self._send_json(
+                200,
+                {
+                    "session_id": claims.get("sid"),
+                    "user_id": claims.get("sub"),
+                },
+            )
+            return
+
         if path == "/api/dives":
+            if self._require_auth() is None:
+                return
             include_samples = self._is_truthy(query.get("include_samples", ["0"])[0])
             include_raw_data = self._is_truthy(query.get("include_raw_data", ["0"])[0])
             limit = self._parse_int(query.get("limit", ["100"])[0], default=100)
             offset = self._parse_int(query.get("offset", ["0"])[0], default=0)
 
-            conn = open_db(self.server.database_url)
+            conn = self._open_db()
+            if conn is None:
+                return
             try:
                 dives, total = list_dives(conn, include_samples, include_raw_data, limit, offset)
             finally:
@@ -145,10 +288,14 @@ class DiveBackendHandler(BaseHTTPRequestHandler):
 
         match = re.fullmatch(r"/api/dives/(\d+)", path)
         if match:
+            if self._require_auth() is None:
+                return
             dive_id = int(match.group(1))
             include_raw_data = self._is_truthy(query.get("include_raw_data", ["0"])[0])
 
-            conn = open_db(self.server.database_url)
+            conn = self._open_db()
+            if conn is None:
+                return
             try:
                 dive = get_dive(conn, dive_id, include_raw_data)
             finally:
@@ -176,6 +323,9 @@ class DiveBackendHandler(BaseHTTPRequestHandler):
             self._send_json(404, {"error": "Not found"})
             return
 
+        if self._require_auth() is None:
+            return
+
         payload = self._read_json_body()
         if payload is None:
             return
@@ -190,7 +340,9 @@ class DiveBackendHandler(BaseHTTPRequestHandler):
             self._send_json(400, {"error": f"Missing required fields: {', '.join(missing)}"})
             return
 
-        conn = open_db(self.server.database_url)
+        conn = self._open_db()
+        if conn is None:
+            return
         try:
             try:
                 inserted = insert_dive_record(conn, payload)
@@ -214,12 +366,16 @@ class DiveBackendHandler(BaseHTTPRequestHandler):
         LOGGER.info("PUT %s", self.path)
         match = re.fullmatch(r"/api/dives/(\d+)/logbook", self.path)
         if match:
+            if self._require_auth() is None:
+                return
             payload = self._read_json_body()
             if payload is None:
                 return
 
             dive_id = int(match.group(1))
-            conn = open_db(self.server.database_url)
+            conn = self._open_db()
+            if conn is None:
+                return
             try:
                 dive = update_dive_logbook(conn, dive_id, payload)
             finally:
@@ -238,6 +394,9 @@ class DiveBackendHandler(BaseHTTPRequestHandler):
             self._send_json(404, {"error": "Not found"})
             return
 
+        if self._require_auth() is None:
+            return
+
         payload = self._read_json_body()
         if payload is None:
             return
@@ -249,7 +408,9 @@ class DiveBackendHandler(BaseHTTPRequestHandler):
             self._send_json(400, {"error": "vendor and product are required"})
             return
 
-        conn = open_db(self.server.database_url)
+        conn = self._open_db()
+        if conn is None:
+            return
         try:
             save_device_state(conn, vendor, product, payload.get("fingerprint_hex"))
             state = get_device_state(conn, vendor, product)
@@ -266,6 +427,26 @@ class DiveBackendHandler(BaseHTTPRequestHandler):
 
     def log_message(self, fmt: str, *args) -> None:
         LOGGER.debug("HTTP %s - %s", self.address_string(), fmt % args)
+
+    def _open_db(self):
+        try:
+            return open_db(self.server.database_url)
+        except Exception as exc:  # pragma: no cover - depends on runtime DB availability
+            LOGGER.exception("Database connection failed")
+            self._send_json(503, {"error": f"Database unavailable: {exc}"})
+            return None
+
+    def _require_auth(self) -> dict | None:
+        verifier = getattr(self.server, "clerk_verifier", None)
+        if verifier is None:
+            self._send_json(503, {"error": "Clerk authentication is not configured on the backend"})
+            return None
+
+        try:
+            return verifier.verify_request(self.headers)
+        except ClerkAuthError as exc:
+            self._send_json(exc.status, {"error": exc.message})
+            return None
 
     def _read_json_body(self) -> dict | None:
         length = int(self.headers.get("Content-Length", "0"))
@@ -289,7 +470,7 @@ class DiveBackendHandler(BaseHTTPRequestHandler):
     def _send_cors_headers(self) -> None:
         self.send_header("Access-Control-Allow-Origin", self.server.cors_origin)
         self.send_header("Access-Control-Allow-Methods", "GET, POST, PUT, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        self.send_header("Access-Control-Allow-Headers", "Authorization, Content-Type")
 
     def _serve_frontend(self, path: str) -> None:
         asset_path = frontend_asset_path(self.server.frontend_dir, path)
@@ -336,6 +517,12 @@ def main() -> None:
     parser.add_argument("--port", type=int, default=int(os.getenv("PORT", "8000")), help="TCP port to bind")
     parser.add_argument("--cors-origin", default=os.getenv("CORS_ORIGIN", "*"), help="Allowed CORS origin for frontend requests")
     parser.add_argument("--frontend-dir", default=os.getenv("FRONTEND_DIR", "frontend/dist"), help="Path to static frontend assets")
+    parser.add_argument("--clerk-jwt-key", default=os.getenv("CLERK_JWT_KEY"), help="Clerk JWT public key in PEM format")
+    parser.add_argument("--clerk-jwks-url", default=os.getenv("CLERK_JWKS_URL"), help="Clerk JWKS URL")
+    parser.add_argument("--clerk-frontend-api-url", default=os.getenv("CLERK_FRONTEND_API_URL"), help="Clerk frontend API URL, used to derive the JWKS URL and issuer")
+    parser.add_argument("--clerk-issuer", default=os.getenv("CLERK_ISSUER"), help="Expected Clerk token issuer")
+    parser.add_argument("--clerk-audience", default=os.getenv("CLERK_AUDIENCE"), help="Expected Clerk token audience")
+    parser.add_argument("--clerk-authorized-parties", default=os.getenv("CLERK_AUTHORIZED_PARTIES"), help="Comma-separated allowed values for the Clerk azp claim")
     parser.add_argument(
         "--log-level",
         default=os.getenv("LOG_LEVEL", "INFO"),
@@ -354,6 +541,7 @@ def main() -> None:
 
     server = ThreadingHTTPServer((args.host, args.port), DiveBackendHandler)
     server.database_url = args.database_url
+    server.clerk_verifier = build_clerk_verifier(args)
     server.cors_origin = args.cors_origin
     server.frontend_dir = resolve_frontend_dir(Path(args.frontend_dir))
 

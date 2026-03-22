@@ -9,6 +9,12 @@
 # Python
 __pycache__/
 
+# Env
+.env
+.env.local
+frontend/.env
+frontend/.env.local
+
 # Misc
 *.db
 *.db-shm

@@ -19,6 +19,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        VITE_CLERK_PUBLISHABLE_KEY: ${VITE_CLERK_PUBLISHABLE_KEY:-}
     depends_on:
       postgres:
         condition: service_healthy
@@ -28,6 +30,10 @@ services:
       PORT: 8000
       CORS_ORIGIN: "*"
       FRONTEND_DIR: frontend/dist
+      CLERK_FRONTEND_API_URL: ${CLERK_FRONTEND_API_URL:-}
+      CLERK_JWT_KEY: ${CLERK_JWT_KEY:-}
+      CLERK_JWKS_URL: ${CLERK_JWKS_URL:-}
+      CLERK_AUTHORIZED_PARTIES: ${CLERK_AUTHORIZED_PARTIES:-http://localhost:8000,http://localhost:5173}
       LOG_LEVEL: INFO
     ports:
       - "8000:8000"

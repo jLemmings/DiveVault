@@ -1,30 +1,9 @@
-import { filledIconStyle } from "../core.js";
+import { SignIn } from "@clerk/vue";
 
 export default {
   name: "LoginView",
-  props: [
-    "email",
-    "password",
-    "submitLogin",
-    "updateLoginField",
-    "loginError",
-    "loginSubmitting"
-  ],
-  computed: {
-    filledIconStyle() {
-      return filledIconStyle;
-    },
-    canSubmit() {
-      return Boolean(this.email?.trim() && this.password);
-    }
-  },
-  methods: {
-    setField(key, event) {
-      this.updateLoginField(key, event.target.value);
-    },
-    onSubmit() {
-      this.submitLogin();
-    }
+  components: {
+    SignIn
   },
   template: `
     <div class="abyssal-auth-shell relative min-h-screen overflow-hidden bg-surface text-on-surface">
@@ -63,52 +42,12 @@ export default {
                     </p>
                   </div>
 
-                  <form class="space-y-6" @submit.prevent="onSubmit">
-                    <label class="block space-y-2.5">
-                      <span class="flex items-center gap-2 font-label text-[10px] font-bold uppercase tracking-[0.22em] text-on-surface-variant">
-                        <span class="material-symbols-outlined text-sm">badge</span>
-                        Diver ID
-                      </span>
-                      <input
-                        :value="email"
-                        @input="setField('email', $event)"
-                        type="email"
-                        autocomplete="email"
-                        placeholder="operator@system.abyss"
-                        class="w-full border-none bg-surface-container-highest/45 px-4 py-4 font-headline text-sm tracking-[0.18em] text-on-surface placeholder:text-on-surface-variant/30 focus:ring-1 focus:ring-primary/30"
-                      />
-                    </label>
-
-                    <label class="block space-y-2.5">
-                      <span class="flex items-center gap-2 font-label text-[10px] font-bold uppercase tracking-[0.22em] text-on-surface-variant">
-                        <span class="material-symbols-outlined text-sm">key</span>
-                        Access Code
-                      </span>
-                      <input
-                        :value="password"
-                        @input="setField('password', $event)"
-                        type="password"
-                        autocomplete="current-password"
-                        placeholder="............"
-                        class="w-full border-none bg-surface-container-highest/45 px-4 py-4 font-headline text-sm tracking-[0.3em] text-on-surface placeholder:text-on-surface-variant/30 focus:ring-1 focus:ring-primary/30"
-                      />
-                    </label>
-
-                    <p v-if="loginError" class="bg-error-container/18 px-4 py-3 text-sm text-on-error-container">
-                      {{ loginError }}
-                    </p>
-
-                    <div class="pt-2">
-                      <button
-                        type="submit"
-                        :disabled="loginSubmitting || !canSubmit"
-                        class="auth-button-glow flex w-full items-center justify-center gap-2 bg-primary px-5 py-5 font-label text-[11px] font-bold uppercase tracking-[0.24em] text-on-primary transition-all hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
-                      >
-                        <span>{{ loginSubmitting ? 'Initiating Session' : 'Initiate Session' }}</span>
-                        <span class="material-symbols-outlined text-lg" :style="filledIconStyle">arrow_right_alt</span>
-                      </button>
+                  <div class="space-y-6">
+                    <div class="rounded border border-primary/10 bg-surface-container-highest/25 p-4 text-center text-[11px] uppercase tracking-[0.18em] text-on-surface-variant">
+                      Sign in with Clerk to access the dive logbook.
                     </div>
-                  </form>
+                    <SignIn />
+                  </div>
 
                   <div class="mt-10 flex flex-col items-center gap-4 text-center">
                     <button type="button" class="font-label text-[10px] font-bold uppercase tracking-[0.22em] text-primary transition-colors hover:text-on-surface">
