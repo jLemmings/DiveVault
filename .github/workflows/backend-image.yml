@@ -33,7 +33,9 @@ jobs:
           pip install -r requirements-dev.txt
 
       - name: Run backend tests
-        run: pytest
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+        run: python -m pytest tests
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
