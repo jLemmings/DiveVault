@@ -1,0 +1,185 @@
+from __future__ import annotations
+
+import argparse
+from pathlib import Path
+
+import pytest
+
+import dive_backend
+
+
+def test_normalize_pem_env_handles_blank_and_escaped_newlines():
+    assert dive_backend.normalize_pem_env(None) is None
+    assert dive_backend.normalize_pem_env("  line1\\nline2  ") == "line1\nline2"
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        (None, None),
+        ("", None),
+        (" bearer-token ", "bearer-token"),
+        ('"bearer-token"', "bearer-token"),
+        ("Bearer abc123", "abc123"),
+        ("'Bearer abc123'", "abc123"),
+    ],
+)
+def test_normalize_bearer_token(value, expected):
+    assert dive_backend.normalize_bearer_token(value) == expected
+
+
+def test_parse_csv_env_discards_empty_entries():
+    assert dive_backend.parse_csv_env(None) == set()
+    assert dive_backend.parse_csv_env(" one, two ,, three , ") == {"one", "two", "three"}
+
+
+def test_build_clerk_verifier_derives_jwks_url_and_issuer():
+    args = argparse.Namespace(
+        clerk_secret_key=None,
+        clerk_jwt_key="public-key",
+        clerk_jwks_url=None,
+        clerk_api_url="https://api.clerk.com",
+        clerk_frontend_api_url="https://clerk.example.com/",
+        clerk_issuer=None,
+        clerk_audience="aud",
+        clerk_authorized_parties="https://app.example.com, https://admin.example.com",
+        clerk_api_key_scopes="sync:write, dives:read",
+    )
+
+    verifier = dive_backend.build_clerk_verifier(args, sync_token_manager=None)
+
+    assert verifier is not None
+    assert verifier.jwks_url == "https://clerk.example.com/.well-known/jwks.json"
+    assert verifier.issuer == "https://clerk.example.com"
+    assert verifier.authorized_parties == {"https://app.example.com", "https://admin.example.com"}
+    assert verifier.required_api_key_scopes == {"sync:write", "dives:read"}
+
+
+def test_build_clerk_verifier_returns_none_when_unconfigured(caplog):
+    args = argparse.Namespace(
+        clerk_secret_key=None,
+        clerk_jwt_key=None,
+        clerk_jwks_url=None,
+        clerk_api_url="https://api.clerk.com",
+        clerk_frontend_api_url=None,
+        clerk_issuer=None,
+        clerk_audience=None,
+        clerk_authorized_parties=None,
+        clerk_api_key_scopes=None,
+    )
+
+    verifier = dive_backend.build_clerk_verifier(args, sync_token_manager=None)
+
+    assert verifier is None
+    assert "Clerk authentication is not configured" in caplog.text
+
+
+def test_resolve_frontend_dir_uses_existing_directory(tmp_path: Path):
+    dist_dir = tmp_path / "frontend" / "dist"
+    dist_dir.mkdir(parents=True)
+
+    assert dive_backend.resolve_frontend_dir(dist_dir) == dist_dir.resolve()
+
+
+def test_resolve_frontend_dir_falls_back_to_legacy_assets(tmp_path: Path):
+    frontend_dir = tmp_path / "frontend"
+    frontend_dir.mkdir()
+    (frontend_dir / "index.html").write_text("ok", encoding="utf-8")
+
+    resolved = dive_backend.resolve_frontend_dir(frontend_dir / "dist")
+
+    assert resolved == frontend_dir.resolve()
+
+
+def test_frontend_asset_path_serves_existing_asset_and_falls_back_for_missing_or_escape(tmp_path: Path):
+    frontend_dir = tmp_path / "frontend"
+    frontend_dir.mkdir()
+    index_path = frontend_dir / "index.html"
+    asset_path = frontend_dir / "assets.js"
+    index_path.write_text("<html>app</html>", encoding="utf-8")
+    asset_path.write_text("console.log('ok')", encoding="utf-8")
+
+    assert dive_backend.frontend_asset_path(frontend_dir, "/assets.js") == asset_path.resolve()
+    assert dive_backend.frontend_asset_path(frontend_dir, "/missing") == index_path.resolve()
+    assert dive_backend.frontend_asset_path(frontend_dir, "/../secret.txt") == index_path.resolve()
+
+
+def test_redact_database_url_masks_password_only():
+    assert (
+        dive_backend.redact_database_url("postgresql://user:secret@example.com:5432/dive")
+        == "postgresql://user:***@example.com:5432/dive"
+    )
+    assert dive_backend.redact_database_url("postgresql://user@example.com:5432/dive") == "postgresql://user@example.com:5432/dive"
+
+
+def test_extract_token_prefers_authorization_header():
+    headers = {
+        "Authorization": "Bearer auth-token",
+        "Cookie": "__session=cookie-token",
+    }
+
+    assert dive_backend.ClerkTokenVerifier._extract_token(headers) == "auth-token"
+
+
+def test_extract_token_uses_session_cookie_when_authorization_missing():
+    headers = {"Cookie": "theme=dark; __session=cookie-token; csrftoken=abc"}
+
+    assert dive_backend.ClerkTokenVerifier._extract_token(headers) == "cookie-token"
+
+
+def test_principal_id_from_claims_accepts_multiple_claim_names():
+    assert dive_backend.DiveBackendHandler._principal_id_from_claims({"sub": "user-1"}) == "user-1"
+    assert dive_backend.DiveBackendHandler._principal_id_from_claims({"user_id": "user-2"}) == "user-2"
+    assert dive_backend.DiveBackendHandler._principal_id_from_claims({"subject": "svc-sync"}) == "svc-sync"
+    assert dive_backend.DiveBackendHandler._principal_id_from_claims(None) is None
+
+
+def test_parse_int_and_truthy_helpers():
+    assert dive_backend.DiveBackendHandler._is_truthy("YES") is True
+    assert dive_backend.DiveBackendHandler._is_truthy("0") is False
+    assert dive_backend.DiveBackendHandler._parse_int("12", default=5) == 12
+    assert dive_backend.DiveBackendHandler._parse_int("-12", default=5) == 0
+    assert dive_backend.DiveBackendHandler._parse_int("bad", default=5) == 5
+
+
+def test_cli_sync_token_manager_tracks_requests_and_tokens(monkeypatch):
+    manager = dive_backend.CliSyncTokenManager(request_ttl_seconds=10, token_ttl_seconds=30)
+    clock = iter([100.0, 105.0, 106.0, 120.0, 141.0])
+
+    monkeypatch.setattr(dive_backend.time, "time", lambda: next(clock))
+    monkeypatch.setattr(
+        dive_backend.secrets,
+        "token_urlsafe",
+        lambda size: {24: "request-code", 32: "sync-token"}.get(size, f"token-{size}"),
+    )
+
+    created = manager.create_request()
+    approved = manager.approve_request("request-code", {"sub": "user-1", "email": "diver@example.com", "sid": "sid-1"})
+    request_status = manager.get_request_status("request-code")
+    claims = manager.verify_token("dvsync_sync-token")
+    expired_claims = manager.verify_token("dvsync_sync-token")
+
+    assert created["status"] == "pending"
+    assert created["code"] == "request-code"
+    assert approved is not None
+    assert approved["status"] == "approved"
+    assert approved["token"] == "dvsync_sync-token"
+    assert approved["user_id"] == "user-1"
+    assert request_status is not None
+    assert request_status["status"] == "approved"
+    assert claims is not None
+    assert claims["token_type"] == "cli_sync"
+    assert claims["sub"] == "user-1"
+    assert expired_claims is None
+
+
+def test_cli_sync_token_manager_rejects_missing_or_expired_request(monkeypatch):
+    manager = dive_backend.CliSyncTokenManager(request_ttl_seconds=5, token_ttl_seconds=30)
+    clock = iter([100.0, 106.0])
+
+    monkeypatch.setattr(dive_backend.time, "time", lambda: next(clock))
+    monkeypatch.setattr(dive_backend.secrets, "token_urlsafe", lambda size: "expired-code" if size == 24 else "unused")
+
+    manager.create_request()
+
+    assert manager.approve_request("expired-code", {"sub": "user-1"}) is None

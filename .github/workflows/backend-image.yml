@@ -35,7 +35,7 @@ jobs:
       - name: Run backend tests
         env:
           PYTHONPATH: ${{ github.workspace }}
-        run: python -m pytest tests
+        run: python -m pytest -vv -ra tests
 
       - name: Set up Docker Buildx
         if: github.ref == 'refs/heads/master'
