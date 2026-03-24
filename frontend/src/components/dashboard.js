@@ -50,6 +50,24 @@ export default {
     },
     dashboardUserName() {
       return this.currentUserName || "Diver";
+    },
+    bottomTimeSegments() {
+      return formatAccumulatedDuration(this.stats.totalSeconds).split(" ").map((part) => ({
+        value: part.replace(/(d|h|min)$/, ""),
+        unit: part.match(/(d|h|min)$/)?.[0] || ""
+      }));
+    },
+    maxDepthStat() {
+      return {
+        value: formatDepthNumber(this.stats.maxDepth),
+        unit: "m"
+      };
+    },
+    consumptionStat() {
+      return {
+        value: formatBarTotal(this.stats.totalBarConsumed),
+        unit: "bar"
+      };
     }
   },
   template: `
@@ -127,7 +145,7 @@ export default {
               </div>
               <div class="text-right">
                 <div class="font-headline text-sm font-bold text-tertiary">{{ formatDepth(dive.max_depth_m) }}</div>
-                <div class="font-label text-[10px] font-bold uppercase tracking-[0.16em] text-on-surface-variant">{{ formatDurationShort(dive.duration_seconds).replace(/m/g, 'min') }}</div>
+                <div class="font-label text-[10px] font-bold tracking-[0.16em] text-on-surface-variant">{{ formatDurationShort(dive.duration_seconds) }}</div>
               </div>
             </article>
           </div>
@@ -159,28 +177,32 @@ export default {
             <span class="material-symbols-outlined text-3xl text-primary/40">database</span>
             <div>
               <p class="font-label text-[10px] font-bold uppercase tracking-[0.24em] text-secondary">Dive Count</p>
-              <p class="mt-2 font-headline text-4xl font-bold group-hover:text-primary">{{ stats.totalDives }}</p>
+              <p class="mt-2 font-headline text-4xl font-bold text-on-surface">{{ stats.totalDives }}</p>
             </div>
           </div>
           <div class="group flex h-48 flex-col justify-between bg-surface-container-low p-6 transition-colors hover:bg-surface-container-high">
             <span class="material-symbols-outlined text-3xl text-primary/40">timer</span>
             <div>
               <p class="font-label text-[10px] font-bold uppercase tracking-[0.24em] text-secondary">Bottom Time</p>
-              <p class="mt-2 font-headline text-4xl font-bold group-hover:text-primary">{{ formatAccumulatedDuration(stats.totalSeconds) }}</p>
+              <p class="mt-2 font-headline text-4xl font-bold text-on-surface">
+                <template v-for="(segment, index) in bottomTimeSegments" :key="'bottom-time-' + index">
+                  <span :class="index > 0 ? 'ml-2' : ''">{{ segment.value }}</span><span class="ml-1 text-sm font-normal text-tertiary">{{ segment.unit }}</span>
+                </template>
+              </p>
             </div>
           </div>
           <div class="group flex h-48 flex-col justify-between bg-surface-container-low p-6 transition-colors hover:bg-surface-container-high">
             <span class="material-symbols-outlined text-3xl text-tertiary/50">straighten</span>
             <div>
               <p class="font-label text-[10px] font-bold uppercase tracking-[0.24em] text-secondary">Max Depth</p>
-              <p class="mt-2 font-headline text-4xl font-bold text-tertiary">{{ formatDepthNumber(stats.maxDepth) }}<span class="ml-1 text-sm font-normal uppercase text-secondary">m</span></p>
+              <p class="mt-2 font-headline text-4xl font-bold text-on-surface">{{ maxDepthStat.value }}<span class="ml-1 text-sm font-normal uppercase text-tertiary">{{ maxDepthStat.unit }}</span></p>
             </div>
           </div>
           <div class="group flex h-48 flex-col justify-between border-l-2 border-primary/20 bg-surface-container-low p-6 transition-colors hover:bg-surface-container-high">
             <span class="material-symbols-outlined text-3xl text-primary/40">water_drop</span>
             <div>
               <p class="font-label text-[10px] font-bold uppercase tracking-[0.24em] text-secondary">Consumption</p>
-              <p class="mt-2 font-headline text-4xl font-bold">{{ formatBarTotal(stats.totalBarConsumed) }}<span class="ml-1 text-sm font-normal uppercase text-secondary">bar</span></p>
+              <p class="mt-2 font-headline text-4xl font-bold text-on-surface">{{ consumptionStat.value }}<span class="ml-1 text-sm font-normal uppercase text-tertiary">{{ consumptionStat.unit }}</span></p>
             </div>
           </div>
         </div>
@@ -229,7 +251,7 @@ export default {
                   </div>
                   <div class="text-right">
                     <p class="font-headline text-lg font-bold">{{ formatDepth(dive.max_depth_m) }}</p>
-                    <p class="font-label text-[10px] font-bold uppercase tracking-[0.2em] text-primary">{{ formatDurationShort(dive.duration_seconds).replace(/m/g, 'min') }}</p>
+                    <p class="font-label text-[10px] font-bold tracking-[0.2em] text-primary">{{ formatDurationShort(dive.duration_seconds) }}</p>
                   </div>
                 </article>
               </div>

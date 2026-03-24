@@ -43,7 +43,7 @@ export default {
       return typeof value === "number" ? `${value.toFixed(0)} CNS%` : "--";
     },
     mobileTimeLabels() {
-      if (!this.timeLabels.length) return ["0m", "--", "--"];
+      if (!this.timeLabels.length) return ["0min", "--", "--"];
       const middleIndex = Math.floor(this.timeLabels.length / 2);
       return [
         this.timeLabels[0],
@@ -120,7 +120,7 @@ export default {
                 <span class="font-label text-[10px] uppercase tracking-[0.14em] text-on-surface-variant">Duration</span>
                 <div class="mt-1 flex items-baseline justify-center gap-1">
                   <span class="font-headline text-xl font-bold text-primary">{{ durationMinutes(dive) }}</span>
-                  <span class="font-label text-[10px] uppercase text-on-surface-variant">Min</span>
+                  <span class="font-label text-[10px] text-on-surface-variant">min</span>
                 </div>
               </div>
               <div class="bg-surface-container-high p-4 text-center">
@@ -184,7 +184,7 @@ export default {
                   <span v-for="label in pressureAxisLabels" :key="'mobile-pressure-' + label" class="font-label text-[8px] font-bold uppercase tracking-[0.14em] text-on-surface-variant/60">{{ label }}</span>
                 </div>
               </div>
-              <div class="relative mt-3 flex items-center justify-between font-label text-[8px] font-bold uppercase tracking-[0.16em] text-on-surface-variant/50">
+              <div class="relative mt-3 flex items-center justify-between font-label text-[8px] font-bold tracking-[0.16em] text-on-surface-variant/50">
                 <span v-for="label in mobileTimeLabels" :key="'mobile-time-' + label">{{ label }}</span>
               </div>
             </div>
@@ -336,7 +336,7 @@ export default {
                   <span v-for="label in pressureAxisLabels" :key="'pressure-' + label" class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">{{ label }}</span>
                 </div>
               </div>
-              <div class="mt-4 grid grid-cols-6 gap-2 font-label text-[10px] font-bold uppercase tracking-[0.22em] text-secondary">
+              <div class="mt-4 grid grid-cols-6 gap-2 font-label text-[10px] font-bold tracking-[0.22em] text-secondary">
                 <span v-for="label in timeLabels" :key="label" class="text-center">{{ label }}</span>
               </div>
               <div class="mt-2 text-center font-label text-[10px] font-bold uppercase tracking-[0.22em] text-secondary">

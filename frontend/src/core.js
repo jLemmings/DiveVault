@@ -11,18 +11,18 @@ function numberOrZero(value) {
 }
 
 function durationShort(seconds) {
-  if (!seconds) return "0m";
+  if (!seconds) return "0min";
   const totalMinutes = Math.round(seconds / 60);
   if (totalMinutes >= 60) {
     const hours = Math.floor(totalMinutes / 60);
     const minutes = totalMinutes % 60;
-    return minutes ? `${hours}h ${minutes}m` : `${hours}h`;
+    return minutes ? `${hours}h ${minutes}min` : `${hours}h`;
   }
-  return `${totalMinutes}m`;
+  return `${totalMinutes}min`;
 }
 
 function formatAccumulatedDuration(seconds) {
-  if (!seconds) return "0m";
+  if (!seconds) return "0min";
   const totalMinutes = Math.round(seconds / 60);
   const days = Math.floor(totalMinutes / (24 * 60));
   const hours = Math.floor((totalMinutes % (24 * 60)) / 60);
@@ -31,15 +31,15 @@ function formatAccumulatedDuration(seconds) {
   if (days > 0) {
     const parts = [`${days}d`];
     if (hours > 0 || minutes > 0) parts.push(`${hours}h`);
-    if (minutes > 0) parts.push(`${minutes}m`);
+    if (minutes > 0) parts.push(`${minutes}min`);
     return parts.join(" ");
   }
 
   if (hours > 0) {
-    return minutes ? `${hours}h ${minutes}m` : `${hours}h`;
+    return minutes ? `${hours}h ${minutes}min` : `${hours}h`;
   }
 
-  return `${totalMinutes}m`;
+  return `${totalMinutes}min`;
 }
 
 function formatBarTotal(value) {

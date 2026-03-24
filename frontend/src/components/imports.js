@@ -111,7 +111,7 @@ export default {
                 </div>
                 <div class="rounded-lg border-l-2 border-secondary bg-surface-container-high p-3">
                   <p class="font-label text-[10px] font-bold uppercase tracking-[0.14em] text-on-surface-variant">Time</p>
-                  <p class="font-headline text-2xl font-bold text-secondary">{{ durationMinutes(dive) }}<span class="ml-1 text-xs font-normal opacity-60">MIN</span></p>
+                  <p class="font-headline text-2xl font-bold text-secondary">{{ durationMinutes(dive) }}<span class="ml-1 text-xs font-normal opacity-60">min</span></p>
                 </div>
                 <div class="rounded-lg bg-surface-container-high p-3">
                   <p class="font-label text-[10px] font-bold uppercase tracking-[0.14em] text-on-surface-variant">Temp</p>
