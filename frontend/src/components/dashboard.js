@@ -2,7 +2,7 @@ import { dayOfMonth, monthShort, formatDate, diveTitle, diveSubtitle, formatDept
 
 export default {
   name: "DashboardView",
-  props: ["dives", "stats", "setView", "backendHealthy", "openDive", "currentUserName"],
+  props: ["dives", "stats", "setView", "backendHealthy", "openDive", "currentUserName", "importedDiveCount", "openImportQueue"],
   methods: {
     dayOfMonth,
     monthShort,
@@ -50,6 +50,13 @@ export default {
     },
     dashboardUserName() {
       return this.currentUserName || "Diver";
+    },
+    hasImportedDives() {
+      return Number(this.importedDiveCount || 0) > 0;
+    },
+    importedDiveLabel() {
+      const count = Number(this.importedDiveCount || 0);
+      return `${count} imported ${count === 1 ? "dive" : "dives"} awaiting completion`;
     }
   },
   template: `
@@ -103,6 +110,20 @@ export default {
           </div>
         </div>
 
+        <section v-if="hasImportedDives" class="rounded-xl border border-tertiary/30 bg-[linear-gradient(135deg,rgba(255,183,125,0.16),rgba(19,44,64,0.92))] p-4 shadow-panel">
+          <div class="flex items-start justify-between gap-3">
+            <div>
+              <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-tertiary">Import Queue</p>
+              <p class="mt-2 font-headline text-xl font-bold text-on-surface">{{ importedDiveLabel }}</p>
+              <p class="mt-2 text-sm text-on-surface-variant">Add dive site, buddy, and guide details before these dives enter the logbook.</p>
+            </div>
+            <span class="material-symbols-outlined text-2xl text-tertiary">warning</span>
+          </div>
+          <button @click="openImportQueue()" class="mt-4 w-full bg-tertiary px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-background">
+            Review Imported Dives
+          </button>
+        </section>
+
         <section class="space-y-4">
           <div class="flex items-center justify-between">
             <h4 class="font-headline text-lg font-bold uppercase tracking-tight text-primary-fixed-dim">Recent Expeditions</h4>
@@ -154,6 +175,24 @@ export default {
             <h3 class="mt-2 font-headline text-5xl font-bold tracking-tight">Diver: <span class="text-primary">{{ dashboardUserName }}</span></h3>
           </div>
         </header>
+        <section v-if="hasImportedDives" class="border-l-4 border-tertiary bg-[linear-gradient(135deg,rgba(255,183,125,0.12),rgba(6,33,53,0.96))] p-6 shadow-panel">
+          <div class="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+            <div class="max-w-3xl">
+              <p class="font-label text-[10px] font-bold uppercase tracking-[0.24em] text-tertiary">Attention Required</p>
+              <h4 class="mt-2 font-headline text-3xl font-bold tracking-tight">{{ importedDiveLabel }}</h4>
+              <p class="mt-3 text-sm leading-7 text-on-surface-variant">Imported dives do not appear in the dive logbook until the missing registry metadata has been completed.</p>
+            </div>
+            <div class="flex items-center gap-4">
+              <div class="min-w-[110px] bg-background/35 px-5 py-4 text-center">
+                <p class="font-headline text-4xl font-bold text-tertiary">{{ importedDiveCount }}</p>
+                <p class="mt-1 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Imported</p>
+              </div>
+              <button @click="openImportQueue()" class="bg-tertiary px-6 py-4 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-background">
+                Review Imported Dives
+              </button>
+            </div>
+          </div>
+        </section>
         <div class="grid grid-cols-1 gap-4 md:grid-cols-4">
           <div class="group flex h-48 flex-col justify-between bg-surface-container-low p-6 transition-colors hover:bg-surface-container-high">
             <span class="material-symbols-outlined text-3xl text-primary/40">database</span>
@@ -240,4 +279,3 @@ export default {
     </section>
   `
 };
-
