@@ -84,7 +84,7 @@ export default {
             <span class="font-label text-[10px] font-bold uppercase tracking-[0.2em] text-on-surface-variant">Queue Status</span>
             <h3 class="mt-1 font-headline text-3xl font-bold tracking-tight text-primary">IMPORTED_DIVES</h3>
           </div>
-          <span class="rounded bg-tertiary-container px-2 py-1 font-label text-[10px] font-bold uppercase tracking-[0.14em] text-on-tertiary-container">{{ pendingDives.length }} Pending</span>
+          <span class="rounded bg-tertiary-container px-2 py-1 font-label text-[10px] font-bold uppercase tracking-[0.14em] text-on-tertiary-container">{{ pendingDives.length }} Imported</span>
         </div>
 
         <div v-if="importStatusMessage" class="rounded-xl bg-primary/10 px-4 py-3 text-sm text-primary">{{ importStatusMessage }}</div>
@@ -198,13 +198,13 @@ export default {
         <div class="glass-panel bg-surface-container-high/40 p-5 shadow-panel md:p-6">
           <div class="flex flex-col gap-6 xl:flex-row xl:items-center xl:justify-between">
             <p class="max-w-3xl text-sm leading-7 text-on-surface-variant">
-              Imported dives remain in a pending state until the diver adds the required registry details. Complete the
+              Imported dives remain in the imported state until the diver adds the required registry details. Complete the
               dive site, buddy, and guide fields below before committing the record to the permanent logbook.
             </p>
             <div class="grid grid-cols-3 gap-3 text-center">
               <div class="min-w-[90px] bg-background/40 px-4 py-3">
                 <p class="font-headline text-2xl font-bold text-primary">{{ pendingDives.length }}</p>
-                <p class="font-label text-[9px] font-bold uppercase tracking-[0.22em] text-secondary">Pending</p>
+                <p class="font-label text-[9px] font-bold uppercase tracking-[0.22em] text-secondary">Imported</p>
               </div>
               <div class="min-w-[90px] bg-background/40 px-4 py-3">
                 <p class="font-headline text-2xl font-bold text-secondary">{{ dives.length }}</p>
@@ -231,10 +231,10 @@ export default {
           >
             <div class="absolute right-4 top-4 flex flex-wrap gap-2">
               <span v-if="isNightDive(dive)" class="bg-primary/10 px-3 py-1 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-primary">Night Dive</span>
-              <span class="bg-tertiary-container/40 px-3 py-1 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-tertiary">Pending</span>
+              <span class="bg-tertiary-container/40 px-3 py-1 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-tertiary">Imported</span>
             </div>
-            <div class="flex flex-col lg:flex-row">
-              <div class="w-full bg-surface-container-highest/30 p-6 lg:w-48">
+            <div class="flex flex-col 2xl:flex-row">
+              <div class="w-full bg-surface-container-highest/30 p-6 2xl:w-48">
                 <div class="mb-5">
                   <p class="font-label text-[10px] font-bold uppercase tracking-[0.2em] text-secondary/50">Date</p>
                   <p class="mt-1 font-headline text-lg font-bold text-primary">{{ compactDateStamp(dive.started_at) }}</p>
@@ -245,23 +245,25 @@ export default {
                   <p class="mt-1 font-headline text-lg font-bold">{{ paddedDiveIndex(dive) }}</p>
                 </div>
               </div>
-              <div class="flex-1 p-6 lg:p-8">
-                <div class="mb-8 grid grid-cols-2 gap-6 lg:grid-cols-4">
-                  <div>
+              <div class="min-w-0 flex-1 p-6 lg:p-8">
+                <div class="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <div class="min-w-0 bg-surface-container-high/35 p-4">
                     <p class="font-label text-[10px] font-bold uppercase tracking-[0.2em] text-secondary/50">Max Depth</p>
-                    <p class="mt-2 font-headline text-3xl font-bold">{{ formatDepthNumber(dive.max_depth_m) }}<span class="ml-1 text-xs font-normal text-secondary">M</span></p>
+                    <p class="mt-2 font-headline text-2xl font-bold leading-none 2xl:text-3xl">{{ formatDepthNumber(dive.max_depth_m) }}<span class="ml-1 text-xs font-normal text-secondary">M</span></p>
                   </div>
-                  <div>
+                  <div class="min-w-0 bg-surface-container-high/35 p-4">
                     <p class="font-label text-[10px] font-bold uppercase tracking-[0.2em] text-secondary/50">Duration</p>
-                    <p class="mt-2 font-headline text-3xl font-bold">{{ formatDurationShort(dive.duration_seconds) }}<span class="ml-1 text-xs font-normal text-secondary"> / Dive</span></p>
+                    <p class="mt-2 font-headline text-2xl font-bold leading-none 2xl:text-3xl">{{ formatDurationShort(dive.duration_seconds) }}</p>
+                    <p class="mt-1 text-xs text-secondary">Per dive</p>
                   </div>
-                  <div>
+                  <div class="min-w-0 bg-surface-container-high/35 p-4">
                     <p class="font-label text-[10px] font-bold uppercase tracking-[0.2em] text-secondary/50">Min Temp</p>
-                    <p class="mt-2 font-headline text-3xl font-bold">{{ formatTemperature(importTemperature(dive)) }}</p>
+                    <p class="mt-2 font-headline text-2xl font-bold leading-none 2xl:text-3xl">{{ formatTemperature(importTemperature(dive)) }}</p>
                   </div>
-                  <div>
+                  <div class="min-w-0 bg-surface-container-high/35 p-4">
                     <p class="font-label text-[10px] font-bold uppercase tracking-[0.2em] text-secondary/50">Gas Mix</p>
-                    <p class="mt-2 font-headline text-3xl font-bold">{{ gasSummary(dive).label }}<span class="ml-1 text-xs font-normal text-secondary">{{ gasSummary(dive).detail }}</span></p>
+                    <p class="mt-2 font-headline text-2xl font-bold leading-none 2xl:text-3xl">{{ gasSummary(dive).label }}</p>
+                    <p class="mt-1 text-xs text-secondary">{{ gasSummary(dive).detail }}</p>
                   </div>
                 </div>
                 <div class="flex flex-wrap gap-3">
@@ -275,7 +277,7 @@ export default {
                   </span>
                 </div>
               </div>
-              <div class="flex w-full flex-col justify-center gap-4 bg-surface-container-high/20 p-6 lg:w-64 lg:p-8">
+              <div class="flex w-full flex-col justify-center gap-4 bg-surface-container-high/20 p-6 lg:p-8 2xl:w-64">
                 <button @click="selectImportDive(dive.id)" class="w-full bg-primary px-5 py-4 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-on-primary transition-all hover:brightness-110">
                   Complete Record
                 </button>
@@ -380,7 +382,7 @@ export default {
       <section v-else class="space-y-6 bg-surface-container-low p-10 shadow-panel">
         <p class="font-label text-[10px] font-bold uppercase tracking-[0.24em] text-primary">Import Queue Clear</p>
         <h4 class="font-headline text-4xl font-bold tracking-tight">All imported dives have been committed.</h4>
-        <p class="max-w-2xl text-sm leading-7 text-on-surface-variant">The pending import queue is empty. Continue with the dive log or inspect the most recent telemetry detail.</p>
+        <p class="max-w-2xl text-sm leading-7 text-on-surface-variant">The imported queue is empty. Continue with the dive log or inspect the most recent telemetry detail.</p>
         <div class="flex flex-wrap gap-3">
           <button @click="setView('logs')" class="bg-primary px-5 py-3 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-on-primary">Return To Logs</button>
           <button @click="fetchDives" class="bg-surface-container-high px-5 py-3 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-primary">Refresh Queue</button>
@@ -422,4 +424,3 @@ export default {
     </section>
   `
 };
-

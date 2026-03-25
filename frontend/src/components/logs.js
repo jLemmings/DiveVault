@@ -246,7 +246,10 @@ export default {
           </article>
           <div v-if="pagedDives.length === 0" class="px-8 py-16 text-center">
             <p class="font-headline text-2xl font-bold">No dives match the current filters</p>
-            <p class="mt-2 text-on-surface-variant">Change the search, mode, or device filters.</p>
+            <p class="mt-2 text-on-surface-variant">Change the search, mode, or device filters, or complete imported dives before they enter the logbook.</p>
+            <button @click="openImportQueue()" class="mt-5 bg-primary px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-on-primary">
+              Open Imported Queue
+            </button>
           </div>
         </div>
         <div class="flex flex-col items-center justify-between gap-4 bg-surface-container-high/30 px-8 py-6 md:flex-row">
@@ -262,4 +265,3 @@ export default {
     </section>
   `
 };
-

@@ -1,5 +1,5 @@
 import { UserButton, useAuth, useUser } from "@clerk/vue";
-import { filledIconStyle, importDraftSeed, isImportComplete, effectiveImportDraft, missingImportFields, paddedDiveIndex } from "./core.js";
+import { filledIconStyle, importDraftSeed, isImportComplete, effectiveImportDraft, missingImportFields, paddedDiveIndex, isCommittedDive } from "./core.js";
 import DashboardView from "./components/dashboard.js";
 import DiveDetailView from "./components/dive-detail.js";
 import DiveImportView from "./components/imports.js";
@@ -130,6 +130,9 @@ export default {
     },
     stats() {
       return this.dashboardStats;
+    },
+    committedDives() {
+      return this.dives.filter((dive) => isCommittedDive(dive));
     }
   },
   methods: {
@@ -303,7 +306,7 @@ export default {
         [id]: {
           ...currentDraft,
           [key]: value,
-          status: "pending"
+          status: "imported"
         }
       };
       this.importStatusMessage = "";
@@ -335,7 +338,7 @@ export default {
             commit,
             logbook: {
               ...draft,
-              status: commit ? "complete" : "pending"
+              status: commit ? "complete" : "imported"
             }
           })
         });
@@ -490,8 +493,8 @@ export default {
             <p class="mt-2 text-sm text-on-error-container">{{ error }}</p>
             <button @click="fetchDives" class="mt-5 bg-primary px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-on-primary">Retry</button>
           </section>
-          <dashboard-view v-else-if="activeView === 'dashboard'" :dives="dives" :stats="stats" :set-view="setView" :backend-healthy="backendHealthy" :open-dive="openDive" :current-user-name="currentUserName"></dashboard-view>
-          <logs-view v-else-if="activeView === 'logs' && !selectedDive" :dives="dives" :search-text="searchText" :open-dive="openDive" :open-import-queue="openImportQueue" :set-search-text="setSearchText"></logs-view>
+          <dashboard-view v-else-if="activeView === 'dashboard'" :dives="committedDives" :stats="stats" :set-view="setView" :backend-healthy="backendHealthy" :open-dive="openDive" :current-user-name="currentUserName"></dashboard-view>
+          <logs-view v-else-if="activeView === 'logs' && !selectedDive" :dives="committedDives" :search-text="searchText" :open-dive="openDive" :open-import-queue="openImportQueue" :set-search-text="setSearchText"></logs-view>
           <dive-import-view v-else-if="activeView === 'imports'" :dives="dives" :import-drafts="importDrafts" :selected-import-id="selectedImportId" :select-import-dive="selectImportDive" :update-import-draft="updateImportDraft" :save-import-draft="saveImportDraft" :saving-import-id="savingImportId" :import-error="importError" :import-status-message="importStatusMessage" :open-dive="openDive" :set-view="setView" :fetch-dives="fetchDives"></dive-import-view>
           <dive-detail-view v-else-if="activeView === 'logs' && selectedDive" :dive="selectedDive" :close-detail="closeDiveDetail"></dive-detail-view>
           <equipment-view v-else-if="activeView === 'equipment'" :search-text="searchText"></equipment-view>

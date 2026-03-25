@@ -88,7 +88,16 @@ def server_fixture(monkeypatch):
                 "dive_uid": "uid-1",
                 "max_depth_m": 22.2,
                 "duration_seconds": 2700,
-                "fields": {},
+                "fields": {
+                    "logbook": {
+                        "site": "Blue Hole",
+                        "buddy": "Sam",
+                        "guide": "Kai",
+                        "notes": "",
+                        "status": "complete",
+                        "completed_at": "2026-03-20T08:00:00+00:00",
+                    }
+                },
                 "raw_sha256": "sha-1",
                 "raw_data_size": 3,
                 "samples": [{"time_seconds": 0, "depth_m": 0.0}],
@@ -278,6 +287,7 @@ def test_authenticated_get_endpoints(server_fixture):
     assert dives.json()["total"] == 1
     assert dives.json()["dives"][0]["raw_data_b64"]
     assert dives.json()["stats"]["totalDives"] == 1
+    assert dives.json()["imported_count"] == 0
     assert dives.json()["stats"]["averageDurationSeconds"] == 2700.0
 
     by_id = request(server, "GET", "/api/dives/1?include_raw_data=true", token="session")

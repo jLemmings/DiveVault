@@ -160,6 +160,11 @@ function logbookFields(dive) {
   return logbook && typeof logbook === "object" && !Array.isArray(logbook) ? logbook : {};
 }
 
+function logbookStatus(source) {
+  const logbook = source?.fields?.logbook ? logbookFields(source) : source;
+  return logbook?.status === "complete" ? "complete" : "imported";
+}
+
 function importDraftSeed(dive) {
   const logbook = logbookFields(dive);
   return {
@@ -167,7 +172,7 @@ function importDraftSeed(dive) {
     buddy: typeof logbook.buddy === "string" ? logbook.buddy : "",
     guide: typeof logbook.guide === "string" ? logbook.guide : "",
     notes: typeof logbook.notes === "string" ? logbook.notes : "",
-    status: typeof logbook.status === "string" ? logbook.status : "pending",
+    status: logbookStatus(logbook),
     completed_at: typeof logbook.completed_at === "string" ? logbook.completed_at : ""
   };
 }
@@ -189,7 +194,15 @@ function canCompleteImport(logbook) {
 }
 
 function isImportComplete(logbook) {
-  return logbook?.status === "complete";
+  return logbookStatus(logbook) === "complete";
+}
+
+function isCommittedDive(dive) {
+  return isImportComplete(logbookFields(dive));
+}
+
+function isImportedDive(dive) {
+  return !isCommittedDive(dive);
 }
 
 function importCompletionPercent(logbook) {
@@ -570,9 +583,12 @@ export {
   paddedDiveIndex,
   importDraftSeed,
   effectiveImportDraft,
+  logbookStatus,
   missingImportFields,
   canCompleteImport,
   isImportComplete,
+  isCommittedDive,
+  isImportedDive,
   importCompletionPercent,
   gasSummary,
   importTemperature,
@@ -601,4 +617,3 @@ export {
   diveNarrative,
   shortFingerprint
 };
-

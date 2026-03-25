@@ -39,6 +39,8 @@ CREATE TABLE IF NOT EXISTS dives (
 );
 """
 
+LOGBOOK_REQUIRED_FIELDS = ("site", "buddy", "guide")
+
 
 def now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -113,10 +115,50 @@ def open_db(database_url: str) -> psycopg.Connection:
     return conn
 
 
+def clean_logbook_text(value: object) -> str:
+    return value.strip() if isinstance(value, str) else ""
+
+
+def normalize_logbook(logbook: dict | None) -> dict:
+    source = logbook if isinstance(logbook, dict) else {}
+    status = "complete" if source.get("status") == "complete" else "imported"
+    normalized = {
+        "site": clean_logbook_text(source.get("site")),
+        "buddy": clean_logbook_text(source.get("buddy")),
+        "guide": clean_logbook_text(source.get("guide")),
+        "notes": clean_logbook_text(source.get("notes")),
+        "status": status,
+    }
+
+    updated_at = source.get("updated_at")
+    if isinstance(updated_at, str) and updated_at:
+        normalized["updated_at"] = updated_at
+
+    completed_at = source.get("completed_at")
+    if status == "complete" and isinstance(completed_at, str) and completed_at:
+        normalized["completed_at"] = completed_at
+
+    return normalized
+
+
+def normalize_dive_fields(fields: dict | None) -> dict:
+    normalized = dict(fields) if isinstance(fields, dict) else {}
+    normalized["logbook"] = normalize_logbook(normalized.get("logbook"))
+    return normalized
+
+
+def is_logbook_complete(logbook: dict | None) -> bool:
+    return normalize_logbook(logbook).get("status") == "complete"
+
+
 def decode_dive_row(row: dict, include_samples: bool, include_raw_data: bool) -> dict:
     fields = row.get("fields_json") or {}
     samples = row.get("samples_json") or []
     raw_data = row.get("raw_data")
+
+    if not isinstance(fields, dict):
+        fields = json.loads(fields)
+    fields = normalize_dive_fields(fields)
 
     payload = {
         "id": row["id"],
@@ -128,7 +170,7 @@ def decode_dive_row(row: dict, include_samples: bool, include_raw_data: bool) ->
         "duration_seconds": row.get("duration_seconds"),
         "max_depth_m": row.get("max_depth_m"),
         "avg_depth_m": row.get("avg_depth_m"),
-        "fields": fields if isinstance(fields, dict) else json.loads(fields),
+        "fields": fields,
         "raw_sha256": row["raw_sha256"],
         "raw_data_size": len(raw_data) if raw_data is not None else 0,
         "imported_at": row["imported_at"],
@@ -146,7 +188,7 @@ def decode_dive_row(row: dict, include_samples: bool, include_raw_data: bool) ->
 
 def insert_dive_record(conn: psycopg.Connection, user_id: str, payload: dict) -> bool:
     imported_at = payload.get("imported_at") or now_iso()
-    fields = payload.get("fields") or {}
+    fields = normalize_dive_fields(payload.get("fields"))
     samples = payload.get("samples") or []
     raw_data = decode_base64_payload(payload)
 
@@ -312,31 +354,26 @@ def get_dive(conn: psycopg.Connection, user_id: str, dive_id: int, include_raw_d
     return decode_dive_row(row, include_samples=True, include_raw_data=include_raw_data) if row else None
 
 
-def sanitize_logbook_payload(payload: dict | None) -> dict:
+def sanitize_logbook_payload(payload: dict | None, existing_logbook: dict | None = None) -> dict:
     source = payload or {}
     if isinstance(source.get("logbook"), dict):
         source = source["logbook"]
     commit = bool((payload or {}).get("commit"))
-
-    def clean_text(key: str) -> str:
-        value = source.get(key, "")
-        return value.strip() if isinstance(value, str) else ""
+    existing = normalize_logbook(existing_logbook)
 
     logbook = {
-        "site": clean_text("site"),
-        "buddy": clean_text("buddy"),
-        "guide": clean_text("guide"),
-        "notes": clean_text("notes"),
+        "site": clean_logbook_text(source.get("site")),
+        "buddy": clean_logbook_text(source.get("buddy")),
+        "guide": clean_logbook_text(source.get("guide")),
+        "notes": clean_logbook_text(source.get("notes")),
         "updated_at": now_iso(),
+        "status": "imported",
     }
 
-    required = ("site", "buddy", "guide")
-    if commit and all(logbook[key] for key in required):
+    if all(logbook[key] for key in LOGBOOK_REQUIRED_FIELDS) and (commit or existing.get("status") == "complete"):
         logbook["status"] = "complete"
-        existing_completed_at = source.get("completed_at")
+        existing_completed_at = existing.get("completed_at") or source.get("completed_at")
         logbook["completed_at"] = existing_completed_at if isinstance(existing_completed_at, str) and existing_completed_at else now_iso()
-    else:
-        logbook["status"] = "pending"
 
     return logbook
 
@@ -351,7 +388,8 @@ def update_dive_logbook(conn: psycopg.Connection, user_id: str, dive_id: int, pa
         fields = row.get("fields_json") or {}
         if not isinstance(fields, dict):
             fields = json.loads(fields)
-        fields["logbook"] = sanitize_logbook_payload(payload)
+        fields = normalize_dive_fields(fields)
+        fields["logbook"] = sanitize_logbook_payload(payload, fields.get("logbook"))
 
         cur.execute(
             "UPDATE dives SET fields_json=%s WHERE user_id=%s AND id=%s",
@@ -389,6 +427,7 @@ def import_sqlite_dive_rows(conn: psycopg.Connection, rows: list[dict], *, user_
             samples = row["samples_json"]
             if isinstance(fields, str):
                 fields = json.loads(fields)
+            fields = normalize_dive_fields(fields)
             if isinstance(samples, str):
                 samples = json.loads(samples)
 
