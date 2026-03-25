@@ -125,3 +125,28 @@ def test_decode_base64_payload_accepts_valid_payload():
 def test_decode_base64_payload_rejects_invalid_payload():
     with pytest.raises(ValueError, match="raw_data_b64 must be valid base64"):
         postgres_store.decode_base64_payload({"raw_data_b64": "not base64"})
+
+
+def test_summarize_dives_calculates_average_fields():
+    dives = [
+        {
+            "duration_seconds": 1800,
+            "max_depth_m": 18.0,
+            "fields": {"tanks": [{"beginpressure_bar": 200, "endpressure_bar": 130}]},
+            "samples": [],
+        },
+        {
+            "duration_seconds": 2400,
+            "max_depth_m": 24.0,
+            "fields": {},
+            "samples": [{"tank_pressure_bar": {"0": 190}}, {"tank_pressure_bar": {"0": 120}}],
+        },
+    ]
+
+    summary = postgres_store.summarize_dives(dives)
+
+    assert summary["totalDives"] == 2
+    assert summary["totalSeconds"] == 4200
+    assert summary["averageDurationSeconds"] == 2100.0
+    assert summary["averageMaxDepth"] == 21.0
+    assert summary["totalBarConsumed"] == 140

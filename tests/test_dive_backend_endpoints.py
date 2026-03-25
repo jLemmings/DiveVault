@@ -277,6 +277,8 @@ def test_authenticated_get_endpoints(server_fixture):
     assert dives.status == 200
     assert dives.json()["total"] == 1
     assert dives.json()["dives"][0]["raw_data_b64"]
+    assert dives.json()["stats"]["totalDives"] == 1
+    assert dives.json()["stats"]["averageDurationSeconds"] == 2700.0
 
     by_id = request(server, "GET", "/api/dives/1?include_raw_data=true", token="session")
     assert by_id.status == 200
