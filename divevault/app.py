@@ -39,6 +39,7 @@ from divevault.postgres_store import (
     list_dives,
     open_db,
     save_device_state,
+    summarize_dives,
     update_dive_logbook,
 )
 
@@ -516,6 +517,7 @@ class DiveBackendHandler(BaseHTTPRequestHandler):
                 200,
                 {
                     "dives": dives,
+                    "stats": summarize_dives(dives, total),
                     "limit": limit,
                     "offset": offset,
                     "total": total,

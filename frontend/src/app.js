@@ -1,5 +1,5 @@
 import { UserButton, useAuth, useUser } from "@clerk/vue";
-import { filledIconStyle, importDraftSeed, isImportComplete, effectiveImportDraft, missingImportFields, paddedDiveIndex, numberOrZero, pressureRange } from "./core.js";
+import { filledIconStyle, importDraftSeed, isImportComplete, effectiveImportDraft, missingImportFields, paddedDiveIndex } from "./core.js";
 import DashboardView from "./components/dashboard.js";
 import DiveDetailView from "./components/dive-detail.js";
 import DiveImportView from "./components/imports.js";
@@ -49,6 +49,16 @@ export default {
       loading: true,
       error: "",
       backendHealthy: false,
+      dashboardStats: {
+        totalDives: 0,
+        totalSeconds: 0,
+        totalHours: 0,
+        maxDepth: 0,
+        totalBarConsumed: 0,
+        averageDurationSeconds: 0,
+        averageMaxDepth: 0,
+        bottomTimeProgress: 0
+      },
       lastAuthenticatedSessionId: null,
       requestTimeoutMs: 15000,
       cliAuthCode: "",
@@ -119,23 +129,7 @@ export default {
       return `${this.dives.length} dives loaded from /api/dives`;
     },
     stats() {
-      const totalDives = this.dives.length;
-      const totalSeconds = this.dives.reduce((sum, dive) => sum + numberOrZero(dive.duration_seconds), 0);
-      const totalHours = Math.round((totalSeconds / 3600) * 10) / 10;
-      const maxDepth = this.dives.reduce((max, dive) => Math.max(max, numberOrZero(dive.max_depth_m)), 0);
-      const totalBarConsumed = this.dives.reduce((sum, dive) => {
-        const range = pressureRange(dive);
-        if (typeof range.begin !== "number" || typeof range.end !== "number") return sum;
-        return sum + Math.max(0, Math.round(range.begin - range.end));
-      }, 0);
-      return {
-        totalDives,
-        totalSeconds,
-        totalHours,
-        maxDepth,
-        totalBarConsumed,
-        bottomTimeProgress: Math.min(100, Math.round((totalHours / 100) * 100))
-      };
+      return this.dashboardStats;
     }
   },
   methods: {
@@ -153,6 +147,16 @@ export default {
       this.loading = false;
       this.error = "";
       this.backendHealthy = false;
+      this.dashboardStats = {
+        totalDives: 0,
+        totalSeconds: 0,
+        totalHours: 0,
+        maxDepth: 0,
+        totalBarConsumed: 0,
+        averageDurationSeconds: 0,
+        averageMaxDepth: 0,
+        bottomTimeProgress: 0
+      };
       this.lastAuthenticatedSessionId = null;
     },
     async syncAuthState() {
@@ -401,6 +405,9 @@ export default {
         }
         const payload = await diveResponse.json();
         this.dives = Array.isArray(payload.dives) ? payload.dives : [];
+        this.dashboardStats = payload?.stats && typeof payload.stats === "object"
+          ? { ...this.dashboardStats, ...payload.stats }
+          : { ...this.dashboardStats, totalDives: this.dives.length };
         this.syncImportDrafts();
         this.selectNextPendingImport(this.dives, this.importDrafts, this.selectedImportId);
       } catch (error) {

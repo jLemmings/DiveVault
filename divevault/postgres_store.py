@@ -252,6 +252,59 @@ def list_dives(
     return dives, total
 
 
+def summarize_dives(dives: list[dict], total_count: int | None = None) -> dict:
+    def pressure_range(dive: dict) -> tuple[float | None, float | None]:
+        tanks = dive.get("fields", {}).get("tanks") if isinstance(dive.get("fields"), dict) else []
+        primary_tank = tanks[0] if isinstance(tanks, list) and tanks else {}
+        if isinstance(primary_tank, dict):
+            begin = primary_tank.get("beginpressure_bar")
+            end = primary_tank.get("endpressure_bar")
+            if isinstance(begin, (int, float)) and isinstance(end, (int, float)):
+                return float(begin), float(end)
+
+        pressures: list[float] = []
+        for sample in dive.get("samples") or []:
+            tank_pressure = sample.get("tank_pressure_bar") if isinstance(sample, dict) else None
+            if isinstance(tank_pressure, dict):
+                numeric_values = [value for value in tank_pressure.values() if isinstance(value, (int, float))]
+                if numeric_values:
+                    pressures.append(float(numeric_values[0]))
+        if not pressures:
+            return None, None
+        return max(pressures), min(pressures)
+
+    total_dives = int(total_count if total_count is not None else len(dives))
+    total_seconds = sum(int(dive.get("duration_seconds") or 0) for dive in dives)
+    max_depth = max((float(dive.get("max_depth_m") or 0) for dive in dives), default=0.0)
+    total_bar_consumed = 0
+    for dive in dives:
+        begin, end = pressure_range(dive)
+        if begin is None or end is None:
+            continue
+        total_bar_consumed += max(0, round(begin - end))
+    average_duration_seconds = round(total_seconds / total_dives, 2) if total_dives else 0
+    average_max_depth_m = (
+        round(
+            sum(float(dive.get("max_depth_m") or 0) for dive in dives) / total_dives,
+            2,
+        )
+        if total_dives
+        else 0
+    )
+    total_hours = round(total_seconds / 3600, 1) if total_seconds else 0
+
+    return {
+        "totalDives": total_dives,
+        "totalSeconds": total_seconds,
+        "totalHours": total_hours,
+        "maxDepth": max_depth,
+        "totalBarConsumed": total_bar_consumed,
+        "averageDurationSeconds": average_duration_seconds,
+        "averageMaxDepth": average_max_depth_m,
+        "bottomTimeProgress": min(100, round(total_hours)),
+    }
+
+
 def get_dive(conn: psycopg.Connection, user_id: str, dive_id: int, include_raw_data: bool) -> dict | None:
     with conn.cursor() as cur:
         cur.execute("SELECT * FROM dives WHERE user_id=%s AND id=%s", (user_id, dive_id))
