@@ -245,7 +245,7 @@ export default {
     setSearchText(value) {
       this.searchText = value;
     },
-    setView(view) {
+    async setView(view) {
       this.activeView = view;
       if (view !== "logs") this.selectedDiveId = null;
       if (view !== "imports") this.selectedImportId = null;
@@ -253,6 +253,9 @@ export default {
       this.importError = "";
       this.importStatusMessage = "";
       window.location.hash = view;
+      if (this.isAuthenticated && ["dashboard", "logs", "imports"].includes(view)) {
+        await this.fetchDives();
+      }
     },
     openDive(diveId) {
       this.activeView = "logs";
@@ -281,11 +284,14 @@ export default {
       }
       this.selectedImportId = pending[0]?.id || null;
     },
-    openImportQueue(diveId = null) {
+    async openImportQueue(diveId = null) {
       this.activeView = "imports";
       this.selectedDiveId = null;
       this.importError = "";
       this.importStatusMessage = "";
+      if (this.isAuthenticated) {
+        await this.fetchDives();
+      }
       this.selectNextPendingImport(this.dives, this.importDrafts, diveId || this.selectedImportId);
       if (diveId && !this.selectedImportId) {
         this.selectedImportId = diveId;
