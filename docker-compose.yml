@@ -37,8 +37,8 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      - ./dive_backend.py:/app/dive_backend.py
-      - ./postgres_store.py:/app/postgres_store.py
+      - ./divevault:/app/divevault
+      - ./migrations:/app/migrations
 
 volumes:
   postgres-data:

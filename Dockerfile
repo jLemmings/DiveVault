@@ -18,11 +18,13 @@ WORKDIR /app
 COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY dive_backend.py postgres_store.py migrate_postgres_schema.py docker-entrypoint.sh ./
-RUN chmod +x /app/docker-entrypoint.sh
+COPY divevault ./divevault
+COPY migrations ./migrations
+COPY docker/docker-entrypoint.sh ./docker/docker-entrypoint.sh
+RUN chmod +x /app/docker/docker-entrypoint.sh
 COPY --from=frontend-build /frontend/dist ./frontend/dist
 
 EXPOSE 8000
 
-ENTRYPOINT ["/app/docker-entrypoint.sh"]
-CMD ["python", "dive_backend.py"]
+ENTRYPOINT ["/app/docker/docker-entrypoint.sh"]
+CMD ["python", "-m", "divevault.app"]

@@ -4,7 +4,7 @@ import base64
 
 import pytest
 
-import postgres_store
+from divevault import postgres_store
 
 
 def test_decode_dive_row_includes_requested_fields_and_decodes_json_strings():
