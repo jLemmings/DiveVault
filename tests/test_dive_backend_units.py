@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-import dive_backend
+from divevault import app as dive_backend
 
 
 def test_normalize_pem_env_handles_blank_and_escaped_newlines():
@@ -140,6 +140,50 @@ def test_parse_int_and_truthy_helpers():
     assert dive_backend.DiveBackendHandler._parse_int("12", default=5) == 12
     assert dive_backend.DiveBackendHandler._parse_int("-12", default=5) == 0
     assert dive_backend.DiveBackendHandler._parse_int("bad", default=5) == 5
+
+
+def test_wait_for_database_succeeds_after_retry(monkeypatch):
+    attempts = {"count": 0}
+    sleep_calls: list[float] = []
+
+    class FakeConn:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    def fake_connect(*args, **kwargs):
+        attempts["count"] += 1
+        if attempts["count"] == 1:
+            raise RuntimeError("connection refused")
+        return FakeConn()
+
+    monkeypatch.setattr(dive_backend.psycopg, "connect", fake_connect)
+    monkeypatch.setattr(dive_backend.time, "sleep", lambda seconds: sleep_calls.append(seconds))
+
+    dive_backend.wait_for_database(
+        "postgresql://user:secret@example.com:5432/dive",
+        retries=3,
+        retry_delay_seconds=1.5,
+        connect_timeout_seconds=4,
+    )
+
+    assert attempts["count"] == 2
+    assert sleep_calls == [1.5]
+
+
+def test_wait_for_database_raises_clear_error_when_unreachable(monkeypatch):
+    monkeypatch.setattr(dive_backend.psycopg, "connect", lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("connection refused")))
+    monkeypatch.setattr(dive_backend.time, "sleep", lambda seconds: None)
+
+    with pytest.raises(SystemExit, match="Database is unreachable after 2 attempt\\(s\\): connection refused"):
+        dive_backend.wait_for_database(
+            "postgresql://user:secret@example.com:5432/dive",
+            retries=2,
+            retry_delay_seconds=0.1,
+            connect_timeout_seconds=3,
+        )
 
 
 def test_cli_sync_token_manager_tracks_requests_and_tokens(monkeypatch):

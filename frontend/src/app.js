@@ -50,6 +50,7 @@ export default {
       error: "",
       backendHealthy: false,
       lastAuthenticatedSessionId: null,
+      requestTimeoutMs: 15000,
       cliAuthCode: "",
       filledIconStyle,
       navItems: [
@@ -176,21 +177,60 @@ export default {
       this.syncViewFromHash();
       await this.fetchDives();
     },
-    async authenticatedFetch(resource, options = {}) {
+    withTimeout(promise, timeoutMs, errorMessage) {
+      return new Promise((resolve, reject) => {
+        const timeoutId = window.setTimeout(() => {
+          reject(new Error(errorMessage));
+        }, timeoutMs);
+
+        Promise.resolve(promise).then(
+          (value) => {
+            window.clearTimeout(timeoutId);
+            resolve(value);
+          },
+          (error) => {
+            window.clearTimeout(timeoutId);
+            reject(error);
+          }
+        );
+      });
+    },
+    async authenticatedFetch(resource, options = {}, requestOptions = {}) {
+      const timeoutMs = requestOptions.timeoutMs || this.requestTimeoutMs;
       const headers = new Headers(options.headers || {});
-      const token = typeof this.clerkGetToken === "function"
-        ? await this.clerkGetToken()
-        : null;
+      const requireAuth = requestOptions.requireAuth !== false;
+
+      let token = null;
+      if (requireAuth && typeof this.clerkGetToken === "function") {
+        token = await this.withTimeout(
+          this.clerkGetToken(),
+          timeoutMs,
+          "Timed out while waiting for the Clerk session token."
+        );
+      }
 
       if (token) {
         headers.set("Authorization", `Bearer ${token}`);
       }
 
-      return fetch(resource, {
-        ...options,
-        credentials: "include",
-        headers
-      });
+      const controller = new AbortController();
+      const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs);
+
+      try {
+        return await fetch(resource, {
+          ...options,
+          credentials: "include",
+          headers,
+          signal: controller.signal
+        });
+      } catch (error) {
+        if (error?.name === "AbortError") {
+          throw new Error(`Request to ${resource} timed out after ${Math.round(timeoutMs / 1000)}s.`);
+        }
+        throw error;
+      } finally {
+        window.clearTimeout(timeoutId);
+      }
     },
     setSearchText(value) {
       this.searchText = value;
@@ -352,7 +392,7 @@ export default {
       this.loading = true;
       this.error = "";
       try {
-        const healthResponse = await this.authenticatedFetch("/api/health");
+        const healthResponse = await this.authenticatedFetch("/api/health", {}, { requireAuth: false });
         this.backendHealthy = healthResponse.ok;
         const diveResponse = await this.authenticatedFetch("/api/dives?limit=250&include_samples=1");
         if (!diveResponse.ok) {
