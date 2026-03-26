@@ -29,7 +29,7 @@ def test_decode_dive_row_includes_requested_fields_and_decodes_json_strings():
     payload = postgres_store.decode_dive_row(row, include_samples=True, include_raw_data=True)
 
     assert payload["id"] == 7
-    assert payload["fields"] == {"visibility": "good"}
+    assert payload["fields"] == {"visibility": "good", "logbook": {"site": "", "buddy": "", "guide": "", "notes": "", "status": "imported"}}
     assert payload["sample_count"] == 2
     assert payload["samples"][1]["depth_m"] == 8.1
     assert payload["raw_data_size"] == 3
@@ -107,13 +107,25 @@ def test_sanitize_logbook_payload_preserves_existing_completed_at_from_nested_lo
     assert payload["completed_at"] == "2026-03-20T08:00:00+00:00"
 
 
-def test_sanitize_logbook_payload_stays_pending_without_commit_or_required_fields(monkeypatch):
+def test_sanitize_logbook_payload_stays_imported_without_commit_or_required_fields(monkeypatch):
     monkeypatch.setattr(postgres_store, "now_iso", lambda: "2026-03-24T12:00:00+00:00")
 
     payload = postgres_store.sanitize_logbook_payload({"site": "Blue Hole", "buddy": "", "guide": "Kai"})
 
-    assert payload["status"] == "pending"
+    assert payload["status"] == "imported"
     assert "completed_at" not in payload
+
+
+def test_sanitize_logbook_payload_preserves_complete_state_for_metadata_edits(monkeypatch):
+    monkeypatch.setattr(postgres_store, "now_iso", lambda: "2026-03-24T12:00:00+00:00")
+
+    payload = postgres_store.sanitize_logbook_payload(
+        {"site": "Blue Hole", "buddy": "Sam", "guide": "Kai", "notes": "Updated notes"},
+        {"status": "complete", "completed_at": "2026-03-20T08:00:00+00:00"},
+    )
+
+    assert payload["status"] == "complete"
+    assert payload["completed_at"] == "2026-03-20T08:00:00+00:00"
 
 
 def test_decode_base64_payload_accepts_valid_payload():

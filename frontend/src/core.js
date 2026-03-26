@@ -114,7 +114,10 @@ function temperatureParts(value) {
 function formatDate(value) {
   const date = parseDate(value);
   if (!date) return "Unknown";
-  return date.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+  const day = String(date.getDate()).padStart(2, "0");
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const year = date.getFullYear();
+  return `${day}.${month}.${year}`;
 }
 
 function formatTime(value) {
@@ -147,8 +150,11 @@ const importRequirementFields = [
 
 function compactDateStamp(value) {
   const date = parseDate(value);
-  if (!date) return "----.--.--";
-  return `${date.getFullYear()}.${String(date.getMonth() + 1).padStart(2, "0")}.${String(date.getDate()).padStart(2, "0")}`;
+  if (!date) return "--.--.----";
+  const day = String(date.getDate()).padStart(2, "0");
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const year = date.getFullYear();
+  return `${day}.${month}.${year}`;
 }
 
 function paddedDiveIndex(dive) {
@@ -160,6 +166,11 @@ function logbookFields(dive) {
   return logbook && typeof logbook === "object" && !Array.isArray(logbook) ? logbook : {};
 }
 
+function logbookStatus(source) {
+  const logbook = source?.fields?.logbook ? logbookFields(source) : source;
+  return logbook?.status === "complete" ? "complete" : "imported";
+}
+
 function importDraftSeed(dive) {
   const logbook = logbookFields(dive);
   return {
@@ -167,7 +178,7 @@ function importDraftSeed(dive) {
     buddy: typeof logbook.buddy === "string" ? logbook.buddy : "",
     guide: typeof logbook.guide === "string" ? logbook.guide : "",
     notes: typeof logbook.notes === "string" ? logbook.notes : "",
-    status: typeof logbook.status === "string" ? logbook.status : "pending",
+    status: logbookStatus(logbook),
     completed_at: typeof logbook.completed_at === "string" ? logbook.completed_at : ""
   };
 }
@@ -189,7 +200,15 @@ function canCompleteImport(logbook) {
 }
 
 function isImportComplete(logbook) {
-  return logbook?.status === "complete";
+  return logbookStatus(logbook) === "complete";
+}
+
+function isCommittedDive(dive) {
+  return isImportComplete(logbookFields(dive));
+}
+
+function isImportedDive(dive) {
+  return !isCommittedDive(dive);
 }
 
 function importCompletionPercent(logbook) {
@@ -198,15 +217,7 @@ function importCompletionPercent(logbook) {
 
 function gasSummary(dive) {
   const gas = primaryGasMix(dive);
-  const oxygenPercent = Math.round(numberOrZero(gas?.oxygen_fraction) * 100) || 21;
-  const heliumPercent = Math.round(numberOrZero(gas?.helium_fraction) * 100);
-  if (heliumPercent > 0) {
-    return { label: "TMX", detail: `${oxygenPercent}/${heliumPercent}` };
-  }
-  if (oxygenPercent === 21) {
-    return { label: "AIR", detail: "21%" };
-  }
-  return { label: "EAN", detail: `${oxygenPercent}%` };
+  return { label: gasMixLabel(gas), detail: "" };
 }
 
 function importTemperature(dive) {
@@ -273,13 +284,22 @@ function primaryGasMix(dive) {
   return gasmixes.find(Boolean) || null;
 }
 
+function gasPercentValue(value, fallback = null) {
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
+    return fallback;
+  }
+  if (value <= 1) {
+    return Math.round(value * 100);
+  }
+  return Math.round(value);
+}
+
 function gasMixLabel(gasmix) {
-  if (!gasmix) return "Air";
-  const oxygenPercent = Math.round(numberOrZero(gasmix.oxygen_fraction) * 100);
-  const heliumPercent = Math.round(numberOrZero(gasmix.helium_fraction) * 100);
-  if (heliumPercent > 0) return `Trimix ${oxygenPercent}/${heliumPercent}`;
-  if (oxygenPercent === 21) return "Air";
-  return `Nitrox ${oxygenPercent}`;
+  if (!gasmix) return "21%";
+  const oxygenPercent = gasPercentValue(gasmix.oxygen_fraction, null);
+  const secondaryPercent = gasPercentValue(gasmix.helium_fraction, null);
+  const displayPercent = secondaryPercent ?? oxygenPercent ?? 21;
+  return `${displayPercent}%`;
 }
 
 function primaryTank(dive) {
@@ -315,6 +335,41 @@ function normalizedPressureValue(dive, sample) {
 function normalizedDepthValue(sample) {
   if (typeof sample?.depth_m !== "number" || !Number.isFinite(sample.depth_m)) return null;
   return Math.max(0, sample.depth_m);
+}
+
+function depthMetricValue(value) {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string") {
+    const parsed = Number.parseFloat(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
+function averageDepthValue(dive) {
+  const storedAverage = depthMetricValue(dive?.avg_depth_m)
+    ?? depthMetricValue(dive?.fields?.avg_depth_m)
+    ?? depthMetricValue(dive?.fields?.average_depth_m);
+  if (storedAverage !== null) return Math.max(0, storedAverage);
+
+  const series = depthSeries(dive);
+  if (!series.length) return null;
+  if (series.length === 1) return series[0].value;
+
+  let weightedDepth = 0;
+  let weightedSeconds = 0;
+
+  for (let index = 1; index < series.length; index += 1) {
+    const previous = series[index - 1];
+    const current = series[index];
+    const intervalSeconds = Math.max(0, current.time - previous.time);
+    if (!intervalSeconds) continue;
+    weightedDepth += ((previous.value + current.value) / 2) * intervalSeconds;
+    weightedSeconds += intervalSeconds;
+  }
+
+  if (weightedSeconds > 0) return weightedDepth / weightedSeconds;
+  return series.reduce((sum, point) => sum + point.value, 0) / series.length;
 }
 
 function pressureRange(dive) {
@@ -528,7 +583,7 @@ function diveNarrative(dive) {
   const tempMin = minimumTemperature(dive);
   const tempMax = maximumTemperature(dive);
   paragraphs.push(
-    `${diveModeLabel(dive)} telemetry captured ${numberOrZero(dive.sample_count)} sample points over ${durationShort(dive.duration_seconds)} with a maximum depth of ${formatDepth(dive.max_depth_m)} and an average depth of ${formatDepth(dive.avg_depth_m)}.`
+    `${diveModeLabel(dive)} telemetry captured ${numberOrZero(dive.sample_count)} sample points over ${durationShort(dive.duration_seconds)} with a maximum depth of ${formatDepth(dive.max_depth_m)} and an average depth of ${formatDepth(averageDepthValue(dive))}.`
   );
   paragraphs.push(
     `Primary breathing mix was ${gas}. ${tank}. Pressure profile shows ${pressureRangeLabel(dive)} with ${pressureUsedLabel(dive)}.`
@@ -570,9 +625,12 @@ export {
   paddedDiveIndex,
   importDraftSeed,
   effectiveImportDraft,
+  logbookStatus,
   missingImportFields,
   canCompleteImport,
   isImportComplete,
+  isCommittedDive,
+  isImportedDive,
   importCompletionPercent,
   gasSummary,
   importTemperature,
@@ -598,7 +656,7 @@ export {
   oxygenToxicityPercent,
   decoStatusLabel,
   detailEquipmentTags,
+  averageDepthValue,
   diveNarrative,
   shortFingerprint
 };
-

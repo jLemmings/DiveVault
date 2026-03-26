@@ -35,6 +35,7 @@ from divevault.postgres_store import (
     get_device_state,
     get_dive,
     get_dive_id_by_uid,
+    is_logbook_complete,
     insert_dive_record,
     list_dives,
     open_db,
@@ -517,7 +518,13 @@ class DiveBackendHandler(BaseHTTPRequestHandler):
                 200,
                 {
                     "dives": dives,
-                    "stats": summarize_dives(dives, total),
+                    "stats": summarize_dives(
+                        [dive for dive in dives if is_logbook_complete(dive.get("fields", {}).get("logbook"))],
+                        sum(1 for dive in dives if is_logbook_complete(dive.get("fields", {}).get("logbook"))),
+                    ),
+                    "imported_count": sum(
+                        1 for dive in dives if not is_logbook_complete(dive.get("fields", {}).get("logbook"))
+                    ),
                     "limit": limit,
                     "offset": offset,
                     "total": total,
