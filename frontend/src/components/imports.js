@@ -1,4 +1,4 @@
-import { isImportComplete, effectiveImportDraft, gasSummary, averageImportCompletion, missingImportFields, filledIconStyle, compactDateStamp, paddedDiveIndex, formatDate, formatTime, formatDepthNumber, durationShort, formatTemperature, importTemperature, isNightDive, canCompleteImport, importCompletionPercent, numberOrZero } from "../core.js";
+import { isImportComplete, effectiveImportDraft, gasSummary, averageImportCompletion, missingImportFields, filledIconStyle, compactDateStamp, paddedDiveIndex, formatDate, formatTime, formatDepthNumber, durationShort, formatTemperature, importTemperature, isNightDive, canCompleteImport, importCompletionPercent, numberOrZero, parseDate } from "../core.js";
 
 export default {
   name: "DiveImportView",
@@ -20,7 +20,13 @@ export default {
   ],
   computed: {
     pendingDives() {
-      return this.dives.filter((dive) => !isImportComplete(effectiveImportDraft(dive, this.importDrafts[String(dive.id)])));
+      return this.dives
+        .filter((dive) => !isImportComplete(effectiveImportDraft(dive, this.importDrafts[String(dive.id)])))
+        .sort((left, right) => {
+          const leftTime = parseDate(left.started_at)?.getTime() || 0;
+          const rightTime = parseDate(right.started_at)?.getTime() || 0;
+          return rightTime - leftTime;
+        });
     },
     selectedDive() {
       return this.pendingDives.find((dive) => String(dive.id) === String(this.selectedImportId)) || this.pendingDives[0] || null;

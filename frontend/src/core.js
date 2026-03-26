@@ -337,6 +337,41 @@ function normalizedDepthValue(sample) {
   return Math.max(0, sample.depth_m);
 }
 
+function depthMetricValue(value) {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string") {
+    const parsed = Number.parseFloat(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
+function averageDepthValue(dive) {
+  const storedAverage = depthMetricValue(dive?.avg_depth_m)
+    ?? depthMetricValue(dive?.fields?.avg_depth_m)
+    ?? depthMetricValue(dive?.fields?.average_depth_m);
+  if (storedAverage !== null) return Math.max(0, storedAverage);
+
+  const series = depthSeries(dive);
+  if (!series.length) return null;
+  if (series.length === 1) return series[0].value;
+
+  let weightedDepth = 0;
+  let weightedSeconds = 0;
+
+  for (let index = 1; index < series.length; index += 1) {
+    const previous = series[index - 1];
+    const current = series[index];
+    const intervalSeconds = Math.max(0, current.time - previous.time);
+    if (!intervalSeconds) continue;
+    weightedDepth += ((previous.value + current.value) / 2) * intervalSeconds;
+    weightedSeconds += intervalSeconds;
+  }
+
+  if (weightedSeconds > 0) return weightedDepth / weightedSeconds;
+  return series.reduce((sum, point) => sum + point.value, 0) / series.length;
+}
+
 function pressureRange(dive) {
   const tank = primaryTank(dive);
   if (tank && typeof tank.beginpressure_bar === "number" && typeof tank.endpressure_bar === "number") {
@@ -548,7 +583,7 @@ function diveNarrative(dive) {
   const tempMin = minimumTemperature(dive);
   const tempMax = maximumTemperature(dive);
   paragraphs.push(
-    `${diveModeLabel(dive)} telemetry captured ${numberOrZero(dive.sample_count)} sample points over ${durationShort(dive.duration_seconds)} with a maximum depth of ${formatDepth(dive.max_depth_m)} and an average depth of ${formatDepth(dive.avg_depth_m)}.`
+    `${diveModeLabel(dive)} telemetry captured ${numberOrZero(dive.sample_count)} sample points over ${durationShort(dive.duration_seconds)} with a maximum depth of ${formatDepth(dive.max_depth_m)} and an average depth of ${formatDepth(averageDepthValue(dive))}.`
   );
   paragraphs.push(
     `Primary breathing mix was ${gas}. ${tank}. Pressure profile shows ${pressureRangeLabel(dive)} with ${pressureUsedLabel(dive)}.`
@@ -621,6 +656,7 @@ export {
   oxygenToxicityPercent,
   decoStatusLabel,
   detailEquipmentTags,
+  averageDepthValue,
   diveNarrative,
   shortFingerprint
 };

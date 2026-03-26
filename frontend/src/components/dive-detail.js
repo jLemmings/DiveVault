@@ -1,4 +1,4 @@
-import { depthChartPath, pressureChartPath, numberOrZero, depthSeries, axisTicks, pressureRange, pressureSeries, profileTimeLabels, checkpointCards, diveNarrative, detailEquipmentTags, pressureRangeLabel, sacRate, oxygenToxicityPercent, diveModeLabel, diveTitle, formatDate, formatTime, formatDateTime, formatDepth, formatDepthNumber, formatTemperature, durationShort, gasMixLabel, primaryGasMix, primaryTank, tankLabel, surfaceTemperature, decoStatusLabel, shortFingerprint, formatDataSize, depthParts, durationParts, temperatureParts } from "../core.js";
+import { depthChartPath, pressureChartPath, numberOrZero, depthSeries, axisTicks, pressureRange, pressureSeries, profileTimeLabels, checkpointCards, diveNarrative, detailEquipmentTags, pressureRangeLabel, sacRate, oxygenToxicityPercent, diveModeLabel, diveTitle, formatDate, formatTime, formatDateTime, formatDepth, formatDepthNumber, formatTemperature, durationShort, gasMixLabel, primaryGasMix, primaryTank, tankLabel, surfaceTemperature, decoStatusLabel, shortFingerprint, formatDataSize, depthParts, durationParts, temperatureParts, averageDepthValue } from "../core.js";
 
 export default {
   name: "DiveDetailView",
@@ -53,6 +53,9 @@ export default {
     },
     gradientId() {
       return `depthGradient-${this.dive?.id || "selected"}`;
+    },
+    averageDepth() {
+      return averageDepthValue(this.dive);
     }
   },
   methods: {
@@ -283,7 +286,7 @@ export default {
           </div>
           <div class="rounded-[1.2rem] bg-surface-container-high p-5">
             <p class="font-label text-[10px] font-bold uppercase tracking-[0.24em] text-secondary">Avg Depth</p>
-            <p class="mt-2 font-headline text-3xl font-bold text-secondary">{{ depthParts(dive.avg_depth_m).value }}<span class="ml-0.5 text-primary">{{ depthParts(dive.avg_depth_m).unit }}</span></p>
+            <p class="mt-2 font-headline text-3xl font-bold text-secondary">{{ depthParts(averageDepth).value }}<span class="ml-0.5 text-primary">{{ depthParts(averageDepth).unit }}</span></p>
           </div>
           <div class="rounded-[1.2rem] bg-surface-container-high p-5">
             <p class="font-label text-[10px] font-bold uppercase tracking-[0.24em] text-secondary">Temperature</p>
@@ -444,4 +447,3 @@ export default {
     </section>
   `
 };
-
