@@ -44,6 +44,7 @@ export default {
       dives: [],
       importDrafts: {},
       savingImportId: null,
+      bulkImportSavePending: false,
       importError: "",
       importStatusMessage: "",
       loading: true,
@@ -148,6 +149,7 @@ export default {
       this.dives = [];
       this.importDrafts = {};
       this.savingImportId = null;
+      this.bulkImportSavePending = false;
       this.importError = "";
       this.importStatusMessage = "";
       this.loading = false;
@@ -321,6 +323,24 @@ export default {
       this.importStatusMessage = "";
       this.importError = "";
     },
+    async persistImportDraft(diveId, draft, commit = false) {
+      const response = await this.authenticatedFetch(`/api/dives/${diveId}/logbook`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          commit,
+          logbook: {
+            ...draft,
+            status: commit ? "complete" : "imported"
+          }
+        })
+      });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(payload?.error || `API returned ${response.status}`);
+      }
+      return payload;
+    },
     async saveImportDraft(diveId, commit = false) {
       const id = String(diveId);
       const dive = this.dives.find((entry) => String(entry.id) === id);
@@ -340,23 +360,7 @@ export default {
       this.importError = "";
       this.importStatusMessage = "";
       try {
-        const response = await this.authenticatedFetch(`/api/dives/${diveId}/logbook`, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            commit,
-            logbook: {
-              ...draft,
-              status: commit ? "complete" : "imported"
-            }
-          })
-        });
-        const payload = await response.json().catch(() => null);
-        if (!response.ok) {
-          throw new Error(payload?.error || `API returned ${response.status}`);
-        }
-
-        const updatedDive = payload;
+        const updatedDive = await this.persistImportDraft(diveId, draft, commit);
         const nextDives = this.dives.map((entry) => (String(entry.id) === id ? updatedDive : entry));
         const nextDrafts = {
           ...this.importDrafts,
@@ -379,6 +383,83 @@ export default {
         return false;
       } finally {
         this.savingImportId = null;
+      }
+    },
+    async applyBuddyGuideToPendingImports(diveId) {
+      const id = String(diveId);
+      const sourceDive = this.dives.find((entry) => String(entry.id) === id);
+      if (!sourceDive) {
+        this.importError = "Dive could not be found for bulk metadata update.";
+        return false;
+      }
+
+      const sourceDraft = effectiveImportDraft(sourceDive, this.importDrafts[id]);
+      const updates = {};
+      if (typeof sourceDraft.buddy === "string" && sourceDraft.buddy.trim()) {
+        updates.buddy = sourceDraft.buddy;
+      }
+      if (typeof sourceDraft.guide === "string" && sourceDraft.guide.trim()) {
+        updates.guide = sourceDraft.guide;
+      }
+
+      const updateKeys = Object.keys(updates);
+      if (!updateKeys.length) {
+        this.importError = "Enter a buddy or guide before applying the values across imported dives.";
+        this.importStatusMessage = "";
+        return false;
+      }
+
+      const pendingDives = this.dives.filter((entry) => !isImportComplete(effectiveImportDraft(entry, this.importDrafts[String(entry.id)])));
+      if (!pendingDives.length) {
+        this.importError = "There are no imported dives waiting for metadata updates.";
+        this.importStatusMessage = "";
+        return false;
+      }
+
+      this.bulkImportSavePending = true;
+      this.importError = "";
+      this.importStatusMessage = "";
+
+      let nextDives = this.dives.slice();
+      let nextDrafts = { ...this.importDrafts };
+      let updatedCount = 0;
+
+      try {
+        for (const pendingDive of pendingDives) {
+          const pendingId = String(pendingDive.id);
+          const currentDraft = effectiveImportDraft(pendingDive, nextDrafts[pendingId]);
+          const updatedDive = await this.persistImportDraft(
+            pendingDive.id,
+            {
+              ...currentDraft,
+              ...updates,
+              status: "imported"
+            },
+            false
+          );
+
+          nextDives = nextDives.map((entry) => (String(entry.id) === pendingId ? updatedDive : entry));
+          nextDrafts = {
+            ...nextDrafts,
+            [pendingId]: importDraftSeed(updatedDive)
+          };
+          updatedCount += 1;
+        }
+
+        this.dives = nextDives;
+        this.importDrafts = nextDrafts;
+        this.selectNextPendingImport(nextDives, nextDrafts, id);
+
+        const appliedLabel = updateKeys.length === 2 ? "buddy and guide" : updateKeys[0];
+        this.importStatusMessage = `Applied ${appliedLabel} to ${updatedCount} imported ${updatedCount === 1 ? "dive" : "dives"}. Dive sites were left unchanged.`;
+        return true;
+      } catch (error) {
+        this.dives = nextDives;
+        this.importDrafts = nextDrafts;
+        this.importError = error.message || "Unable to apply buddy and guide across imported dives.";
+        return false;
+      } finally {
+        this.bulkImportSavePending = false;
       }
     },
     cycleView() {
@@ -492,7 +573,7 @@ export default {
         </div>
       </header>
       <main class="pb-24 pt-20 md:ml-64">
-        <div class="mx-auto max-w-md px-4 md:max-w-7xl md:px-8">
+        <div class="mx-auto max-w-md px-4 md:px-8" :class="activeView === 'imports' ? 'md:max-w-[92rem]' : 'md:max-w-7xl'">
           <section v-if="loading" class="bg-surface-container-low p-10 shadow-panel">
             <p class="font-headline text-2xl font-bold">Loading telemetry...</p>
             <p class="mt-2 text-on-surface-variant">Pulling dive data from the backend.</p>
@@ -504,7 +585,7 @@ export default {
           </section>
           <dashboard-view v-else-if="activeView === 'dashboard'" :dives="committedDives" :stats="stats" :set-view="setView" :backend-healthy="backendHealthy" :open-dive="openDive" :current-user-name="currentUserName" :imported-dive-count="importedDiveCount" :open-import-queue="openImportQueue"></dashboard-view>
           <logs-view v-else-if="activeView === 'logs' && !selectedDive" :dives="committedDives" :search-text="searchText" :open-dive="openDive" :open-import-queue="openImportQueue" :set-search-text="setSearchText"></logs-view>
-          <dive-import-view v-else-if="activeView === 'imports'" :dives="dives" :import-drafts="importDrafts" :selected-import-id="selectedImportId" :select-import-dive="selectImportDive" :update-import-draft="updateImportDraft" :save-import-draft="saveImportDraft" :saving-import-id="savingImportId" :import-error="importError" :import-status-message="importStatusMessage" :open-dive="openDive" :set-view="setView" :fetch-dives="fetchDives"></dive-import-view>
+          <dive-import-view v-else-if="activeView === 'imports'" :dives="dives" :import-drafts="importDrafts" :selected-import-id="selectedImportId" :select-import-dive="selectImportDive" :update-import-draft="updateImportDraft" :save-import-draft="saveImportDraft" :apply-buddy-guide-to-pending-imports="applyBuddyGuideToPendingImports" :saving-import-id="savingImportId" :bulk-import-save-pending="bulkImportSavePending" :import-error="importError" :import-status-message="importStatusMessage" :open-dive="openDive" :set-view="setView" :fetch-dives="fetchDives"></dive-import-view>
           <dive-detail-view v-else-if="activeView === 'logs' && selectedDive" :dive="selectedDive" :close-detail="closeDiveDetail"></dive-detail-view>
           <equipment-view v-else-if="activeView === 'equipment'" :search-text="searchText"></equipment-view>
           <settings-view v-else-if="activeView === 'settings'" :cli-auth-code="cliAuthCode"></settings-view>

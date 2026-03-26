@@ -114,7 +114,10 @@ function temperatureParts(value) {
 function formatDate(value) {
   const date = parseDate(value);
   if (!date) return "Unknown";
-  return date.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+  const day = String(date.getDate()).padStart(2, "0");
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const year = date.getFullYear();
+  return `${day}.${month}.${year}`;
 }
 
 function formatTime(value) {
@@ -147,8 +150,11 @@ const importRequirementFields = [
 
 function compactDateStamp(value) {
   const date = parseDate(value);
-  if (!date) return "----.--.--";
-  return `${date.getFullYear()}.${String(date.getMonth() + 1).padStart(2, "0")}.${String(date.getDate()).padStart(2, "0")}`;
+  if (!date) return "--.--.----";
+  const day = String(date.getDate()).padStart(2, "0");
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const year = date.getFullYear();
+  return `${day}.${month}.${year}`;
 }
 
 function paddedDiveIndex(dive) {
@@ -211,15 +217,7 @@ function importCompletionPercent(logbook) {
 
 function gasSummary(dive) {
   const gas = primaryGasMix(dive);
-  const oxygenPercent = Math.round(numberOrZero(gas?.oxygen_fraction) * 100) || 21;
-  const heliumPercent = Math.round(numberOrZero(gas?.helium_fraction) * 100);
-  if (heliumPercent > 0) {
-    return { label: "TMX", detail: `${oxygenPercent}/${heliumPercent}` };
-  }
-  if (oxygenPercent === 21) {
-    return { label: "AIR", detail: "21%" };
-  }
-  return { label: "EAN", detail: `${oxygenPercent}%` };
+  return { label: gasMixLabel(gas), detail: "" };
 }
 
 function importTemperature(dive) {
@@ -286,13 +284,22 @@ function primaryGasMix(dive) {
   return gasmixes.find(Boolean) || null;
 }
 
+function gasPercentValue(value, fallback = null) {
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
+    return fallback;
+  }
+  if (value <= 1) {
+    return Math.round(value * 100);
+  }
+  return Math.round(value);
+}
+
 function gasMixLabel(gasmix) {
-  if (!gasmix) return "Air";
-  const oxygenPercent = Math.round(numberOrZero(gasmix.oxygen_fraction) * 100);
-  const heliumPercent = Math.round(numberOrZero(gasmix.helium_fraction) * 100);
-  if (heliumPercent > 0) return `Trimix ${oxygenPercent}/${heliumPercent}`;
-  if (oxygenPercent === 21) return "Air";
-  return `Nitrox ${oxygenPercent}`;
+  if (!gasmix) return "21%";
+  const oxygenPercent = gasPercentValue(gasmix.oxygen_fraction, null);
+  const secondaryPercent = gasPercentValue(gasmix.helium_fraction, null);
+  const displayPercent = secondaryPercent ?? oxygenPercent ?? 21;
+  return `${displayPercent}%`;
 }
 
 function primaryTank(dive) {
