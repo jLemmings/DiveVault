@@ -2,8 +2,10 @@ import { UserButton, useAuth, useUser } from "@clerk/vue";
 import { filledIconStyle, importDraftSeed, isImportComplete, effectiveImportDraft, missingImportFields, paddedDiveIndex, isCommittedDive } from "./core.js";
 import DashboardView from "./components/dashboard.js";
 import DiveDetailView from "./components/dive-detail.js";
+import DiveImportEditorView from "./components/import-edit.js";
 import DiveImportView from "./components/imports.js";
 import EquipmentView from "./components/equipment.js";
+import LogbookEditorView from "./components/logbook-edit.js";
 import LoginView from "./components/login.js";
 import LogsView from "./components/logs.js";
 import SettingsView from "./components/settings.js";
@@ -15,6 +17,8 @@ export default {
     DashboardView,
     LogsView,
     DiveImportView,
+    DiveImportEditorView,
+    LogbookEditorView,
     DiveDetailView,
     EquipmentView,
     SettingsView,
@@ -40,6 +44,7 @@ export default {
       activeView: "dashboard",
       selectedDiveId: null,
       selectedImportId: null,
+      selectedEditDiveId: null,
       searchText: "",
       dives: [],
       importDrafts: {},
@@ -108,6 +113,12 @@ export default {
       return [firstName, lastName].filter(Boolean).join(" ") || this.currentUserEmail || "Diver";
     },
     activeSection() {
+      if (this.activeView === "edit" && this.selectedEditDive) {
+        return { eyebrow: "Dive Archive", title: "Logbook Editor" };
+      }
+      if (this.activeView === "imports" && this.selectedImportDive) {
+        return { eyebrow: "Synchronization Module", title: "Imported Dive Editor" };
+      }
       if (this.activeView === "imports") {
         return { eyebrow: "Synchronization Module", title: "Imported Dives" };
       }
@@ -118,6 +129,24 @@ export default {
     },
     selectedDive() {
       return this.dives.find((dive) => String(dive.id) === String(this.selectedDiveId)) || null;
+    },
+    selectedImportDive() {
+      const dive = this.dives.find((entry) => String(entry.id) === String(this.selectedImportId)) || null;
+      return dive && !isCommittedDive(dive) ? dive : null;
+    },
+    selectedImportDraft() {
+      return this.selectedImportDive
+        ? effectiveImportDraft(this.selectedImportDive, this.importDrafts[String(this.selectedImportDive.id)])
+        : null;
+    },
+    selectedEditDive() {
+      const dive = this.dives.find((entry) => String(entry.id) === String(this.selectedEditDiveId)) || null;
+      return dive && isCommittedDive(dive) ? dive : null;
+    },
+    selectedEditDraft() {
+      return this.selectedEditDive
+        ? effectiveImportDraft(this.selectedEditDive, this.importDrafts[String(this.selectedEditDive.id)])
+        : null;
     },
     backendStatusLabel() {
       if (this.loading) return "Syncing telemetry";
@@ -145,6 +174,7 @@ export default {
       this.sessionEmail = "";
       this.selectedDiveId = null;
       this.selectedImportId = null;
+      this.selectedEditDiveId = null;
       this.searchText = "";
       this.dives = [];
       this.importDrafts = {};
@@ -251,11 +281,12 @@ export default {
       this.activeView = view;
       if (view !== "logs") this.selectedDiveId = null;
       if (view !== "imports") this.selectedImportId = null;
+      if (view !== "edit") this.selectedEditDiveId = null;
       if (view !== "settings") this.cliAuthCode = "";
       this.importError = "";
       this.importStatusMessage = "";
       window.location.hash = view;
-      if (this.isAuthenticated && ["dashboard", "logs", "imports"].includes(view)) {
+      if (this.isAuthenticated && ["dashboard", "logs", "imports", "edit"].includes(view)) {
         await this.fetchDives();
       }
     },
@@ -263,11 +294,13 @@ export default {
       this.activeView = "logs";
       this.selectedDiveId = diveId;
       this.selectedImportId = null;
+      this.selectedEditDiveId = null;
       window.location.hash = `logs/${diveId}`;
     },
     closeDiveDetail() {
       this.activeView = "logs";
       this.selectedDiveId = null;
+      this.selectedEditDiveId = null;
       window.location.hash = "logs";
     },
     syncImportDrafts() {
@@ -278,35 +311,71 @@ export default {
       });
       this.importDrafts = nextDrafts;
     },
-    selectNextPendingImport(dives = this.dives, drafts = this.importDrafts, preferredId = this.selectedImportId) {
+    resolvePendingImportId(dives = this.dives, drafts = this.importDrafts, preferredId = null) {
       const pending = dives.filter((dive) => !isImportComplete(effectiveImportDraft(dive, drafts[String(dive.id)])));
       if (preferredId && pending.some((dive) => String(dive.id) === String(preferredId))) {
-        this.selectedImportId = preferredId;
-        return;
+        return preferredId;
       }
-      this.selectedImportId = pending[0]?.id || null;
+      return pending[0]?.id || null;
+    },
+    isPendingImportId(diveId, dives = this.dives, drafts = this.importDrafts) {
+      return dives.some((dive) => String(dive.id) === String(diveId) && !isImportComplete(effectiveImportDraft(dive, drafts[String(dive.id)])));
     },
     async openImportQueue(diveId = null) {
       this.activeView = "imports";
       this.selectedDiveId = null;
+      this.selectedEditDiveId = null;
       this.importError = "";
       this.importStatusMessage = "";
       if (this.isAuthenticated) {
         await this.fetchDives();
       }
-      this.selectNextPendingImport(this.dives, this.importDrafts, diveId || this.selectedImportId);
-      if (diveId && !this.selectedImportId) {
-        this.selectedImportId = diveId;
-      }
+      this.selectedImportId = diveId ? this.resolvePendingImportId(this.dives, this.importDrafts, diveId) : null;
       window.location.hash = this.selectedImportId ? `imports/${this.selectedImportId}` : "imports";
     },
     selectImportDive(diveId) {
       this.activeView = "imports";
       this.selectedDiveId = null;
-      this.selectedImportId = diveId;
+      this.selectedEditDiveId = null;
+      this.selectedImportId = this.resolvePendingImportId(this.dives, this.importDrafts, diveId);
       this.importError = "";
       this.importStatusMessage = "";
-      window.location.hash = `imports/${diveId}`;
+      window.location.hash = this.selectedImportId ? `imports/${this.selectedImportId}` : "imports";
+    },
+    backToImportQueue() {
+      this.activeView = "imports";
+      this.selectedDiveId = null;
+      this.selectedImportId = null;
+      this.selectedEditDiveId = null;
+      window.location.hash = "imports";
+    },
+    async openDiveEditor(diveId) {
+      this.activeView = "edit";
+      this.selectedDiveId = null;
+      this.selectedImportId = null;
+      this.selectedEditDiveId = diveId;
+      this.importError = "";
+      this.importStatusMessage = "";
+      if (this.isAuthenticated) {
+        await this.fetchDives();
+      }
+      if (!this.selectedEditDive) {
+        this.selectedEditDiveId = null;
+        window.location.hash = "logs";
+        return;
+      }
+      window.location.hash = `edit/${diveId}`;
+    },
+    closeDiveEditor() {
+      if (!this.selectedEditDiveId) {
+        this.activeView = "logs";
+        window.location.hash = "logs";
+        return;
+      }
+      this.activeView = "logs";
+      this.selectedDiveId = this.selectedEditDiveId;
+      this.selectedEditDiveId = null;
+      window.location.hash = `logs/${this.selectedDiveId}`;
     },
     updateImportDraft(diveId, key, value) {
       const id = String(diveId);
@@ -349,9 +418,10 @@ export default {
         return false;
       }
 
+      const wasCommitted = isCommittedDive(dive);
       const draft = effectiveImportDraft(dive, this.importDrafts[id]);
       const missing = missingImportFields(draft);
-      if (commit && missing.length) {
+      if ((commit || wasCommitted) && missing.length) {
         this.importError = `${missing[0].label} is required before completing this record.`;
         return false;
       }
@@ -360,7 +430,8 @@ export default {
       this.importError = "";
       this.importStatusMessage = "";
       try {
-        const updatedDive = await this.persistImportDraft(diveId, draft, commit);
+        const shouldCommit = commit || wasCommitted;
+        const updatedDive = await this.persistImportDraft(diveId, draft, shouldCommit);
         const nextDives = this.dives.map((entry) => (String(entry.id) === id ? updatedDive : entry));
         const nextDrafts = {
           ...this.importDrafts,
@@ -369,12 +440,14 @@ export default {
 
         this.dives = nextDives;
         this.importDrafts = nextDrafts;
-        this.importStatusMessage = commit
+        this.importStatusMessage = shouldCommit && !wasCommitted
           ? `${paddedDiveIndex(updatedDive)} committed to the registry.`
-          : `Draft saved for ${paddedDiveIndex(updatedDive)}.`;
+          : wasCommitted
+            ? `${paddedDiveIndex(updatedDive)} metadata updated.`
+            : `Draft saved for ${paddedDiveIndex(updatedDive)}.`;
 
-        if (commit) {
-          this.selectNextPendingImport(nextDives, nextDrafts, null);
+        if (shouldCommit && !wasCommitted) {
+          this.selectedImportId = this.resolvePendingImportId(nextDives, nextDrafts, null);
           window.location.hash = this.selectedImportId ? `imports/${this.selectedImportId}` : "imports";
         }
         return true;
@@ -384,6 +457,9 @@ export default {
       } finally {
         this.savingImportId = null;
       }
+    },
+    async saveExistingDiveLogbook(diveId) {
+      return this.saveImportDraft(diveId, true);
     },
     async applyBuddyGuideToPendingImports(diveId) {
       const id = String(diveId);
@@ -448,7 +524,7 @@ export default {
 
         this.dives = nextDives;
         this.importDrafts = nextDrafts;
-        this.selectNextPendingImport(nextDives, nextDrafts, id);
+        this.selectedImportId = this.resolvePendingImportId(nextDives, nextDrafts, id);
 
         const appliedLabel = updateKeys.length === 2 ? "buddy and guide" : updateKeys[0];
         this.importStatusMessage = `Applied ${appliedLabel} to ${updatedCount} imported ${updatedCount === 1 ? "dive" : "dives"}. Dive sites were left unchanged.`;
@@ -476,13 +552,22 @@ export default {
       if (view === "imports") {
         this.activeView = "imports";
         this.selectedDiveId = null;
-        this.selectedImportId = segment || this.selectedImportId;
+        this.selectedEditDiveId = null;
+        this.selectedImportId = segment || null;
+        return;
+      }
+      if (view === "edit") {
+        this.activeView = "edit";
+        this.selectedDiveId = null;
+        this.selectedImportId = null;
+        this.selectedEditDiveId = segment || null;
         return;
       }
       if (this.navItems.some((item) => item.id === view)) {
         this.activeView = view;
         this.selectedDiveId = view === "logs" && segment ? segment : null;
         if (view !== "imports") this.selectedImportId = null;
+        if (view !== "edit") this.selectedEditDiveId = null;
       }
     },
     async fetchDives() {
@@ -502,7 +587,18 @@ export default {
           ? { ...this.dashboardStats, ...payload.stats }
           : { ...this.dashboardStats, totalDives: this.dives.length };
         this.syncImportDrafts();
-        this.selectNextPendingImport(this.dives, this.importDrafts, this.selectedImportId);
+        if (this.selectedImportId && !this.isPendingImportId(this.selectedImportId, this.dives, this.importDrafts)) {
+          this.selectedImportId = null;
+          if (this.activeView === "imports") {
+            window.location.hash = "imports";
+          }
+        }
+        if (this.selectedEditDiveId && !this.dives.some((dive) => String(dive.id) === String(this.selectedEditDiveId) && isCommittedDive(dive))) {
+          this.selectedEditDiveId = null;
+          if (this.activeView === "edit") {
+            window.location.hash = "logs";
+          }
+        }
       } catch (error) {
         this.error = error.message || "Unknown frontend error";
       } finally {
@@ -585,8 +681,10 @@ export default {
           </section>
           <dashboard-view v-else-if="activeView === 'dashboard'" :dives="committedDives" :stats="stats" :set-view="setView" :backend-healthy="backendHealthy" :open-dive="openDive" :current-user-name="currentUserName" :imported-dive-count="importedDiveCount" :open-import-queue="openImportQueue"></dashboard-view>
           <logs-view v-else-if="activeView === 'logs' && !selectedDive" :dives="committedDives" :search-text="searchText" :open-dive="openDive" :open-import-queue="openImportQueue" :set-search-text="setSearchText"></logs-view>
-          <dive-import-view v-else-if="activeView === 'imports'" :dives="dives" :import-drafts="importDrafts" :selected-import-id="selectedImportId" :select-import-dive="selectImportDive" :update-import-draft="updateImportDraft" :save-import-draft="saveImportDraft" :apply-buddy-guide-to-pending-imports="applyBuddyGuideToPendingImports" :saving-import-id="savingImportId" :bulk-import-save-pending="bulkImportSavePending" :import-error="importError" :import-status-message="importStatusMessage" :open-dive="openDive" :set-view="setView" :fetch-dives="fetchDives"></dive-import-view>
-          <dive-detail-view v-else-if="activeView === 'logs' && selectedDive" :dive="selectedDive" :close-detail="closeDiveDetail"></dive-detail-view>
+          <dive-import-editor-view v-else-if="activeView === 'imports' && selectedImportDive" :dive="selectedImportDive" :draft="selectedImportDraft" :saving-import-id="savingImportId" :bulk-import-save-pending="bulkImportSavePending" :import-error="importError" :import-status-message="importStatusMessage" :update-import-draft="updateImportDraft" :save-import-draft="saveImportDraft" :apply-buddy-guide-to-pending-imports="applyBuddyGuideToPendingImports" :back-to-queue="backToImportQueue"></dive-import-editor-view>
+          <dive-import-view v-else-if="activeView === 'imports'" :dives="dives" :import-drafts="importDrafts" :selected-import-id="selectedImportId" :select-import-dive="selectImportDive" :import-error="importError" :import-status-message="importStatusMessage" :set-view="setView" :fetch-dives="fetchDives"></dive-import-view>
+          <logbook-editor-view v-else-if="activeView === 'edit' && selectedEditDive" :dive="selectedEditDive" :draft="selectedEditDraft" :saving-import-id="savingImportId" :status-message="importStatusMessage" :error-message="importError" :update-dive-draft="updateImportDraft" :save-dive-logbook="saveExistingDiveLogbook" :close-editor="closeDiveEditor"></logbook-editor-view>
+          <dive-detail-view v-else-if="activeView === 'logs' && selectedDive" :dive="selectedDive" :close-detail="closeDiveDetail" :open-dive-editor="openDiveEditor"></dive-detail-view>
           <equipment-view v-else-if="activeView === 'equipment'" :search-text="searchText"></equipment-view>
           <settings-view v-else-if="activeView === 'settings'" :cli-auth-code="cliAuthCode"></settings-view>
         </div>
@@ -597,9 +695,9 @@ export default {
           :key="item.id"
           @click="setView(item.id)"
           class="flex flex-col items-center justify-center rounded-lg px-3 py-1 transition-all"
-          :class="activeView === item.id || (activeView === 'imports' && item.id === 'logs') ? 'bg-surface-container-high text-primary' : 'text-secondary/60'"
+          :class="activeView === item.id || ((activeView === 'imports' || activeView === 'edit') && item.id === 'logs') ? 'bg-surface-container-high text-primary' : 'text-secondary/60'"
         >
-          <span class="material-symbols-outlined mb-1" :style="activeView === item.id || (activeView === 'imports' && item.id === 'logs') ? filledIconStyle : ''">{{ item.mobileIcon || item.icon }}</span>
+          <span class="material-symbols-outlined mb-1" :style="activeView === item.id || ((activeView === 'imports' || activeView === 'edit') && item.id === 'logs') ? filledIconStyle : ''">{{ item.mobileIcon || item.icon }}</span>
           <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em]">{{ item.mobileLabel }}</span>
         </button>
       </nav>

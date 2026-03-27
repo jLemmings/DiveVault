@@ -257,13 +257,33 @@ function diveSamples(dive) {
   return Array.isArray(dive?.samples) ? dive.samples : [];
 }
 
-function sampleTimeScale(dive) {
+function normalizeSampleTimeUnit(value) {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim().toLowerCase();
+  if (["s", "sec", "secs", "second", "seconds"].includes(normalized)) return "seconds";
+  if (["ms", "msec", "msecs", "millisecond", "milliseconds"].includes(normalized)) return "milliseconds";
+  return null;
+}
+
+function sampleTimeUnit(dive) {
+  const diveLevelUnit = normalizeSampleTimeUnit(dive?.fields?.sample_time_unit);
+  if (diveLevelUnit) return diveLevelUnit;
+
+  const sampleLevelUnit = diveSamples(dive)
+    .map((sample) => normalizeSampleTimeUnit(sample?.time_unit))
+    .find(Boolean);
+  if (sampleLevelUnit) return sampleLevelUnit;
+
   const times = diveSamples(dive).map((sample) => sample.time_seconds).filter((value) => typeof value === "number" && Number.isFinite(value));
-  if (!times.length) return 1;
+  if (!times.length) return "seconds";
   const maxTime = Math.max(...times);
   const duration = numberOrZero(dive?.duration_seconds);
-  if (duration > 0 && maxTime > duration * 5) return 1 / 1000;
-  return 1;
+  if (duration > 0 && maxTime > duration * 5) return "milliseconds";
+  return "seconds";
+}
+
+function sampleTimeScale(dive) {
+  return sampleTimeUnit(dive) === "milliseconds" ? 1 / 1000 : 1;
 }
 
 function sampleTimeSeconds(dive, sample, fallbackIndex = 0) {
