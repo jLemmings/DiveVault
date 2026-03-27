@@ -29,8 +29,10 @@ CREATE TABLE IF NOT EXISTS dives (
     dive_uid TEXT NOT NULL,
     started_at TEXT,
     duration_seconds INTEGER,
+    duration_ms BIGINT,
     max_depth_m DOUBLE PRECISION,
     avg_depth_m DOUBLE PRECISION,
+    import_payload_json JSONB NOT NULL DEFAULT '{}'::jsonb,
     fields_json JSONB NOT NULL DEFAULT '{}'::jsonb,
     raw_sha256 TEXT NOT NULL,
     raw_data BYTEA NOT NULL,
@@ -40,6 +42,8 @@ CREATE TABLE IF NOT EXISTS dives (
 """
 
 LOGBOOK_REQUIRED_FIELDS = ("site", "buddy", "guide")
+SAMPLE_TIME_UNIT_SECONDS = "seconds"
+SAMPLE_TIME_UNIT_MILLISECONDS = "milliseconds"
 
 
 def now_iso() -> str:
@@ -51,10 +55,45 @@ def init_db(conn: psycopg.Connection) -> None:
         cur.execute(SCHEMA)
         cur.execute("ALTER TABLE device_state ADD COLUMN IF NOT EXISTS user_id TEXT")
         cur.execute("ALTER TABLE dives ADD COLUMN IF NOT EXISTS user_id TEXT")
+        cur.execute("ALTER TABLE dives ADD COLUMN IF NOT EXISTS duration_ms BIGINT")
+        cur.execute("ALTER TABLE dives ADD COLUMN IF NOT EXISTS import_payload_json JSONB NOT NULL DEFAULT '{}'::jsonb")
         cur.execute("ALTER TABLE dives ADD COLUMN IF NOT EXISTS fields_json JSONB NOT NULL DEFAULT '{}'::jsonb")
         cur.execute("ALTER TABLE dives ADD COLUMN IF NOT EXISTS samples_json JSONB NOT NULL DEFAULT '[]'::jsonb")
         cur.execute("UPDATE device_state SET user_id='legacy' WHERE user_id IS NULL")
         cur.execute("UPDATE dives SET user_id='legacy' WHERE user_id IS NULL")
+        cur.execute(
+            """
+            UPDATE dives
+            SET duration_ms = duration_seconds::bigint * 1000
+            WHERE duration_ms IS NULL
+              AND duration_seconds IS NOT NULL
+            """
+        )
+        cur.execute(
+            """
+            UPDATE dives
+            SET import_payload_json = jsonb_build_object(
+                'vendor', vendor,
+                'product', product,
+                'fingerprint_hex', fingerprint_hex,
+                'dive_uid', dive_uid,
+                'started_at', started_at,
+                'duration_ms', duration_ms,
+                'duration_seconds', CASE
+                    WHEN duration_ms IS NOT NULL THEN (duration_ms / 1000)::bigint
+                    ELSE duration_seconds
+                END,
+                'max_depth_m', max_depth_m,
+                'avg_depth_m', avg_depth_m,
+                'fields', COALESCE(fields_json, '{}'::jsonb),
+                'raw_sha256', raw_sha256,
+                'samples', COALESCE(samples_json, '[]'::jsonb),
+                'imported_at', imported_at
+            )
+            WHERE import_payload_json = '{}'::jsonb
+            """
+        )
+        cur.execute("UPDATE dives SET duration_seconds = NULL WHERE duration_ms IS NOT NULL")
         cur.execute("ALTER TABLE device_state ALTER COLUMN user_id SET NOT NULL")
         cur.execute("ALTER TABLE dives ALTER COLUMN user_id SET NOT NULL")
         cur.execute(
@@ -119,6 +158,26 @@ def clean_logbook_text(value: object) -> str:
     return value.strip() if isinstance(value, str) else ""
 
 
+def numeric_int(value: object) -> int | None:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    return int(round(float(value)))
+
+
+def duration_seconds_to_milliseconds(value: object) -> int | None:
+    seconds = numeric_int(value)
+    if seconds is None:
+        return None
+    return seconds * 1000
+
+
+def duration_milliseconds_to_seconds(value: object) -> int | None:
+    milliseconds = numeric_int(value)
+    if milliseconds is None:
+        return None
+    return int(round(milliseconds / 1000))
+
+
 def normalize_logbook(logbook: dict | None) -> dict:
     source = logbook if isinstance(logbook, dict) else {}
     status = "complete" if source.get("status") == "complete" else "imported"
@@ -141,9 +200,64 @@ def normalize_logbook(logbook: dict | None) -> dict:
     return normalized
 
 
-def normalize_dive_fields(fields: dict | None) -> dict:
+def normalize_sample_time_unit(value: object) -> str | None:
+    if not isinstance(value, str):
+        return None
+    normalized = value.strip().lower()
+    if normalized in {"s", "sec", "secs", "second", "seconds"}:
+        return SAMPLE_TIME_UNIT_SECONDS
+    if normalized in {"ms", "msec", "msecs", "millisecond", "milliseconds"}:
+        return SAMPLE_TIME_UNIT_MILLISECONDS
+    return None
+
+
+def resolve_duration_milliseconds(source: dict | None) -> int | None:
+    if not isinstance(source, dict):
+        return None
+    duration_ms = numeric_int(source.get("duration_ms"))
+    if duration_ms is not None:
+        return duration_ms
+    return duration_seconds_to_milliseconds(source.get("duration_seconds"))
+
+
+def resolve_duration_seconds(source: dict | None) -> int | None:
+    duration_ms = resolve_duration_milliseconds(source)
+    if duration_ms is not None:
+        return duration_milliseconds_to_seconds(duration_ms)
+    if not isinstance(source, dict):
+        return None
+    return numeric_int(source.get("duration_seconds"))
+
+
+def infer_sample_time_unit(samples: list | None, duration_seconds: object) -> str | None:
+    if not isinstance(samples, list):
+        return None
+
+    times = [
+        sample.get("time_seconds")
+        for sample in samples
+        if isinstance(sample, dict) and isinstance(sample.get("time_seconds"), (int, float))
+    ]
+    if not times:
+        return None
+
+    duration = float(duration_seconds) if isinstance(duration_seconds, (int, float)) else 0.0
+    max_time = max(times)
+    if duration > 0 and max_time > duration * 5:
+        return SAMPLE_TIME_UNIT_MILLISECONDS
+    return SAMPLE_TIME_UNIT_SECONDS
+
+
+def normalize_dive_fields(fields: dict | None, *, samples: list | None = None, duration_seconds: object = None) -> dict:
     normalized = dict(fields) if isinstance(fields, dict) else {}
     normalized["logbook"] = normalize_logbook(normalized.get("logbook"))
+    sample_time_unit = normalize_sample_time_unit(normalized.get("sample_time_unit"))
+    if sample_time_unit:
+        normalized["sample_time_unit"] = sample_time_unit
+    else:
+        inferred_sample_time_unit = infer_sample_time_unit(samples, duration_seconds)
+        if inferred_sample_time_unit:
+            normalized["sample_time_unit"] = inferred_sample_time_unit
     return normalized
 
 
@@ -151,14 +265,48 @@ def is_logbook_complete(logbook: dict | None) -> bool:
     return normalize_logbook(logbook).get("status") == "complete"
 
 
+def build_import_payload(payload: dict | None, *, imported_at: str) -> dict:
+    archived = dict(payload) if isinstance(payload, dict) else {}
+    archived.setdefault("imported_at", imported_at)
+    duration_ms = resolve_duration_milliseconds(archived)
+    if duration_ms is not None:
+        archived["duration_ms"] = duration_ms
+        archived.setdefault("duration_seconds", duration_milliseconds_to_seconds(duration_ms))
+    archived.pop("raw_data_b64", None)
+    return archived
+
+
+def build_import_payload_from_row(row: dict, fields: dict, samples: list) -> dict:
+    duration_ms = resolve_duration_milliseconds(row)
+    return {
+        "vendor": row["vendor"],
+        "product": row["product"],
+        "fingerprint_hex": row.get("fingerprint_hex"),
+        "dive_uid": row["dive_uid"],
+        "started_at": row.get("started_at"),
+        "duration_ms": duration_ms,
+        "duration_seconds": duration_milliseconds_to_seconds(duration_ms),
+        "max_depth_m": row.get("max_depth_m"),
+        "avg_depth_m": row.get("avg_depth_m"),
+        "fields": fields,
+        "raw_sha256": row["raw_sha256"],
+        "samples": samples,
+        "imported_at": row["imported_at"],
+    }
+
+
 def decode_dive_row(row: dict, include_samples: bool, include_raw_data: bool) -> dict:
     fields = row.get("fields_json") or {}
     samples = row.get("samples_json") or []
     raw_data = row.get("raw_data")
+    duration_ms = resolve_duration_milliseconds(row)
+    duration_seconds = duration_milliseconds_to_seconds(duration_ms)
 
+    if isinstance(samples, str):
+        samples = json.loads(samples)
     if not isinstance(fields, dict):
         fields = json.loads(fields)
-    fields = normalize_dive_fields(fields)
+    fields = normalize_dive_fields(fields, samples=samples, duration_seconds=duration_seconds)
 
     payload = {
         "id": row["id"],
@@ -167,7 +315,8 @@ def decode_dive_row(row: dict, include_samples: bool, include_raw_data: bool) ->
         "fingerprint_hex": row.get("fingerprint_hex"),
         "dive_uid": row["dive_uid"],
         "started_at": row.get("started_at"),
-        "duration_seconds": row.get("duration_seconds"),
+        "duration_ms": duration_ms,
+        "duration_seconds": duration_seconds,
         "max_depth_m": row.get("max_depth_m"),
         "avg_depth_m": row.get("avg_depth_m"),
         "fields": fields,
@@ -176,8 +325,6 @@ def decode_dive_row(row: dict, include_samples: bool, include_raw_data: bool) ->
         "imported_at": row["imported_at"],
     }
 
-    if isinstance(samples, str):
-        samples = json.loads(samples)
     payload["sample_count"] = len(samples)
     if include_samples:
         payload["samples"] = samples
@@ -188,19 +335,22 @@ def decode_dive_row(row: dict, include_samples: bool, include_raw_data: bool) ->
 
 def insert_dive_record(conn: psycopg.Connection, user_id: str, payload: dict) -> bool:
     imported_at = payload.get("imported_at") or now_iso()
-    fields = normalize_dive_fields(payload.get("fields"))
     samples = payload.get("samples") or []
+    duration_ms = resolve_duration_milliseconds(payload)
+    duration_seconds = duration_milliseconds_to_seconds(duration_ms)
+    fields = normalize_dive_fields(payload.get("fields"), samples=samples, duration_seconds=duration_seconds)
     raw_data = decode_base64_payload(payload)
+    import_payload = build_import_payload(payload, imported_at=imported_at)
 
     with conn.cursor() as cur:
         cur.execute(
             """
             INSERT INTO dives(
                 user_id, vendor, product, fingerprint_hex, dive_uid, started_at,
-                duration_seconds, max_depth_m, avg_depth_m, fields_json,
-                raw_sha256, raw_data, samples_json, imported_at
+                duration_seconds, duration_ms, max_depth_m, avg_depth_m, import_payload_json,
+                fields_json, raw_sha256, raw_data, samples_json, imported_at
             )
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT (user_id, dive_uid) DO NOTHING
             RETURNING id
             """,
@@ -211,9 +361,11 @@ def insert_dive_record(conn: psycopg.Connection, user_id: str, payload: dict) ->
                 payload.get("fingerprint_hex"),
                 payload["dive_uid"],
                 payload.get("started_at"),
-                payload.get("duration_seconds"),
+                None,
+                duration_ms,
                 payload.get("max_depth_m"),
                 payload.get("avg_depth_m"),
+                Jsonb(import_payload),
                 Jsonb(fields),
                 payload["raw_sha256"],
                 raw_data,
@@ -316,7 +468,7 @@ def summarize_dives(dives: list[dict], total_count: int | None = None) -> dict:
         return max(pressures), min(pressures)
 
     total_dives = int(total_count if total_count is not None else len(dives))
-    total_seconds = sum(int(dive.get("duration_seconds") or 0) for dive in dives)
+    total_seconds = sum(int(resolve_duration_seconds(dive) or 0) for dive in dives)
     max_depth = max((float(dive.get("max_depth_m") or 0) for dive in dives), default=0.0)
     total_bar_consumed = 0
     for dive in dives:
@@ -386,9 +538,12 @@ def update_dive_logbook(conn: psycopg.Connection, user_id: str, dive_id: int, pa
             return None
 
         fields = row.get("fields_json") or {}
+        samples = row.get("samples_json") or []
         if not isinstance(fields, dict):
             fields = json.loads(fields)
-        fields = normalize_dive_fields(fields)
+        if isinstance(samples, str):
+            samples = json.loads(samples)
+        fields = normalize_dive_fields(fields, samples=samples, duration_seconds=resolve_duration_seconds(row))
         fields["logbook"] = sanitize_logbook_payload(payload, fields.get("logbook"))
 
         cur.execute(
@@ -427,18 +582,24 @@ def import_sqlite_dive_rows(conn: psycopg.Connection, rows: list[dict], *, user_
             samples = row["samples_json"]
             if isinstance(fields, str):
                 fields = json.loads(fields)
-            fields = normalize_dive_fields(fields)
             if isinstance(samples, str):
                 samples = json.loads(samples)
+            duration_ms = resolve_duration_milliseconds(row)
+            fields = normalize_dive_fields(fields, samples=samples, duration_seconds=duration_milliseconds_to_seconds(duration_ms))
+            import_payload = row.get("import_payload_json")
+            if isinstance(import_payload, str):
+                import_payload = json.loads(import_payload)
+            if not isinstance(import_payload, dict) or not import_payload:
+                import_payload = build_import_payload_from_row(row, fields, samples)
 
             cur.execute(
                 """
                 INSERT INTO dives(
                     id, user_id, vendor, product, fingerprint_hex, dive_uid, started_at,
-                    duration_seconds, max_depth_m, avg_depth_m, fields_json,
-                    raw_sha256, raw_data, samples_json, imported_at
+                    duration_seconds, duration_ms, max_depth_m, avg_depth_m, import_payload_json,
+                    fields_json, raw_sha256, raw_data, samples_json, imported_at
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (user_id, dive_uid) DO NOTHING
                 RETURNING id
                 """,
@@ -450,9 +611,11 @@ def import_sqlite_dive_rows(conn: psycopg.Connection, rows: list[dict], *, user_
                     row["fingerprint_hex"],
                     row["dive_uid"],
                     row["started_at"],
-                    row["duration_seconds"],
+                    None,
+                    duration_ms,
                     row["max_depth_m"],
                     row["avg_depth_m"],
+                    Jsonb(import_payload),
                     Jsonb(fields),
                     row["raw_sha256"],
                     row["raw_data"],

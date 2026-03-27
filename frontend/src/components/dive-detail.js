@@ -2,7 +2,7 @@ import { depthChartPath, pressureChartPath, numberOrZero, depthSeries, axisTicks
 
 export default {
   name: "DiveDetailView",
-  props: ["dive", "closeDetail"],
+  props: ["dive", "closeDetail", "openDiveEditor"],
   computed: {
     depthProfile() {
       return depthChartPath(this.dive);
@@ -264,7 +264,7 @@ export default {
               <button class="bg-surface-container-high p-3 text-secondary transition-colors hover:text-primary">
                 <span class="material-symbols-outlined">share</span>
               </button>
-              <button class="bg-surface-container-high p-3 text-secondary transition-colors hover:text-primary">
+              <button @click="openDiveEditor(dive.id)" class="bg-surface-container-high p-3 text-secondary transition-colors hover:text-primary">
                 <span class="material-symbols-outlined">edit</span>
               </button>
               <button class="inline-flex items-center gap-2 bg-primary px-5 py-3 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-on-primary">

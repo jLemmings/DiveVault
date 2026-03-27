@@ -29,7 +29,13 @@ def test_decode_dive_row_includes_requested_fields_and_decodes_json_strings():
     payload = postgres_store.decode_dive_row(row, include_samples=True, include_raw_data=True)
 
     assert payload["id"] == 7
-    assert payload["fields"] == {"visibility": "good", "logbook": {"site": "", "buddy": "", "guide": "", "notes": "", "status": "imported"}}
+    assert payload["duration_ms"] == 1800000
+    assert payload["duration_seconds"] == 1800
+    assert payload["fields"] == {
+        "visibility": "good",
+        "sample_time_unit": "seconds",
+        "logbook": {"site": "", "buddy": "", "guide": "", "notes": "", "status": "imported"},
+    }
     assert payload["sample_count"] == 2
     assert payload["samples"][1]["depth_m"] == 8.1
     assert payload["raw_data_size"] == 3
@@ -56,10 +62,95 @@ def test_decode_dive_row_omits_optional_fields_when_not_requested():
 
     payload = postgres_store.decode_dive_row(row, include_samples=False, include_raw_data=False)
 
+    assert payload["duration_ms"] is None
     assert payload["sample_count"] == 0
     assert payload["raw_data_size"] == 0
     assert "samples" not in payload
     assert "raw_data_b64" not in payload
+
+
+def test_build_import_payload_preserves_unknown_values_and_omits_transport_base64():
+    payload = {
+        "vendor": "Mares",
+        "product": "Smart Air",
+        "duration_seconds": 1800,
+        "raw_data_b64": base64.b64encode(b"abc123").decode("ascii"),
+        "custom_top_level": {"gps": "present"},
+        "fields": {"location": {"lat": 1.23, "lon": 4.56}},
+        "samples": [{"time_seconds": 12, "event": {"type": "bookmark"}}],
+    }
+
+    archived = postgres_store.build_import_payload(payload, imported_at="2026-03-24T11:00:00+00:00")
+
+    assert archived["vendor"] == "Mares"
+    assert archived["duration_ms"] == 1800000
+    assert archived["custom_top_level"] == {"gps": "present"}
+    assert archived["fields"]["location"]["lat"] == 1.23
+    assert archived["samples"][0]["event"]["type"] == "bookmark"
+    assert archived["imported_at"] == "2026-03-24T11:00:00+00:00"
+    assert "raw_data_b64" not in archived
+
+
+def test_build_import_payload_from_row_reconstructs_legacy_archive():
+    archived = postgres_store.build_import_payload_from_row(
+        {
+            "vendor": "Mares",
+            "product": "Smart Air",
+            "fingerprint_hex": "abc123",
+            "dive_uid": "uid-7",
+            "started_at": "2026-03-24T10:00:00+00:00",
+            "duration_seconds": 1800,
+            "max_depth_m": 22.4,
+            "avg_depth_m": 11.2,
+            "raw_sha256": "sha-7",
+            "imported_at": "2026-03-24T11:00:00+00:00",
+        },
+        {"visibility": "good"},
+        [{"time_seconds": 0, "depth_m": 0.0}],
+    )
+
+    assert archived["dive_uid"] == "uid-7"
+    assert archived["duration_ms"] == 1800000
+    assert archived["fields"] == {"visibility": "good"}
+    assert archived["samples"][0]["depth_m"] == 0.0
+    assert archived["raw_sha256"] == "sha-7"
+
+
+def test_resolve_duration_helpers_prefer_milliseconds_and_derive_seconds():
+    payload = {"duration_ms": 90500, "duration_seconds": 91}
+
+    assert postgres_store.resolve_duration_milliseconds(payload) == 90500
+    assert postgres_store.resolve_duration_seconds(payload) == 90
+
+
+def test_normalize_dive_fields_sets_explicit_sample_time_unit_from_existing_value():
+    fields = postgres_store.normalize_dive_fields(
+        {"sample_time_unit": "ms"},
+        samples=[{"time_seconds": 12000}],
+        duration_seconds=1200,
+    )
+
+    assert fields["sample_time_unit"] == "milliseconds"
+
+
+def test_normalize_dive_fields_infers_sample_time_unit_for_millisecond_profiles():
+    fields = postgres_store.normalize_dive_fields(
+        {},
+        samples=[{"time_seconds": 0}, {"time_seconds": 600000}],
+        duration_seconds=1800,
+    )
+
+    assert fields["sample_time_unit"] == "milliseconds"
+
+
+def test_normalize_dive_fields_infers_sample_time_unit_for_second_profiles():
+    fields = postgres_store.normalize_dive_fields(
+        {},
+        samples=[{"time_seconds": 0}, {"time_seconds": 1200}],
+        duration_seconds=1800,
+    )
+
+    assert fields["sample_time_unit"] == "seconds"
 
 
 def test_sanitize_logbook_payload_marks_complete_when_required_fields_present(monkeypatch):
