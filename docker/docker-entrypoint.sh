@@ -1,6 +1,6 @@
 #!/bin/sh
 set -eu
 
-python /app/migrations/migrate_postgres_schema.py
+python -m migrations.migrate_postgres_schema
 
 exec "$@"
