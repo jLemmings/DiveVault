@@ -158,6 +158,17 @@ Run tests with:
 .\.venv\Scripts\python.exe -m pytest -q tests
 ```
 
+## Image Versioning
+
+Container publishing is driven by the repository [`VERSION`](./VERSION) file.
+
+- Pushes to `master` publish a new image on every merge using the current base version plus the GitHub Actions run number, for example `0.1.0-42`, and also update the `latest` tag.
+- Published GitHub releases must use a tag that matches the version file in `v<version>` format, for example `v0.1.0`.
+- Release builds publish the clean version tag, for example `0.1.0`, and update the `stable` tag.
+- If a release is published with a tag that does not match [`VERSION`](./VERSION), or if that release version already exists, the workflow fails.
+
+This follows the Frigate-style split between ongoing build tags and clean release tags while keeping the version source in the repository.
+
 ## libdivecomputer
 
 The companion importer side of this system is a natural place to use `libdivecomputer`, the open source cross-platform library for communicating with many dive computers.
