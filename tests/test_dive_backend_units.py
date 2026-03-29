@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import base64
 from pathlib import Path
 
 import pytest
@@ -31,6 +32,37 @@ def test_normalize_bearer_token(value, expected):
 def test_parse_csv_env_discards_empty_entries():
     assert dive_backend.parse_csv_env(None) == set()
     assert dive_backend.parse_csv_env(" one, two ,, three , ") == {"one", "two", "three"}
+
+
+def test_sanitize_profile_license_filename_keeps_pdf_name():
+    assert dive_backend.sanitize_profile_license_filename(r"C:\Users\joshu\licenses\advanced-open-water") == "advanced-open-water.pdf"
+    assert dive_backend.sanitize_profile_license_filename(" rescue-diver.pdf ") == "rescue-diver.pdf"
+    assert dive_backend.sanitize_profile_license_filename(None) == "diving-licenses.pdf"
+
+
+def test_decode_profile_license_payload_accepts_valid_pdf():
+    filename, content_type, pdf_bytes = dive_backend.decode_profile_license_payload(
+        {
+            "filename": "licenses.pdf",
+            "content_type": "application/pdf",
+            "data_b64": base64.b64encode(b"%PDF-1.7\nexample").decode("ascii"),
+        }
+    )
+
+    assert filename == "licenses.pdf"
+    assert content_type == "application/pdf"
+    assert pdf_bytes.startswith(b"%PDF-")
+
+
+def test_decode_profile_license_payload_rejects_non_pdf():
+    with pytest.raises(ValueError, match="License file must be a PDF"):
+        dive_backend.decode_profile_license_payload(
+            {
+                "filename": "licenses.pdf",
+                "content_type": "application/pdf",
+                "data_b64": base64.b64encode(b"plain text").decode("ascii"),
+            }
+        )
 
 
 def test_build_clerk_verifier_derives_jwks_url_and_issuer():

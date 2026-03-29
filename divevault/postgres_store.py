@@ -39,6 +39,35 @@ CREATE TABLE IF NOT EXISTS dives (
     samples_json JSONB NOT NULL DEFAULT '[]'::jsonb,
     imported_at TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS user_profile (
+    user_id TEXT PRIMARY KEY,
+    name TEXT,
+    email TEXT,
+    licenses_json JSONB NOT NULL DEFAULT '[]'::jsonb,
+    certification TEXT,
+    registry TEXT,
+    license_company TEXT,
+    license_certification_name TEXT,
+    license_student_number TEXT,
+    license_certification_date TEXT,
+    license_instructor_number TEXT,
+    license_pdf_name TEXT,
+    license_pdf_content_type TEXT,
+    license_pdf_data BYTEA,
+    license_pdf_uploaded_at TEXT,
+    updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS user_profile_license_documents (
+    user_id TEXT NOT NULL,
+    license_id TEXT NOT NULL,
+    filename TEXT NOT NULL,
+    content_type TEXT NOT NULL,
+    pdf_data BYTEA NOT NULL,
+    uploaded_at TEXT NOT NULL,
+    PRIMARY KEY (user_id, license_id)
+);
 """
 
 LOGBOOK_REQUIRED_FIELDS = ("site", "buddy", "guide")
@@ -59,8 +88,54 @@ def init_db(conn: psycopg.Connection) -> None:
         cur.execute("ALTER TABLE dives ADD COLUMN IF NOT EXISTS import_payload_json JSONB NOT NULL DEFAULT '{}'::jsonb")
         cur.execute("ALTER TABLE dives ADD COLUMN IF NOT EXISTS fields_json JSONB NOT NULL DEFAULT '{}'::jsonb")
         cur.execute("ALTER TABLE dives ADD COLUMN IF NOT EXISTS samples_json JSONB NOT NULL DEFAULT '[]'::jsonb")
+        cur.execute("ALTER TABLE user_profile ADD COLUMN IF NOT EXISTS name TEXT")
+        cur.execute("ALTER TABLE user_profile ADD COLUMN IF NOT EXISTS email TEXT")
+        cur.execute("ALTER TABLE user_profile ADD COLUMN IF NOT EXISTS licenses_json JSONB NOT NULL DEFAULT '[]'::jsonb")
+        cur.execute("ALTER TABLE user_profile ADD COLUMN IF NOT EXISTS certification TEXT")
+        cur.execute("ALTER TABLE user_profile ADD COLUMN IF NOT EXISTS registry TEXT")
+        cur.execute("ALTER TABLE user_profile ADD COLUMN IF NOT EXISTS license_company TEXT")
+        cur.execute("ALTER TABLE user_profile ADD COLUMN IF NOT EXISTS license_certification_name TEXT")
+        cur.execute("ALTER TABLE user_profile ADD COLUMN IF NOT EXISTS license_student_number TEXT")
+        cur.execute("ALTER TABLE user_profile ADD COLUMN IF NOT EXISTS license_certification_date TEXT")
+        cur.execute("ALTER TABLE user_profile ADD COLUMN IF NOT EXISTS license_instructor_number TEXT")
+        cur.execute("ALTER TABLE user_profile ADD COLUMN IF NOT EXISTS license_pdf_name TEXT")
+        cur.execute("ALTER TABLE user_profile ADD COLUMN IF NOT EXISTS license_pdf_content_type TEXT")
+        cur.execute("ALTER TABLE user_profile ADD COLUMN IF NOT EXISTS license_pdf_data BYTEA")
+        cur.execute("ALTER TABLE user_profile ADD COLUMN IF NOT EXISTS license_pdf_uploaded_at TEXT")
+        cur.execute("ALTER TABLE user_profile ADD COLUMN IF NOT EXISTS updated_at TEXT")
+        cur.execute("ALTER TABLE user_profile_license_documents ADD COLUMN IF NOT EXISTS user_id TEXT")
+        cur.execute("ALTER TABLE user_profile_license_documents ADD COLUMN IF NOT EXISTS license_id TEXT")
+        cur.execute("ALTER TABLE user_profile_license_documents ADD COLUMN IF NOT EXISTS filename TEXT")
+        cur.execute("ALTER TABLE user_profile_license_documents ADD COLUMN IF NOT EXISTS content_type TEXT")
+        cur.execute("ALTER TABLE user_profile_license_documents ADD COLUMN IF NOT EXISTS pdf_data BYTEA")
+        cur.execute("ALTER TABLE user_profile_license_documents ADD COLUMN IF NOT EXISTS uploaded_at TEXT")
         cur.execute("UPDATE device_state SET user_id='legacy' WHERE user_id IS NULL")
         cur.execute("UPDATE dives SET user_id='legacy' WHERE user_id IS NULL")
+        cur.execute("UPDATE user_profile SET updated_at=%s WHERE updated_at IS NULL", (now_iso(),))
+        cur.execute(
+            """
+            UPDATE user_profile
+            SET licenses_json = jsonb_build_array(
+                jsonb_strip_nulls(
+                    jsonb_build_object(
+                        'company', NULLIF(BTRIM(COALESCE(license_company, '')), ''),
+                        'certification_name', NULLIF(BTRIM(COALESCE(license_certification_name, certification, '')), ''),
+                        'student_number', NULLIF(BTRIM(COALESCE(license_student_number, registry, '')), ''),
+                        'certification_date', NULLIF(BTRIM(COALESCE(license_certification_date, '')), ''),
+                        'instructor_number', NULLIF(BTRIM(COALESCE(license_instructor_number, '')), '')
+                    )
+                )
+            )
+            WHERE (licenses_json = '[]'::jsonb OR licenses_json IS NULL)
+              AND (
+                    NULLIF(BTRIM(COALESCE(license_company, '')), '') IS NOT NULL
+                 OR NULLIF(BTRIM(COALESCE(license_certification_name, certification, '')), '') IS NOT NULL
+                 OR NULLIF(BTRIM(COALESCE(license_student_number, registry, '')), '') IS NOT NULL
+                 OR NULLIF(BTRIM(COALESCE(license_certification_date, '')), '') IS NOT NULL
+                 OR NULLIF(BTRIM(COALESCE(license_instructor_number, '')), '') IS NOT NULL
+              )
+            """
+        )
         cur.execute(
             """
             UPDATE dives
@@ -96,6 +171,7 @@ def init_db(conn: psycopg.Connection) -> None:
         cur.execute("UPDATE dives SET duration_seconds = NULL WHERE duration_ms IS NOT NULL")
         cur.execute("ALTER TABLE device_state ALTER COLUMN user_id SET NOT NULL")
         cur.execute("ALTER TABLE dives ALTER COLUMN user_id SET NOT NULL")
+        cur.execute("ALTER TABLE user_profile ALTER COLUMN updated_at SET NOT NULL")
         cur.execute(
             """
             DO $$
@@ -156,6 +232,67 @@ def open_db(database_url: str) -> psycopg.Connection:
 
 def clean_logbook_text(value: object) -> str:
     return value.strip() if isinstance(value, str) else ""
+
+
+def clean_profile_text(value: object) -> str:
+    return value.strip() if isinstance(value, str) else ""
+
+
+def normalize_profile_license(entry: dict | None) -> dict:
+    source = entry if isinstance(entry, dict) else {}
+    return {
+        "id": clean_profile_text(source.get("id")),
+        "company": clean_profile_text(source.get("company")),
+        "certification_name": clean_profile_text(source.get("certification_name")),
+        "student_number": clean_profile_text(source.get("student_number")),
+        "certification_date": clean_profile_text(source.get("certification_date")),
+        "instructor_number": clean_profile_text(source.get("instructor_number")),
+    }
+
+
+def profile_license_has_values(entry: dict | None) -> bool:
+    license_entry = normalize_profile_license(entry)
+    return any(value for key, value in license_entry.items() if key != "id")
+
+
+def normalize_profile_licenses(entries: object) -> list[dict]:
+    if not isinstance(entries, list):
+        return []
+    normalized: list[dict] = []
+    seen_ids: set[str] = set()
+    next_fallback = 1
+
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        normalized_entry = normalize_profile_license(entry)
+        if not profile_license_has_values(normalized_entry):
+            continue
+
+        license_id = normalized_entry["id"] or f"license-{next_fallback}"
+        next_fallback += 1
+        dedupe_suffix = 1
+        base_id = license_id
+        while license_id in seen_ids:
+            dedupe_suffix += 1
+            license_id = f"{base_id}-{dedupe_suffix}"
+
+        normalized_entry["id"] = license_id
+        seen_ids.add(license_id)
+        normalized.append(normalized_entry)
+
+    return normalized
+
+
+def profile_license_document_summary(*, license_id: str, filename: str, content_type: str, data: bytes, uploaded_at: str | None) -> dict:
+    return {
+        "license_id": license_id,
+        "filename": filename,
+        "content_type": content_type,
+        "size_bytes": len(data),
+        "uploaded_at": uploaded_at,
+        "preview_url": f"/api/profile/licenses/{license_id}/pdf",
+    }
 
 
 def numeric_int(value: object) -> int | None:
@@ -504,6 +641,317 @@ def get_dive(conn: psycopg.Connection, user_id: str, dive_id: int, include_raw_d
         cur.execute("SELECT * FROM dives WHERE user_id=%s AND id=%s", (user_id, dive_id))
         row = cur.fetchone()
     return decode_dive_row(row, include_samples=True, include_raw_data=include_raw_data) if row else None
+
+
+def empty_user_profile() -> dict:
+    return {
+        "name": "",
+        "email": "",
+        "licenses": [],
+        "updated_at": None,
+    }
+
+
+def decode_user_profile_row(row: dict | None, license_documents: dict[str, dict] | None = None) -> dict:
+    if not row:
+        return empty_user_profile()
+
+    license_documents = license_documents or {}
+    licenses = row.get("licenses_json")
+    if isinstance(licenses, str):
+        licenses = json.loads(licenses)
+    normalized_licenses = normalize_profile_licenses(licenses)
+    if not normalized_licenses:
+        legacy_license = normalize_profile_license(
+            {
+                "id": "license-1",
+                "company": row.get("license_company"),
+                "certification_name": row.get("license_certification_name") or row.get("certification"),
+                "student_number": row.get("license_student_number") or row.get("registry"),
+                "certification_date": row.get("license_certification_date"),
+                "instructor_number": row.get("license_instructor_number"),
+            }
+        )
+        if profile_license_has_values(legacy_license):
+            normalized_licenses = [legacy_license]
+
+    legacy_pdf = None
+    if row.get("license_pdf_data") is not None and normalized_licenses:
+        first_license_id = normalized_licenses[0]["id"]
+        legacy_pdf = profile_license_document_summary(
+            license_id=first_license_id,
+            filename=row.get("license_pdf_name") or "diving-licenses.pdf",
+            content_type=row.get("license_pdf_content_type") or "application/pdf",
+            data=row.get("license_pdf_data"),
+            uploaded_at=row.get("license_pdf_uploaded_at"),
+        )
+
+    hydrated_licenses = []
+    for index, license_entry in enumerate(normalized_licenses):
+        pdf_summary = license_documents.get(license_entry["id"])
+        if pdf_summary is None and index == 0:
+            pdf_summary = legacy_pdf
+        hydrated_licenses.append({
+            **license_entry,
+            "pdf": pdf_summary,
+        })
+
+    payload = {
+        "name": clean_profile_text(row.get("name")),
+        "email": clean_profile_text(row.get("email")),
+        "licenses": hydrated_licenses,
+        "updated_at": row.get("updated_at"),
+    }
+
+    return payload
+
+
+def get_user_profile_license_document_summaries(conn: psycopg.Connection, user_id: str) -> dict[str, dict]:
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT license_id, filename, content_type, pdf_data, uploaded_at
+            FROM user_profile_license_documents
+            WHERE user_id=%s
+            """,
+            (user_id,),
+        )
+        rows = cur.fetchall()
+
+    return {
+        row["license_id"]: profile_license_document_summary(
+            license_id=row["license_id"],
+            filename=row["filename"],
+            content_type=row["content_type"],
+            data=row["pdf_data"],
+            uploaded_at=row.get("uploaded_at"),
+        )
+        for row in rows
+    }
+
+
+def get_user_profile(conn: psycopg.Connection, user_id: str) -> dict:
+    with conn.cursor() as cur:
+        cur.execute("SELECT * FROM user_profile WHERE user_id=%s", (user_id,))
+        row = cur.fetchone()
+    return decode_user_profile_row(row, get_user_profile_license_document_summaries(conn, user_id))
+
+
+def save_user_profile(conn: psycopg.Connection, user_id: str, payload: dict | None) -> dict:
+    with conn.cursor() as cur:
+        cur.execute("SELECT * FROM user_profile WHERE user_id=%s", (user_id,))
+        row = cur.fetchone()
+
+        existing = row or {}
+        updated_at = now_iso()
+        licenses = normalize_profile_licenses((payload or {}).get("licenses"))
+        primary_license = licenses[0] if licenses else {}
+        cur.execute(
+            """
+            INSERT INTO user_profile(
+                user_id, name, email, licenses_json, certification, registry,
+                license_company, license_certification_name, license_student_number, license_certification_date, license_instructor_number,
+                license_pdf_name, license_pdf_content_type, license_pdf_data, license_pdf_uploaded_at, updated_at
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT (user_id)
+            DO UPDATE SET
+                name=excluded.name,
+                email=excluded.email,
+                licenses_json=excluded.licenses_json,
+                certification=excluded.certification,
+                registry=excluded.registry,
+                license_company=excluded.license_company,
+                license_certification_name=excluded.license_certification_name,
+                license_student_number=excluded.license_student_number,
+                license_certification_date=excluded.license_certification_date,
+                license_instructor_number=excluded.license_instructor_number,
+                license_pdf_name=excluded.license_pdf_name,
+                license_pdf_content_type=excluded.license_pdf_content_type,
+                license_pdf_data=excluded.license_pdf_data,
+                license_pdf_uploaded_at=excluded.license_pdf_uploaded_at,
+                updated_at=excluded.updated_at
+            """,
+            (
+                user_id,
+                clean_profile_text((payload or {}).get("name")),
+                clean_profile_text((payload or {}).get("email")),
+                Jsonb(licenses),
+                clean_profile_text(primary_license.get("certification_name")),
+                clean_profile_text(primary_license.get("student_number")),
+                clean_profile_text(primary_license.get("company")),
+                clean_profile_text(primary_license.get("certification_name")),
+                clean_profile_text(primary_license.get("student_number")),
+                clean_profile_text(primary_license.get("certification_date")),
+                clean_profile_text(primary_license.get("instructor_number")),
+                existing.get("license_pdf_name"),
+                existing.get("license_pdf_content_type"),
+                existing.get("license_pdf_data"),
+                existing.get("license_pdf_uploaded_at"),
+                updated_at,
+            ),
+        )
+        if licenses:
+            cur.execute(
+                "DELETE FROM user_profile_license_documents WHERE user_id=%s AND license_id <> ALL(%s)",
+                (user_id, [license["id"] for license in licenses]),
+            )
+        else:
+            cur.execute("DELETE FROM user_profile_license_documents WHERE user_id=%s", (user_id,))
+    conn.commit()
+    return get_user_profile(conn, user_id)
+
+
+def save_user_profile_license_pdf(
+    conn: psycopg.Connection,
+    user_id: str,
+    *,
+    license_id: str,
+    filename: str,
+    content_type: str,
+    pdf_bytes: bytes,
+) -> dict | None:
+    with conn.cursor() as cur:
+        cur.execute("SELECT * FROM user_profile WHERE user_id=%s", (user_id,))
+        row = cur.fetchone()
+
+        existing = row or {}
+        existing_licenses = normalize_profile_licenses(existing.get("licenses_json"))
+        if not any(license["id"] == license_id for license in existing_licenses):
+            legacy_license = normalize_profile_license(
+                {
+                    "id": "license-1",
+                    "company": existing.get("license_company"),
+                    "certification_name": existing.get("license_certification_name") or existing.get("certification"),
+                    "student_number": existing.get("license_student_number") or existing.get("registry"),
+                    "certification_date": existing.get("license_certification_date"),
+                    "instructor_number": existing.get("license_instructor_number"),
+                }
+            )
+            if not (profile_license_has_values(legacy_license) and legacy_license["id"] == license_id):
+                return None
+
+        uploaded_at = now_iso()
+        primary_license_id = existing_licenses[0]["id"] if existing_licenses else "license-1"
+        legacy_filename = existing.get("license_pdf_name")
+        legacy_content_type = existing.get("license_pdf_content_type")
+        legacy_pdf_data = existing.get("license_pdf_data")
+        legacy_uploaded_at = existing.get("license_pdf_uploaded_at")
+        if license_id == primary_license_id:
+            legacy_filename = filename
+            legacy_content_type = content_type
+            legacy_pdf_data = pdf_bytes
+            legacy_uploaded_at = uploaded_at
+        cur.execute(
+            """
+            INSERT INTO user_profile(
+                user_id, name, email, licenses_json, certification, registry,
+                license_company, license_certification_name, license_student_number, license_certification_date, license_instructor_number,
+                license_pdf_name, license_pdf_content_type, license_pdf_data, license_pdf_uploaded_at, updated_at
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT (user_id)
+            DO UPDATE SET
+                name=excluded.name,
+                email=excluded.email,
+                licenses_json=excluded.licenses_json,
+                certification=excluded.certification,
+                registry=excluded.registry,
+                license_company=excluded.license_company,
+                license_certification_name=excluded.license_certification_name,
+                license_student_number=excluded.license_student_number,
+                license_certification_date=excluded.license_certification_date,
+                license_instructor_number=excluded.license_instructor_number,
+                license_pdf_name=excluded.license_pdf_name,
+                license_pdf_content_type=excluded.license_pdf_content_type,
+                license_pdf_data=excluded.license_pdf_data,
+                license_pdf_uploaded_at=excluded.license_pdf_uploaded_at,
+                updated_at=excluded.updated_at
+            """,
+            (
+                user_id,
+                clean_profile_text(existing.get("name")),
+                clean_profile_text(existing.get("email")),
+                Jsonb(normalize_profile_licenses(existing.get("licenses_json"))),
+                clean_profile_text(existing.get("certification")),
+                clean_profile_text(existing.get("registry")),
+                clean_profile_text(existing.get("license_company")),
+                clean_profile_text(existing.get("license_certification_name")),
+                clean_profile_text(existing.get("license_student_number")),
+                clean_profile_text(existing.get("license_certification_date")),
+                clean_profile_text(existing.get("license_instructor_number")),
+                legacy_filename,
+                legacy_content_type,
+                legacy_pdf_data,
+                legacy_uploaded_at,
+                uploaded_at,
+            ),
+        )
+        cur.execute(
+            """
+            INSERT INTO user_profile_license_documents(user_id, license_id, filename, content_type, pdf_data, uploaded_at)
+            VALUES (%s, %s, %s, %s, %s, %s)
+            ON CONFLICT (user_id, license_id)
+            DO UPDATE SET
+                filename=excluded.filename,
+                content_type=excluded.content_type,
+                pdf_data=excluded.pdf_data,
+                uploaded_at=excluded.uploaded_at
+            """,
+            (user_id, license_id, filename, content_type, pdf_bytes, uploaded_at),
+        )
+    conn.commit()
+    return get_user_profile(conn, user_id)
+
+
+def get_user_profile_license_pdf(conn: psycopg.Connection, user_id: str, license_id: str) -> dict | None:
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT filename, content_type, pdf_data, uploaded_at
+            FROM user_profile_license_documents
+            WHERE user_id=%s AND license_id=%s
+            """,
+            (user_id, license_id),
+        )
+        row = cur.fetchone()
+    if row and row.get("pdf_data") is not None:
+        return {
+            "filename": row.get("filename") or "diving-licenses.pdf",
+            "content_type": row.get("content_type") or "application/pdf",
+            "data": row.get("pdf_data"),
+            "uploaded_at": row.get("uploaded_at"),
+        }
+
+    with conn.cursor() as cur:
+        cur.execute("SELECT * FROM user_profile WHERE user_id=%s", (user_id,))
+        profile_row = cur.fetchone()
+    if not profile_row:
+        return None
+
+    licenses = normalize_profile_licenses(profile_row.get("licenses_json"))
+    if not licenses:
+        legacy_license = normalize_profile_license(
+            {
+                "id": "license-1",
+                "company": profile_row.get("license_company"),
+                "certification_name": profile_row.get("license_certification_name") or profile_row.get("certification"),
+                "student_number": profile_row.get("license_student_number") or profile_row.get("registry"),
+                "certification_date": profile_row.get("license_certification_date"),
+                "instructor_number": profile_row.get("license_instructor_number"),
+            }
+        )
+        if profile_license_has_values(legacy_license):
+            licenses = [legacy_license]
+
+    if licenses and licenses[0]["id"] == license_id and profile_row.get("license_pdf_data") is not None:
+        return {
+            "filename": profile_row.get("license_pdf_name") or "diving-licenses.pdf",
+            "content_type": profile_row.get("license_pdf_content_type") or "application/pdf",
+            "data": profile_row.get("license_pdf_data"),
+            "uploaded_at": profile_row.get("license_pdf_uploaded_at"),
+        }
+    return None
 
 
 def delete_dive(conn: psycopg.Connection, user_id: str, dive_id: int) -> bool:
