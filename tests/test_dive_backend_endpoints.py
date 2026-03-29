@@ -104,6 +104,22 @@ def server_fixture(monkeypatch):
             }
         ],
         "device_state": {},
+        "profile": {
+            "name": "Elias Thorne",
+            "email": "diver@example.com",
+            "licenses": [
+                {
+                    "id": "license-1",
+                    "company": "PADI",
+                    "certification_name": "Master Scuba Diver",
+                    "student_number": "MSD-992-0402-X",
+                    "certification_date": "2024-05-18",
+                    "instructor_number": "PADI-445566",
+                    "pdf": None,
+                }
+            ],
+            "updated_at": "2026-03-29T10:00:00+00:00",
+        },
     }
 
     def fake_open_db(_database_url: str):
@@ -198,6 +214,59 @@ def server_fixture(monkeypatch):
                 return True
         return False
 
+    def fake_get_user_profile(_conn, user_id: str):
+        assert user_id == "user-1"
+        return dict(store["profile"])
+
+    def fake_save_user_profile(_conn, user_id: str, payload: dict | None):
+        assert user_id == "user-1"
+        next_profile = dict(store["profile"])
+        for key in ("name", "email"):
+            if key in (payload or {}):
+                next_profile[key] = payload[key]
+        if isinstance((payload or {}).get("licenses"), list):
+            next_profile["licenses"] = payload["licenses"]
+        next_profile["updated_at"] = "2026-03-29T10:05:00+00:00"
+        store["profile"] = next_profile
+        return dict(store["profile"])
+
+    def fake_save_user_profile_license_pdf(_conn, user_id: str, *, license_id: str, filename: str, content_type: str, pdf_bytes: bytes):
+        assert user_id == "user-1"
+        assert any(license["id"] == license_id for license in store["profile"]["licenses"])
+        next_profile = dict(store["profile"])
+        next_profile["licenses"] = [
+            {
+                **license,
+                "pdf": {
+                    "license_id": license_id,
+                    "filename": filename,
+                    "content_type": content_type,
+                    "size_bytes": len(pdf_bytes),
+                    "uploaded_at": "2026-03-29T10:06:00+00:00",
+                    "preview_url": f"/api/profile/licenses/{license_id}/pdf",
+                },
+            } if license["id"] == license_id else dict(license)
+            for license in next_profile["licenses"]
+        ]
+        next_profile["updated_at"] = "2026-03-29T10:06:00+00:00"
+        store["profile"] = next_profile
+        store.setdefault("profile_license_data", {})[license_id] = pdf_bytes
+        return dict(store["profile"])
+
+    def fake_get_user_profile_license_pdf(_conn, user_id: str, license_id: str):
+        assert user_id == "user-1"
+        if license_id not in store.get("profile_license_data", {}):
+            return None
+        license_entry = next((license for license in store["profile"]["licenses"] if license["id"] == license_id), None)
+        if license_entry is None or not license_entry.get("pdf"):
+            return None
+        return {
+            "filename": license_entry["pdf"]["filename"],
+            "content_type": license_entry["pdf"]["content_type"],
+            "data": store["profile_license_data"][license_id],
+            "uploaded_at": license_entry["pdf"]["uploaded_at"],
+        }
+
     monkeypatch.setattr(dive_backend, "open_db", fake_open_db)
     monkeypatch.setattr(dive_backend, "get_device_state", fake_get_device_state)
     monkeypatch.setattr(dive_backend, "save_device_state", fake_save_device_state)
@@ -207,6 +276,10 @@ def server_fixture(monkeypatch):
     monkeypatch.setattr(dive_backend, "get_dive_id_by_uid", fake_get_dive_id_by_uid)
     monkeypatch.setattr(dive_backend, "update_dive_logbook", fake_update_dive_logbook)
     monkeypatch.setattr(dive_backend, "delete_dive", fake_delete_dive)
+    monkeypatch.setattr(dive_backend, "get_user_profile", fake_get_user_profile)
+    monkeypatch.setattr(dive_backend, "save_user_profile", fake_save_user_profile)
+    monkeypatch.setattr(dive_backend, "save_user_profile_license_pdf", fake_save_user_profile_license_pdf)
+    monkeypatch.setattr(dive_backend, "get_user_profile_license_pdf", fake_get_user_profile_license_pdf)
 
     with TemporaryDirectory() as temp_dir:
         frontend_dir = Path(temp_dir)
@@ -313,6 +386,14 @@ def test_authenticated_get_endpoints(server_fixture):
     assert device_state.status == 200
     assert device_state.json()["vendor"] == "Mares"
 
+    profile = request(server, "GET", "/api/profile", token="session")
+    assert profile.status == 200
+    assert profile.json()["licenses"][0]["certification_name"] == "Master Scuba Diver"
+    assert profile.json()["licenses"][0]["pdf"] is None
+
+    missing_profile_license = request(server, "GET", "/api/profile/licenses/license-1/pdf", token="session")
+    assert missing_profile_license.status == 404
+
     unknown_cli_request = request(server, "GET", "/api/cli-auth/request?code=NOPE")
     assert unknown_cli_request.status == 404
 
@@ -418,6 +499,65 @@ def test_post_and_put_endpoints(server_fixture):
     assert update_device_state.status == 200
     assert update_device_state.json()["fingerprint_hex"] == "abc123"
 
+    update_profile = request(
+        server,
+        "PUT",
+        "/api/profile",
+        token="session",
+        payload={
+            "licenses": [
+                {
+                    "id": "license-1",
+                    "company": "SSI",
+                    "certification_name": "Rescue Diver",
+                    "student_number": "RD-2026-01",
+                    "certification_date": "2025-08-01",
+                    "instructor_number": "SSI-998877",
+                },
+                {
+                    "id": "license-2",
+                    "company": "TDI",
+                    "certification_name": "Nitrox",
+                    "student_number": "NX-44",
+                    "certification_date": "2025-09-15",
+                    "instructor_number": "TDI-3344",
+                }
+            ]
+        },
+    )
+    assert update_profile.status == 200
+    assert len(update_profile.json()["licenses"]) == 2
+    assert update_profile.json()["licenses"][0]["company"] == "SSI"
+    assert update_profile.json()["licenses"][1]["company"] == "TDI"
+
+    invalid_profile_license = request(
+        server,
+        "PUT",
+        "/api/profile/licenses/license-1/pdf",
+        token="session",
+        payload={"filename": "license.txt", "content_type": "text/plain", "data_b64": base64.b64encode(b"not a pdf").decode("ascii")},
+    )
+    assert invalid_profile_license.status == 400
+
+    valid_profile_license = request(
+        server,
+        "PUT",
+        "/api/profile/licenses/license-1/pdf",
+        token="session",
+        payload={
+            "filename": "my-license.pdf",
+            "content_type": "application/pdf",
+            "data_b64": base64.b64encode(b"%PDF-1.7\nlicense").decode("ascii"),
+        },
+    )
+    assert valid_profile_license.status == 200
+    assert valid_profile_license.json()["licenses"][0]["pdf"]["filename"] == "my-license.pdf"
+
+    download_profile_license = request(server, "GET", "/api/profile/licenses/license-1/pdf", token="session")
+    assert download_profile_license.status == 200
+    assert download_profile_license.headers["Content-Type"] == "application/pdf"
+    assert download_profile_license.body.startswith(b"%PDF-")
+
     put_not_found = request(server, "PUT", "/api/nope", token="session", payload={})
     assert put_not_found.status == 404
 
@@ -458,12 +598,14 @@ def test_route_manifest_requires_test_updates_for_new_endpoints():
         "/api/health",
         "/config.js",
         "/api/device-state",
+        "/api/profile",
         "/api/auth/me",
         "/api/cli-auth/request",
         "/api/dives",
         "/api/cli-auth/approve",
         "regex:/api/dives/(\\d+)",
         "regex:/api/dives/(\\d+)/logbook",
+        "regex:/api/profile/licenses/([A-Za-z0-9_-]+)/pdf",
         "prefix:/api/*",
     }
 

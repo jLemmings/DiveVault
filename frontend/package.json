@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@clerk/vue": "^2.0.6",
+    "pdfjs-dist": "^5.5.207",
     "vue": "^3.5.30"
   },
   "devDependencies": {

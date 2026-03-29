@@ -11,6 +11,8 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import base64
+import binascii
 import json
 import logging
 import mimetypes
@@ -36,10 +38,14 @@ from divevault.postgres_store import (
     get_device_state,
     get_dive,
     get_dive_id_by_uid,
+    get_user_profile,
+    get_user_profile_license_pdf,
     is_logbook_complete,
     insert_dive_record,
     list_dives,
     open_db,
+    save_user_profile,
+    save_user_profile_license_pdf,
     save_device_state,
     summarize_dives,
     update_dive_logbook,
@@ -48,6 +54,7 @@ from divevault.postgres_store import (
 
 LOGGER = logging.getLogger("dive_backend")
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
+MAX_PROFILE_LICENSE_BYTES = 10 * 1024 * 1024
 
 load_dotenv(PROJECT_ROOT / ".env")
 
@@ -227,6 +234,38 @@ def parse_csv_env(value: str | None) -> set[str]:
     if not value:
         return set()
     return {item.strip() for item in value.split(",") if item.strip()}
+
+
+def sanitize_profile_license_filename(value: object) -> str:
+    if not isinstance(value, str):
+        return "diving-licenses.pdf"
+    filename = value.replace("\\", "/").split("/")[-1].strip()
+    if not filename:
+        return "diving-licenses.pdf"
+    return filename if filename.lower().endswith(".pdf") else f"{filename}.pdf"
+
+
+def decode_profile_license_payload(payload: dict | None) -> tuple[str, str, bytes]:
+    source = payload if isinstance(payload, dict) else {}
+    data_b64 = source.get("data_b64")
+    if not isinstance(data_b64, str) or not data_b64.strip():
+        raise ValueError("License PDF upload requires data_b64")
+
+    try:
+        pdf_bytes = base64.b64decode(data_b64, validate=True)
+    except (ValueError, binascii.Error) as exc:
+        raise ValueError("License PDF must be valid base64") from exc
+
+    if not pdf_bytes.startswith(b"%PDF-"):
+        raise ValueError("License file must be a PDF")
+    if len(pdf_bytes) > MAX_PROFILE_LICENSE_BYTES:
+        raise ValueError(f"License PDF must be {MAX_PROFILE_LICENSE_BYTES // (1024 * 1024)} MB or smaller")
+
+    content_type = (source.get("content_type") or "application/pdf").strip().lower()
+    if content_type != "application/pdf":
+        raise ValueError("License file must use content_type application/pdf")
+
+    return sanitize_profile_license_filename(source.get("filename")), "application/pdf", pdf_bytes
 
 
 class CliSyncTokenManager:
@@ -460,6 +499,59 @@ class DiveBackendHandler(BaseHTTPRequestHandler):
                 conn.close()
             return
 
+        if path == "/api/profile":
+            user_id = self._require_principal_id()
+            if user_id is None:
+                return
+
+            conn = self._open_db()
+            if conn is None:
+                return
+            try:
+                profile = get_user_profile(conn, user_id)
+            finally:
+                conn.close()
+
+            LOGGER.info(
+                "Returned profile user_id=%s license_count=%d licenses_with_pdf=%d",
+                user_id,
+                len(profile.get("licenses") or []),
+                sum(1 for license_entry in profile.get("licenses") or [] if license_entry.get("pdf")),
+            )
+            self._send_json(200, profile)
+            return
+
+        match = re.fullmatch(r"/api/profile/licenses/([A-Za-z0-9_-]+)/pdf", path)
+        if match:
+            user_id = self._require_principal_id()
+            if user_id is None:
+                return
+            license_id = match.group(1)
+
+            conn = self._open_db()
+            if conn is None:
+                return
+            try:
+                license_pdf = get_user_profile_license_pdf(conn, user_id, license_id)
+            finally:
+                conn.close()
+
+            if not license_pdf:
+                self._send_json(404, {"error": "License PDF not found"})
+                return
+
+            LOGGER.info("Returned profile license user_id=%s license_id=%s filename=%s", user_id, license_id, license_pdf["filename"])
+            self._send_bytes(
+                200,
+                license_pdf["data"],
+                license_pdf["content_type"],
+                extra_headers={
+                    "Content-Disposition": f'inline; filename="{license_pdf["filename"]}"',
+                    "Cache-Control": "no-store",
+                },
+            )
+            return
+
         if path == "/api/auth/me":
             claims = self._require_auth()
             if claims is None:
@@ -644,6 +736,76 @@ class DiveBackendHandler(BaseHTTPRequestHandler):
 
     def do_PUT(self) -> None:
         LOGGER.info("PUT %s", self.path)
+        if self.path == "/api/profile":
+            user_id = self._require_principal_id()
+            if user_id is None:
+                return
+            payload = self._read_json_body()
+            if payload is None:
+                return
+
+            conn = self._open_db()
+            if conn is None:
+                return
+            try:
+                profile = save_user_profile(conn, user_id, payload)
+            finally:
+                conn.close()
+
+            LOGGER.info(
+                "Updated profile user_id=%s license_count=%d licenses_with_pdf=%d",
+                user_id,
+                len(profile.get("licenses") or []),
+                sum(1 for license_entry in profile.get("licenses") or [] if license_entry.get("pdf")),
+            )
+            self._send_json(200, profile)
+            return
+
+        match = re.fullmatch(r"/api/profile/licenses/([A-Za-z0-9_-]+)/pdf", self.path)
+        if match:
+            user_id = self._require_principal_id()
+            if user_id is None:
+                return
+            license_id = match.group(1)
+            payload = self._read_json_body()
+            if payload is None:
+                return
+
+            try:
+                filename, content_type, pdf_bytes = decode_profile_license_payload(payload)
+            except ValueError as exc:
+                self._send_json(400, {"error": str(exc)})
+                return
+
+            conn = self._open_db()
+            if conn is None:
+                return
+            try:
+                profile = save_user_profile_license_pdf(
+                    conn,
+                    user_id,
+                    license_id=license_id,
+                    filename=filename,
+                    content_type=content_type,
+                    pdf_bytes=pdf_bytes,
+                )
+            finally:
+                conn.close()
+
+            if profile is None:
+                self._send_json(404, {"error": "License entry not found"})
+                return
+
+            LOGGER.info(
+                "Updated profile license user_id=%s license_id=%s filename=%s size_bytes=%d",
+                user_id,
+                license_id,
+                filename,
+                len(pdf_bytes),
+            )
+            self._send_json(200, profile)
+            return
+
         match = re.fullmatch(r"/api/dives/(\d+)/logbook", self.path)
         if match:
             user_id = self._require_principal_id()
@@ -805,6 +967,16 @@ class DiveBackendHandler(BaseHTTPRequestHandler):
         self._send_cors_headers()
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _send_bytes(self, status: int, body: bytes, content_type: str, *, extra_headers: dict[str, str] | None = None) -> None:
+        self.send_response(status)
+        self._send_cors_headers()
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(len(body)))
+        for key, value in (extra_headers or {}).items():
+            self.send_header(key, value)
         self.end_headers()
         self.wfile.write(body)
 
