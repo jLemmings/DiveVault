@@ -50,6 +50,7 @@ export default {
       importDrafts: {},
       savingImportId: null,
       bulkImportSavePending: false,
+      deletingDiveId: null,
       importError: "",
       importStatusMessage: "",
       loading: true,
@@ -180,6 +181,7 @@ export default {
       this.importDrafts = {};
       this.savingImportId = null;
       this.bulkImportSavePending = false;
+      this.deletingDiveId = null;
       this.importError = "";
       this.importStatusMessage = "";
       this.loading = false;
@@ -461,6 +463,66 @@ export default {
     async saveExistingDiveLogbook(diveId) {
       return this.saveImportDraft(diveId, true);
     },
+    async deleteDive(diveId) {
+      const id = String(diveId);
+      const dive = this.dives.find((entry) => String(entry.id) === id);
+      if (!dive) {
+        this.importError = "Dive could not be found for deletion.";
+        this.importStatusMessage = "";
+        return false;
+      }
+
+      const importedRecord = !isCommittedDive(dive);
+      const confirmed = window.confirm(
+        importedRecord
+          ? `Delete ${paddedDiveIndex(dive)} from the import queue? This cannot be undone.`
+          : `Delete ${paddedDiveIndex(dive)} from the dive log? This cannot be undone.`
+      );
+      if (!confirmed) {
+        return false;
+      }
+
+      this.deletingDiveId = id;
+      this.importError = "";
+      this.importStatusMessage = "";
+
+      try {
+        const response = await this.authenticatedFetch(`/api/dives/${diveId}`, {
+          method: "DELETE"
+        });
+        const payload = await response.json().catch(() => null);
+        if (!response.ok) {
+          throw new Error(payload?.error || `API returned ${response.status}`);
+        }
+
+        if (String(this.selectedDiveId) === id) {
+          this.selectedDiveId = null;
+        }
+        if (String(this.selectedImportId) === id) {
+          this.selectedImportId = null;
+        }
+        if (String(this.selectedEditDiveId) === id) {
+          this.selectedEditDiveId = null;
+        }
+
+        if (importedRecord) {
+          this.activeView = "imports";
+          window.location.hash = "imports";
+        } else {
+          this.activeView = "logs";
+          window.location.hash = "logs";
+        }
+
+        await this.fetchDives();
+        this.importStatusMessage = `${paddedDiveIndex(dive)} removed from the ${importedRecord ? "import queue" : "dive log"}.`;
+        return true;
+      } catch (error) {
+        this.importError = error.message || "Unable to delete the dive.";
+        return false;
+      } finally {
+        this.deletingDiveId = null;
+      }
+    },
     async applyBuddyGuideToPendingImports(diveId) {
       const id = String(diveId);
       const sourceDive = this.dives.find((entry) => String(entry.id) === id);
@@ -680,11 +742,11 @@ export default {
             <button @click="fetchDives" class="mt-5 bg-primary px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-on-primary">Retry</button>
           </section>
           <dashboard-view v-else-if="activeView === 'dashboard'" :dives="committedDives" :stats="stats" :set-view="setView" :backend-healthy="backendHealthy" :open-dive="openDive" :current-user-name="currentUserName" :imported-dive-count="importedDiveCount" :open-import-queue="openImportQueue"></dashboard-view>
-          <logs-view v-else-if="activeView === 'logs' && !selectedDive" :dives="committedDives" :search-text="searchText" :open-dive="openDive" :open-import-queue="openImportQueue" :set-search-text="setSearchText"></logs-view>
-          <dive-import-editor-view v-else-if="activeView === 'imports' && selectedImportDive" :dive="selectedImportDive" :draft="selectedImportDraft" :saving-import-id="savingImportId" :bulk-import-save-pending="bulkImportSavePending" :import-error="importError" :import-status-message="importStatusMessage" :update-import-draft="updateImportDraft" :save-import-draft="saveImportDraft" :apply-buddy-guide-to-pending-imports="applyBuddyGuideToPendingImports" :back-to-queue="backToImportQueue"></dive-import-editor-view>
-          <dive-import-view v-else-if="activeView === 'imports'" :dives="dives" :import-drafts="importDrafts" :selected-import-id="selectedImportId" :select-import-dive="selectImportDive" :import-error="importError" :import-status-message="importStatusMessage" :set-view="setView" :fetch-dives="fetchDives"></dive-import-view>
-          <logbook-editor-view v-else-if="activeView === 'edit' && selectedEditDive" :dive="selectedEditDive" :draft="selectedEditDraft" :saving-import-id="savingImportId" :status-message="importStatusMessage" :error-message="importError" :update-dive-draft="updateImportDraft" :save-dive-logbook="saveExistingDiveLogbook" :close-editor="closeDiveEditor"></logbook-editor-view>
-          <dive-detail-view v-else-if="activeView === 'logs' && selectedDive" :dive="selectedDive" :close-detail="closeDiveDetail" :open-dive-editor="openDiveEditor"></dive-detail-view>
+          <logs-view v-else-if="activeView === 'logs' && !selectedDive" :dives="committedDives" :search-text="searchText" :open-dive="openDive" :open-import-queue="openImportQueue" :set-search-text="setSearchText" :delete-dive="deleteDive" :deleting-dive-id="deletingDiveId" :status-message="importStatusMessage" :error-message="importError"></logs-view>
+          <dive-import-editor-view v-else-if="activeView === 'imports' && selectedImportDive" :dive="selectedImportDive" :draft="selectedImportDraft" :saving-import-id="savingImportId" :bulk-import-save-pending="bulkImportSavePending" :deleting-dive-id="deletingDiveId" :import-error="importError" :import-status-message="importStatusMessage" :update-import-draft="updateImportDraft" :save-import-draft="saveImportDraft" :delete-dive="deleteDive" :apply-buddy-guide-to-pending-imports="applyBuddyGuideToPendingImports" :back-to-queue="backToImportQueue"></dive-import-editor-view>
+          <dive-import-view v-else-if="activeView === 'imports'" :dives="dives" :import-drafts="importDrafts" :selected-import-id="selectedImportId" :select-import-dive="selectImportDive" :deleting-dive-id="deletingDiveId" :import-error="importError" :import-status-message="importStatusMessage" :delete-dive="deleteDive" :set-view="setView" :fetch-dives="fetchDives"></dive-import-view>
+          <logbook-editor-view v-else-if="activeView === 'edit' && selectedEditDive" :dive="selectedEditDive" :draft="selectedEditDraft" :saving-import-id="savingImportId" :deleting-dive-id="deletingDiveId" :status-message="importStatusMessage" :error-message="importError" :update-dive-draft="updateImportDraft" :save-dive-logbook="saveExistingDiveLogbook" :delete-dive="deleteDive" :close-editor="closeDiveEditor"></logbook-editor-view>
+          <dive-detail-view v-else-if="activeView === 'logs' && selectedDive" :dive="selectedDive" :deleting-dive-id="deletingDiveId" :close-detail="closeDiveDetail" :open-dive-editor="openDiveEditor" :delete-dive="deleteDive"></dive-detail-view>
           <equipment-view v-else-if="activeView === 'equipment'" :search-text="searchText"></equipment-view>
           <settings-view v-else-if="activeView === 'settings'" :cli-auth-code="cliAuthCode"></settings-view>
         </div>

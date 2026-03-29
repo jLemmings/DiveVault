@@ -2,7 +2,7 @@ import { diveModeLabel, formatDate, numberOrZero, parseDate, formatTime, formatD
 
 export default {
   name: "LogsView",
-  props: ["dives", "searchText", "openDive", "openImportQueue", "setSearchText"],
+  props: ["dives", "searchText", "openDive", "openImportQueue", "setSearchText", "deleteDive", "deletingDiveId", "statusMessage", "errorMessage"],
   data() {
     return {
       sortOption: "newest",
@@ -88,11 +88,20 @@ export default {
     formatDurationShort: durationShort,
     surfaceTemperature,
     diveModeLabel,
-    diveTitle
+    diveTitle,
+    removeDive(diveId) {
+      this.deleteDive(diveId);
+    },
+    isDeleting(diveId) {
+      return String(this.deletingDiveId) === String(diveId);
+    }
   },
   template: `
     <section class="space-y-8 text-on-surface">
       <section class="space-y-6 md:hidden">
+        <div v-if="statusMessage" class="rounded-xl bg-primary/10 px-4 py-3 text-sm text-primary">{{ statusMessage }}</div>
+        <div v-if="errorMessage" class="rounded-xl bg-error-container/20 px-4 py-3 text-sm text-on-error-container">{{ errorMessage }}</div>
+
         <div class="mb-2 flex gap-3">
           <div class="relative flex-1">
             <span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-lg text-on-surface-variant">search</span>
@@ -116,6 +125,12 @@ export default {
 
         <div class="space-y-4">
           <article v-for="dive in pagedDives" :key="'mobile-log-' + dive.id" @click="openDive(dive.id)" @keyup.enter="openDive(dive.id)" tabindex="0" role="button" class="rounded-xl bg-surface-container-low p-4 transition-all active:scale-[0.98] focus:bg-surface-container-high focus:outline-none">
+            <div class="mb-3 flex justify-end">
+              <button @click.stop="removeDive(dive.id)" :disabled="isDeleting(dive.id)" class="inline-flex items-center gap-2 rounded-lg bg-error-container/20 px-3 py-2 font-label text-[10px] font-bold uppercase tracking-[0.16em] text-on-error-container disabled:opacity-50">
+                <span class="material-symbols-outlined text-sm">delete</span>
+                {{ isDeleting(dive.id) ? 'Removing...' : 'Remove' }}
+              </button>
+            </div>
             <div class="flex gap-4">
               <div class="relative flex h-24 w-16 flex-shrink-0 flex-col items-center justify-center overflow-hidden rounded bg-surface-container-high">
                 <div class="absolute inset-0 opacity-10" style="background-image: radial-gradient(circle at 2px 2px, #9ccaff 1px, transparent 0); background-size: 8px 8px;"></div>
@@ -150,6 +165,9 @@ export default {
       </section>
 
       <section class="hidden space-y-8 md:block">
+      <div v-if="statusMessage" class="border border-primary/20 bg-primary/10 px-5 py-4 text-sm text-primary shadow-panel">{{ statusMessage }}</div>
+      <div v-if="errorMessage" class="border border-error/20 bg-error-container/20 px-5 py-4 text-sm text-on-error-container shadow-panel">{{ errorMessage }}</div>
+
       <div class="flex flex-col justify-between gap-6 lg:flex-row lg:items-end">
         <div>
           <div class="mb-2 flex items-center gap-3">
@@ -242,7 +260,15 @@ export default {
             <div class="md:col-span-1 md:text-center"><p class="font-headline text-lg font-bold" :class="dive.max_depth_m > 40 ? 'text-tertiary' : 'text-on-surface'">{{ formatDepth(dive.max_depth_m) }}</p></div>
             <div class="md:col-span-1 md:text-center"><p class="font-headline text-sm font-medium">{{ formatDurationShort(dive.duration_seconds) }}</p></div>
             <div class="md:col-span-1 md:text-center"><p class="text-sm font-bold text-secondary">{{ formatTemperature(surfaceTemperature(dive)) }}</p></div>
-            <div class="md:col-span-1 md:text-right"><span class="material-symbols-outlined text-on-surface-variant transition-colors hover:text-primary">analytics</span></div>
+            <div class="md:col-span-1 md:text-right">
+              <div class="flex items-center justify-end gap-2">
+                <button @click.stop="removeDive(dive.id)" :disabled="isDeleting(dive.id)" class="inline-flex items-center gap-1 bg-error-container/20 px-3 py-2 font-label text-[10px] font-bold uppercase tracking-[0.16em] text-on-error-container transition-colors hover:bg-error-container/30 disabled:opacity-50">
+                  <span class="material-symbols-outlined text-sm">delete</span>
+                  {{ isDeleting(dive.id) ? 'Removing...' : 'Remove' }}
+                </button>
+                <span class="material-symbols-outlined text-on-surface-variant transition-colors hover:text-primary">analytics</span>
+              </div>
+            </div>
           </article>
           <div v-if="pagedDives.length === 0" class="px-8 py-16 text-center">
             <p class="font-headline text-2xl font-bold">No dives match the current filters</p>

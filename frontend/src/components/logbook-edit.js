@@ -6,10 +6,12 @@ export default {
     "dive",
     "draft",
     "savingImportId",
+    "deletingDiveId",
     "statusMessage",
     "errorMessage",
     "updateDiveDraft",
     "saveDiveLogbook",
+    "deleteDive",
     "closeEditor"
   ],
   computed: {
@@ -21,6 +23,9 @@ export default {
     },
     isSaving() {
       return String(this.savingImportId) === String(this.dive?.id);
+    },
+    isDeleting() {
+      return String(this.deletingDiveId) === String(this.dive?.id);
     },
     canSaveRecord() {
       return this.selectedDraft ? canCompleteImport(this.selectedDraft) : false;
@@ -45,6 +50,10 @@ export default {
     saveChanges() {
       if (!this.dive) return;
       this.saveDiveLogbook(this.dive.id);
+    },
+    removeDive() {
+      if (!this.dive) return;
+      this.deleteDive(this.dive.id);
     },
     detailLine(label, value) {
       return { label, value: value || "Unavailable" };
@@ -173,8 +182,11 @@ export default {
           <section class="border border-primary/10 bg-surface-container-low p-6 shadow-panel">
             <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-primary">Actions</p>
             <div class="mt-5 space-y-3">
-              <button @click="saveChanges()" :disabled="isSaving || !canSaveRecord" class="w-full bg-primary px-5 py-3 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-on-primary transition-all hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50">
+              <button @click="saveChanges()" :disabled="isSaving || isDeleting || !canSaveRecord" class="w-full bg-primary px-5 py-3 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-on-primary transition-all hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50">
                 {{ isSaving ? 'Saving...' : 'Save Logbook Changes' }}
+              </button>
+              <button @click="removeDive()" :disabled="isSaving || isDeleting" class="w-full bg-error-container/20 px-5 py-3 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-on-error-container transition-colors hover:bg-error-container/30 disabled:opacity-50">
+                {{ isDeleting ? 'Removing...' : 'Remove Dive' }}
               </button>
               <button @click="closeEditor()" class="w-full bg-surface-container-high px-5 py-3 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-on-surface transition-colors hover:text-primary">
                 Cancel

@@ -506,6 +506,14 @@ def get_dive(conn: psycopg.Connection, user_id: str, dive_id: int, include_raw_d
     return decode_dive_row(row, include_samples=True, include_raw_data=include_raw_data) if row else None
 
 
+def delete_dive(conn: psycopg.Connection, user_id: str, dive_id: int) -> bool:
+    with conn.cursor() as cur:
+        cur.execute("DELETE FROM dives WHERE user_id=%s AND id=%s RETURNING id", (user_id, dive_id))
+        deleted = cur.fetchone() is not None
+    conn.commit()
+    return deleted
+
+
 def sanitize_logbook_payload(payload: dict | None, existing_logbook: dict | None = None) -> dict:
     source = payload or {}
     if isinstance(source.get("logbook"), dict):

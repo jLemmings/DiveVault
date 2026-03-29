@@ -32,6 +32,7 @@ from dotenv import load_dotenv
 from jwt import InvalidTokenError, PyJWKClient
 
 from divevault.postgres_store import (
+    delete_dive,
     get_device_state,
     get_dive,
     get_dive_id_by_uid,
@@ -712,6 +713,34 @@ class DiveBackendHandler(BaseHTTPRequestHandler):
         )
         self._send_json(200, state)
 
+    def do_DELETE(self) -> None:
+        LOGGER.info("DELETE %s", self.path)
+        match = re.fullmatch(r"/api/dives/(\d+)", self.path)
+        if not match:
+            self._send_json(404, {"error": "Not found"})
+            return
+
+        user_id = self._require_principal_id()
+        if user_id is None:
+            return
+
+        dive_id = int(match.group(1))
+        conn = self._open_db()
+        if conn is None:
+            return
+        try:
+            deleted = delete_dive(conn, user_id, dive_id)
+        finally:
+            conn.close()
+
+        if not deleted:
+            LOGGER.warning("Dive not found for delete id=%d", dive_id)
+            self._send_json(404, {"error": "Dive not found"})
+            return
+
+        LOGGER.info("Deleted dive user_id=%s id=%d", user_id, dive_id)
+        self._send_json(200, {"deleted": True, "id": dive_id})
+
     def log_message(self, fmt: str, *args) -> None:
         LOGGER.debug("HTTP %s - %s", self.address_string(), fmt % args)
 
@@ -781,7 +810,7 @@ class DiveBackendHandler(BaseHTTPRequestHandler):
 
     def _send_cors_headers(self) -> None:
         self.send_header("Access-Control-Allow-Origin", self.server.cors_origin)
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, PUT, OPTIONS")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "Authorization, Content-Type")
 
     def _send_config_js(self) -> None:
