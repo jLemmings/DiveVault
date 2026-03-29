@@ -106,6 +106,7 @@ function comparableLicenses(licenses) {
 
 const LicensePdfPreview = {
   name: "LicensePdfPreview",
+  emits: ["open-preview"],
   props: {
     pdf: {
       type: Object,
@@ -189,13 +190,19 @@ const LicensePdfPreview = {
         {{ error }}
       </div>
       <div v-else class="space-y-3">
-        <img
+        <button
           v-for="page in pages"
           :key="page.pageNumber"
-          :src="page.image"
-          :alt="\`License PDF page \${page.pageNumber}\`"
-          class="w-full border border-primary/10 bg-white"
-        />
+          type="button"
+          @click="$emit('open-preview', page)"
+          class="block w-full overflow-hidden border border-primary/10 bg-white transition-transform hover:scale-[1.01]"
+        >
+          <img
+            :src="page.image"
+            :alt="\`License PDF page \${page.pageNumber}\`"
+            class="w-full cursor-zoom-in"
+          />
+        </button>
       </div>
     </div>
   `
@@ -240,7 +247,8 @@ export default {
       desktopSyncStatus: "",
       desktopSyncError: "",
       desktopSyncApproving: false,
-      pendingLicenseUploadId: null
+      pendingLicenseUploadId: null,
+      activeLicensePreview: null
     };
   },
   computed: {
@@ -556,6 +564,17 @@ export default {
         this.desktopSyncApproving = false;
       }
     },
+    openLicensePreview(page, license) {
+      if (!page?.image) return;
+      this.activeLicensePreview = {
+        image: page.image,
+        filename: license?.pdf?.filename || "License PDF",
+        pageNumber: page.pageNumber || 1
+      };
+    },
+    closeLicensePreview() {
+      this.activeLicensePreview = null;
+    },
     formatBytes,
     formatDateTime
   },
@@ -563,7 +582,7 @@ export default {
     <section class="space-y-10 text-on-surface">
       <div class="max-w-5xl">
         <p class="font-label text-[10px] font-bold uppercase tracking-[0.3em] text-primary">System Configuration</p>
-        <h3 class="mt-2 font-headline text-5xl font-bold tracking-tight text-primary">SYSTEM CONFIG</h3>
+        <h3 class="mt-2 font-headline text-5xl font-bold tracking-tight text-primary">Settigns</h3>
         <p class="mt-3 max-w-3xl text-sm text-secondary">Manage your authenticated diver profile, saved license list, embedded license documents, and desktop sync access.</p>
       </div>
 
@@ -764,7 +783,7 @@ export default {
                         <p class="font-semibold text-on-surface">{{ license.pdf.filename }}</p>
                         <p class="mt-1">{{ formatBytes(license.pdf.size_bytes) }} - Uploaded {{ formatDateTime(license.pdf.uploaded_at) }}</p>
                       </div>
-                      <license-pdf-preview :pdf="license.pdf" :authenticated-fetch="authenticatedFetch" />
+                      <license-pdf-preview :pdf="license.pdf" :authenticated-fetch="authenticatedFetch" @open-preview="openLicensePreview($event, license)" />
                     </div>
                     <div v-else class="rounded border border-dashed border-primary/20 bg-surface-container-lowest p-4">
                       <p class="font-headline text-base font-bold">No PDF attached</p>
@@ -813,11 +832,33 @@ export default {
               </button>
               <p v-if="desktopSyncStatus" class="mt-3 text-sm text-primary">{{ desktopSyncStatus }}</p>
               <p v-if="desktopSyncError" class="mt-3 text-sm text-error">{{ desktopSyncError }}</p>
-              <p class="mt-3 text-[10px] uppercase tracking-[0.14em] text-secondary/60">Desktop sync approvals issue short-lived backend tokens. They are not Clerk API keys and do not depend on Clerk's API key feature.</p>
             </div>
           </div>
         </div>
       </section>
+
+      <div
+        v-if="activeLicensePreview"
+        @click.self="closeLicensePreview"
+        class="fixed inset-0 z-50 flex items-center justify-center bg-background/90 px-6 py-8 backdrop-blur-sm"
+      >
+        <div class="relative max-h-full w-full max-w-5xl overflow-auto border border-primary/15 bg-surface-container-low p-4 shadow-panel">
+          <div class="mb-4 flex items-start justify-between gap-4">
+            <div>
+              <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-primary">License Preview</p>
+              <p class="mt-1 text-sm text-secondary">{{ activeLicensePreview.filename }} - Page {{ activeLicensePreview.pageNumber }}</p>
+            </div>
+            <button
+              type="button"
+              @click="closeLicensePreview"
+              class="bg-surface-container-highest px-3 py-2 font-label text-[10px] font-bold uppercase tracking-[0.16em] text-primary"
+            >
+              Close
+            </button>
+          </div>
+          <img :src="activeLicensePreview.image" :alt="activeLicensePreview.filename" class="mx-auto max-h-[80vh] w-auto max-w-full bg-white" />
+        </div>
+      </div>
     </section>
   `
 };

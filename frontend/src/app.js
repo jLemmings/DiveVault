@@ -73,7 +73,7 @@ export default {
       navItems: [
         { id: "dashboard", label: "Dashboard", mobileLabel: "Dashboard", icon: "dashboard", mobileIcon: "dashboard", eyebrow: "Dive Overview", title: "Logbook" },
         { id: "logs", label: "Dive Logs", mobileLabel: "Logs", icon: "waves", mobileIcon: "sailing", eyebrow: "Dive Logs", title: "Dive Log Database" },
-        { id: "equipment", label: "Equipment", mobileLabel: "Gear", icon: "scuba_diving", mobileIcon: "construction", eyebrow: "Asset Registry", title: "Equipment Management" },
+        { id: "equipment", label: "Equipment", mobileLabel: "WIP", icon: "construction", mobileIcon: "construction", eyebrow: "Work In Progress", title: "Equipment Coming Soon", disabled: true, badge: "WIP" },
         { id: "settings", label: "Settings", mobileLabel: "Settings", icon: "settings", mobileIcon: "settings", eyebrow: "System Configuration", title: "System Config" }
       ]
     };
@@ -279,7 +279,13 @@ export default {
     setSearchText(value) {
       this.searchText = value;
     },
+    isDisabledNavItem(view) {
+      return Boolean(this.navItems.find((item) => item.id === view)?.disabled);
+    },
     async setView(view) {
+      if (this.isDisabledNavItem(view)) {
+        return;
+      }
       this.activeView = view;
       if (view !== "logs") this.selectedDiveId = null;
       if (view !== "imports") this.selectedImportId = null;
@@ -603,8 +609,13 @@ export default {
     cycleView() {
       const currentView = this.activeView === "logs" ? "logs" : this.activeView;
       const index = this.navItems.findIndex((item) => item.id === currentView);
-      const next = this.navItems[(index + 1) % this.navItems.length];
-      this.setView(next.id);
+      for (let offset = 1; offset <= this.navItems.length; offset += 1) {
+        const next = this.navItems[(index + offset) % this.navItems.length];
+        if (!next.disabled) {
+          this.setView(next.id);
+          return;
+        }
+      }
     },
     syncViewFromHash() {
       if (!this.isAuthenticated) return;
@@ -625,7 +636,7 @@ export default {
         this.selectedEditDiveId = segment || null;
         return;
       }
-      if (this.navItems.some((item) => item.id === view)) {
+      if (this.navItems.some((item) => item.id === view && !item.disabled)) {
         this.activeView = view;
         this.selectedDiveId = view === "logs" && segment ? segment : null;
         if (view !== "imports") this.selectedImportId = null;
@@ -691,9 +702,12 @@ export default {
           </div>
         </div>
         <nav class="mt-8 flex-1 space-y-2">
-          <button v-for="item in navItems" :key="item.id" @click="setView(item.id)" class="group flex w-full items-center gap-4 p-4 text-left transition-all duration-300" :class="activeView === item.id ? 'border-r-4 border-primary bg-surface-container-high/70 text-primary' : 'text-secondary opacity-70 hover:bg-surface-container-high hover:text-primary hover:opacity-100'">
-            <span class="material-symbols-outlined transition-transform group-active:scale-90" :style="activeView === item.id ? filledIconStyle : ''">{{ item.icon }}</span>
-            <span class="hidden font-label text-[10px] font-bold uppercase tracking-[0.2em] md:block">{{ item.label }}</span>
+          <button v-for="item in navItems" :key="item.id" @click="setView(item.id)" :disabled="item.disabled" class="group flex w-full items-center gap-4 p-4 text-left transition-all duration-300 disabled:cursor-not-allowed disabled:opacity-100" :class="item.disabled ? 'border-l-4 border-tertiary bg-tertiary/12 text-tertiary' : (activeView === item.id ? 'border-r-4 border-primary bg-surface-container-high/70 text-primary' : 'text-secondary opacity-70 hover:bg-surface-container-high hover:text-primary hover:opacity-100')">
+            <span class="material-symbols-outlined transition-transform group-active:scale-90" :style="activeView === item.id && !item.disabled ? filledIconStyle : ''">{{ item.icon }}</span>
+            <span class="hidden items-center gap-2 font-label text-[10px] font-bold uppercase tracking-[0.2em] md:flex">
+              <span>{{ item.label }}</span>
+              <span v-if="item.badge" class="rounded bg-tertiary px-2 py-0.5 text-[9px] font-black tracking-[0.18em] text-background">{{ item.badge }}</span>
+            </span>
           </button>
         </nav>
         <div class="mt-auto p-6">
@@ -756,10 +770,11 @@ export default {
           v-for="item in navItems"
           :key="item.id"
           @click="setView(item.id)"
-          class="flex flex-col items-center justify-center rounded-lg px-3 py-1 transition-all"
-          :class="activeView === item.id || ((activeView === 'imports' || activeView === 'edit') && item.id === 'logs') ? 'bg-surface-container-high text-primary' : 'text-secondary/60'"
+          :disabled="item.disabled"
+          class="flex flex-col items-center justify-center rounded-lg px-3 py-1 transition-all disabled:cursor-not-allowed disabled:opacity-100"
+          :class="item.disabled ? 'bg-tertiary/12 text-tertiary' : (activeView === item.id || ((activeView === 'imports' || activeView === 'edit') && item.id === 'logs') ? 'bg-surface-container-high text-primary' : 'text-secondary/60')"
         >
-          <span class="material-symbols-outlined mb-1" :style="activeView === item.id || ((activeView === 'imports' || activeView === 'edit') && item.id === 'logs') ? filledIconStyle : ''">{{ item.mobileIcon || item.icon }}</span>
+          <span class="material-symbols-outlined mb-1" :style="!item.disabled && (activeView === item.id || ((activeView === 'imports' || activeView === 'edit') && item.id === 'logs')) ? filledIconStyle : ''">{{ item.mobileIcon || item.icon }}</span>
           <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em]">{{ item.mobileLabel }}</span>
         </button>
       </nav>
