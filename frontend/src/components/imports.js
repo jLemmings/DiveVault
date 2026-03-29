@@ -6,6 +6,8 @@ export default {
     "dives",
     "importDrafts",
     "selectImportDive",
+    "deleteDive",
+    "deletingDiveId",
     "importError",
     "importStatusMessage",
     "setView",
@@ -49,6 +51,12 @@ export default {
     },
     durationMinutes(dive) {
       return Math.round(numberOrZero(dive?.duration_seconds) / 60);
+    },
+    removeDive(diveId) {
+      this.deleteDive(diveId);
+    },
+    isDeleting(diveId) {
+      return String(this.deletingDiveId) === String(diveId);
     }
   },
   template: `
@@ -124,9 +132,14 @@ export default {
                 </span>
               </div>
 
-              <button @click="selectImportDive(dive.id)" class="w-full rounded-lg bg-primary px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-on-primary">
-                Edit Imported Dive
-              </button>
+              <div class="grid grid-cols-2 gap-3">
+                <button @click="selectImportDive(dive.id)" class="rounded-lg bg-primary px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-on-primary">
+                  Edit Imported Dive
+                </button>
+                <button @click="removeDive(dive.id)" :disabled="isDeleting(dive.id)" class="rounded-lg bg-error-container/20 px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-on-error-container disabled:opacity-50">
+                  {{ isDeleting(dive.id) ? 'Removing...' : 'Remove Dive' }}
+                </button>
+              </div>
             </div>
           </article>
         </section>
@@ -300,9 +313,14 @@ export default {
                     <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Next Required Step</p>
                     <p class="mt-2 text-sm font-semibold" :class="missingFields(dive).length ? 'text-tertiary' : 'text-primary'">{{ missingFields(dive).length ? missingFields(dive)[0].label : 'Ready To Commit' }}</p>
                   </div>
-                  <button @click="selectImportDive(dive.id)" class="w-full bg-primary px-5 py-3 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-on-primary transition-all hover:brightness-110">
-                    Edit Imported Dive
-                  </button>
+                  <div class="grid grid-cols-2 gap-3">
+                    <button @click="selectImportDive(dive.id)" class="w-full bg-primary px-5 py-3 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-on-primary transition-all hover:brightness-110">
+                      Edit Imported Dive
+                    </button>
+                    <button @click="removeDive(dive.id)" :disabled="isDeleting(dive.id)" class="w-full bg-error-container/20 px-5 py-3 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-on-error-container transition-colors hover:bg-error-container/30 disabled:opacity-50">
+                      {{ isDeleting(dive.id) ? 'Removing...' : 'Remove Dive' }}
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>

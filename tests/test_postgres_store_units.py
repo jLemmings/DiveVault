@@ -219,6 +219,45 @@ def test_sanitize_logbook_payload_preserves_complete_state_for_metadata_edits(mo
     assert payload["completed_at"] == "2026-03-20T08:00:00+00:00"
 
 
+def test_delete_dive_removes_matching_record():
+    class FakeCursor:
+        def __init__(self):
+            self.deleted = True
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def execute(self, query, params):
+            self.query = query
+            self.params = params
+
+        def fetchone(self):
+            return {"id": 7} if self.deleted else None
+
+    class FakeConnection:
+        def __init__(self):
+            self.cursor_instance = FakeCursor()
+            self.committed = False
+
+        def cursor(self):
+            return self.cursor_instance
+
+        def commit(self):
+            self.committed = True
+
+    conn = FakeConnection()
+
+    deleted = postgres_store.delete_dive(conn, "user-1", 7)
+
+    assert deleted is True
+    assert "DELETE FROM dives" in conn.cursor_instance.query
+    assert conn.cursor_instance.params == ("user-1", 7)
+    assert conn.committed is True
+
+
 def test_decode_base64_payload_accepts_valid_payload():
     payload = {"raw_data_b64": base64.b64encode(b"abc123").decode("ascii")}
 

@@ -7,10 +7,12 @@ export default {
     "draft",
     "savingImportId",
     "bulkImportSavePending",
+    "deletingDiveId",
     "importError",
     "importStatusMessage",
     "updateImportDraft",
     "saveImportDraft",
+    "deleteDive",
     "applyBuddyGuideToPendingImports",
     "backToQueue"
   ],
@@ -31,10 +33,13 @@ export default {
       return this.dive ? gasSummary(this.dive) : { label: "--", detail: "" };
     },
     saveLocked() {
-      return this.bulkImportSavePending || this.isSaving;
+      return this.bulkImportSavePending || this.isSaving || this.isDeleting;
     },
     isSaving() {
       return String(this.savingImportId) === String(this.dive?.id);
+    },
+    isDeleting() {
+      return String(this.deletingDiveId) === String(this.dive?.id);
     },
     filledIconStyle() {
       return filledIconStyle;
@@ -60,6 +65,10 @@ export default {
     applyBuddyGuide() {
       if (!this.dive) return;
       this.applyBuddyGuideToPendingImports(this.dive.id);
+    },
+    removeDive() {
+      if (!this.dive) return;
+      this.deleteDive(this.dive.id);
     },
     requiredChecklist(logbook) {
       const draft = logbook || {};
@@ -188,6 +197,9 @@ export default {
               <button @click="saveDraft(true)" :disabled="saveLocked || !canCompleteImport(selectedDraft)" class="w-full rounded-lg bg-primary px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-on-primary disabled:opacity-50">
                 {{ bulkImportSavePending ? 'Applying...' : isSaving ? 'Saving...' : 'Complete Record' }}
               </button>
+              <button @click="removeDive()" :disabled="saveLocked" class="w-full rounded-lg bg-error-container/20 px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-on-error-container disabled:opacity-50">
+                {{ isDeleting ? 'Removing...' : 'Remove Imported Dive' }}
+              </button>
             </div>
             <button v-else @click="saveDraft(true)" :disabled="saveLocked || !canCompleteImport(selectedDraft)" class="w-full rounded-lg bg-primary px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-on-primary disabled:opacity-50">
               {{ isSaving ? 'Saving...' : 'Save Changes' }}
@@ -299,6 +311,9 @@ export default {
                   {{ bulkImportSavePending ? 'Applying...' : isSaving ? 'Saving...' : 'Complete Record' }}
                 </button>
               </div>
+              <button v-if="!isCommittedRecord" @click="removeDive()" :disabled="saveLocked" class="w-full bg-error-container/20 px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-on-error-container transition-colors hover:bg-error-container/30 disabled:opacity-50">
+                {{ isDeleting ? 'Removing...' : 'Remove Imported Dive' }}
+              </button>
               <button v-else @click="saveDraft(true)" :disabled="saveLocked || !canCompleteImport(selectedDraft)" class="w-full bg-primary px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-on-primary transition-all hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50">
                 {{ isSaving ? 'Saving...' : 'Save Changes' }}
               </button>

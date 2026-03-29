@@ -2,7 +2,7 @@ import { depthChartPath, pressureChartPath, numberOrZero, depthSeries, axisTicks
 
 export default {
   name: "DiveDetailView",
-  props: ["dive", "closeDetail", "openDiveEditor"],
+  props: ["dive", "deletingDiveId", "closeDetail", "openDiveEditor", "deleteDive"],
   computed: {
     depthProfile() {
       return depthChartPath(this.dive);
@@ -56,6 +56,9 @@ export default {
     },
     averageDepth() {
       return averageDepthValue(this.dive);
+    },
+    isDeleting() {
+      return String(this.deletingDiveId) === String(this.dive?.id);
     }
   },
   methods: {
@@ -80,6 +83,10 @@ export default {
     depthParts,
     durationParts,
     temperatureParts,
+    removeDive() {
+      if (!this.dive) return;
+      this.deleteDive(this.dive.id);
+    },
     durationMinutes(dive) {
       return Math.round(numberOrZero(dive?.duration_seconds) / 60);
     }
@@ -96,7 +103,13 @@ export default {
                 <span class="material-symbols-outlined text-base">arrow_back</span>
                 Back
               </button>
-              <span class="rounded bg-surface-container-high px-3 py-2 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Dive ID {{ dive.id }}</span>
+              <div class="flex items-center gap-2">
+                <button @click="removeDive()" :disabled="isDeleting" class="inline-flex items-center gap-2 rounded-lg bg-error-container/20 px-3 py-2 font-label text-[10px] font-bold uppercase tracking-[0.16em] text-on-error-container disabled:opacity-50">
+                  <span class="material-symbols-outlined text-sm">delete</span>
+                  {{ isDeleting ? 'Removing...' : 'Remove' }}
+                </button>
+                <span class="rounded bg-surface-container-high px-3 py-2 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Dive ID {{ dive.id }}</span>
+              </div>
             </div>
 
             <section class="relative min-h-[17rem] overflow-hidden rounded-[1.5rem] p-6">
@@ -266,6 +279,10 @@ export default {
               </button>
               <button @click="openDiveEditor(dive.id)" class="bg-surface-container-high p-3 text-secondary transition-colors hover:text-primary">
                 <span class="material-symbols-outlined">edit</span>
+              </button>
+              <button @click="removeDive()" :disabled="isDeleting" class="inline-flex items-center gap-2 bg-error-container/20 px-5 py-3 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-on-error-container transition-colors hover:bg-error-container/30 disabled:opacity-50">
+                <span class="material-symbols-outlined text-sm">delete</span>
+                {{ isDeleting ? 'Removing...' : 'Remove Dive' }}
               </button>
               <button class="inline-flex items-center gap-2 bg-primary px-5 py-3 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-on-primary">
                 <span class="material-symbols-outlined">download</span>

@@ -190,6 +190,14 @@ def server_fixture(monkeypatch):
                 return dict(dive)
         return None
 
+    def fake_delete_dive(_conn, user_id: str, dive_id: int):
+        assert user_id == "user-1"
+        for index, dive in enumerate(store["dives"]):
+            if dive["id"] == dive_id:
+                store["dives"].pop(index)
+                return True
+        return False
+
     monkeypatch.setattr(dive_backend, "open_db", fake_open_db)
     monkeypatch.setattr(dive_backend, "get_device_state", fake_get_device_state)
     monkeypatch.setattr(dive_backend, "save_device_state", fake_save_device_state)
@@ -198,6 +206,7 @@ def server_fixture(monkeypatch):
     monkeypatch.setattr(dive_backend, "insert_dive_record", fake_insert_dive_record)
     monkeypatch.setattr(dive_backend, "get_dive_id_by_uid", fake_get_dive_id_by_uid)
     monkeypatch.setattr(dive_backend, "update_dive_logbook", fake_update_dive_logbook)
+    monkeypatch.setattr(dive_backend, "delete_dive", fake_delete_dive)
 
     with TemporaryDirectory() as temp_dir:
         frontend_dir = Path(temp_dir)
@@ -411,6 +420,23 @@ def test_post_and_put_endpoints(server_fixture):
 
     put_not_found = request(server, "PUT", "/api/nope", token="session", payload={})
     assert put_not_found.status == 404
+
+
+def test_delete_endpoints(server_fixture):
+    server = server_fixture
+
+    missing_auth = request(server, "DELETE", "/api/dives/1")
+    assert missing_auth.status == 401
+
+    deleted = request(server, "DELETE", "/api/dives/1", token="session")
+    assert deleted.status == 200
+    assert deleted.json() == {"deleted": True, "id": 1}
+
+    missing_dive = request(server, "DELETE", "/api/dives/999", token="session")
+    assert missing_dive.status == 404
+
+    delete_not_found = request(server, "DELETE", "/api/nope", token="session")
+    assert delete_not_found.status == 404
 
 
 def test_route_manifest_requires_test_updates_for_new_endpoints():
