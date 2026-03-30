@@ -10,14 +10,14 @@
   },
   "dependencies": {
     "@clerk/vue": "^2.0.7",
-    "pdfjs-dist": "^5.5.207",
+    "pdfjs-dist": "^5.6.205",
     "vue": "^3.5.31"
   },
   "devDependencies": {
     "@vitejs/plugin-vue": "^6.0.5",
     "autoprefixer": "^10.4.27",
     "postcss": "^8.5.8",
-    "tailwindcss": "^3.4.17",
+    "tailwindcss": "^3.4.19",
     "vite": "^7.3.1"
   }
 }
