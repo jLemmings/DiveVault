@@ -17,7 +17,7 @@ jobs:
   build-backend:
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write
       packages: write
 
     steps:
@@ -30,6 +30,14 @@ jobs:
         uses: actions/setup-python@v6
         with:
           python-version: "3.14.3"
+
+      - name: Set up Node
+        if: github.event_name == 'release'
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
 
       - name: Install backend dependencies
         run: |
@@ -64,37 +72,40 @@ jobs:
         run: |
           set -euo pipefail
 
-          VERSION_FILE="VERSION"
-          if [[ ! -f "${VERSION_FILE}" ]]; then
-            echo "Missing ${VERSION_FILE} file." >&2
+          PACKAGE_FILE="frontend/package.json"
+          if [[ ! -f "${PACKAGE_FILE}" ]]; then
+            echo "Missing ${PACKAGE_FILE} file." >&2
             exit 1
           fi
 
-          BASE_VERSION="$(tr -d '[:space:]' < "${VERSION_FILE}")"
+          BASE_VERSION="$(
+            python -c 'import json, pathlib; print(json.loads(pathlib.Path("frontend/package.json").read_text(encoding="utf-8"))["version"].strip())'
+          )"
           if [[ -z "${BASE_VERSION}" ]]; then
-            echo "${VERSION_FILE} must contain a version." >&2
+            echo "${PACKAGE_FILE} must contain a version." >&2
             exit 1
           fi
 
           if [[ ! "${BASE_VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
-            echo "Invalid version '${BASE_VERSION}' in ${VERSION_FILE}. Use semver such as 0.1.0 or 0.2.0-beta1." >&2
+            echo "Invalid version '${BASE_VERSION}' in ${PACKAGE_FILE}. Use semver such as 0.1.0 or 0.2.0-beta1." >&2
             exit 1
           fi
 
           IMAGE_REPOSITORY="$(echo "${IMAGE_REPOSITORY}" | tr '[:upper:]' '[:lower:]')"
+          RELEASE_TAG="v${BASE_VERSION}"
+          RELEASE_ASSET_NAME="divevault-${BASE_VERSION}.tar.gz"
           VERSION_TAG=""
           IMAGE_TAGS=()
 
           if [[ "${GITHUB_EVENT_NAME}" == "release" ]]; then
-            EXPECTED_TAG="v${BASE_VERSION}"
-            if [[ "${CURRENT_RELEASE_TAG}" != "${EXPECTED_TAG}" ]]; then
-              echo "Release tag '${CURRENT_RELEASE_TAG}' does not match ${VERSION_FILE} value '${BASE_VERSION}'. Expected tag '${EXPECTED_TAG}'." >&2
+            if [[ "${CURRENT_RELEASE_TAG}" != "${RELEASE_TAG}" ]]; then
+              echo "Release tag '${CURRENT_RELEASE_TAG}' does not match ${PACKAGE_FILE} value '${BASE_VERSION}'. Expected tag '${RELEASE_TAG}'." >&2
               exit 1
             fi
 
-            DUPLICATE_RELEASE_COUNT="$(gh api "repos/${GITHUB_REPOSITORY}/releases" --paginate --jq "[.[] | select(.tag_name == \"${EXPECTED_TAG}\" and (.id | tostring) != \"${CURRENT_RELEASE_ID}\")] | length")"
+            DUPLICATE_RELEASE_COUNT="$(gh api "repos/${GITHUB_REPOSITORY}/releases" --paginate --jq "[.[] | select(.tag_name == \"${RELEASE_TAG}\" and (.id | tostring) != \"${CURRENT_RELEASE_ID}\")] | length")"
             if [[ "${DUPLICATE_RELEASE_COUNT}" != "0" ]]; then
-              echo "Duplicate release version '${BASE_VERSION}' detected. Bump ${VERSION_FILE} before publishing another release." >&2
+              echo "Duplicate release version '${BASE_VERSION}' detected. Bump ${PACKAGE_FILE} before publishing another release." >&2
               exit 1
             fi
 
@@ -109,12 +120,46 @@ jobs:
 
           {
             echo "base_version=${BASE_VERSION}"
+            echo "release_tag=${RELEASE_TAG}"
+            echo "release_asset_name=${RELEASE_ASSET_NAME}"
             echo "version_tag=${VERSION_TAG}"
             echo "image_repository=${IMAGE_REPOSITORY}"
             echo "tags<<EOF"
             printf '%s\n' "${IMAGE_TAGS[@]}"
             echo "EOF"
           } >> "${GITHUB_OUTPUT}"
+
+      - name: Install frontend dependencies
+        if: github.event_name == 'release'
+        working-directory: frontend
+        run: npm ci
+
+      - name: Build frontend
+        if: github.event_name == 'release'
+        working-directory: frontend
+        run: npm run build
+
+      - name: Create release bundle
+        if: github.event_name == 'release'
+        id: release_bundle
+        env:
+          BASE_VERSION: ${{ steps.version.outputs.base_version }}
+          RELEASE_ASSET_NAME: ${{ steps.version.outputs.release_asset_name }}
+        run: |
+          set -euo pipefail
+
+          BUNDLE_ROOT="release/divevault-${BASE_VERSION}"
+          mkdir -p "${BUNDLE_ROOT}/frontend"
+
+          cp README.md LICENSE Dockerfile docker-compose.yml requirements.txt .env.example "${BUNDLE_ROOT}/"
+          cp dive_backend.py migrate_postgres_schema.py docker-entrypoint.sh "${BUNDLE_ROOT}/"
+          cp -R divevault migrations docker "${BUNDLE_ROOT}/"
+          cp frontend/package.json frontend/package-lock.json "${BUNDLE_ROOT}/frontend/"
+          cp -R frontend/dist "${BUNDLE_ROOT}/frontend/dist"
+
+          tar -C release -czf "release/${RELEASE_ASSET_NAME}" "divevault-${BASE_VERSION}"
+
+          echo "asset_path=release/${RELEASE_ASSET_NAME}" >> "${GITHUB_OUTPUT}"
 
       - name: Build and push Docker image
         if: github.event_name == 'release' || github.ref == 'refs/heads/master'
@@ -128,3 +173,12 @@ jobs:
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
             org.opencontainers.image.revision=${{ github.sha }}
             org.opencontainers.image.version=${{ steps.version.outputs.version_tag }}
+
+      - name: Upload release bundle
+        if: github.event_name == 'release'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.version.outputs.release_tag }}
+          RELEASE_ASSET_NAME: ${{ steps.version.outputs.release_asset_name }}
+          RELEASE_ASSET_PATH: ${{ steps.release_bundle.outputs.asset_path }}
+        run: gh release upload "${RELEASE_TAG}" "${RELEASE_ASSET_PATH}#${RELEASE_ASSET_NAME}"

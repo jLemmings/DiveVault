@@ -160,14 +160,14 @@ Run tests with:
 
 ## Image Versioning
 
-Container publishing is driven by the repository [`VERSION`](./VERSION) file.
+Container publishing and release packaging are driven by [`frontend/package.json`](./frontend/package.json).
 
-- Pushes to `master` publish a new image on every merge using the current base version plus the GitHub Actions run number, for example `0.1.0-42`, and also update the `latest` tag.
-- Published GitHub releases must use a tag that matches the version file in `v<version>` format, for example `v0.1.0`.
-- Release builds publish the clean version tag, for example `0.1.0`, and update the `stable` tag.
-- If a release is published with a tag that does not match [`VERSION`](./VERSION), or if that release version already exists, the workflow fails.
+- Pushes to `master` publish a new image on every merge using the current package version plus the GitHub Actions run number, for example `0.1.0-42`, and also update the `latest` tag.
+- Published GitHub releases must use a tag that matches the package version in `v<version>` format, for example `v0.1.0`.
+- Release builds publish the clean version tag, for example `0.1.0`, update the `stable` tag, and attach a `divevault-<version>.tar.gz` release bundle built from the repository plus the compiled frontend assets.
+- If a release is published with a tag that does not match [`frontend/package.json`](./frontend/package.json), or if that release version already exists, the workflow fails.
 
-This follows the Frigate-style split between ongoing build tags and clean release tags while keeping the version source in the repository.
+This keeps `frontend/package.json` as the single release version source while preserving the split between ongoing build tags and clean release tags.
 
 ## libdivecomputer
 
