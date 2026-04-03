@@ -78,51 +78,100 @@ body {
   box-shadow: 0 0 15px rgba(156, 202, 255, 0.2);
 }
 
-.dive-theme-map {
-  background:
-    radial-gradient(circle at 24% 28%, rgba(156, 202, 255, 0.12), transparent 16rem),
-    radial-gradient(circle at 78% 72%, rgba(255, 183, 125, 0.08), transparent 14rem),
-    linear-gradient(180deg, #05233a 0%, #00111e 100%);
+.dive-map-shell {
+  height: 420px;
+  border-radius: 1.75rem;
+  box-shadow:
+    0 24px 50px rgba(0, 15, 29, 0.34),
+    inset 0 1px 0 rgba(205, 229, 255, 0.04);
 }
 
-.dive-theme-map .leaflet-container {
+.dive-map-shell::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  border: 1px solid rgba(156, 202, 255, 0.08);
+  pointer-events: none;
+  z-index: 450;
+}
+
+.dive-map-shell::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at 16% 18%, rgba(156, 202, 255, 0.18), transparent 17rem),
+    radial-gradient(circle at 84% 74%, rgba(255, 183, 125, 0.1), transparent 15rem),
+    linear-gradient(180deg, rgba(0, 15, 29, 0.08), rgba(0, 15, 29, 0.34));
+  pointer-events: none;
+  z-index: 420;
+}
+
+.dive-theme-map {
+  background:
+    radial-gradient(circle at 24% 28%, rgba(156, 202, 255, 0.16), transparent 18rem),
+    radial-gradient(circle at 78% 72%, rgba(255, 183, 125, 0.12), transparent 14rem),
+    linear-gradient(180deg, #06243a 0%, #00111e 100%);
+  height: 100%;
+  border-radius: inherit;
+}
+
+.dive-theme-map.leaflet-container {
   height: 100%;
   width: 100%;
   background: transparent;
   font: inherit;
+  border-radius: inherit;
+}
+
+.dive-theme-map .leaflet-pane,
+.dive-theme-map .leaflet-control-container {
+  z-index: 430;
 }
 
 .dive-theme-map .leaflet-tile-pane {
-  filter: saturate(0.5) hue-rotate(170deg) brightness(0.42) contrast(1.12);
+  filter: saturate(0.42) hue-rotate(172deg) brightness(0.46) contrast(1.08) sepia(0.18);
+  opacity: 0.9;
+}
+
+.dive-theme-map .leaflet-overlay-pane,
+.dive-theme-map .leaflet-shadow-pane {
+  filter: saturate(0.82) brightness(0.92);
+}
+
+.dive-theme-map .leaflet-marker-pane {
+  filter: drop-shadow(0 12px 24px rgba(0, 15, 29, 0.38));
 }
 
 .dive-theme-map .leaflet-control-zoom {
   border: 0;
-  box-shadow: 0 14px 32px rgba(0, 15, 29, 0.34);
+  box-shadow: 0 18px 36px rgba(0, 15, 29, 0.34);
 }
 
 .dive-theme-map .leaflet-control-zoom a {
-  background: rgba(6, 33, 53, 0.92);
-  border-bottom-color: rgba(156, 202, 255, 0.12);
+  background: rgba(6, 33, 53, 0.9);
+  border-bottom-color: rgba(156, 202, 255, 0.1);
   color: #cde5ff;
 }
 
 .dive-theme-map .leaflet-control-zoom a:hover {
-  background: rgba(19, 44, 64, 0.96);
+  background: rgba(19, 44, 64, 0.98);
   color: #9ccaff;
 }
 
 .dive-theme-map .leaflet-bottom.leaflet-left {
-  left: 12px;
-  bottom: 8px;
+  left: 16px;
+  bottom: 12px;
 }
 
 .dive-theme-map .leaflet-control-attribution {
-  background: rgba(0, 15, 29, 0.72);
+  background: rgba(0, 15, 29, 0.66);
   color: #9eb7c8;
-  border-radius: 0;
-  padding: 4px 8px;
-  backdrop-filter: blur(8px);
+  border-radius: 9999px;
+  padding: 5px 10px;
+  backdrop-filter: blur(14px);
+  box-shadow: 0 10px 24px rgba(0, 15, 29, 0.2);
 }
 
 .dive-theme-map .leaflet-control-attribution a {
@@ -139,8 +188,10 @@ body {
   align-items: center;
   justify-content: center;
   border-radius: 9999px;
-  background: radial-gradient(circle, rgba(156, 202, 255, 0.25), rgba(156, 202, 255, 0.06));
-  box-shadow: 0 0 22px rgba(156, 202, 255, 0.42);
+  background: radial-gradient(circle, rgba(156, 202, 255, 0.32), rgba(156, 202, 255, 0.04));
+  box-shadow:
+    0 0 26px rgba(156, 202, 255, 0.34),
+    inset 0 0 0 1px rgba(205, 229, 255, 0.08);
 }
 
 .dive-map-marker-core {
@@ -149,9 +200,9 @@ body {
   justify-content: center;
   width: calc(100% - 10px);
   height: calc(100% - 10px);
-  border: 1px solid rgba(156, 202, 255, 0.75);
+  border: 1px solid rgba(156, 202, 255, 0.66);
   border-radius: 9999px;
-  background: linear-gradient(180deg, rgba(156, 202, 255, 0.98), rgba(105, 161, 214, 0.96));
+  background: linear-gradient(180deg, rgba(180, 221, 255, 0.96), rgba(107, 162, 212, 0.94));
   color: #00111e;
   font-family: "Space Grotesk", sans-serif;
   font-weight: 700;
