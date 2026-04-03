@@ -1,6 +1,5 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+@config "../tailwind.config.js";
 
 body {
   font-family: "Manrope", sans-serif;
@@ -157,24 +156,6 @@ body {
 
 .dive-theme-map .leaflet-control-zoom a:hover {
   background: rgba(19, 44, 64, 0.98);
-  color: #9ccaff;
-}
-
-.dive-theme-map .leaflet-bottom.leaflet-left {
-  left: 16px;
-  bottom: 12px;
-}
-
-.dive-theme-map .leaflet-control-attribution {
-  background: rgba(0, 15, 29, 0.66);
-  color: #9eb7c8;
-  border-radius: 9999px;
-  padding: 5px 10px;
-  backdrop-filter: blur(14px);
-  box-shadow: 0 10px 24px rgba(0, 15, 29, 0.2);
-}
-
-.dive-theme-map .leaflet-control-attribution a {
   color: #9ccaff;
 }
 

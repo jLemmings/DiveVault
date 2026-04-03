@@ -147,13 +147,11 @@ export default {
       });
 
       L.control.zoom({ position: "bottomright" }).addTo(map);
-      L.control.attribution({ position: "bottomleft", prefix: false }).addTo(map);
 
       this.diveTileLayer = L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
         maxZoom: 19,
         className: "dive-theme-map-tiles",
-        referrerPolicy: "origin",
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a> contributors'
+        referrerPolicy: "origin"
       }).addTo(map);
       this.diveMarkerLayer = L.layerGroup().addTo(map);
       this.diveMap = map;
