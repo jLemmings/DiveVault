@@ -487,14 +487,14 @@ export default {
             <span class="material-symbols-outlined text-3xl text-primary/40">timer</span>
             <div>
               <p class="font-label text-[10px] font-bold uppercase tracking-[0.24em] text-secondary">Bottom Time</p>
-              <p class="mt-2 font-headline text-4xl font-bold group-hover:text-primary">{{ formatAccumulatedDuration(stats.totalSeconds) }}</p>
+              <p class="mt-2 font-headline text-4xl font-bold group-hover:text-primary">{{ Math.floor((stats.totalSeconds || 0) / 3600) }}<span class="ml-1 text-sm font-normal uppercase text-secondary">h</span> {{ Math.round(((stats.totalSeconds || 0) % 3600) / 60) }}<span class="ml-1 text-sm font-normal uppercase text-secondary">min</span></p>
             </div>
           </div>
           <div class="group flex h-48 flex-col justify-between bg-surface-container-low p-6 transition-colors hover:bg-surface-container-high">
-            <span class="material-symbols-outlined text-3xl text-tertiary/50">straighten</span>
+            <span class="material-symbols-outlined text-3xl text-primary/40">straighten</span>
             <div>
               <p class="font-label text-[10px] font-bold uppercase tracking-[0.24em] text-secondary">Max Depth</p>
-              <p class="mt-2 font-headline text-4xl font-bold text-tertiary">{{ formatDepthNumber(stats.maxDepth) }}<span class="ml-1 text-sm font-normal uppercase text-secondary">m</span></p>
+              <p class="mt-2 font-headline text-4xl font-bold group-hover:text-primary">{{ formatDepthNumber(stats.maxDepth) }}<span class="ml-1 text-sm font-normal uppercase text-secondary">m</span></p>
             </div>
           </div>
           <div class="group flex h-48 flex-col justify-between border-l-2 border-primary/20 bg-surface-container-low p-6 transition-colors hover:bg-surface-container-high">
@@ -507,70 +507,36 @@ export default {
         </div>
         <section class="space-y-6">
           <div class="space-y-6">
-            <div class="relative h-[400px] overflow-hidden bg-surface-container-low">
-              <div ref="diveMapCanvas" class="dive-theme-map absolute inset-0"></div>
-              <div class="pointer-events-none absolute inset-0 opacity-25 mix-blend-screen bg-[radial-gradient(circle_at_24%_32%,rgba(156,202,255,0.24),transparent_16rem),radial-gradient(circle_at_78%_68%,rgba(255,183,125,0.16),transparent_14rem),linear-gradient(180deg,#07253a,#00111e)]"></div>
-              <div class="pointer-events-none absolute inset-0 bg-gradient-to-t from-surface-dim/85 via-transparent to-transparent"></div>
-              <div class="pointer-events-none absolute inset-y-0 left-0 w-56 bg-[linear-gradient(90deg,rgba(0,15,29,0.34),transparent)]"></div>
-              <div class="absolute left-6 top-6 z-[500]">
-                <h4 class="font-headline text-xl font-bold tracking-tight">DIVE MAP: <span class="text-primary">GLOBAL LOGBOOK</span></h4>
-                <p class="font-label text-[10px] font-bold uppercase tracking-[0.24em] text-secondary">{{ mapTelemetryLabel }}</p>
-              </div>
-              <div class="absolute bottom-6 left-6 right-6 z-[500] flex items-end justify-between gap-6">
-                <div class="max-w-2xl space-y-3">
-                  <div class="flex flex-wrap gap-2">
-                    <span class="bg-background/40 px-3 py-2 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-primary">{{ mappedDiveCount }} mapped dives</span>
-                    <span class="bg-background/40 px-3 py-2 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-tertiary">{{ mappedSiteCount }} unique sites</span>
-                    <span class="bg-background/40 px-3 py-2 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">{{ mapCoverageLabel }}</span>
+            <div class="grid gap-6 xl:grid-cols-[minmax(0,1fr)_19rem]">
+              <div class="space-y-5">
+                <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+                  <div>
+                    <h4 class="font-headline text-3xl font-bold tracking-tight text-on-surface">Dive Map</h4>
+                    <p class="mt-2 font-label text-[10px] font-bold uppercase tracking-[0.24em] text-secondary">{{ mapTelemetryLabel }}</p>
                   </div>
-                  <p class="max-w-xl text-sm leading-6 text-on-surface-variant">{{ mapFooterNote }}</p>
-                </div>
-                <div v-if="mapTopSites.length" class="hidden min-w-[18rem] bg-background/35 p-4 lg:block">
-                  <p class="font-label text-[10px] font-bold uppercase tracking-[0.22em] text-primary">Top Locations</p>
-                  <div class="mt-3 space-y-2">
-                    <div v-for="site in mapTopSites" :key="'site-' + site.key" class="flex items-center justify-between gap-4 text-sm">
-                      <div class="min-w-0">
-                        <p class="truncate font-semibold text-on-surface">{{ site.label }}</p>
-                        <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">{{ coordinateLabel(site.latitude, 'N', 'S') }} / {{ coordinateLabel(site.longitude, 'E', 'W') }}</p>
-                      </div>
-                      <span class="font-headline text-lg font-bold text-tertiary">{{ site.count }}</span>
-                    </div>
+                  <div class="flex flex-wrap gap-3">
+                    <span class="border border-primary/15 bg-surface-container-high px-3 py-2 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-primary">{{ mappedDiveCount }} mapped dives</span>
+                    <span class="border border-tertiary/15 bg-surface-container-high px-3 py-2 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-tertiary">{{ mappedSiteCount }} unique sites</span>
+                    <span class="border border-outline-variant/15 bg-surface-container-high px-3 py-2 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">{{ mapCoverageLabel }}</span>
                   </div>
                 </div>
-              </div>
-            </div>
-            <div class="bg-surface-container-low p-6">
-              <div class="mb-6 flex items-center justify-between">
-                <div>
-                  <p class="font-label text-[10px] font-bold uppercase tracking-[0.24em] text-primary">Recent Expeditions</p>
-                  <h4 class="mt-2 font-headline text-2xl font-bold tracking-tight">Recent Dives</h4>
+
+                <div class="dive-map-shell relative overflow-hidden border border-primary/10 bg-surface-container-low shadow-panel">
+                  <div ref="diveMapCanvas" class="dive-theme-map"></div>
                 </div>
-                <button @click="setView('logs')" class="font-label text-[10px] font-bold uppercase tracking-[0.2em] text-secondary transition-colors hover:text-primary">View All</button>
               </div>
-              <div class="space-y-4">
-                <article
-                  v-for="dive in recentDives"
-                  :key="dive.id"
-                  @click="openDive(dive.id)"
-                  @keyup.enter="openDive(dive.id)"
-                  tabindex="0"
-                  role="button"
-                  class="flex cursor-pointer items-center justify-between gap-4 bg-surface-container-high/40 p-4 transition-colors hover:bg-surface-container-high focus:bg-surface-container-high focus:outline-none"
-                >
-                  <div class="flex min-w-0 items-center gap-4">
-                    <div class="flex h-12 w-12 items-center justify-center bg-primary/10 text-primary">
-                      <span class="material-symbols-outlined">scuba_diving</span>
-                    </div>
+
+              <div v-if="mapTopSites.length" class="border border-primary/10 bg-surface-container-low p-5 shadow-panel">
+                <p class="font-label text-[10px] font-bold uppercase tracking-[0.22em] text-primary">Top Locations</p>
+                <div class="mt-4 space-y-3">
+                  <div v-for="site in mapTopSites" :key="'site-' + site.key" class="flex items-center justify-between gap-4 border border-outline-variant/10 bg-surface-container-high/70 px-4 py-3 text-sm">
                     <div class="min-w-0">
-                      <h5 class="truncate text-sm font-bold tracking-tight">{{ diveTitle(dive) }}</h5>
-                      <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">{{ formatDate(dive.started_at) }} | {{ diveModeLabel(dive) }}</p>
+                      <p class="truncate font-semibold text-on-surface">{{ site.label }}</p>
+                      <p class="mt-1 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">{{ coordinateLabel(site.latitude, 'N', 'S') }} / {{ coordinateLabel(site.longitude, 'E', 'W') }}</p>
                     </div>
+                    <span class="font-headline text-2xl font-bold text-tertiary">{{ site.count }}</span>
                   </div>
-                  <div class="text-right">
-                    <p class="font-headline text-lg font-bold">{{ formatDepth(dive.max_depth_m) }}</p>
-                    <p class="font-label text-[10px] font-bold uppercase tracking-[0.2em] text-primary">{{ formatDurationShort(dive.duration_seconds).replace(/m/g, 'min') }}</p>
-                  </div>
-                </article>
+                </div>
               </div>
             </div>
           </div>

@@ -752,21 +752,7 @@ export default {
         </div>
         <div class="hidden h-full items-center justify-between px-8 md:flex">
           <h2 class="font-headline text-2xl font-bold tracking-[0.08em] text-primary">DiveVault</h2>
-          <div class="flex items-center gap-4">
-            <div class="relative">
-              <span class="material-symbols-outlined absolute right-3 top-1/2 -translate-y-1/2 text-sm text-primary">search</span>
-              <input v-model.trim="searchText" type="text" class="w-56 border-none bg-surface-container-highest py-1.5 pl-4 pr-10 text-xs text-on-surface-variant focus:ring-1 focus:ring-primary" :placeholder="activeView === 'equipment' ? 'SEARCH ASSETS...' : 'SEARCH ARCHIVES...'" />
-            </div>
-            <button class="text-secondary transition-colors hover:text-primary"><span class="material-symbols-outlined">notifications</span></button>
-            <button class="text-secondary transition-colors hover:text-primary"><span class="material-symbols-outlined">emergency_home</span></button>
-            <div
-              class="hidden h-8 w-8 items-center justify-center rounded-full border border-primary/30 bg-surface-container-highest font-label text-[10px] font-bold uppercase tracking-[0.18em] text-primary md:flex"
-              :title="sessionEmail"
-            >
-              {{ sessionEmail ? sessionEmail.charAt(0) : 'D' }}
-            </div>
-            <user-button after-sign-out-url="/"></user-button>
-          </div>
+          <user-button after-sign-out-url="/"></user-button>
         </div>
       </header>
       <main class="pb-24 pt-20 md:ml-64">
