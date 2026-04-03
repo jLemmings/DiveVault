@@ -13,6 +13,7 @@ from __future__ import annotations
 import argparse
 import base64
 import binascii
+import csv
 import json
 import logging
 import mimetypes
@@ -21,12 +22,14 @@ import re
 import secrets
 import threading
 import time
+from datetime import datetime, timezone
 from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from io import StringIO
 from pathlib import Path
 from urllib import error as urlerror
 from urllib import request as urlrequest
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, urlencode, urlparse
 
 import jwt
 import psycopg
@@ -42,6 +45,8 @@ from divevault.postgres_store import (
     get_user_profile_license_pdf,
     is_logbook_complete,
     insert_dive_record,
+    list_all_dives,
+    list_device_states,
     list_dives,
     open_db,
     save_user_profile,
@@ -268,6 +273,92 @@ def decode_profile_license_payload(payload: dict | None) -> tuple[str, str, byte
     return sanitize_profile_license_filename(source.get("filename")), "application/pdf", pdf_bytes
 
 
+class NominatimClient:
+    def __init__(
+        self,
+        *,
+        base_url: str,
+        user_agent: str,
+        email: str | None = None,
+        min_interval_seconds: float = 1.0,
+    ) -> None:
+        self.base_url = (base_url or "https://nominatim.openstreetmap.org").rstrip("/")
+        self.user_agent = (user_agent or "DiveVault/1.0").strip()
+        self.email = email.strip() if email else None
+        self.min_interval_seconds = max(min_interval_seconds, 0)
+        self._lock = threading.Lock()
+        self._cache: dict[str, dict] = {}
+        self._last_request_at = 0.0
+
+    def search(self, query: str) -> dict:
+        normalized_query = query.strip()
+        if not normalized_query:
+            raise ValueError("Missing search query")
+
+        cache_key = normalized_query.casefold()
+        with self._lock:
+            cached = self._cache.get(cache_key)
+            if cached is not None:
+                return dict(cached)
+
+            delay_seconds = self.min_interval_seconds - max(0.0, time.time() - self._last_request_at)
+            if delay_seconds > 0:
+                time.sleep(delay_seconds)
+
+            payload = self._perform_search(normalized_query)
+            self._cache[cache_key] = payload
+            self._last_request_at = time.time()
+            return dict(payload)
+
+    def _perform_search(self, query: str) -> dict:
+        params = {
+            "q": query,
+            "format": "jsonv2",
+            "limit": "1",
+        }
+        if self.email:
+            params["email"] = self.email
+
+        request_url = f"{self.base_url}/search?{urlencode(params)}"
+        req = urlrequest.Request(
+            request_url,
+            headers={
+                "User-Agent": self.user_agent,
+                "Accept": "application/json",
+            },
+            method="GET",
+        )
+
+        try:
+            with urlrequest.urlopen(req, timeout=15) as response:
+                payload = json.loads(response.read().decode("utf-8"))
+        except urlerror.HTTPError as exc:
+            details = exc.read().decode("utf-8", errors="replace")
+            raise RuntimeError(f"Nominatim search failed with HTTP {exc.code}: {details}") from exc
+        except (urlerror.URLError, TimeoutError, json.JSONDecodeError) as exc:
+            raise RuntimeError(f"Nominatim search failed: {exc}") from exc
+
+        if not isinstance(payload, list) or not payload:
+            return {"query": query, "found": False, "result": None}
+
+        first_result = payload[0] if isinstance(payload[0], dict) else {}
+        try:
+            latitude = float(first_result.get("lat"))
+            longitude = float(first_result.get("lon"))
+        except (TypeError, ValueError):
+            return {"query": query, "found": False, "result": None}
+
+        return {
+            "query": query,
+            "found": True,
+            "result": {
+                "name": first_result.get("display_name") or query,
+                "latitude": latitude,
+                "longitude": longitude,
+            },
+        }
+
+
 class CliSyncTokenManager:
     def __init__(self, *, request_ttl_seconds: int = 600, token_ttl_seconds: int = 1800) -> None:
         self.request_ttl_seconds = request_ttl_seconds
@@ -449,6 +540,514 @@ def wait_for_database(
     )
 
 
+BACKUP_EXPORT_VERSION = 1
+PDF_PAGE_WIDTH = 612
+PDF_PAGE_HEIGHT = 792
+PDF_MARGIN_LEFT = 48
+PDF_MARGIN_TOP = 744
+PDF_MARGIN_BOTTOM = 48
+PDF_TEXT_RE = re.compile(r"[^\x20-\x7E]")
+
+
+def now_utc() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def timestamp_slug(value: datetime | None = None) -> str:
+    moment = value or now_utc()
+    return moment.strftime("%Y%m%d-%H%M%S")
+
+
+def attachment_filename(value: str) -> str:
+    sanitized = re.sub(r"[^A-Za-z0-9._-]+", "-", value or "").strip("-.")
+    return sanitized or "download"
+
+
+def json_compact(value: object) -> str:
+    return json.dumps(value, separators=(",", ":"), sort_keys=True)
+
+
+def format_export_datetime(value: object) -> str:
+    if not isinstance(value, str) or not value.strip():
+        return "Unknown"
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return value
+    return parsed.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+
+
+def format_duration_label(duration_seconds: object) -> str:
+    if not isinstance(duration_seconds, (int, float)):
+        return "Unknown"
+    total_seconds = max(int(round(float(duration_seconds))), 0)
+    hours, remainder = divmod(total_seconds, 3600)
+    minutes, seconds = divmod(remainder, 60)
+    if hours:
+        return f"{hours}h {minutes:02d}m"
+    if minutes:
+        return f"{minutes}m {seconds:02d}s"
+    return f"{seconds}s"
+
+
+def format_depth_label(depth_m: object) -> str:
+    if not isinstance(depth_m, (int, float)):
+        return "Unknown"
+    return f"{float(depth_m):.1f} m"
+
+
+def pdf_text(value: object) -> str:
+    text = str(value or "")
+    text = PDF_TEXT_RE.sub("?", text)
+    text = text.replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)")
+    return text
+
+
+def wrap_pdf_text(value: object, width: int = 88) -> list[str]:
+    text = PDF_TEXT_RE.sub("?", str(value or "")).strip()
+    if not text:
+        return []
+    words = text.split()
+    lines: list[str] = []
+    current = ""
+    for word in words:
+        candidate = word if not current else f"{current} {word}"
+        if len(candidate) <= width:
+            current = candidate
+            continue
+        if current:
+            lines.append(current)
+        current = word
+    if current:
+        lines.append(current)
+    return lines
+
+
+def csv_export_rows(dives: list[dict]) -> list[dict]:
+    rows: list[dict] = []
+    for dive in dives:
+        logbook = dive.get("fields", {}).get("logbook") if isinstance(dive.get("fields"), dict) else {}
+        logbook = logbook if isinstance(logbook, dict) else {}
+        base_row = {
+            "dive_id": dive.get("id"),
+            "dive_uid": dive.get("dive_uid"),
+            "status": logbook.get("status") or "imported",
+            "site": logbook.get("site") or "",
+            "buddy": logbook.get("buddy") or "",
+            "guide": logbook.get("guide") or "",
+            "notes": logbook.get("notes") or "",
+            "vendor": dive.get("vendor") or "",
+            "product": dive.get("product") or "",
+            "started_at": dive.get("started_at") or "",
+            "imported_at": dive.get("imported_at") or "",
+            "duration_seconds": dive.get("duration_seconds") or "",
+            "max_depth_m": dive.get("max_depth_m") or "",
+            "avg_depth_m": dive.get("avg_depth_m") or "",
+            "raw_sha256": dive.get("raw_sha256") or "",
+            "sample_count": dive.get("sample_count") or 0,
+        }
+        samples = dive.get("samples") if isinstance(dive.get("samples"), list) else []
+        if not samples:
+            rows.append(
+                {
+                    **base_row,
+                    "sample_index": "",
+                    "sample_time_seconds": "",
+                    "sample_depth_m": "",
+                    "sample_temperature_c": "",
+                    "sample_tank_pressure_bar": "",
+                    "sample_payload_json": "",
+                }
+            )
+            continue
+
+        for index, sample in enumerate(samples):
+            sample_dict = sample if isinstance(sample, dict) else {}
+            tank_pressure = sample_dict.get("tank_pressure_bar")
+            if isinstance(tank_pressure, dict):
+                tank_pressure = tank_pressure.get("tank_0")
+            rows.append(
+                {
+                    **base_row,
+                    "sample_index": index,
+                    "sample_time_seconds": sample_dict.get("time_seconds", ""),
+                    "sample_depth_m": sample_dict.get("depth_m", ""),
+                    "sample_temperature_c": sample_dict.get("temperature_c", ""),
+                    "sample_tank_pressure_bar": tank_pressure if tank_pressure is not None else "",
+                    "sample_payload_json": json_compact(sample_dict),
+                }
+            )
+    return rows
+
+
+def build_dives_csv(dives: list[dict]) -> bytes:
+    fieldnames = [
+        "dive_id",
+        "dive_uid",
+        "status",
+        "site",
+        "buddy",
+        "guide",
+        "notes",
+        "vendor",
+        "product",
+        "started_at",
+        "imported_at",
+        "duration_seconds",
+        "max_depth_m",
+        "avg_depth_m",
+        "raw_sha256",
+        "sample_count",
+        "sample_index",
+        "sample_time_seconds",
+        "sample_depth_m",
+        "sample_temperature_c",
+        "sample_tank_pressure_bar",
+        "sample_payload_json",
+    ]
+    buffer = StringIO()
+    writer = csv.DictWriter(buffer, fieldnames=fieldnames)
+    writer.writeheader()
+    for row in csv_export_rows(dives):
+        writer.writerow(row)
+    return buffer.getvalue().encode("utf-8")
+
+
+def build_pdf_lines(dives: list[dict], *, generated_at: datetime) -> list[dict]:
+    lines = [
+        {"text": "DiveVault Logbook Export", "font": "F2", "size": 20, "gap": 10},
+        {"text": f"Generated {generated_at.strftime('%Y-%m-%d %H:%M UTC')}", "font": "F1", "size": 10, "gap": 4},
+        {"text": f"{len(dives)} dives included", "font": "F1", "size": 10, "gap": 12},
+    ]
+    if not dives:
+        lines.append({"text": "No dives available for export.", "font": "F1", "size": 12, "gap": 12})
+        return lines
+
+    for index, dive in enumerate(dives, start=1):
+        logbook = dive.get("fields", {}).get("logbook") if isinstance(dive.get("fields"), dict) else {}
+        logbook = logbook if isinstance(logbook, dict) else {}
+        site = logbook.get("site") or "Unassigned site"
+        title = f"{index}. {site}"
+        started_at = format_export_datetime(dive.get("started_at"))
+        status = (logbook.get("status") or "imported").upper()
+        lines.append({"text": title, "font": "F2", "size": 12, "gap": 4})
+        lines.append({"text": f"{started_at} | Status {status}", "font": "F1", "size": 10, "gap": 4})
+        lines.append(
+            {
+                "text": (
+                    f"{dive.get('vendor') or 'Unknown'} {dive.get('product') or ''} | "
+                    f"Depth {format_depth_label(dive.get('max_depth_m'))} | "
+                    f"Duration {format_duration_label(dive.get('duration_seconds'))} | "
+                    f"Samples {dive.get('sample_count') or 0}"
+                ),
+                "font": "F1",
+                "size": 10,
+                "gap": 4,
+            }
+        )
+        lines.append(
+            {
+                "text": f"Buddy {logbook.get('buddy') or '-'} | Guide {logbook.get('guide') or '-'}",
+                "font": "F1",
+                "size": 10,
+                "gap": 4,
+            }
+        )
+        notes = logbook.get("notes")
+        if isinstance(notes, str) and notes.strip():
+            wrapped_notes = wrap_pdf_text(f"Notes: {notes.strip()}", width=92)[:3]
+            for note_line in wrapped_notes:
+                lines.append({"text": note_line, "font": "F1", "size": 10, "gap": 4})
+        lines.append({"text": "", "font": "F1", "size": 8, "gap": 8})
+    return lines
+
+
+def paginate_pdf_lines(lines: list[dict]) -> list[list[dict]]:
+    pages: list[list[dict]] = []
+    current_page: list[dict] = []
+    y_cursor = PDF_MARGIN_TOP
+
+    for line in lines:
+        required = int(line.get("size", 10)) + int(line.get("gap", 4))
+        if current_page and y_cursor - required < PDF_MARGIN_BOTTOM:
+            pages.append(current_page)
+            current_page = []
+            y_cursor = PDF_MARGIN_TOP
+        current_page.append(line)
+        y_cursor -= required
+
+    if current_page:
+        pages.append(current_page)
+    return pages or [[{"text": "No dives available for export.", "font": "F1", "size": 12, "gap": 12}]]
+
+
+def build_pdf_stream(page_lines: list[dict]) -> bytes:
+    commands: list[str] = []
+    y_cursor = PDF_MARGIN_TOP
+    for line in page_lines:
+        size = int(line.get("size", 10))
+        gap = int(line.get("gap", 4))
+        text = pdf_text(line.get("text") or " ")
+        font = line.get("font") or "F1"
+        commands.append(f"BT /{font} {size} Tf 1 0 0 1 {PDF_MARGIN_LEFT} {y_cursor} Tm ({text}) Tj ET")
+        y_cursor -= size + gap
+    return "\n".join(commands).encode("latin-1", errors="replace")
+
+
+def build_pdf_document(dives: list[dict]) -> bytes:
+    generated_at = now_utc()
+    pages = paginate_pdf_lines(build_pdf_lines(dives, generated_at=generated_at))
+    objects: list[bytes] = []
+
+    def add_object(body: bytes | str) -> int:
+        body_bytes = body.encode("latin-1") if isinstance(body, str) else body
+        objects.append(body_bytes)
+        return len(objects)
+
+    add_object("<< /Type /Catalog /Pages 2 0 R >>")
+    add_object("<< /Type /Pages /Kids [] /Count 0 >>")
+    font_regular_id = add_object("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>")
+    font_bold_id = add_object("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>")
+
+    page_ids: list[int] = []
+    for page_lines in pages:
+        stream = build_pdf_stream(page_lines)
+        stream_id = add_object(b"<< /Length %d >>\nstream\n%s\nendstream" % (len(stream), stream))
+        page_id = add_object(
+            (
+                f"<< /Type /Page /Parent 2 0 R "
+                f"/MediaBox [0 0 {PDF_PAGE_WIDTH} {PDF_PAGE_HEIGHT}] "
+                f"/Resources << /Font << /F1 {font_regular_id} 0 R /F2 {font_bold_id} 0 R >> >> "
+                f"/Contents {stream_id} 0 R >>"
+            ).encode("latin-1")
+        )
+        page_ids.append(page_id)
+
+    kids = " ".join(f"{page_id} 0 R" for page_id in page_ids)
+    objects[1] = f"<< /Type /Pages /Kids [{kids}] /Count {len(page_ids)} >>".encode("latin-1")
+
+    output = bytearray(b"%PDF-1.4\n%\xe2\xe3\xcf\xd3\n")
+    offsets = [0]
+    for index, body in enumerate(objects, start=1):
+        offsets.append(len(output))
+        output.extend(f"{index} 0 obj\n".encode("latin-1"))
+        output.extend(body)
+        output.extend(b"\nendobj\n")
+
+    xref_start = len(output)
+    output.extend(f"xref\n0 {len(objects) + 1}\n".encode("latin-1"))
+    output.extend(b"0000000000 65535 f \n")
+    for offset in offsets[1:]:
+        output.extend(f"{offset:010d} 00000 n \n".encode("latin-1"))
+    output.extend(
+        (
+            f"trailer\n<< /Size {len(objects) + 1} /Root 1 0 R >>\n"
+            f"startxref\n{xref_start}\n%%EOF\n"
+        ).encode("latin-1")
+    )
+    return bytes(output)
+
+
+def profile_license_documents(conn, user_id: str, profile: dict) -> list[dict]:
+    documents: list[dict] = []
+    for license_entry in profile.get("licenses") or []:
+        if not isinstance(license_entry, dict) or not license_entry.get("pdf"):
+            continue
+        license_id = license_entry.get("id")
+        if not isinstance(license_id, str) or not license_id:
+            continue
+        license_pdf = get_user_profile_license_pdf(conn, user_id, license_id)
+        if not license_pdf:
+            continue
+        documents.append(
+            {
+                "license_id": license_id,
+                "filename": license_pdf["filename"],
+                "content_type": license_pdf["content_type"],
+                "uploaded_at": license_pdf.get("uploaded_at"),
+                "data_b64": base64.b64encode(license_pdf["data"]).decode("ascii"),
+            }
+        )
+    return documents
+
+
+def build_backup_payload(conn, user_id: str) -> dict:
+    profile = get_user_profile(conn, user_id)
+    return {
+        "version": BACKUP_EXPORT_VERSION,
+        "app": "DiveVault",
+        "exported_at": now_utc().isoformat(),
+        "source_user_id": user_id,
+        "profile": profile,
+        "license_documents": profile_license_documents(conn, user_id, profile),
+        "device_states": list_device_states(conn, user_id),
+        "dives": list_all_dives(conn, user_id, include_samples=True, include_raw_data=True),
+    }
+
+
+def parse_backup_payload(payload: dict | None) -> dict:
+    if not isinstance(payload, dict):
+        raise ValueError("Backup import requires a JSON object")
+
+    version = payload.get("version")
+    if version != BACKUP_EXPORT_VERSION:
+        raise ValueError(f"Unsupported backup version: {version!r}")
+
+    profile = payload.get("profile") or {}
+    if not isinstance(profile, dict):
+        raise ValueError("Backup profile must be an object")
+
+    device_states = payload.get("device_states") or []
+    if not isinstance(device_states, list):
+        raise ValueError("Backup device_states must be an array")
+
+    normalized_device_states: list[dict] = []
+    for index, entry in enumerate(device_states, start=1):
+        if not isinstance(entry, dict):
+            raise ValueError(f"Backup device state #{index} must be an object")
+        vendor = str(entry.get("vendor") or "").strip()
+        product = str(entry.get("product") or "").strip()
+        if not vendor or not product:
+            raise ValueError(f"Backup device state #{index} is missing vendor or product")
+        normalized_device_states.append(
+            {
+                "vendor": vendor,
+                "product": product,
+                "fingerprint_hex": entry.get("fingerprint_hex"),
+            }
+        )
+
+    dives = payload.get("dives") or []
+    if not isinstance(dives, list):
+        raise ValueError("Backup dives must be an array")
+
+    normalized_dives: list[dict] = []
+    for index, entry in enumerate(dives, start=1):
+        if not isinstance(entry, dict):
+            raise ValueError(f"Backup dive #{index} must be an object")
+        missing = [key for key in ("vendor", "product", "dive_uid", "raw_sha256", "raw_data_b64") if not entry.get(key)]
+        if missing:
+            raise ValueError(f"Backup dive #{index} is missing required fields: {', '.join(missing)}")
+        try:
+            base64.b64decode(entry["raw_data_b64"], validate=True)
+        except (ValueError, binascii.Error) as exc:
+            raise ValueError(f"Backup dive #{index} has invalid raw_data_b64") from exc
+        samples = entry.get("samples") if isinstance(entry.get("samples"), list) else []
+        fields = entry.get("fields") if isinstance(entry.get("fields"), dict) else {}
+        normalized_dives.append(
+            {
+                "vendor": entry["vendor"],
+                "product": entry["product"],
+                "fingerprint_hex": entry.get("fingerprint_hex"),
+                "dive_uid": entry["dive_uid"],
+                "started_at": entry.get("started_at"),
+                "duration_ms": entry.get("duration_ms"),
+                "duration_seconds": entry.get("duration_seconds"),
+                "max_depth_m": entry.get("max_depth_m"),
+                "avg_depth_m": entry.get("avg_depth_m"),
+                "fields": fields,
+                "raw_sha256": entry["raw_sha256"],
+                "raw_data_b64": entry["raw_data_b64"],
+                "samples": samples,
+                "imported_at": entry.get("imported_at"),
+            }
+        )
+
+    license_documents = payload.get("license_documents") or []
+    if not isinstance(license_documents, list):
+        raise ValueError("Backup license_documents must be an array")
+
+    allowed_license_ids = {
+        str(license.get("id")).strip()
+        for license in profile.get("licenses") or []
+        if isinstance(license, dict) and str(license.get("id") or "").strip()
+    }
+    normalized_license_documents: list[dict] = []
+    for index, entry in enumerate(license_documents, start=1):
+        if not isinstance(entry, dict):
+            raise ValueError(f"Backup license document #{index} must be an object")
+        license_id = str(entry.get("license_id") or "").strip()
+        if not license_id:
+            raise ValueError(f"Backup license document #{index} is missing license_id")
+        if allowed_license_ids and license_id not in allowed_license_ids:
+            raise ValueError(f"Backup license document #{index} references unknown license_id {license_id}")
+        data_b64 = entry.get("data_b64")
+        if not isinstance(data_b64, str) or not data_b64.strip():
+            raise ValueError(f"Backup license document #{index} is missing data_b64")
+        try:
+            pdf_bytes = base64.b64decode(data_b64, validate=True)
+        except (ValueError, binascii.Error) as exc:
+            raise ValueError(f"Backup license document #{index} has invalid data_b64") from exc
+        normalized_license_documents.append(
+            {
+                "license_id": license_id,
+                "filename": sanitize_profile_license_filename(entry.get("filename")),
+                "content_type": (entry.get("content_type") or "application/pdf").strip().lower(),
+                "pdf_bytes": pdf_bytes,
+            }
+        )
+
+    return {
+        "profile": {
+            "name": profile.get("name"),
+            "email": profile.get("email"),
+            "licenses": profile.get("licenses"),
+            "dive_sites": profile.get("dive_sites"),
+            "buddies": profile.get("buddies"),
+            "guides": profile.get("guides"),
+        },
+        "device_states": normalized_device_states,
+        "dives": normalized_dives,
+        "license_documents": normalized_license_documents,
+    }
+
+
+def import_backup_payload(conn, user_id: str, payload: dict | None) -> dict:
+    normalized = parse_backup_payload(payload)
+    profile = save_user_profile(conn, user_id, normalized["profile"])
+
+    licenses_imported = 0
+    for license_document in normalized["license_documents"]:
+        if license_document["content_type"] != "application/pdf":
+            raise ValueError(f"License {license_document['license_id']} must use content_type application/pdf")
+        updated_profile = save_user_profile_license_pdf(
+            conn,
+            user_id,
+            license_id=license_document["license_id"],
+            filename=license_document["filename"],
+            content_type=license_document["content_type"],
+            pdf_bytes=license_document["pdf_bytes"],
+        )
+        if updated_profile is None:
+            raise ValueError(f"License {license_document['license_id']} does not exist in the imported profile")
+        profile = updated_profile
+        licenses_imported += 1
+
+    for device_state in normalized["device_states"]:
+        save_device_state(
+            conn,
+            user_id,
+            device_state["vendor"],
+            device_state["product"],
+            device_state.get("fingerprint_hex"),
+        )
+
+    dives_inserted = 0
+    for dive in normalized["dives"]:
+        if insert_dive_record(conn, user_id, dive):
+            dives_inserted += 1
+
+    return {
+        "profile": profile,
+        "summary": {
+            "dives_in_backup": len(normalized["dives"]),
+            "dives_inserted": dives_inserted,
+            "device_states_imported": len(normalized["device_states"]),
+            "license_documents_imported": licenses_imported,
+        },
+    }
+
+
 class DiveBackendHandler(BaseHTTPRequestHandler):
     server_version = "DiveBackend/2.0"
 
@@ -519,6 +1118,114 @@ class DiveBackendHandler(BaseHTTPRequestHandler):
                 sum(1 for license_entry in profile.get("licenses") or [] if license_entry.get("pdf")),
             )
             self._send_json(200, profile)
+            return
+
+        if path == "/api/exports/dives.csv":
+            user_id = self._require_principal_id()
+            if user_id is None:
+                return
+
+            conn = self._open_db()
+            if conn is None:
+                return
+            try:
+                dives = list_all_dives(conn, user_id, include_samples=True, include_raw_data=False)
+            finally:
+                conn.close()
+
+            filename = attachment_filename(f"divevault-dives-{timestamp_slug()}.csv")
+            LOGGER.info("Returned dive CSV export user_id=%s dives=%d filename=%s", user_id, len(dives), filename)
+            self._send_bytes(
+                200,
+                build_dives_csv(dives),
+                "text/csv; charset=utf-8",
+                extra_headers={
+                    "Content-Disposition": f'attachment; filename="{filename}"',
+                    "Cache-Control": "no-store",
+                },
+            )
+            return
+
+        if path == "/api/exports/dives.pdf":
+            user_id = self._require_principal_id()
+            if user_id is None:
+                return
+
+            conn = self._open_db()
+            if conn is None:
+                return
+            try:
+                dives = list_all_dives(conn, user_id, include_samples=True, include_raw_data=False)
+            finally:
+                conn.close()
+
+            filename = attachment_filename(f"divevault-dives-{timestamp_slug()}.pdf")
+            LOGGER.info("Returned dive PDF export user_id=%s dives=%d filename=%s", user_id, len(dives), filename)
+            self._send_bytes(
+                200,
+                build_pdf_document(dives),
+                "application/pdf",
+                extra_headers={
+                    "Content-Disposition": f'attachment; filename="{filename}"',
+                    "Cache-Control": "no-store",
+                },
+            )
+            return
+
+        if path == "/api/backup/export":
+            user_id = self._require_principal_id()
+            if user_id is None:
+                return
+
+            conn = self._open_db()
+            if conn is None:
+                return
+            try:
+                payload = build_backup_payload(conn, user_id)
+            finally:
+                conn.close()
+
+            filename = attachment_filename(f"divevault-backup-{timestamp_slug()}.json")
+            LOGGER.info(
+                "Returned backup export user_id=%s dives=%d device_states=%d licenses=%d filename=%s",
+                user_id,
+                len(payload.get("dives") or []),
+                len(payload.get("device_states") or []),
+                len(payload.get("license_documents") or []),
+                filename,
+            )
+            self._send_bytes(
+                200,
+                json.dumps(payload, indent=2, sort_keys=True).encode("utf-8"),
+                "application/json; charset=utf-8",
+                extra_headers={
+                    "Content-Disposition": f'attachment; filename="{filename}"',
+                    "Cache-Control": "no-store",
+                },
+            )
+            return
+
+        if path == "/api/geocode/search":
+            user_id = self._require_principal_id()
+            if user_id is None:
+                return
+
+            query_value = self._single_query_arg(query, "q")
+            if not query_value or not query_value.strip():
+                self._send_json(400, {"error": "Missing q query parameter"})
+                return
+
+            try:
+                result = self.server.nominatim_client.search(query_value)
+            except ValueError as exc:
+                self._send_json(400, {"error": str(exc)})
+                return
+            except RuntimeError as exc:
+                self._send_json(503, {"error": str(exc)})
+                return
+
+            LOGGER.info("Completed geocode lookup user_id=%s query=%s found=%s", user_id, query_value, result.get("found"))
+            self._send_json(200, result)
             return
 
         match = re.fullmatch(r"/api/profile/licenses/([A-Za-z0-9_-]+)/pdf", path)
@@ -662,6 +1369,37 @@ class DiveBackendHandler(BaseHTTPRequestHandler):
         if self.path == "/api/cli-auth/request":
             payload = self.server.cli_auth_manager.create_request()
             self._send_json(201, payload)
+            return
+
+        if self.path == "/api/backup/import":
+            user_id = self._require_principal_id()
+            if user_id is None:
+                return
+
+            payload = self._read_json_body()
+            if payload is None:
+                return
+
+            conn = self._open_db()
+            if conn is None:
+                return
+            try:
+                try:
+                    result = import_backup_payload(conn, user_id, payload)
+                except ValueError as exc:
+                    self._send_json(400, {"error": str(exc)})
+                    return
+            finally:
+                conn.close()
+
+            LOGGER.info(
+                "Imported backup user_id=%s dives_inserted=%d device_states=%d license_documents=%d",
+                user_id,
+                result["summary"]["dives_inserted"],
+                result["summary"]["device_states_imported"],
+                result["summary"]["license_documents_imported"],
+            )
+            self._send_json(200, result)
             return
 
         if self.path == "/api/cli-auth/approve":
@@ -1055,6 +1793,9 @@ def main() -> None:
     parser.add_argument("--clerk-api-key-scopes", default=os.getenv("CLERK_API_KEY_SCOPES"), help="Comma-separated Clerk API key scopes required for backend access")
     parser.add_argument("--cli-auth-request-ttl", type=int, default=int(os.getenv("CLI_AUTH_REQUEST_TTL", "600")), help="Seconds a desktop login request stays valid")
     parser.add_argument("--cli-auth-token-ttl", type=int, default=int(os.getenv("CLI_AUTH_TOKEN_TTL", "1800")), help="Seconds an approved desktop sync token stays valid")
+    parser.add_argument("--nominatim-base-url", default=os.getenv("NOMINATIM_BASE_URL", "https://nominatim.openstreetmap.org"), help="Base URL for the Nominatim search service")
+    parser.add_argument("--nominatim-user-agent", default=os.getenv("NOMINATIM_USER_AGENT", "DiveVault/1.0"), help="User-Agent sent to the Nominatim search service")
+    parser.add_argument("--nominatim-email", default=os.getenv("NOMINATIM_EMAIL"), help="Optional email sent to the Nominatim search service")
     parser.add_argument("--db-startup-retries", type=int, default=int(os.getenv("DB_STARTUP_RETRIES", "5")), help="Number of startup checks to confirm PostgreSQL is reachable")
     parser.add_argument("--db-startup-retry-delay-seconds", type=float, default=float(os.getenv("DB_STARTUP_RETRY_DELAY_SECONDS", "2")), help="Delay between PostgreSQL startup checks")
     parser.add_argument("--db-connect-timeout-seconds", type=int, default=int(os.getenv("DB_CONNECT_TIMEOUT_SECONDS", "5")), help="Connection timeout for each PostgreSQL startup check")
@@ -1091,6 +1832,11 @@ def main() -> None:
     server.clerk_publishable_key = args.clerk_publishable_key
     server.cors_origin = args.cors_origin
     server.frontend_dir = resolve_frontend_dir(Path(args.frontend_dir))
+    server.nominatim_client = NominatimClient(
+        base_url=args.nominatim_base_url,
+        user_agent=args.nominatim_user_agent,
+        email=args.nominatim_email,
+    )
 
     LOGGER.info(
         "Starting backend host=%s port=%d database_url=%s cors_origin=%s frontend_dir=%s",

@@ -47,6 +47,9 @@ export default {
       selectedEditDiveId: null,
       searchText: "",
       dives: [],
+      profileDiveSites: [],
+      profileBuddies: [],
+      profileGuides: [],
       importDrafts: {},
       savingImportId: null,
       bulkImportSavePending: false,
@@ -178,6 +181,9 @@ export default {
       this.selectedEditDiveId = null;
       this.searchText = "";
       this.dives = [];
+      this.profileDiveSites = [];
+      this.profileBuddies = [];
+      this.profileGuides = [];
       this.importDrafts = {};
       this.savingImportId = null;
       this.bulkImportSavePending = false;
@@ -219,7 +225,7 @@ export default {
 
       this.lastAuthenticatedSessionId = this.clerkSessionId;
       this.syncViewFromHash();
-      await this.fetchDives();
+      await Promise.all([this.fetchDives(), this.fetchProfileData()]);
     },
     withTimeout(promise, timeoutMs, errorMessage) {
       return new Promise((resolve, reject) => {
@@ -677,6 +683,25 @@ export default {
       } finally {
         this.loading = false;
       }
+    },
+    async fetchProfileData() {
+      try {
+        const response = await this.authenticatedFetch("/api/profile");
+        const payload = await response.json().catch(() => null);
+        if (!response.ok) {
+          throw new Error(payload?.error || `API returned ${response.status}`);
+        }
+        this.handleProfileUpdated(payload);
+      } catch (_error) {
+        this.profileDiveSites = [];
+        this.profileBuddies = [];
+        this.profileGuides = [];
+      }
+    },
+    handleProfileUpdated(payload) {
+      this.profileDiveSites = Array.isArray(payload?.dive_sites) ? payload.dive_sites : [];
+      this.profileBuddies = Array.isArray(payload?.buddies) ? payload.buddies : [];
+      this.profileGuides = Array.isArray(payload?.guides) ? payload.guides : [];
     }
   },
   mounted() {
@@ -755,14 +780,14 @@ export default {
             <p class="mt-2 text-sm text-on-error-container">{{ error }}</p>
             <button @click="fetchDives" class="mt-5 bg-primary px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-on-primary">Retry</button>
           </section>
-          <dashboard-view v-else-if="activeView === 'dashboard'" :dives="committedDives" :stats="stats" :set-view="setView" :backend-healthy="backendHealthy" :open-dive="openDive" :current-user-name="currentUserName" :imported-dive-count="importedDiveCount" :open-import-queue="openImportQueue"></dashboard-view>
+          <dashboard-view v-else-if="activeView === 'dashboard'" :dives="committedDives" :all-dives="dives" :dive-sites="profileDiveSites" :stats="stats" :set-view="setView" :backend-healthy="backendHealthy" :open-dive="openDive" :current-user-name="currentUserName" :imported-dive-count="importedDiveCount" :open-import-queue="openImportQueue"></dashboard-view>
           <logs-view v-else-if="activeView === 'logs' && !selectedDive" :dives="committedDives" :search-text="searchText" :open-dive="openDive" :open-import-queue="openImportQueue" :set-search-text="setSearchText" :delete-dive="deleteDive" :deleting-dive-id="deletingDiveId" :status-message="importStatusMessage" :error-message="importError"></logs-view>
-          <dive-import-editor-view v-else-if="activeView === 'imports' && selectedImportDive" :dive="selectedImportDive" :draft="selectedImportDraft" :saving-import-id="savingImportId" :bulk-import-save-pending="bulkImportSavePending" :deleting-dive-id="deletingDiveId" :import-error="importError" :import-status-message="importStatusMessage" :update-import-draft="updateImportDraft" :save-import-draft="saveImportDraft" :delete-dive="deleteDive" :apply-buddy-guide-to-pending-imports="applyBuddyGuideToPendingImports" :back-to-queue="backToImportQueue"></dive-import-editor-view>
+          <dive-import-editor-view v-else-if="activeView === 'imports' && selectedImportDive" :dive="selectedImportDive" :draft="selectedImportDraft" :dive-sites="profileDiveSites" :buddies="profileBuddies" :guides="profileGuides" :saving-import-id="savingImportId" :bulk-import-save-pending="bulkImportSavePending" :deleting-dive-id="deletingDiveId" :import-error="importError" :import-status-message="importStatusMessage" :update-import-draft="updateImportDraft" :save-import-draft="saveImportDraft" :delete-dive="deleteDive" :apply-buddy-guide-to-pending-imports="applyBuddyGuideToPendingImports" :back-to-queue="backToImportQueue"></dive-import-editor-view>
           <dive-import-view v-else-if="activeView === 'imports'" :dives="dives" :import-drafts="importDrafts" :selected-import-id="selectedImportId" :select-import-dive="selectImportDive" :deleting-dive-id="deletingDiveId" :import-error="importError" :import-status-message="importStatusMessage" :delete-dive="deleteDive" :set-view="setView" :fetch-dives="fetchDives"></dive-import-view>
-          <logbook-editor-view v-else-if="activeView === 'edit' && selectedEditDive" :dive="selectedEditDive" :draft="selectedEditDraft" :saving-import-id="savingImportId" :deleting-dive-id="deletingDiveId" :status-message="importStatusMessage" :error-message="importError" :update-dive-draft="updateImportDraft" :save-dive-logbook="saveExistingDiveLogbook" :delete-dive="deleteDive" :close-editor="closeDiveEditor"></logbook-editor-view>
+          <logbook-editor-view v-else-if="activeView === 'edit' && selectedEditDive" :dive="selectedEditDive" :draft="selectedEditDraft" :dive-sites="profileDiveSites" :buddies="profileBuddies" :guides="profileGuides" :saving-import-id="savingImportId" :deleting-dive-id="deletingDiveId" :status-message="importStatusMessage" :error-message="importError" :update-dive-draft="updateImportDraft" :save-dive-logbook="saveExistingDiveLogbook" :delete-dive="deleteDive" :close-editor="closeDiveEditor"></logbook-editor-view>
           <dive-detail-view v-else-if="activeView === 'logs' && selectedDive" :dive="selectedDive" :deleting-dive-id="deletingDiveId" :close-detail="closeDiveDetail" :open-dive-editor="openDiveEditor" :delete-dive="deleteDive"></dive-detail-view>
           <equipment-view v-else-if="activeView === 'equipment'" :search-text="searchText"></equipment-view>
-          <settings-view v-else-if="activeView === 'settings'" :cli-auth-code="cliAuthCode"></settings-view>
+          <settings-view v-else-if="activeView === 'settings'" :cli-auth-code="cliAuthCode" :profile-updated="handleProfileUpdated" :refresh-dives="fetchDives"></settings-view>
         </div>
       </main>
       <nav class="fixed bottom-0 left-0 right-0 z-40 flex items-center justify-around border-t border-primary/10 bg-surface-container-low/80 px-4 pb-6 pt-3 backdrop-blur-xl md:hidden">

@@ -234,6 +234,27 @@ def test_decode_user_profile_row_includes_license_metadata():
                     "instructor_number": "PADI-445566",
                 }
             ],
+            "dive_sites_json": [
+                {
+                    "id": "site-1",
+                    "name": "Blue Hole",
+                    "location": "Blue Hole, Dahab, Egypt",
+                    "latitude": 25.3104,
+                    "longitude": -80.2961,
+                }
+            ],
+            "buddies_json": [
+                {
+                    "id": "buddy-1",
+                    "name": "Sam",
+                }
+            ],
+            "guides_json": [
+                {
+                    "id": "guide-1",
+                    "name": "Kai",
+                }
+            ],
             "license_company": " PADI ",
             "license_certification_name": " Rescue Diver ",
             "license_student_number": " RD-2026-01 ",
@@ -249,6 +270,11 @@ def test_decode_user_profile_row_includes_license_metadata():
 
     assert profile["name"] == "Elias Thorne"
     assert profile["email"] == "diver@example.com"
+    assert profile["dive_sites"][0]["name"] == "Blue Hole"
+    assert profile["dive_sites"][0]["location"] == "Blue Hole, Dahab, Egypt"
+    assert profile["dive_sites"][0]["latitude"] == 25.3104
+    assert profile["buddies"][0]["name"] == "Sam"
+    assert profile["guides"][0]["name"] == "Kai"
     assert len(profile["licenses"]) == 1
     assert profile["licenses"][0]["company"] == "PADI"
     assert profile["licenses"][0]["certification_name"] == "Rescue Diver"
@@ -265,6 +291,9 @@ def test_empty_user_profile_has_no_license_pdf():
 
     assert profile["name"] == ""
     assert profile["licenses"] == []
+    assert profile["dive_sites"] == []
+    assert profile["buddies"] == []
+    assert profile["guides"] == []
 
 
 def test_decode_user_profile_row_falls_back_to_legacy_single_license_fields():
@@ -273,6 +302,9 @@ def test_decode_user_profile_row_falls_back_to_legacy_single_license_fields():
             "name": "Elias",
             "email": "diver@example.com",
             "licenses_json": [],
+            "dive_sites_json": [],
+            "buddies_json": [],
+            "guides_json": [],
             "license_company": "SSI",
             "license_certification_name": "Nitrox",
             "license_student_number": "NX-1",
