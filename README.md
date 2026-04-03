@@ -162,13 +162,12 @@ Run tests with:
 
 Container publishing and GitHub release packaging are driven by [`frontend/package.json`](./frontend/package.json).
 
-- Pushes to `master` publish a snapshot container image tag in `v<version>-<short-sha>` format, for example `v0.1.0-a1b2c3d`, based on the current package version.
-- Published GitHub Releases must be created in the GitHub UI with a tag that matches `v<version>` from [`frontend/package.json`](./frontend/package.json).
-- Release builds publish the clean `v<version>` container tag plus `stable` and `latest`.
-- Release builds also attach a `divevault-<version>.tar.gz` bundle built from the repository plus the compiled frontend assets.
-- If the package version still matches the previous published release, the release workflow fails so the version must be bumped before publishing again.
+- Pushes to `master` compare [`frontend/package.json`](./frontend/package.json) to the existing GitHub releases.
+- If `v<version>` has not been released yet, the workflow creates a new GitHub release with that exact version string, publishes the clean `v<version>` container tag plus `stable` and `latest`, and attaches `divevault-<version>.tar.gz`.
+- If that release already exists, the workflow falls back to a snapshot container image tag in `v<version>-<short-sha>` format, for example `v0.1.0-a1b2c3d`.
+- `workflow_dispatch` keeps the same logic, but automatic release creation is still limited to runs on `master`.
 
-This keeps `frontend/package.json` as the single release version source while separating snapshot builds on `master` from UI-driven releases.
+This keeps `frontend/package.json` as the single release version source while only creating a GitHub release when a new version is detected.
 
 ## libdivecomputer
 

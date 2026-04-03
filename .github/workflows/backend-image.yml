@@ -5,9 +5,6 @@ on:
     branches:
       - master
   pull_request:
-  release:
-    types:
-      - published
   workflow_dispatch:
 
 env:
@@ -67,7 +64,6 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           IMAGE_REPOSITORY: ${{ format('{0}/{1}/{2}', env.REGISTRY, github.repository_owner, github.event.repository.name) }}
-          RELEASE_TAG_INPUT: ${{ github.event.release.tag_name }}
         run: |
           set -euo pipefail
 
@@ -91,15 +87,23 @@ jobs:
           fi
 
           IMAGE_REPOSITORY="$(echo "${IMAGE_REPOSITORY}" | tr '[:upper:]' '[:lower:]')"
+          RELEASE_TAG="v${BASE_VERSION}"
           VERSION_TAG="v${BASE_VERSION}-${GITHUB_SHA::7}"
-          RELEASE_TAG=""
           RELEASE_ASSET_NAME=""
+          CREATE_RELEASE="false"
           IMAGE_TAGS=(
             "${IMAGE_REPOSITORY}:${VERSION_TAG}"
           )
 
-          if [[ "${GITHUB_EVENT_NAME}" == "release" ]]; then
-            RELEASE_TAG="v${BASE_VERSION}"
+          if [[ "${GITHUB_REF}" == "refs/heads/master" ]]; then
+            if gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${RELEASE_TAG}" >/dev/null 2>&1; then
+              echo "Release '${RELEASE_TAG}' already exists. Publishing snapshot image tags only."
+            else
+              CREATE_RELEASE="true"
+            fi
+          fi
+
+          if [[ "${CREATE_RELEASE}" == "true" ]]; then
             RELEASE_ASSET_NAME="divevault-${BASE_VERSION}.tar.gz"
             VERSION_TAG="${RELEASE_TAG}"
             IMAGE_TAGS=(
@@ -107,25 +111,11 @@ jobs:
               "${IMAGE_REPOSITORY}:stable"
               "${IMAGE_REPOSITORY}:latest"
             )
-
-            if [[ "${RELEASE_TAG_INPUT}" != "${RELEASE_TAG}" ]]; then
-              echo "GitHub release tag '${RELEASE_TAG_INPUT}' does not match ${PACKAGE_FILE} version '${BASE_VERSION}'. Expected '${RELEASE_TAG}'." >&2
-              exit 1
-            fi
-
-            PREVIOUS_RELEASE_TAG="$(
-              gh api "repos/${GITHUB_REPOSITORY}/releases?per_page=100" | python -c 'import json, os, sys; releases = json.load(sys.stdin); current = os.environ["RELEASE_TAG_INPUT"]; tags = [release["tag_name"] for release in releases if not release["draft"] and release["tag_name"] != current]; print(tags[0] if tags else "")'
-            )"
-            PREVIOUS_RELEASE_VERSION="${PREVIOUS_RELEASE_TAG#v}"
-
-            if [[ -n "${PREVIOUS_RELEASE_TAG}" && "${PREVIOUS_RELEASE_VERSION}" == "${BASE_VERSION}" ]]; then
-              echo "${PACKAGE_FILE} version '${BASE_VERSION}' matches the previous published release '${PREVIOUS_RELEASE_TAG}'. Bump the version before publishing a new GitHub release." >&2
-              exit 1
-            fi
           fi
 
           {
             echo "base_version=${BASE_VERSION}"
+            echo "create_release=${CREATE_RELEASE}"
             echo "release_tag=${RELEASE_TAG}"
             echo "release_asset_name=${RELEASE_ASSET_NAME}"
             echo "version_tag=${VERSION_TAG}"
@@ -146,7 +136,7 @@ jobs:
         run: npm run build
 
       - name: Create release bundle
-        if: github.event_name == 'release'
+        if: steps.version.outputs.create_release == 'true'
         id: release_bundle
         env:
           BASE_VERSION: ${{ steps.version.outputs.base_version }}
@@ -180,12 +170,15 @@ jobs:
             org.opencontainers.image.revision=${{ github.sha }}
             org.opencontainers.image.version=${{ steps.version.outputs.version_tag }}
 
-      - name: Upload GitHub release asset
-        if: github.event_name == 'release'
+      - name: Create GitHub release
+        if: steps.version.outputs.create_release == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ steps.version.outputs.release_tag }}
           RELEASE_ASSET_NAME: ${{ steps.version.outputs.release_asset_name }}
           RELEASE_ASSET_PATH: ${{ steps.release_bundle.outputs.asset_path }}
         run: |
-          gh release upload "${RELEASE_TAG}" "${RELEASE_ASSET_PATH}#${RELEASE_ASSET_NAME}"
+          gh release create "${RELEASE_TAG}" "${RELEASE_ASSET_PATH}#${RELEASE_ASSET_NAME}" \
+            --target "${GITHUB_SHA}" \
+            --title "${RELEASE_TAG}" \
+            --generate-notes
