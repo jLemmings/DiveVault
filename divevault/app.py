@@ -37,8 +37,11 @@ from dotenv import load_dotenv
 from jwt import InvalidTokenError, PyJWKClient
 
 from divevault.postgres_store import (
+    approve_cli_sync_request,
+    create_cli_sync_request,
     delete_dive,
     get_device_state,
+    get_cli_sync_request_status,
     get_dive,
     get_dive_id_by_uid,
     get_user_profile,
@@ -54,6 +57,7 @@ from divevault.postgres_store import (
     save_device_state,
     summarize_dives,
     update_dive_logbook,
+    verify_cli_sync_token,
 )
 
 
@@ -365,9 +369,16 @@ class NominatimClient:
 
 
 class CliSyncTokenManager:
-    def __init__(self, *, request_ttl_seconds: int = 600, token_ttl_seconds: int = 1800) -> None:
+    def __init__(
+        self,
+        *,
+        request_ttl_seconds: int = 600,
+        token_ttl_seconds: int = 1800,
+        database_url: str | None = None,
+    ) -> None:
         self.request_ttl_seconds = request_ttl_seconds
         self.token_ttl_seconds = token_ttl_seconds
+        self.database_url = database_url.strip() if database_url else None
         self._pending_codes: dict[str, dict] = {}
         self._active_tokens: dict[str, dict] = {}
         self._lock = threading.Lock()
@@ -381,9 +392,31 @@ class CliSyncTokenManager:
         for token in expired_tokens:
             self._active_tokens.pop(token, None)
 
+    def _uses_database(self) -> bool:
+        return bool(self.database_url)
+
+    def _open_database(self):
+        if not self.database_url:
+            raise RuntimeError("CLI sync database persistence is not configured")
+        return open_db(self.database_url)
+
     def create_request(self) -> dict:
         now = time.time()
         code = secrets.token_urlsafe(24)
+        if self._uses_database():
+            conn = self._open_database()
+            try:
+                entry = create_cli_sync_request(
+                    conn,
+                    code=code,
+                    request_ttl_seconds=self.request_ttl_seconds,
+                    now_timestamp=int(now),
+                )
+            finally:
+                conn.close()
+            LOGGER.info("Created CLI auth request code=%s created_at=%s expires_at=%s", entry["code"], entry["created_at"], entry["expires_at"])
+            return entry
+
         entry = {
             "code": code,
             "status": "pending",
@@ -397,10 +430,31 @@ class CliSyncTokenManager:
         with self._lock:
             self._cleanup_locked(now)
             self._pending_codes[code] = entry
+        LOGGER.info("Created CLI auth request code=%s created_at=%s expires_at=%s", entry["code"], entry["created_at"], entry["expires_at"])
         return dict(entry)
 
     def approve_request(self, code: str, claims: dict) -> dict | None:
         now = time.time()
+        if self._uses_database():
+            token = f"dvsync_{secrets.token_urlsafe(32)}"
+            conn = self._open_database()
+            try:
+                entry = approve_cli_sync_request(
+                    conn,
+                    code,
+                    claims,
+                    token=token,
+                    token_ttl_seconds=self.token_ttl_seconds,
+                    now_timestamp=int(now),
+                )
+            finally:
+                conn.close()
+            if entry is not None:
+                LOGGER.info("Approved CLI auth request code=%s user_id=%s token_expires_at=%s", code, entry.get("user_id"), entry.get("token_expires_at"))
+            else:
+                LOGGER.warning("Rejected CLI auth approval because request was missing or expired code=%s", code)
+            return entry
+
         with self._lock:
             self._cleanup_locked(now)
             entry = self._pending_codes.get(code)
@@ -427,10 +481,21 @@ class CliSyncTokenManager:
                     "email": claims.get("email"),
                 }
             )
+            LOGGER.info("Approved CLI auth request code=%s user_id=%s token_expires_at=%s", code, entry.get("user_id"), entry.get("token_expires_at"))
             return dict(entry)
 
     def get_request_status(self, code: str) -> dict | None:
         now = time.time()
+        if self._uses_database():
+            conn = self._open_database()
+            try:
+                entry = get_cli_sync_request_status(conn, code, now_timestamp=int(now))
+            finally:
+                conn.close()
+            if entry is None:
+                LOGGER.warning("CLI auth request status lookup missed code=%s", code)
+            return entry
+
         with self._lock:
             self._cleanup_locked(now)
             entry = self._pending_codes.get(code)
@@ -440,6 +505,14 @@ class CliSyncTokenManager:
 
     def verify_token(self, token: str) -> dict | None:
         now = time.time()
+        if self._uses_database():
+            conn = self._open_database()
+            try:
+                claims = verify_cli_sync_token(conn, token, now_timestamp=int(now))
+            finally:
+                conn.close()
+            return claims
+
         with self._lock:
             self._cleanup_locked(now)
             claims = self._active_tokens.get(token)
@@ -1864,6 +1937,7 @@ def main() -> None:
     server.cli_auth_manager = CliSyncTokenManager(
         request_ttl_seconds=args.cli_auth_request_ttl,
         token_ttl_seconds=args.cli_auth_token_ttl,
+        database_url=args.database_url,
     )
     server.clerk_verifier = build_clerk_verifier(args, sync_token_manager=server.cli_auth_manager)
     server.clerk_publishable_key = args.clerk_publishable_key

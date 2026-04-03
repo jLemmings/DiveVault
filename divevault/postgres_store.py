@@ -110,6 +110,19 @@ CREATE TABLE IF NOT EXISTS user_profile_guides (
     name TEXT,
     PRIMARY KEY (user_id, guide_id)
 );
+
+CREATE TABLE IF NOT EXISTS cli_sync_auth_requests (
+    code TEXT PRIMARY KEY,
+    status TEXT NOT NULL,
+    created_at BIGINT NOT NULL,
+    expires_at BIGINT NOT NULL,
+    approved_at BIGINT,
+    token TEXT UNIQUE,
+    token_expires_at BIGINT,
+    user_id TEXT,
+    email TEXT,
+    session_id TEXT
+);
 """
 
 LOGBOOK_REQUIRED_FIELDS = ("site", "buddy", "guide")
@@ -272,6 +285,18 @@ def init_db(conn: psycopg.Connection) -> None:
         cur.execute("ALTER TABLE user_profile_guides DROP COLUMN IF EXISTS sort_order")
         cur.execute("DROP INDEX IF EXISTS idx_user_profile_guides_user_sort")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_user_profile_guides_user_name ON user_profile_guides (user_id, LOWER(name), name, guide_id)")
+        cur.execute("ALTER TABLE cli_sync_auth_requests ADD COLUMN IF NOT EXISTS status TEXT")
+        cur.execute("ALTER TABLE cli_sync_auth_requests ADD COLUMN IF NOT EXISTS created_at BIGINT")
+        cur.execute("ALTER TABLE cli_sync_auth_requests ADD COLUMN IF NOT EXISTS expires_at BIGINT")
+        cur.execute("ALTER TABLE cli_sync_auth_requests ADD COLUMN IF NOT EXISTS approved_at BIGINT")
+        cur.execute("ALTER TABLE cli_sync_auth_requests ADD COLUMN IF NOT EXISTS token TEXT")
+        cur.execute("ALTER TABLE cli_sync_auth_requests ADD COLUMN IF NOT EXISTS token_expires_at BIGINT")
+        cur.execute("ALTER TABLE cli_sync_auth_requests ADD COLUMN IF NOT EXISTS user_id TEXT")
+        cur.execute("ALTER TABLE cli_sync_auth_requests ADD COLUMN IF NOT EXISTS email TEXT")
+        cur.execute("ALTER TABLE cli_sync_auth_requests ADD COLUMN IF NOT EXISTS session_id TEXT")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_cli_sync_auth_requests_expires_at ON cli_sync_auth_requests (expires_at)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_cli_sync_auth_requests_token_expires_at ON cli_sync_auth_requests (token_expires_at)")
+        cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_cli_sync_auth_requests_token ON cli_sync_auth_requests (token) WHERE token IS NOT NULL")
     backfill_profile_collection_tables(conn)
     conn.commit()
 
@@ -280,6 +305,171 @@ def open_db(database_url: str) -> psycopg.Connection:
     conn = psycopg.connect(database_url, row_factory=dict_row)
     init_db(conn)
     return conn
+
+
+def cleanup_cli_sync_auth_with_cursor(cur: psycopg.Cursor, now_timestamp: int) -> None:
+    cur.execute(
+        """
+        DELETE FROM cli_sync_auth_requests
+        WHERE (status = 'pending' AND expires_at <= %s)
+           OR (status = 'approved' AND COALESCE(token_expires_at, 0) <= %s)
+        """,
+        (now_timestamp, now_timestamp),
+    )
+
+
+def cleanup_cli_sync_auth(conn: psycopg.Connection, now_timestamp: int) -> None:
+    with conn.cursor() as cur:
+        cleanup_cli_sync_auth_with_cursor(cur, now_timestamp)
+    conn.commit()
+
+
+def create_cli_sync_request(
+    conn: psycopg.Connection,
+    *,
+    code: str,
+    request_ttl_seconds: int,
+    now_timestamp: int,
+) -> dict:
+    payload = {
+        "code": code,
+        "status": "pending",
+        "created_at": now_timestamp,
+        "expires_at": now_timestamp + max(request_ttl_seconds, 1),
+        "token": None,
+        "token_expires_at": None,
+        "user_id": None,
+        "email": None,
+    }
+    with conn.cursor() as cur:
+        cleanup_cli_sync_auth_with_cursor(cur, now_timestamp)
+        cur.execute(
+            """
+            INSERT INTO cli_sync_auth_requests(
+                code, status, created_at, expires_at, approved_at, token, token_expires_at, user_id, email, session_id
+            )
+            VALUES (%s, %s, %s, %s, NULL, NULL, NULL, NULL, NULL, NULL)
+            """,
+            (
+                payload["code"],
+                payload["status"],
+                payload["created_at"],
+                payload["expires_at"],
+            ),
+        )
+    conn.commit()
+    return dict(payload)
+
+
+def get_cli_sync_request_status(conn: psycopg.Connection, code: str, *, now_timestamp: int) -> dict | None:
+    with conn.cursor() as cur:
+        cleanup_cli_sync_auth_with_cursor(cur, now_timestamp)
+        cur.execute(
+            """
+            SELECT code, status, created_at, expires_at, approved_at, token, token_expires_at, user_id, email
+            FROM cli_sync_auth_requests
+            WHERE code=%s
+            """,
+            (code,),
+        )
+        row = cur.fetchone()
+    conn.commit()
+    if not row:
+        return None
+    return {
+        "code": row.get("code"),
+        "status": row.get("status"),
+        "created_at": row.get("created_at"),
+        "expires_at": row.get("expires_at"),
+        "approved_at": row.get("approved_at"),
+        "token": row.get("token"),
+        "token_expires_at": row.get("token_expires_at"),
+        "user_id": row.get("user_id"),
+        "email": row.get("email"),
+    }
+
+
+def approve_cli_sync_request(
+    conn: psycopg.Connection,
+    code: str,
+    claims: dict,
+    *,
+    token: str,
+    token_ttl_seconds: int,
+    now_timestamp: int,
+) -> dict | None:
+    token_expires_at = now_timestamp + max(token_ttl_seconds, 1)
+    with conn.cursor() as cur:
+        cleanup_cli_sync_auth_with_cursor(cur, now_timestamp)
+        cur.execute(
+            """
+            UPDATE cli_sync_auth_requests
+            SET
+                status='approved',
+                approved_at=%s,
+                token=%s,
+                token_expires_at=%s,
+                user_id=%s,
+                email=%s,
+                session_id=%s
+            WHERE code=%s
+              AND status='pending'
+              AND expires_at > %s
+            RETURNING code, status, created_at, expires_at, approved_at, token, token_expires_at, user_id, email
+            """,
+            (
+                now_timestamp,
+                token,
+                token_expires_at,
+                clean_profile_text(claims.get("sub")),
+                clean_profile_text(claims.get("email")),
+                clean_profile_text(claims.get("sid")),
+                code,
+                now_timestamp,
+            ),
+        )
+        row = cur.fetchone()
+    conn.commit()
+    if not row:
+        return None
+    return {
+        "code": row.get("code"),
+        "status": row.get("status"),
+        "created_at": row.get("created_at"),
+        "expires_at": row.get("expires_at"),
+        "approved_at": row.get("approved_at"),
+        "token": row.get("token"),
+        "token_expires_at": row.get("token_expires_at"),
+        "user_id": row.get("user_id"),
+        "email": row.get("email"),
+    }
+
+
+def verify_cli_sync_token(conn: psycopg.Connection, token: str, *, now_timestamp: int) -> dict | None:
+    with conn.cursor() as cur:
+        cleanup_cli_sync_auth_with_cursor(cur, now_timestamp)
+        cur.execute(
+            """
+            SELECT user_id, email, session_id, approved_at, token_expires_at
+            FROM cli_sync_auth_requests
+            WHERE token=%s
+              AND status='approved'
+              AND token_expires_at > %s
+            """,
+            (token, now_timestamp),
+        )
+        row = cur.fetchone()
+    conn.commit()
+    if not row:
+        return None
+    return {
+        "token_type": "cli_sync",
+        "sub": row.get("user_id"),
+        "email": row.get("email"),
+        "sid": row.get("session_id"),
+        "issued_at": row.get("approved_at"),
+        "expires_at": row.get("token_expires_at"),
+    }
 
 
 def clean_logbook_text(value: object) -> str:
