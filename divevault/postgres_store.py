@@ -45,6 +45,9 @@ CREATE TABLE IF NOT EXISTS user_profile (
     name TEXT,
     email TEXT,
     licenses_json JSONB NOT NULL DEFAULT '[]'::jsonb,
+    dive_sites_json JSONB NOT NULL DEFAULT '[]'::jsonb,
+    buddies_json JSONB NOT NULL DEFAULT '[]'::jsonb,
+    guides_json JSONB NOT NULL DEFAULT '[]'::jsonb,
     certification TEXT,
     registry TEXT,
     license_company TEXT,
@@ -91,6 +94,9 @@ def init_db(conn: psycopg.Connection) -> None:
         cur.execute("ALTER TABLE user_profile ADD COLUMN IF NOT EXISTS name TEXT")
         cur.execute("ALTER TABLE user_profile ADD COLUMN IF NOT EXISTS email TEXT")
         cur.execute("ALTER TABLE user_profile ADD COLUMN IF NOT EXISTS licenses_json JSONB NOT NULL DEFAULT '[]'::jsonb")
+        cur.execute("ALTER TABLE user_profile ADD COLUMN IF NOT EXISTS dive_sites_json JSONB NOT NULL DEFAULT '[]'::jsonb")
+        cur.execute("ALTER TABLE user_profile ADD COLUMN IF NOT EXISTS buddies_json JSONB NOT NULL DEFAULT '[]'::jsonb")
+        cur.execute("ALTER TABLE user_profile ADD COLUMN IF NOT EXISTS guides_json JSONB NOT NULL DEFAULT '[]'::jsonb")
         cur.execute("ALTER TABLE user_profile ADD COLUMN IF NOT EXISTS certification TEXT")
         cur.execute("ALTER TABLE user_profile ADD COLUMN IF NOT EXISTS registry TEXT")
         cur.execute("ALTER TABLE user_profile ADD COLUMN IF NOT EXISTS license_company TEXT")
@@ -238,6 +244,24 @@ def clean_profile_text(value: object) -> str:
     return value.strip() if isinstance(value, str) else ""
 
 
+def clean_coordinate_value(value: object) -> float | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        parsed = float(value)
+        return parsed if parsed == parsed and parsed not in {float("inf"), float("-inf")} else None
+    if isinstance(value, str):
+        stripped = value.strip()
+        if not stripped:
+            return None
+        try:
+            parsed = float(stripped)
+        except ValueError:
+            return None
+        return parsed if parsed == parsed and parsed not in {float("inf"), float("-inf")} else None
+    return None
+
+
 def normalize_profile_license(entry: dict | None) -> dict:
     source = entry if isinstance(entry, dict) else {}
     return {
@@ -279,6 +303,141 @@ def normalize_profile_licenses(entries: object) -> list[dict]:
 
         normalized_entry["id"] = license_id
         seen_ids.add(license_id)
+        normalized.append(normalized_entry)
+
+    return normalized
+
+
+def normalize_profile_dive_site(entry: dict | None) -> dict:
+    source = entry if isinstance(entry, dict) else {}
+    latitude = clean_coordinate_value(source.get("latitude") if "latitude" in source else source.get("lat"))
+    longitude = clean_coordinate_value(source.get("longitude") if "longitude" in source else source.get("lon"))
+    if latitude is not None and not (-90 <= latitude <= 90):
+        latitude = None
+    if longitude is not None and not (-180 <= longitude <= 180):
+        longitude = None
+    return {
+        "id": clean_profile_text(source.get("id")),
+        "name": clean_profile_text(source.get("name")),
+        "location": clean_profile_text(source.get("location")),
+        "latitude": latitude,
+        "longitude": longitude,
+    }
+
+
+def profile_dive_site_has_values(entry: dict | None) -> bool:
+    return bool(normalize_profile_dive_site(entry).get("name"))
+
+
+def normalize_profile_dive_sites(entries: object) -> list[dict]:
+    if not isinstance(entries, list):
+        return []
+
+    normalized: list[dict] = []
+    seen_ids: set[str] = set()
+    next_fallback = 1
+
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        normalized_entry = normalize_profile_dive_site(entry)
+        if not profile_dive_site_has_values(normalized_entry):
+            continue
+
+        site_id = normalized_entry["id"] or f"site-{next_fallback}"
+        next_fallback += 1
+        dedupe_suffix = 1
+        base_id = site_id
+        while site_id in seen_ids:
+            dedupe_suffix += 1
+            site_id = f"{base_id}-{dedupe_suffix}"
+
+        normalized_entry["id"] = site_id
+        seen_ids.add(site_id)
+        normalized.append(normalized_entry)
+
+    return normalized
+
+
+def normalize_profile_buddy(entry: dict | None) -> dict:
+    source = entry if isinstance(entry, dict) else {}
+    return {
+        "id": clean_profile_text(source.get("id")),
+        "name": clean_profile_text(source.get("name")),
+    }
+
+
+def profile_buddy_has_values(entry: dict | None) -> bool:
+    return bool(normalize_profile_buddy(entry).get("name"))
+
+
+def normalize_profile_buddies(entries: object) -> list[dict]:
+    if not isinstance(entries, list):
+        return []
+
+    normalized: list[dict] = []
+    seen_ids: set[str] = set()
+    next_fallback = 1
+
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        normalized_entry = normalize_profile_buddy(entry)
+        if not profile_buddy_has_values(normalized_entry):
+            continue
+
+        buddy_id = normalized_entry["id"] or f"buddy-{next_fallback}"
+        next_fallback += 1
+        dedupe_suffix = 1
+        base_id = buddy_id
+        while buddy_id in seen_ids:
+            dedupe_suffix += 1
+            buddy_id = f"{base_id}-{dedupe_suffix}"
+
+        normalized_entry["id"] = buddy_id
+        seen_ids.add(buddy_id)
+        normalized.append(normalized_entry)
+
+    return normalized
+
+
+def normalize_profile_guide(entry: dict | None) -> dict:
+    source = entry if isinstance(entry, dict) else {}
+    return {
+        "id": clean_profile_text(source.get("id")),
+        "name": clean_profile_text(source.get("name")),
+    }
+
+
+def profile_guide_has_values(entry: dict | None) -> bool:
+    return bool(normalize_profile_guide(entry).get("name"))
+
+
+def normalize_profile_guides(entries: object) -> list[dict]:
+    if not isinstance(entries, list):
+        return []
+
+    normalized: list[dict] = []
+    seen_ids: set[str] = set()
+    next_fallback = 1
+
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        normalized_entry = normalize_profile_guide(entry)
+        if not profile_guide_has_values(normalized_entry):
+            continue
+
+        guide_id = normalized_entry["id"] or f"guide-{next_fallback}"
+        next_fallback += 1
+        dedupe_suffix = 1
+        base_id = guide_id
+        while guide_id in seen_ids:
+            dedupe_suffix += 1
+            guide_id = f"{base_id}-{dedupe_suffix}"
+
+        normalized_entry["id"] = guide_id
+        seen_ids.add(guide_id)
         normalized.append(normalized_entry)
 
     return normalized
@@ -557,6 +716,21 @@ def get_device_state(conn: psycopg.Connection, user_id: str, vendor: str, produc
     return row
 
 
+def list_device_states(conn: psycopg.Connection, user_id: str) -> list[dict]:
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT vendor, product, fingerprint_hex, updated_at
+            FROM device_state
+            WHERE user_id=%s
+            ORDER BY vendor ASC, product ASC
+            """,
+            (user_id,),
+        )
+        rows = cur.fetchall()
+    return rows or []
+
+
 def list_dives(
     conn: psycopg.Connection,
     user_id: str,
@@ -581,6 +755,21 @@ def list_dives(
         total = cur.fetchone()["total"]
     dives = [decode_dive_row(row, include_samples, include_raw_data) for row in rows]
     return dives, total
+
+
+def list_all_dives(conn: psycopg.Connection, user_id: str, *, include_samples: bool, include_raw_data: bool) -> list[dict]:
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT *
+            FROM dives
+            WHERE user_id=%s
+            ORDER BY started_at DESC, id DESC
+            """,
+            (user_id,),
+        )
+        rows = cur.fetchall()
+    return [decode_dive_row(row, include_samples, include_raw_data) for row in rows]
 
 
 def summarize_dives(dives: list[dict], total_count: int | None = None) -> dict:
@@ -648,6 +837,9 @@ def empty_user_profile() -> dict:
         "name": "",
         "email": "",
         "licenses": [],
+        "dive_sites": [],
+        "buddies": [],
+        "guides": [],
         "updated_at": None,
     }
 
@@ -696,10 +888,28 @@ def decode_user_profile_row(row: dict | None, license_documents: dict[str, dict]
             "pdf": pdf_summary,
         })
 
+    dive_sites = row.get("dive_sites_json")
+    if isinstance(dive_sites, str):
+        dive_sites = json.loads(dive_sites)
+    normalized_dive_sites = normalize_profile_dive_sites(dive_sites)
+
+    buddies = row.get("buddies_json")
+    if isinstance(buddies, str):
+        buddies = json.loads(buddies)
+    normalized_buddies = normalize_profile_buddies(buddies)
+
+    guides = row.get("guides_json")
+    if isinstance(guides, str):
+        guides = json.loads(guides)
+    normalized_guides = normalize_profile_guides(guides)
+
     payload = {
         "name": clean_profile_text(row.get("name")),
         "email": clean_profile_text(row.get("email")),
         "licenses": hydrated_licenses,
+        "dive_sites": normalized_dive_sites,
+        "buddies": normalized_buddies,
+        "guides": normalized_guides,
         "updated_at": row.get("updated_at"),
     }
 
@@ -743,22 +953,35 @@ def save_user_profile(conn: psycopg.Connection, user_id: str, payload: dict | No
         row = cur.fetchone()
 
         existing = row or {}
+        source = payload if isinstance(payload, dict) else {}
         updated_at = now_iso()
-        licenses = normalize_profile_licenses((payload or {}).get("licenses"))
+        existing_name = clean_profile_text(existing.get("name"))
+        existing_email = clean_profile_text(existing.get("email"))
+        existing_licenses = normalize_profile_licenses(existing.get("licenses_json"))
+        existing_dive_sites = normalize_profile_dive_sites(existing.get("dive_sites_json"))
+        existing_buddies = normalize_profile_buddies(existing.get("buddies_json"))
+        existing_guides = normalize_profile_guides(existing.get("guides_json"))
+        licenses = normalize_profile_licenses(source.get("licenses")) if "licenses" in source else existing_licenses
+        dive_sites = normalize_profile_dive_sites(source.get("dive_sites")) if "dive_sites" in source else existing_dive_sites
+        buddies = normalize_profile_buddies(source.get("buddies")) if "buddies" in source else existing_buddies
+        guides = normalize_profile_guides(source.get("guides")) if "guides" in source else existing_guides
         primary_license = licenses[0] if licenses else {}
         cur.execute(
             """
             INSERT INTO user_profile(
-                user_id, name, email, licenses_json, certification, registry,
+                user_id, name, email, licenses_json, dive_sites_json, buddies_json, guides_json, certification, registry,
                 license_company, license_certification_name, license_student_number, license_certification_date, license_instructor_number,
                 license_pdf_name, license_pdf_content_type, license_pdf_data, license_pdf_uploaded_at, updated_at
             )
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT (user_id)
             DO UPDATE SET
                 name=excluded.name,
                 email=excluded.email,
                 licenses_json=excluded.licenses_json,
+                dive_sites_json=excluded.dive_sites_json,
+                buddies_json=excluded.buddies_json,
+                guides_json=excluded.guides_json,
                 certification=excluded.certification,
                 registry=excluded.registry,
                 license_company=excluded.license_company,
@@ -774,9 +997,12 @@ def save_user_profile(conn: psycopg.Connection, user_id: str, payload: dict | No
             """,
             (
                 user_id,
-                clean_profile_text((payload or {}).get("name")),
-                clean_profile_text((payload or {}).get("email")),
+                clean_profile_text(source.get("name")) if "name" in source else existing_name,
+                clean_profile_text(source.get("email")) if "email" in source else existing_email,
                 Jsonb(licenses),
+                Jsonb(dive_sites),
+                Jsonb(buddies),
+                Jsonb(guides),
                 clean_profile_text(primary_license.get("certification_name")),
                 clean_profile_text(primary_license.get("student_number")),
                 clean_profile_text(primary_license.get("company")),
@@ -845,16 +1071,19 @@ def save_user_profile_license_pdf(
         cur.execute(
             """
             INSERT INTO user_profile(
-                user_id, name, email, licenses_json, certification, registry,
+                user_id, name, email, licenses_json, dive_sites_json, buddies_json, guides_json, certification, registry,
                 license_company, license_certification_name, license_student_number, license_certification_date, license_instructor_number,
                 license_pdf_name, license_pdf_content_type, license_pdf_data, license_pdf_uploaded_at, updated_at
             )
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT (user_id)
             DO UPDATE SET
                 name=excluded.name,
                 email=excluded.email,
                 licenses_json=excluded.licenses_json,
+                dive_sites_json=excluded.dive_sites_json,
+                buddies_json=excluded.buddies_json,
+                guides_json=excluded.guides_json,
                 certification=excluded.certification,
                 registry=excluded.registry,
                 license_company=excluded.license_company,
@@ -873,6 +1102,9 @@ def save_user_profile_license_pdf(
                 clean_profile_text(existing.get("name")),
                 clean_profile_text(existing.get("email")),
                 Jsonb(normalize_profile_licenses(existing.get("licenses_json"))),
+                Jsonb(normalize_profile_dive_sites(existing.get("dive_sites_json"))),
+                Jsonb(normalize_profile_buddies(existing.get("buddies_json"))),
+                Jsonb(normalize_profile_guides(existing.get("guides_json"))),
                 clean_profile_text(existing.get("certification")),
                 clean_profile_text(existing.get("registry")),
                 clean_profile_text(existing.get("license_company")),

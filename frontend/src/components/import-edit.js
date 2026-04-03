@@ -1,10 +1,21 @@
 import { canCompleteImport, filledIconStyle, formatDate, formatDateTime, formatDepthNumber, formatTemperature, gasSummary, importCompletionPercent, importTemperature, isCommittedDive, missingImportFields, paddedDiveIndex, durationShort, numberOrZero } from "../core.js";
 
+function normalizeSiteName(value) {
+  return typeof value === "string" ? value.trim().toLowerCase() : "";
+}
+
+function normalizeBuddyName(value) {
+  return typeof value === "string" ? value.trim().toLowerCase() : "";
+}
+
 export default {
   name: "DiveImportEditorView",
   props: [
     "dive",
     "draft",
+    "diveSites",
+    "buddies",
+    "guides",
     "savingImportId",
     "bulkImportSavePending",
     "deletingDiveId",
@@ -41,8 +52,39 @@ export default {
     isDeleting() {
       return String(this.deletingDiveId) === String(this.dive?.id);
     },
+    savedDiveSites() {
+      if (!Array.isArray(this.diveSites)) return [];
+      return this.diveSites.filter((site) => typeof site?.name === "string" && site.name.trim());
+    },
+    savedBuddies() {
+      if (!Array.isArray(this.buddies)) return [];
+      return this.buddies.filter((buddy) => typeof buddy?.name === "string" && buddy.name.trim());
+    },
+    savedGuides() {
+      if (!Array.isArray(this.guides)) return [];
+      return this.guides.filter((guide) => typeof guide?.name === "string" && guide.name.trim());
+    },
+    selectedDiveSite() {
+      const siteName = normalizeSiteName(this.selectedDraft?.site);
+      if (!siteName) return null;
+      return this.savedDiveSites.find((site) => normalizeSiteName(site.name) === siteName) || null;
+    },
+    selectedBuddy() {
+      const buddyName = normalizeBuddyName(this.selectedDraft?.buddy);
+      if (!buddyName) return null;
+      return this.savedBuddies.find((buddy) => normalizeBuddyName(buddy.name) === buddyName) || null;
+    },
     filledIconStyle() {
       return filledIconStyle;
+    },
+    siteOptionsId() {
+      return `import-site-options-${this.dive?.id || "draft"}`;
+    },
+    buddyOptionsId() {
+      return `import-buddy-options-${this.dive?.id || "draft"}`;
+    },
+    guideOptionsId() {
+      return `import-guide-options-${this.dive?.id || "draft"}`;
     }
   },
   methods: {
@@ -57,6 +99,12 @@ export default {
     updateField(key, value) {
       if (!this.dive) return;
       this.updateImportDraft(this.dive.id, key, value);
+    },
+    updateSite(value) {
+      this.updateField("site", value);
+    },
+    updateBuddy(value) {
+      this.updateField("buddy", value);
     },
     saveDraft(commit = false) {
       if (!this.dive) return;
@@ -87,6 +135,15 @@ export default {
         { label: "Min Temp", value: this.formatTemperature(this.importTemperature(dive)), tone: "text-secondary" },
         { label: "Gas Mix", value: this.selectedGas.label, tone: "text-tertiary" }
       ];
+    },
+    siteCoordinateLabel(site) {
+      if (!site) return "GPS coordinates unavailable";
+      const latitude = site.latitude ?? site.lat;
+      const longitude = site.longitude ?? site.lon;
+      if (latitude === null || latitude === undefined || longitude === null || longitude === undefined || latitude === "" || longitude === "") {
+        return "GPS coordinates unavailable";
+      }
+      return `Lat ${latitude}, Lon ${longitude}`;
     },
     durationMinutes(dive) {
       return Math.round(numberOrZero(dive?.duration_seconds) / 60);
@@ -164,16 +221,35 @@ export default {
           <section class="space-y-4 rounded-2xl bg-surface-container-low p-5 shadow-panel">
             <label class="block space-y-2">
               <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Dive Site</span>
-              <input :value="selectedDraft.site" @input="updateField('site', $event.target.value)" type="text" placeholder="Blue Hole / House Reef" class="w-full rounded-lg border-none bg-surface-container-high px-4 py-3 text-sm text-on-surface placeholder:text-secondary/50 focus:ring-1 focus:ring-primary" />
+              <input :value="selectedDraft.site" @input="updateSite($event.target.value)" :list="savedDiveSites.length ? siteOptionsId : null" type="text" placeholder="Blue Hole / House Reef" class="w-full rounded-lg border-none bg-surface-container-high px-4 py-3 text-sm text-on-surface placeholder:text-secondary/50 focus:ring-1 focus:ring-primary" />
+              <datalist v-if="savedDiveSites.length" :id="siteOptionsId">
+                <option v-for="site in savedDiveSites" :key="site.id" :value="site.name"></option>
+              </datalist>
+              <p class="text-xs leading-5 text-on-surface-variant">
+                {{ savedDiveSites.length ? 'Search saved dive sites from Settings or enter a custom value.' : 'No saved dive sites yet. Add them in Settings to reuse them here.' }}
+              </p>
+              <p v-if="selectedDiveSite" class="text-xs leading-5 text-primary">{{ siteCoordinateLabel(selectedDiveSite) }}</p>
             </label>
             <div class="grid grid-cols-1 gap-4">
               <label class="block space-y-2">
                 <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Buddy</span>
-                <input :value="selectedDraft.buddy" @input="updateField('buddy', $event.target.value)" type="text" placeholder="Diver name" class="w-full rounded-lg border-none bg-surface-container-high px-4 py-3 text-sm text-on-surface placeholder:text-secondary/50 focus:ring-1 focus:ring-primary" />
+                <input :value="selectedDraft.buddy" @input="updateBuddy($event.target.value)" :list="savedBuddies.length ? buddyOptionsId : null" type="text" placeholder="Diver name" class="w-full rounded-lg border-none bg-surface-container-high px-4 py-3 text-sm text-on-surface placeholder:text-secondary/50 focus:ring-1 focus:ring-primary" />
+                <datalist v-if="savedBuddies.length" :id="buddyOptionsId">
+                  <option v-for="buddy in savedBuddies" :key="buddy.id" :value="buddy.name"></option>
+                </datalist>
+                <p class="text-xs leading-5 text-on-surface-variant">
+                  {{ savedBuddies.length ? 'Search saved buddies from Settings or enter a custom value.' : 'No saved buddies yet. Add them in Settings to reuse them here.' }}
+                </p>
               </label>
               <label class="block space-y-2">
                 <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Guide</span>
-                <input :value="selectedDraft.guide" @input="updateField('guide', $event.target.value)" type="text" placeholder="Guide or instructor" class="w-full rounded-lg border-none bg-surface-container-high px-4 py-3 text-sm text-on-surface placeholder:text-secondary/50 focus:ring-1 focus:ring-primary" />
+                <input :value="selectedDraft.guide" @input="updateField('guide', $event.target.value)" :list="savedGuides.length ? guideOptionsId : null" type="text" placeholder="Guide or instructor" class="w-full rounded-lg border-none bg-surface-container-high px-4 py-3 text-sm text-on-surface placeholder:text-secondary/50 focus:ring-1 focus:ring-primary" />
+                <datalist v-if="savedGuides.length" :id="guideOptionsId">
+                  <option v-for="guide in savedGuides" :key="guide.id" :value="guide.name"></option>
+                </datalist>
+                <p class="text-xs leading-5 text-on-surface-variant">
+                  {{ savedGuides.length ? 'Search saved guides from Settings or enter a custom value.' : 'No saved guides yet. Add them in Settings to reuse them here.' }}
+                </p>
               </label>
               <label class="block space-y-2">
                 <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Dive Notes</span>
@@ -273,17 +349,36 @@ export default {
 
               <label class="block space-y-2">
                 <span class="font-label text-[10px] font-bold uppercase tracking-[0.2em] text-secondary">Dive Site</span>
-                <input :value="selectedDraft.site" @input="updateField('site', $event.target.value)" type="text" placeholder="Blue Hole / House Reef" class="w-full border border-primary/10 bg-surface-container-high/35 px-4 py-3 text-sm text-on-surface placeholder:text-secondary/50 focus:border-primary/30 focus:ring-1 focus:ring-primary" />
+                <input :value="selectedDraft.site" @input="updateSite($event.target.value)" :list="savedDiveSites.length ? siteOptionsId : null" type="text" placeholder="Blue Hole / House Reef" class="w-full border border-primary/10 bg-surface-container-high/35 px-4 py-3 text-sm text-on-surface placeholder:text-secondary/50 focus:border-primary/30 focus:ring-1 focus:ring-primary" />
+                <datalist v-if="savedDiveSites.length" :id="siteOptionsId">
+                  <option v-for="site in savedDiveSites" :key="site.id" :value="site.name"></option>
+                </datalist>
+                <p class="text-xs leading-5 text-on-surface-variant">
+                  {{ savedDiveSites.length ? 'Search saved dive sites from Settings or enter a custom value.' : 'No saved dive sites yet. Add them in Settings to reuse them here.' }}
+                </p>
+                <p v-if="selectedDiveSite" class="text-xs leading-5 text-primary">{{ siteCoordinateLabel(selectedDiveSite) }}</p>
               </label>
 
               <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <label class="block space-y-2">
                   <span class="font-label text-[10px] font-bold uppercase tracking-[0.2em] text-secondary">Buddy</span>
-                  <input :value="selectedDraft.buddy" @input="updateField('buddy', $event.target.value)" type="text" placeholder="Diver name" class="w-full border border-primary/10 bg-surface-container-high/35 px-4 py-3 text-sm text-on-surface placeholder:text-secondary/50 focus:border-primary/30 focus:ring-1 focus:ring-primary" />
+                  <input :value="selectedDraft.buddy" @input="updateBuddy($event.target.value)" :list="savedBuddies.length ? buddyOptionsId : null" type="text" placeholder="Diver name" class="w-full border border-primary/10 bg-surface-container-high/35 px-4 py-3 text-sm text-on-surface placeholder:text-secondary/50 focus:border-primary/30 focus:ring-1 focus:ring-primary" />
+                  <datalist v-if="savedBuddies.length" :id="buddyOptionsId">
+                    <option v-for="buddy in savedBuddies" :key="buddy.id" :value="buddy.name"></option>
+                  </datalist>
+                  <p class="text-xs leading-5 text-on-surface-variant">
+                    {{ savedBuddies.length ? 'Search saved buddies from Settings or enter a custom value.' : 'No saved buddies yet. Add them in Settings to reuse them here.' }}
+                  </p>
                 </label>
                 <label class="block space-y-2">
                   <span class="font-label text-[10px] font-bold uppercase tracking-[0.2em] text-secondary">Guide</span>
-                  <input :value="selectedDraft.guide" @input="updateField('guide', $event.target.value)" type="text" placeholder="Guide or instructor" class="w-full border border-primary/10 bg-surface-container-high/35 px-4 py-3 text-sm text-on-surface placeholder:text-secondary/50 focus:border-primary/30 focus:ring-1 focus:ring-primary" />
+                  <input :value="selectedDraft.guide" @input="updateField('guide', $event.target.value)" :list="savedGuides.length ? guideOptionsId : null" type="text" placeholder="Guide or instructor" class="w-full border border-primary/10 bg-surface-container-high/35 px-4 py-3 text-sm text-on-surface placeholder:text-secondary/50 focus:border-primary/30 focus:ring-1 focus:ring-primary" />
+                  <datalist v-if="savedGuides.length" :id="guideOptionsId">
+                    <option v-for="guide in savedGuides" :key="guide.id" :value="guide.name"></option>
+                  </datalist>
+                  <p class="text-xs leading-5 text-on-surface-variant">
+                    {{ savedGuides.length ? 'Search saved guides from Settings or enter a custom value.' : 'No saved guides yet. Add them in Settings to reuse them here.' }}
+                  </p>
                 </label>
               </div>
 

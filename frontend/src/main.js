@@ -1,5 +1,6 @@
 import { createApp } from "vue";
 import { clerkPlugin } from "@clerk/vue";
+import "leaflet/dist/leaflet.css";
 
 import App from "./app.js";
 import "./styles.css";

@@ -65,6 +65,40 @@ def test_decode_profile_license_payload_rejects_non_pdf():
         )
 
 
+def test_nominatim_client_search_parses_result_and_caches(monkeypatch):
+    calls = {"count": 0}
+
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def read(self):
+            calls["count"] += 1
+            return b'[{"display_name":"Blue Hole, Example Reef","lat":"25.3104","lon":"-80.2961"}]'
+
+    monkeypatch.setattr(dive_backend.urlrequest, "urlopen", lambda req, timeout=15: FakeResponse())
+
+    client = dive_backend.NominatimClient(base_url="https://nominatim.example", user_agent="DiveVault/Tests")
+
+    first = client.search("Blue Hole")
+    second = client.search("Blue Hole")
+
+    assert first["found"] is True
+    assert first["result"]["latitude"] == 25.3104
+    assert second == first
+    assert calls["count"] == 1
+
+
+def test_nominatim_client_search_requires_query():
+    client = dive_backend.NominatimClient(base_url="https://nominatim.example", user_agent="DiveVault/Tests")
+
+    with pytest.raises(ValueError, match="Missing search query"):
+        client.search("   ")
+
+
 def test_build_clerk_verifier_derives_jwks_url_and_issuer():
     args = argparse.Namespace(
         clerk_secret_key=None,

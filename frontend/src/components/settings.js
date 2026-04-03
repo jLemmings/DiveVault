@@ -41,6 +41,18 @@ function createLicenseId() {
   return `license-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
+function createDiveSiteId() {
+  return `site-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function createBuddyId() {
+  return `buddy-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function createGuideId() {
+  return `guide-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
 function emptyLicense() {
   return {
     id: createLicenseId(),
@@ -50,6 +62,30 @@ function emptyLicense() {
     certification_date: "",
     instructor_number: "",
     pdf: null
+  };
+}
+
+function emptyDiveSite() {
+  return {
+    id: createDiveSiteId(),
+    name: "",
+    location: "",
+    latitude: "",
+    longitude: ""
+  };
+}
+
+function emptyBuddy() {
+  return {
+    id: createBuddyId(),
+    name: ""
+  };
+}
+
+function emptyGuide() {
+  return {
+    id: createGuideId(),
+    name: ""
   };
 }
 
@@ -66,6 +102,19 @@ function normalizeLicenses(licenses) {
   }));
 }
 
+function normalizeDiveSites(diveSites) {
+  if (!Array.isArray(diveSites)) return [];
+  return diveSites
+    .map((site, index) => ({
+      id: site?.id || `site-${index + 1}`,
+      name: typeof site?.name === "string" ? site.name : "",
+      location: typeof site?.location === "string" ? site.location : "",
+      latitude: site?.latitude ?? site?.lat ?? "",
+      longitude: site?.longitude ?? site?.lon ?? ""
+    }))
+    .filter((site) => site.name.trim());
+}
+
 function cloneLicenses(licenses) {
   return normalizeLicenses(licenses).map((license) => ({
     ...license,
@@ -73,11 +122,46 @@ function cloneLicenses(licenses) {
   }));
 }
 
+function cloneDiveSites(diveSites) {
+  return normalizeDiveSites(diveSites).map((site) => ({ ...site }));
+}
+
+function normalizeBuddies(buddies) {
+  if (!Array.isArray(buddies)) return [];
+  return buddies
+    .map((buddy, index) => ({
+      id: buddy?.id || `buddy-${index + 1}`,
+      name: typeof buddy?.name === "string" ? buddy.name : ""
+    }))
+    .filter((buddy) => buddy.name.trim());
+}
+
+function cloneBuddies(buddies) {
+  return normalizeBuddies(buddies).map((buddy) => ({ ...buddy }));
+}
+
+function normalizeGuides(guides) {
+  if (!Array.isArray(guides)) return [];
+  return guides
+    .map((guide, index) => ({
+      id: guide?.id || `guide-${index + 1}`,
+      name: typeof guide?.name === "string" ? guide.name : ""
+    }))
+    .filter((guide) => guide.name.trim());
+}
+
+function cloneGuides(guides) {
+  return normalizeGuides(guides).map((guide) => ({ ...guide }));
+}
+
 function emptyProfile() {
   return {
     name: "",
     email: "",
-    licenses: []
+    licenses: [],
+    dive_sites: [],
+    buddies: [],
+    guides: []
   };
 }
 
@@ -85,7 +169,10 @@ function cloneProfile(profile = {}) {
   return {
     name: profile?.name || "",
     email: profile?.email || "",
-    licenses: cloneLicenses(profile?.licenses)
+    licenses: cloneLicenses(profile?.licenses),
+    dive_sites: cloneDiveSites(profile?.dive_sites),
+    buddies: cloneBuddies(profile?.buddies),
+    guides: cloneGuides(profile?.guides)
   };
 }
 
@@ -103,6 +190,63 @@ function editableLicensePayload(license) {
 function comparableLicenses(licenses) {
   return cloneLicenses(licenses).map(editableLicensePayload);
 }
+
+function editableDiveSitePayload(site) {
+  return {
+    id: site.id,
+    name: site.name.trim(),
+    location: site.location.trim(),
+    latitude: site.latitude === "" ? null : Number.parseFloat(site.latitude),
+    longitude: site.longitude === "" ? null : Number.parseFloat(site.longitude)
+  };
+}
+
+function comparableDiveSites(diveSites) {
+  return cloneDiveSites(diveSites).map((site) => ({
+    id: site.id,
+    name: site.name.trim(),
+    location: site.location.trim(),
+    latitude: site.latitude === "" ? "" : String(site.latitude).trim(),
+    longitude: site.longitude === "" ? "" : String(site.longitude).trim()
+  }));
+}
+
+function editableBuddyPayload(buddy) {
+  return {
+    id: buddy.id,
+    name: buddy.name.trim()
+  };
+}
+
+function comparableBuddies(buddies) {
+  return cloneBuddies(buddies).map((buddy) => ({
+    id: buddy.id,
+    name: buddy.name.trim()
+  }));
+}
+
+function editableGuidePayload(guide) {
+  return {
+    id: guide.id,
+    name: guide.name.trim()
+  };
+}
+
+function comparableGuides(guides) {
+  return cloneGuides(guides).map((guide) => ({
+    id: guide.id,
+    name: guide.name.trim()
+  }));
+}
+
+const SETTINGS_SECTIONS = [
+  { id: "diver-details", label: "Diver Details", icon: "badge", description: "Profile and certifications" },
+  { id: "dive-sites", label: "Dive Sites", icon: "pin_drop", description: "Locations and GPS coordinates" },
+  { id: "buddies", label: "Buddies", icon: "groups", description: "Saved dive partners" },
+  { id: "dive-guide", label: "Dive Guide", icon: "support_agent", description: "Guides and instructors" },
+  { id: "data-management", label: "Data Management", icon: "database", description: "Exports and sync access" },
+  { id: "backup", label: "Backup", icon: "archive", description: "Full backup import and export" }
+];
 
 const LicensePdfPreview = {
   name: "LicensePdfPreview",
@@ -217,6 +361,14 @@ export default {
     cliAuthCode: {
       type: String,
       default: ""
+    },
+    profileUpdated: {
+      type: Function,
+      default: null
+    },
+    refreshDives: {
+      type: Function,
+      default: null
     }
   },
   setup() {
@@ -236,17 +388,31 @@ export default {
         email: ""
       },
       licenseDrafts: [],
+      diveSiteDrafts: [],
+      buddyDrafts: [],
+      guideDrafts: [],
       isProfileEditing: false,
       areLicensesEditing: false,
+      areDiveSitesEditing: false,
+      areBuddiesEditing: false,
+      areGuidesEditing: false,
       profileLoading: true,
       profileSaving: false,
       licensesSaving: false,
+      diveSitesSaving: false,
+      buddiesSaving: false,
+      guidesSaving: false,
       licenseUploadingId: null,
+      diveSiteLookupId: null,
       profileStatus: "",
       profileError: "",
+      dataManagementStatus: "",
+      dataManagementError: "",
+      dataManagementAction: "",
       desktopSyncStatus: "",
       desktopSyncError: "",
       desktopSyncApproving: false,
+      activeSettingsSection: "diver-details",
       pendingLicenseUploadId: null,
       activeLicensePreview: null
     };
@@ -273,6 +439,21 @@ export default {
     },
     licenses() {
       return this.settingsProfile.licenses;
+    },
+    diveSites() {
+      return this.settingsProfile.dive_sites;
+    },
+    buddies() {
+      return this.settingsProfile.buddies;
+    },
+    guides() {
+      return this.settingsProfile.guides;
+    },
+    settingsSections() {
+      return SETTINGS_SECTIONS;
+    },
+    isDataManagementBusy() {
+      return Boolean(this.dataManagementAction);
     }
   },
   watch: {
@@ -314,7 +495,10 @@ export default {
       return cloneProfile({
         name: payload?.name || "",
         email: payload?.email || "",
-        licenses: normalizeLicenses(payload?.licenses)
+        licenses: normalizeLicenses(payload?.licenses),
+        dive_sites: normalizeDiveSites(payload?.dive_sites),
+        buddies: normalizeBuddies(payload?.buddies),
+        guides: normalizeGuides(payload?.guides)
       });
     },
     resetDraftsFromProfile() {
@@ -323,6 +507,18 @@ export default {
         email: this.settingsProfile.email
       };
       this.licenseDrafts = cloneLicenses(this.settingsProfile.licenses);
+      this.diveSiteDrafts = cloneDiveSites(this.settingsProfile.dive_sites);
+      this.buddyDrafts = cloneBuddies(this.settingsProfile.buddies);
+      this.guideDrafts = cloneGuides(this.settingsProfile.guides);
+    },
+    notifyProfileUpdated(profile) {
+      if (typeof this.profileUpdated === "function") {
+        this.profileUpdated(profile);
+      }
+    },
+    resetDataManagementFeedback() {
+      this.dataManagementStatus = "";
+      this.dataManagementError = "";
     },
     displayValue(value, fallback = "Not provided") {
       return value ? value : fallback;
@@ -336,6 +532,33 @@ export default {
     hasUnsavedLicenseChanges() {
       return JSON.stringify(comparableLicenses(this.licenseDrafts))
         !== JSON.stringify(comparableLicenses(this.settingsProfile.licenses));
+    },
+    hasUnsavedDiveSiteChanges() {
+      return JSON.stringify(comparableDiveSites(this.diveSiteDrafts))
+        !== JSON.stringify(comparableDiveSites(this.settingsProfile.dive_sites));
+    },
+    hasUnsavedBuddyChanges() {
+      return JSON.stringify(comparableBuddies(this.buddyDrafts))
+        !== JSON.stringify(comparableBuddies(this.settingsProfile.buddies));
+    },
+    hasUnsavedGuideChanges() {
+      return JSON.stringify(comparableGuides(this.guideDrafts))
+        !== JSON.stringify(comparableGuides(this.settingsProfile.guides));
+    },
+    diveSiteTitle(site, index) {
+      return site.name || `Dive Site ${index + 1}`;
+    },
+    buddyTitle(buddy, index) {
+      return buddy.name || `Buddy ${index + 1}`;
+    },
+    guideTitle(guide, index) {
+      return guide.name || `Guide ${index + 1}`;
+    },
+    diveSiteCoordinateSummary(site) {
+      const hasLatitude = site?.latitude !== "" && site?.latitude !== null && site?.latitude !== undefined;
+      const hasLongitude = site?.longitude !== "" && site?.longitude !== null && site?.longitude !== undefined;
+      if (!hasLatitude || !hasLongitude) return "No GPS coordinates saved";
+      return `Lat ${site.latitude}, Lon ${site.longitude}`;
     },
     async authenticatedFetch(resource, options = {}) {
       const token = await this.clerkGetToken({ skipCache: true });
@@ -359,12 +582,145 @@ export default {
           throw new Error(payload?.error || `API returned ${response.status}`);
         }
         this.settingsProfile = this.hydrateProfile(payload);
+        this.notifyProfileUpdated(this.settingsProfile);
         this.syncClerkDefaults();
         this.resetDraftsFromProfile();
       } catch (error) {
         this.profileError = error?.message || "Could not load the user profile.";
       } finally {
         this.profileLoading = false;
+      }
+    },
+    async readErrorResponse(response, fallbackMessage) {
+      const payload = await response.clone().json().catch(() => null);
+      if (payload?.error) return payload.error;
+      const bodyText = await response.text().catch(() => "");
+      return bodyText || fallbackMessage || `API returned ${response.status}`;
+    },
+    downloadBlob(blob, filename) {
+      const objectUrl = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = objectUrl;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(objectUrl);
+    },
+    filenameFromDisposition(value, fallback) {
+      if (typeof value !== "string" || !value.trim()) return fallback;
+      const utf8Match = value.match(/filename\*=UTF-8''([^;]+)/i);
+      if (utf8Match?.[1]) {
+        try {
+          return decodeURIComponent(utf8Match[1]);
+        } catch (_error) {
+          return utf8Match[1];
+        }
+      }
+      const plainMatch = value.match(/filename=\"?([^\";]+)\"?/i);
+      return plainMatch?.[1] || fallback;
+    },
+    async exportDownload(endpoint, fallbackFilename, actionLabel, successMessage) {
+      this.dataManagementAction = actionLabel;
+      this.resetDataManagementFeedback();
+      try {
+        const response = await this.authenticatedFetch(endpoint);
+        if (!response.ok) {
+          throw new Error(await this.readErrorResponse(response, `Could not ${actionLabel.toLowerCase()}.`));
+        }
+        const blob = await response.blob();
+        const filename = this.filenameFromDisposition(
+          response.headers.get("Content-Disposition"),
+          fallbackFilename
+        );
+        this.downloadBlob(blob, filename);
+        this.dataManagementStatus = successMessage;
+      } catch (error) {
+        this.dataManagementError = error?.message || `Could not ${actionLabel.toLowerCase()}.`;
+      } finally {
+        this.dataManagementAction = "";
+      }
+    },
+    exportDivePdf() {
+      return this.exportDownload(
+        "/api/exports/dives.pdf",
+        "divevault-dives.pdf",
+        "Exporting PDF",
+        "Dive log PDF downloaded."
+      );
+    },
+    exportDiveCsv() {
+      return this.exportDownload(
+        "/api/exports/dives.csv",
+        "divevault-dives.csv",
+        "Exporting CSV",
+        "Dive telemetry CSV downloaded."
+      );
+    },
+    exportBackup() {
+      return this.exportDownload(
+        "/api/backup/export",
+        "divevault-backup.json",
+        "Exporting Backup",
+        "Full backup downloaded."
+      );
+    },
+    triggerBackupImport() {
+      this.resetDataManagementFeedback();
+      this.$refs.backupImportInput?.click();
+    },
+    async handleBackupImportSelection(event) {
+      const file = event?.target?.files?.[0];
+      event.target.value = "";
+      if (!file) return;
+
+      this.dataManagementAction = "Importing Backup";
+      this.resetDataManagementFeedback();
+      try {
+        const text = await file.text();
+        let backupPayload = null;
+        try {
+          backupPayload = JSON.parse(text);
+        } catch (_error) {
+          throw new Error("Backup file must be valid JSON.");
+        }
+
+        const response = await this.authenticatedFetch("/api/backup/import", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify(backupPayload)
+        });
+        const payload = await response.json().catch(() => null);
+        if (!response.ok) {
+          throw new Error(payload?.error || `API returned ${response.status}`);
+        }
+
+        if (payload?.profile) {
+          this.settingsProfile = this.hydrateProfile(payload.profile);
+          this.notifyProfileUpdated(this.settingsProfile);
+        } else {
+          await this.fetchProfile();
+        }
+
+        this.isProfileEditing = false;
+        this.areLicensesEditing = false;
+        this.areDiveSitesEditing = false;
+        this.areBuddiesEditing = false;
+        this.areGuidesEditing = false;
+        this.resetDraftsFromProfile();
+
+        if (typeof this.refreshDives === "function") {
+          await this.refreshDives();
+        }
+
+        const summary = payload?.summary || {};
+        this.dataManagementStatus = `Backup imported. ${summary.dives_inserted ?? 0} new dives added from ${summary.dives_in_backup ?? 0} backup dives.`;
+      } catch (error) {
+        this.dataManagementError = error?.message || "Could not import the backup file.";
+      } finally {
+        this.dataManagementAction = "";
       }
     },
     beginProfileEdit() {
@@ -396,7 +752,10 @@ export default {
           body: JSON.stringify({
             name: this.profileDraft.name,
             email: this.profileDraft.email,
-            licenses: this.settingsProfile.licenses.map(editableLicensePayload)
+            licenses: this.settingsProfile.licenses.map(editableLicensePayload),
+            dive_sites: this.settingsProfile.dive_sites.map(editableDiveSitePayload),
+            buddies: this.settingsProfile.buddies.map(editableBuddyPayload),
+            guides: this.settingsProfile.guides.map(editableGuidePayload)
           })
         });
         const payload = await response.json().catch(() => null);
@@ -404,6 +763,7 @@ export default {
           throw new Error(payload?.error || `API returned ${response.status}`);
         }
         this.settingsProfile = this.hydrateProfile(payload);
+        this.notifyProfileUpdated(this.settingsProfile);
         this.resetDraftsFromProfile();
         this.isProfileEditing = false;
         this.profileStatus = "Profile updated.";
@@ -424,6 +784,36 @@ export default {
       this.pendingLicenseUploadId = null;
       this.areLicensesEditing = false;
     },
+    beginDiveSitesEdit() {
+      this.profileError = "";
+      this.profileStatus = "";
+      this.diveSiteDrafts = cloneDiveSites(this.settingsProfile.dive_sites);
+      this.areDiveSitesEditing = true;
+    },
+    cancelDiveSitesEdit() {
+      this.diveSiteDrafts = cloneDiveSites(this.settingsProfile.dive_sites);
+      this.areDiveSitesEditing = false;
+    },
+    beginBuddiesEdit() {
+      this.profileError = "";
+      this.profileStatus = "";
+      this.buddyDrafts = cloneBuddies(this.settingsProfile.buddies);
+      this.areBuddiesEditing = true;
+    },
+    cancelBuddiesEdit() {
+      this.buddyDrafts = cloneBuddies(this.settingsProfile.buddies);
+      this.areBuddiesEditing = false;
+    },
+    beginGuidesEdit() {
+      this.profileError = "";
+      this.profileStatus = "";
+      this.guideDrafts = cloneGuides(this.settingsProfile.guides);
+      this.areGuidesEditing = true;
+    },
+    cancelGuidesEdit() {
+      this.guideDrafts = cloneGuides(this.settingsProfile.guides);
+      this.areGuidesEditing = false;
+    },
     async saveLicenses() {
       this.licensesSaving = true;
       this.profileStatus = "";
@@ -437,7 +827,10 @@ export default {
           body: JSON.stringify({
             name: this.settingsProfile.name,
             email: this.settingsProfile.email,
-            licenses: this.licenseDrafts.map(editableLicensePayload)
+            licenses: this.licenseDrafts.map(editableLicensePayload),
+            dive_sites: this.settingsProfile.dive_sites.map(editableDiveSitePayload),
+            buddies: this.settingsProfile.buddies.map(editableBuddyPayload),
+            guides: this.settingsProfile.guides.map(editableGuidePayload)
           })
         });
         const payload = await response.json().catch(() => null);
@@ -445,6 +838,7 @@ export default {
           throw new Error(payload?.error || `API returned ${response.status}`);
         }
         this.settingsProfile = this.hydrateProfile(payload);
+        this.notifyProfileUpdated(this.settingsProfile);
         this.resetDraftsFromProfile();
         this.areLicensesEditing = false;
         this.profileStatus = "Licenses updated.";
@@ -457,8 +851,170 @@ export default {
     addLicense() {
       this.licenseDrafts = [...this.licenseDrafts, emptyLicense()];
     },
+    addDiveSite() {
+      this.diveSiteDrafts = [...this.diveSiteDrafts, emptyDiveSite()];
+    },
+    addBuddy() {
+      this.buddyDrafts = [...this.buddyDrafts, emptyBuddy()];
+    },
+    addGuide() {
+      this.guideDrafts = [...this.guideDrafts, emptyGuide()];
+    },
     removeLicense(index) {
       this.licenseDrafts = this.licenseDrafts.filter((_, entryIndex) => entryIndex !== index);
+    },
+    removeDiveSite(index) {
+      this.diveSiteDrafts = this.diveSiteDrafts.filter((_, entryIndex) => entryIndex !== index);
+    },
+    removeBuddy(index) {
+      this.buddyDrafts = this.buddyDrafts.filter((_, entryIndex) => entryIndex !== index);
+    },
+    removeGuide(index) {
+      this.guideDrafts = this.guideDrafts.filter((_, entryIndex) => entryIndex !== index);
+    },
+    isLookingUpDiveSite(siteId) {
+      return this.diveSiteLookupId === siteId;
+    },
+    async searchDiveSiteLocation(index) {
+      const site = this.diveSiteDrafts[index];
+      if (!site) return;
+
+      const query = typeof site.location === "string" ? site.location.trim() : "";
+      if (!query) {
+        this.profileError = "Enter a location before searching for GPS coordinates.";
+        this.profileStatus = "";
+        return;
+      }
+
+      this.diveSiteLookupId = site.id;
+      this.profileError = "";
+      this.profileStatus = "";
+      try {
+        const response = await this.authenticatedFetch(`/api/geocode/search?q=${encodeURIComponent(query)}`);
+        const payload = await response.json().catch(() => null);
+        if (!response.ok) {
+          throw new Error(payload?.error || `API returned ${response.status}`);
+        }
+        if (!payload?.found || !payload?.result) {
+          this.profileStatus = `No coordinates found for "${query}".`;
+          return;
+        }
+
+        const nextDrafts = this.diveSiteDrafts.slice();
+        nextDrafts[index] = {
+          ...nextDrafts[index],
+          latitude: String(payload.result.latitude),
+          longitude: String(payload.result.longitude)
+        };
+        this.diveSiteDrafts = nextDrafts;
+        this.profileStatus = `Coordinates found for "${query}".`;
+      } catch (error) {
+        this.profileError = error?.message || "Could not search for GPS coordinates.";
+      } finally {
+        this.diveSiteLookupId = null;
+      }
+    },
+    async saveDiveSites() {
+      this.diveSitesSaving = true;
+      this.profileStatus = "";
+      this.profileError = "";
+      try {
+        const response = await this.authenticatedFetch("/api/profile", {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            name: this.settingsProfile.name,
+            email: this.settingsProfile.email,
+            licenses: this.settingsProfile.licenses.map(editableLicensePayload),
+            dive_sites: this.diveSiteDrafts.map(editableDiveSitePayload),
+            buddies: this.settingsProfile.buddies.map(editableBuddyPayload),
+            guides: this.settingsProfile.guides.map(editableGuidePayload)
+          })
+        });
+        const payload = await response.json().catch(() => null);
+        if (!response.ok) {
+          throw new Error(payload?.error || `API returned ${response.status}`);
+        }
+        this.settingsProfile = this.hydrateProfile(payload);
+        this.notifyProfileUpdated(this.settingsProfile);
+        this.resetDraftsFromProfile();
+        this.areDiveSitesEditing = false;
+        this.profileStatus = "Dive sites updated.";
+      } catch (error) {
+        this.profileError = error?.message || "Could not save the dive site list.";
+      } finally {
+        this.diveSitesSaving = false;
+      }
+    },
+    async saveBuddies() {
+      this.buddiesSaving = true;
+      this.profileStatus = "";
+      this.profileError = "";
+      try {
+        const response = await this.authenticatedFetch("/api/profile", {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            name: this.settingsProfile.name,
+            email: this.settingsProfile.email,
+            licenses: this.settingsProfile.licenses.map(editableLicensePayload),
+            dive_sites: this.settingsProfile.dive_sites.map(editableDiveSitePayload),
+            buddies: this.buddyDrafts.map(editableBuddyPayload),
+            guides: this.settingsProfile.guides.map(editableGuidePayload)
+          })
+        });
+        const payload = await response.json().catch(() => null);
+        if (!response.ok) {
+          throw new Error(payload?.error || `API returned ${response.status}`);
+        }
+        this.settingsProfile = this.hydrateProfile(payload);
+        this.notifyProfileUpdated(this.settingsProfile);
+        this.resetDraftsFromProfile();
+        this.areBuddiesEditing = false;
+        this.profileStatus = "Buddies updated.";
+      } catch (error) {
+        this.profileError = error?.message || "Could not save the buddy list.";
+      } finally {
+        this.buddiesSaving = false;
+      }
+    },
+    async saveGuides() {
+      this.guidesSaving = true;
+      this.profileStatus = "";
+      this.profileError = "";
+      try {
+        const response = await this.authenticatedFetch("/api/profile", {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            name: this.settingsProfile.name,
+            email: this.settingsProfile.email,
+            licenses: this.settingsProfile.licenses.map(editableLicensePayload),
+            dive_sites: this.settingsProfile.dive_sites.map(editableDiveSitePayload),
+            buddies: this.settingsProfile.buddies.map(editableBuddyPayload),
+            guides: this.guideDrafts.map(editableGuidePayload)
+          })
+        });
+        const payload = await response.json().catch(() => null);
+        if (!response.ok) {
+          throw new Error(payload?.error || `API returned ${response.status}`);
+        }
+        this.settingsProfile = this.hydrateProfile(payload);
+        this.notifyProfileUpdated(this.settingsProfile);
+        this.resetDraftsFromProfile();
+        this.areGuidesEditing = false;
+        this.profileStatus = "Guides updated.";
+      } catch (error) {
+        this.profileError = error?.message || "Could not save the guide list.";
+      } finally {
+        this.guidesSaving = false;
+      }
     },
     triggerLicensePicker(licenseId) {
       this.profileError = "";
@@ -522,6 +1078,7 @@ export default {
           throw new Error(payload?.error || `API returned ${response.status}`);
         }
         this.settingsProfile = this.hydrateProfile(payload);
+        this.notifyProfileUpdated(this.settingsProfile);
         this.resetDraftsFromProfile();
         this.areLicensesEditing = true;
         this.profileStatus = `${file.name} uploaded for the selected license.`;
@@ -575,6 +1132,9 @@ export default {
     closeLicensePreview() {
       this.activeLicensePreview = null;
     },
+    selectSettingsSection(sectionId) {
+      this.activeSettingsSection = sectionId;
+    },
     formatBytes,
     formatDateTime
   },
@@ -582,16 +1142,37 @@ export default {
     <section class="space-y-10 text-on-surface">
       <div class="max-w-5xl">
         <p class="font-label text-[10px] font-bold uppercase tracking-[0.3em] text-primary">System Configuration</p>
-        <h3 class="mt-2 font-headline text-5xl font-bold tracking-tight text-primary">Settigns</h3>
-        <p class="mt-3 max-w-3xl text-sm text-secondary">Manage your authenticated diver profile, saved license list, embedded license documents, and desktop sync access.</p>
+        <h3 class="mt-2 font-headline text-5xl font-bold tracking-tight text-primary">Settings</h3>
+        <p class="mt-3 max-w-3xl text-sm text-secondary">Manage your authenticated diver profile, saved dive sites, certification list, embedded license documents, and desktop sync access.</p>
       </div>
 
       <div v-if="profileStatus" class="max-w-4xl border border-primary/20 bg-primary/10 px-5 py-4 text-sm text-primary shadow-panel">{{ profileStatus }}</div>
       <div v-if="profileError" class="max-w-4xl border border-error/20 bg-error-container/20 px-5 py-4 text-sm text-on-error-container shadow-panel">{{ profileError }}</div>
 
-      <section class="grid grid-cols-1 gap-8 lg:grid-cols-12">
-        <div class="flex flex-col gap-8 lg:col-span-8">
-          <div class="group relative overflow-hidden bg-surface-container-low p-8">
+      <section class="grid grid-cols-1 gap-8 lg:grid-cols-[260px_minmax(0,1fr)]">
+        <aside class="h-fit bg-surface-container-low p-4 shadow-panel">
+          <p class="font-label text-[10px] font-bold uppercase tracking-[0.22em] text-primary">Settings Menu</p>
+          <nav class="mt-4 flex gap-3 overflow-x-auto pb-2 lg:flex-col lg:overflow-visible lg:pb-0">
+            <button
+              v-for="section in settingsSections"
+              :key="section.id"
+              @click="selectSettingsSection(section.id)"
+              class="min-w-[12rem] border px-4 py-4 text-left transition-colors lg:min-w-0"
+              :class="activeSettingsSection === section.id ? 'border-primary/30 bg-surface-container-high text-primary' : 'border-primary/10 bg-background/20 text-secondary hover:border-primary/20 hover:text-on-surface'"
+            >
+              <div class="flex items-center gap-3">
+                <span class="material-symbols-outlined text-lg">{{ section.icon }}</span>
+                <div>
+                  <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em]">{{ section.label }}</p>
+                  <p class="mt-1 text-xs leading-5 opacity-80">{{ section.description }}</p>
+                </div>
+              </div>
+            </button>
+          </nav>
+        </aside>
+
+        <div class="flex flex-col gap-8">
+          <div v-if="activeSettingsSection === 'diver-details'" class="group relative overflow-hidden bg-surface-container-low p-8">
             <div class="absolute -right-10 -top-10 h-32 w-32 rounded-full bg-primary/5 blur-3xl"></div>
             <div class="relative z-10 flex flex-col gap-6 xl:flex-row xl:items-start">
               <div class="flex h-24 w-24 items-center justify-center rounded-lg border border-primary/20 bg-surface-container-highest text-primary">
@@ -608,7 +1189,7 @@ export default {
                     <button
                       v-if="!isProfileEditing"
                       @click="beginProfileEdit"
-                      :disabled="profileSaving || licensesSaving || Boolean(licenseUploadingId)"
+                      :disabled="profileSaving || licensesSaving || diveSitesSaving || buddiesSaving || guidesSaving || Boolean(licenseUploadingId)"
                       class="bg-surface-container-highest px-4 py-2 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-primary disabled:cursor-not-allowed disabled:opacity-60"
                     >
                       Edit
@@ -616,14 +1197,14 @@ export default {
                     <template v-else>
                       <button
                         @click="cancelProfileEdit"
-                        :disabled="profileSaving"
+                        :disabled="profileSaving || licensesSaving || diveSitesSaving || buddiesSaving || guidesSaving || Boolean(licenseUploadingId)"
                         class="border border-primary/15 px-4 py-2 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-secondary disabled:cursor-not-allowed disabled:opacity-60"
                       >
                         Cancel
                       </button>
                       <button
                         @click="saveProfile"
-                        :disabled="profileSaving || licensesSaving || Boolean(licenseUploadingId)"
+                        :disabled="profileSaving || licensesSaving || diveSitesSaving || buddiesSaving || guidesSaving || Boolean(licenseUploadingId)"
                         class="bg-primary px-4 py-2 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-on-primary disabled:cursor-not-allowed disabled:opacity-60"
                       >
                         {{ profileSaving ? 'Saving Profile' : 'Save Profile' }}
@@ -661,7 +1242,7 @@ export default {
             </div>
           </div>
 
-          <div class="bg-surface-container-high p-6">
+          <div v-if="activeSettingsSection === 'diver-details'" class="bg-surface-container-high p-6">
             <div class="mb-6 flex items-center justify-between gap-4">
               <div class="flex items-center gap-3">
                 <span class="material-symbols-outlined text-primary">workspace_premium</span>
@@ -671,7 +1252,7 @@ export default {
                 <button
                   v-if="!areLicensesEditing"
                   @click="beginLicensesEdit"
-                  :disabled="profileLoading || profileSaving || licensesSaving || Boolean(licenseUploadingId)"
+                  :disabled="profileLoading || profileSaving || licensesSaving || diveSitesSaving || buddiesSaving || guidesSaving || Boolean(licenseUploadingId)"
                   class="bg-surface-container-highest px-4 py-2 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-primary disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   Edit
@@ -679,21 +1260,21 @@ export default {
                 <template v-else>
                   <button
                     @click="addLicense"
-                    :disabled="licensesSaving || Boolean(licenseUploadingId)"
+                    :disabled="licensesSaving || profileSaving || diveSitesSaving || buddiesSaving || guidesSaving || Boolean(licenseUploadingId)"
                     class="bg-surface-container-highest px-4 py-2 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-primary disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     Add License
                   </button>
                   <button
                     @click="cancelLicensesEdit"
-                    :disabled="licensesSaving || Boolean(licenseUploadingId)"
+                    :disabled="licensesSaving || profileSaving || diveSitesSaving || buddiesSaving || guidesSaving || Boolean(licenseUploadingId)"
                     class="border border-primary/15 px-4 py-2 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-secondary disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     Cancel
                   </button>
                   <button
                     @click="saveLicenses"
-                    :disabled="profileLoading || licensesSaving || profileSaving || Boolean(licenseUploadingId)"
+                    :disabled="profileLoading || licensesSaving || profileSaving || diveSitesSaving || buddiesSaving || guidesSaving || Boolean(licenseUploadingId)"
                     class="bg-primary px-4 py-2 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-on-primary disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     {{ licensesSaving ? 'Saving Licenses' : 'Save License List' }}
@@ -799,18 +1380,336 @@ export default {
 
             <input ref="licenseInput" @change="handleLicenseSelection" type="file" accept="application/pdf,.pdf" class="hidden" />
           </div>
-        </div>
 
-        <div class="flex flex-col gap-8 lg:col-span-4">
+          <div v-if="activeSettingsSection === 'dive-sites'" class="bg-surface-container-high p-6">
+            <div class="mb-6 flex items-center justify-between gap-4">
+              <div class="flex items-center gap-3">
+                <span class="material-symbols-outlined text-primary">pin_drop</span>
+                <div>
+                  <h4 class="font-label text-[10px] font-bold uppercase tracking-[0.24em] text-primary">Dive Sites</h4>
+                  <p class="mt-2 max-w-2xl text-sm text-secondary">Build the reusable site list used by the logbook editors. Saved GPS coordinates also drive the dashboard map.</p>
+                </div>
+              </div>
+              <div class="flex flex-wrap gap-3">
+                <button
+                  v-if="!areDiveSitesEditing"
+                  @click="beginDiveSitesEdit"
+                  :disabled="profileLoading || profileSaving || licensesSaving || diveSitesSaving || buddiesSaving || guidesSaving || Boolean(licenseUploadingId)"
+                  class="bg-surface-container-highest px-4 py-2 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-primary disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  Edit
+                </button>
+                <template v-else>
+                  <button
+                    @click="addDiveSite"
+                    :disabled="diveSitesSaving || profileSaving || licensesSaving || buddiesSaving || guidesSaving || Boolean(licenseUploadingId)"
+                    class="bg-surface-container-highest px-4 py-2 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-primary disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    Add Dive Site
+                  </button>
+                  <button
+                    @click="cancelDiveSitesEdit"
+                    :disabled="diveSitesSaving || profileSaving || licensesSaving || buddiesSaving || guidesSaving || Boolean(licenseUploadingId)"
+                    class="border border-primary/15 px-4 py-2 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-secondary disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    @click="saveDiveSites"
+                    :disabled="profileLoading || profileSaving || licensesSaving || diveSitesSaving || buddiesSaving || guidesSaving || Boolean(licenseUploadingId)"
+                    class="bg-primary px-4 py-2 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-on-primary disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {{ diveSitesSaving ? 'Saving Dive Sites' : 'Save Dive Sites' }}
+                  </button>
+                </template>
+              </div>
+            </div>
+
+            <div v-if="!areDiveSitesEditing && diveSites.length === 0" class="rounded border border-dashed border-primary/20 bg-surface-container-lowest p-5">
+              <p class="font-headline text-lg font-bold">No saved dive sites</p>
+              <p class="mt-2 text-sm text-secondary">Create sites here so logbook entries can select them and the dashboard map can plot your dives.</p>
+            </div>
+
+            <div v-else-if="areDiveSitesEditing && diveSiteDrafts.length === 0" class="rounded border border-dashed border-primary/20 bg-surface-container-lowest p-5">
+              <p class="font-headline text-lg font-bold">No saved dive sites</p>
+              <p class="mt-2 text-sm text-secondary">Add the first site in your logbook catalog.</p>
+            </div>
+
+            <div v-else class="space-y-5">
+              <article v-for="(site, index) in (areDiveSitesEditing ? diveSiteDrafts : diveSites)" :key="site.id" class="border border-primary/10 bg-surface-container-lowest/35 p-5">
+                <div class="mb-4 flex items-center justify-between gap-4">
+                  <div>
+                    <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Dive Site {{ index + 1 }}</p>
+                    <p class="mt-1 text-sm text-on-surface-variant">{{ diveSiteTitle(site, index) }}</p>
+                  </div>
+                  <button v-if="areDiveSitesEditing" @click="removeDiveSite(index)" class="bg-error-container/20 px-3 py-2 font-label text-[10px] font-bold uppercase tracking-[0.16em] text-on-error-container">
+                    Remove
+                  </button>
+                </div>
+
+                <div v-if="areDiveSitesEditing" class="grid gap-4 md:grid-cols-3">
+                  <label class="space-y-2">
+                    <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Site Name</span>
+                    <input v-model="site.name" type="text" class="w-full border border-primary/10 bg-surface-container-high/35 px-4 py-3 text-sm text-on-surface placeholder:text-secondary/50 focus:border-primary/30 focus:ring-1 focus:ring-primary" placeholder="North Wall / Training Reef" />
+                  </label>
+                  <label class="space-y-2 md:col-span-2">
+                    <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Location</span>
+                    <input v-model="site.location" type="text" class="w-full border border-primary/10 bg-surface-container-high/35 px-4 py-3 text-sm text-on-surface placeholder:text-secondary/50 focus:border-primary/30 focus:ring-1 focus:ring-primary" placeholder="Blue Hole, Dahab, Egypt" />
+                  </label>
+                  <div class="md:col-span-3">
+                    <button
+                      @click="searchDiveSiteLocation(index)"
+                      :disabled="isLookingUpDiveSite(site.id)"
+                      class="bg-surface-container-highest px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-primary disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {{ isLookingUpDiveSite(site.id) ? 'Searching GPS' : 'Search GPS From Location' }}
+                    </button>
+                  </div>
+                  <label class="space-y-2">
+                    <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Latitude</span>
+                    <input v-model="site.latitude" type="number" step="any" min="-90" max="90" class="w-full border border-primary/10 bg-surface-container-high/35 px-4 py-3 text-sm text-on-surface placeholder:text-secondary/50 focus:border-primary/30 focus:ring-1 focus:ring-primary" placeholder="25.1234" />
+                  </label>
+                  <label class="space-y-2">
+                    <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Longitude</span>
+                    <input v-model="site.longitude" type="number" step="any" min="-180" max="180" class="w-full border border-primary/10 bg-surface-container-high/35 px-4 py-3 text-sm text-on-surface placeholder:text-secondary/50 focus:border-primary/30 focus:ring-1 focus:ring-primary" placeholder="-80.4567" />
+                  </label>
+                  <div class="border border-primary/10 bg-background/25 px-4 py-4">
+                    <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-primary">GPS Status</p>
+                    <p class="mt-2 text-sm text-on-surface">{{ diveSiteCoordinateSummary(site) }}</p>
+                  </div>
+                </div>
+
+                <div v-else class="grid gap-4 md:grid-cols-3">
+                  <div class="border border-primary/10 bg-surface-container-high/25 px-4 py-4">
+                    <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Site Name</p>
+                    <p class="mt-2 text-base font-semibold text-on-surface">{{ displayValue(site.name) }}</p>
+                  </div>
+                  <div class="border border-primary/10 bg-surface-container-high/25 px-4 py-4 md:col-span-2">
+                    <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Location</p>
+                    <p class="mt-2 text-base font-semibold text-on-surface">{{ displayValue(site.location, 'Not set') }}</p>
+                  </div>
+                  <div class="border border-primary/10 bg-surface-container-high/25 px-4 py-4">
+                    <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Latitude</p>
+                    <p class="mt-2 text-base font-semibold text-on-surface">{{ displayValue(site.latitude, 'Not set') }}</p>
+                  </div>
+                  <div class="border border-primary/10 bg-surface-container-high/25 px-4 py-4">
+                    <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Longitude</p>
+                    <p class="mt-2 text-base font-semibold text-on-surface">{{ displayValue(site.longitude, 'Not set') }}</p>
+                  </div>
+                  <div class="border border-primary/10 bg-surface-container-high/25 px-4 py-4">
+                    <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-primary">Map</p>
+                    <p class="mt-2 text-base font-semibold text-on-surface">{{ diveSiteCoordinateSummary(site) }}</p>
+                  </div>
+                </div>
+              </article>
+            </div>
+          </div>
+
+          <div v-if="activeSettingsSection === 'buddies'" class="bg-surface-container-high p-8 shadow-panel">
+            <div class="mb-8 flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+              <div>
+                <p class="font-label text-[10px] font-bold uppercase tracking-[0.24em] text-primary">Buddies</p>
+                <h4 class="mt-2 font-headline text-3xl font-bold tracking-tight">Saved Dive Buddy List</h4>
+                <p class="mt-3 max-w-3xl text-sm leading-7 text-secondary">Add divers you regularly log dives with. Saved buddies appear as selectable values in the import queue and dive logbook editor.</p>
+              </div>
+              <div class="flex flex-wrap gap-3">
+                <template v-if="!areBuddiesEditing">
+                  <button
+                    @click="beginBuddiesEdit"
+                    :disabled="profileLoading || profileSaving || licensesSaving || diveSitesSaving || buddiesSaving || guidesSaving || Boolean(licenseUploadingId)"
+                    class="border border-primary/15 px-4 py-2 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-secondary disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    Edit Buddies
+                  </button>
+                </template>
+                <template v-else>
+                  <button
+                    @click="addBuddy"
+                    :disabled="buddiesSaving || profileSaving || licensesSaving || diveSitesSaving || guidesSaving || Boolean(licenseUploadingId)"
+                    class="border border-primary/15 px-4 py-2 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-secondary disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    Add Buddy
+                  </button>
+                  <button
+                    @click="cancelBuddiesEdit"
+                    :disabled="buddiesSaving || profileSaving || licensesSaving || diveSitesSaving || guidesSaving || Boolean(licenseUploadingId)"
+                    class="border border-primary/15 px-4 py-2 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-secondary disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    @click="saveBuddies"
+                    :disabled="profileLoading || profileSaving || licensesSaving || diveSitesSaving || buddiesSaving || guidesSaving || Boolean(licenseUploadingId)"
+                    class="bg-primary px-4 py-2 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-on-primary disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {{ buddiesSaving ? 'Saving Buddies' : 'Save Buddies' }}
+                  </button>
+                </template>
+              </div>
+            </div>
+
+            <div v-if="!areBuddiesEditing && buddies.length === 0" class="rounded border border-dashed border-primary/20 bg-surface-container-lowest p-5">
+              <p class="font-headline text-lg font-bold">No saved buddies</p>
+              <p class="mt-2 text-sm text-secondary">Create a reusable buddy list here so dive logs can select names instead of retyping them.</p>
+            </div>
+
+            <div v-else-if="areBuddiesEditing && buddyDrafts.length === 0" class="rounded border border-dashed border-primary/20 bg-surface-container-lowest p-5">
+              <p class="font-headline text-lg font-bold">No saved buddies</p>
+              <p class="mt-2 text-sm text-secondary">Add the first diver you want available in your logbook forms.</p>
+            </div>
+
+            <div v-else class="space-y-5">
+              <article v-for="(buddy, index) in (areBuddiesEditing ? buddyDrafts : buddies)" :key="buddy.id" class="border border-primary/10 bg-surface-container-lowest/35 p-5">
+                <div class="mb-4 flex items-center justify-between gap-4">
+                  <div>
+                    <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Buddy {{ index + 1 }}</p>
+                    <p class="mt-1 text-sm text-on-surface-variant">{{ buddyTitle(buddy, index) }}</p>
+                  </div>
+                  <button v-if="areBuddiesEditing" @click="removeBuddy(index)" class="bg-error-container/20 px-3 py-2 font-label text-[10px] font-bold uppercase tracking-[0.16em] text-on-error-container">
+                    Remove
+                  </button>
+                </div>
+
+                <div v-if="areBuddiesEditing" class="grid gap-4 md:grid-cols-[minmax(0,1fr)_220px]">
+                  <label class="space-y-2">
+                    <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Buddy Name</span>
+                    <input v-model="buddy.name" type="text" class="w-full border border-primary/10 bg-surface-container-high/35 px-4 py-3 text-sm text-on-surface placeholder:text-secondary/50 focus:border-primary/30 focus:ring-1 focus:ring-primary" placeholder="Sam Carter" />
+                  </label>
+                  <div class="border border-primary/10 bg-background/25 px-4 py-4">
+                    <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-primary">Usage</p>
+                    <p class="mt-2 text-sm text-on-surface">Appears in dive log buddy pickers.</p>
+                  </div>
+                </div>
+
+                <div v-else class="grid gap-4 md:grid-cols-[minmax(0,1fr)_220px]">
+                  <div class="border border-primary/10 bg-surface-container-high/25 px-4 py-4">
+                    <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Buddy Name</p>
+                    <p class="mt-2 text-base font-semibold text-on-surface">{{ displayValue(buddy.name) }}</p>
+                  </div>
+                  <div class="border border-primary/10 bg-surface-container-high/25 px-4 py-4">
+                    <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-primary">Status</p>
+                    <p class="mt-2 text-base font-semibold text-on-surface">Available in logbook</p>
+                  </div>
+                </div>
+              </article>
+            </div>
+          </div>
+
+          <div v-if="activeSettingsSection === 'dive-guide'" class="bg-surface-container-high p-8 shadow-panel">
+            <div class="mb-8 flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+              <div>
+                <p class="font-label text-[10px] font-bold uppercase tracking-[0.24em] text-primary">Dive Guide</p>
+                <h4 class="mt-2 font-headline text-3xl font-bold tracking-tight">Saved Dive Guide List</h4>
+                <p class="mt-3 max-w-3xl text-sm leading-7 text-secondary">Add guides and instructors you dive with regularly. Saved guide names appear as searchable suggestions in the import queue and logbook editor.</p>
+              </div>
+              <div class="flex flex-wrap gap-3">
+                <template v-if="!areGuidesEditing">
+                  <button
+                    @click="beginGuidesEdit"
+                    :disabled="profileLoading || profileSaving || licensesSaving || diveSitesSaving || buddiesSaving || guidesSaving || Boolean(licenseUploadingId)"
+                    class="border border-primary/15 px-4 py-2 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-secondary disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    Edit Guides
+                  </button>
+                </template>
+                <template v-else>
+                  <button
+                    @click="addGuide"
+                    :disabled="guidesSaving || profileSaving || licensesSaving || diveSitesSaving || buddiesSaving || Boolean(licenseUploadingId)"
+                    class="border border-primary/15 px-4 py-2 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-secondary disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    Add Guide
+                  </button>
+                  <button
+                    @click="cancelGuidesEdit"
+                    :disabled="guidesSaving || profileSaving || licensesSaving || diveSitesSaving || buddiesSaving || Boolean(licenseUploadingId)"
+                    class="border border-primary/15 px-4 py-2 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-secondary disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    @click="saveGuides"
+                    :disabled="profileLoading || profileSaving || licensesSaving || diveSitesSaving || buddiesSaving || guidesSaving || Boolean(licenseUploadingId)"
+                    class="bg-primary px-4 py-2 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-on-primary disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {{ guidesSaving ? 'Saving Guides' : 'Save Guides' }}
+                  </button>
+                </template>
+              </div>
+            </div>
+
+            <div v-if="!areGuidesEditing && guides.length === 0" class="rounded border border-dashed border-primary/20 bg-surface-container-lowest p-5">
+              <p class="font-headline text-lg font-bold">No saved guides</p>
+              <p class="mt-2 text-sm text-secondary">Create a reusable guide list here so dive logs can search and reuse names instead of retyping them.</p>
+            </div>
+
+            <div v-else-if="areGuidesEditing && guideDrafts.length === 0" class="rounded border border-dashed border-primary/20 bg-surface-container-lowest p-5">
+              <p class="font-headline text-lg font-bold">No saved guides</p>
+              <p class="mt-2 text-sm text-secondary">Add the first guide or instructor you want available in your logbook forms.</p>
+            </div>
+
+            <div v-else class="space-y-5">
+              <article v-for="(guide, index) in (areGuidesEditing ? guideDrafts : guides)" :key="guide.id" class="border border-primary/10 bg-surface-container-lowest/35 p-5">
+                <div class="mb-4 flex items-center justify-between gap-4">
+                  <div>
+                    <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Guide {{ index + 1 }}</p>
+                    <p class="mt-1 text-sm text-on-surface-variant">{{ guideTitle(guide, index) }}</p>
+                  </div>
+                  <button v-if="areGuidesEditing" @click="removeGuide(index)" class="bg-error-container/20 px-3 py-2 font-label text-[10px] font-bold uppercase tracking-[0.16em] text-on-error-container">
+                    Remove
+                  </button>
+                </div>
+
+                <div v-if="areGuidesEditing" class="grid gap-4 md:grid-cols-[minmax(0,1fr)_220px]">
+                  <label class="space-y-2">
+                    <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Guide Name</span>
+                    <input v-model="guide.name" type="text" class="w-full border border-primary/10 bg-surface-container-high/35 px-4 py-3 text-sm text-on-surface placeholder:text-secondary/50 focus:border-primary/30 focus:ring-1 focus:ring-primary" placeholder="Kai Jensen" />
+                  </label>
+                  <div class="border border-primary/10 bg-background/25 px-4 py-4">
+                    <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-primary">Usage</p>
+                    <p class="mt-2 text-sm text-on-surface">Appears in dive log guide pickers.</p>
+                  </div>
+                </div>
+
+                <div v-else class="grid gap-4 md:grid-cols-[minmax(0,1fr)_220px]">
+                  <div class="border border-primary/10 bg-surface-container-high/25 px-4 py-4">
+                    <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Guide Name</p>
+                    <p class="mt-2 text-base font-semibold text-on-surface">{{ displayValue(guide.name) }}</p>
+                  </div>
+                  <div class="border border-primary/10 bg-surface-container-high/25 px-4 py-4">
+                    <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-primary">Status</p>
+                    <p class="mt-2 text-base font-semibold text-on-surface">Available in logbook</p>
+                  </div>
+                </div>
+              </article>
+            </div>
+          </div>
+
+        <div v-if="activeSettingsSection === 'data-management'" class="flex flex-col gap-8">
           <div class="glass-panel bg-surface-container-high p-6 shadow-panel">
             <h4 class="mb-6 font-label text-[10px] font-bold uppercase tracking-[0.24em] text-primary">Data Management</h4>
+            <p class="max-w-3xl text-sm leading-7 text-secondary">Export your dive log as a printable PDF, download raw telemetry as CSV, and manage desktop sync access for the Windows importer.</p>
+            <div v-if="dataManagementStatus" class="mt-5 border border-primary/20 bg-primary/10 px-4 py-3 text-sm text-primary">
+              {{ dataManagementStatus }}
+            </div>
+            <div v-if="dataManagementError" class="mt-5 border border-error/20 bg-error-container/20 px-4 py-3 text-sm text-on-error-container">
+              {{ dataManagementError }}
+            </div>
             <div class="flex flex-col gap-4">
-              <button class="flex w-full items-center justify-between rounded bg-surface-container-lowest p-4 transition-colors hover:bg-surface-bright">
-                <span class="flex items-center gap-3"><span class="material-symbols-outlined text-secondary">picture_as_pdf</span><span class="text-sm font-headline font-bold">Export Logs (PDF)</span></span>
+              <button
+                @click="exportDivePdf"
+                :disabled="isDataManagementBusy || profileLoading || profileSaving || licensesSaving || diveSitesSaving || buddiesSaving || guidesSaving || Boolean(licenseUploadingId)"
+                class="flex w-full items-center justify-between rounded bg-surface-container-lowest p-4 transition-colors hover:bg-surface-bright disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <span class="flex items-center gap-3"><span class="material-symbols-outlined text-secondary">picture_as_pdf</span><span class="text-sm font-headline font-bold">{{ dataManagementAction === 'Exporting PDF' ? 'Exporting Dive PDF' : 'Export Logs (PDF)' }}</span></span>
                 <span class="material-symbols-outlined text-secondary/50">chevron_right</span>
               </button>
-              <button class="flex w-full items-center justify-between rounded bg-surface-container-lowest p-4 transition-colors hover:bg-surface-bright">
-                <span class="flex items-center gap-3"><span class="material-symbols-outlined text-secondary">table_chart</span><span class="text-sm font-headline font-bold">Raw Telemetry (CSV)</span></span>
+              <button
+                @click="exportDiveCsv"
+                :disabled="isDataManagementBusy || profileLoading || profileSaving || licensesSaving || diveSitesSaving || buddiesSaving || guidesSaving || Boolean(licenseUploadingId)"
+                class="flex w-full items-center justify-between rounded bg-surface-container-lowest p-4 transition-colors hover:bg-surface-bright disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <span class="flex items-center gap-3"><span class="material-symbols-outlined text-secondary">table_chart</span><span class="text-sm font-headline font-bold">{{ dataManagementAction === 'Exporting CSV' ? 'Exporting Telemetry CSV' : 'Raw Telemetry (CSV)' }}</span></span>
                 <span class="material-symbols-outlined text-secondary/50">chevron_right</span>
               </button>
             </div>
@@ -834,6 +1733,45 @@ export default {
               <p v-if="desktopSyncError" class="mt-3 text-sm text-error">{{ desktopSyncError }}</p>
             </div>
           </div>
+        </div>
+
+        <div v-if="activeSettingsSection === 'backup'" class="flex flex-col gap-8">
+          <div class="glass-panel bg-surface-container-high p-6 shadow-panel">
+            <h4 class="mb-6 font-label text-[10px] font-bold uppercase tracking-[0.24em] text-primary">Backup</h4>
+            <p class="max-w-3xl text-sm leading-7 text-secondary">Download a complete backup of your account data or restore from a previous backup. The backup includes profile data, saved lists, device sync state, license PDFs, and all imported dives.</p>
+            <div v-if="dataManagementStatus" class="mt-5 border border-primary/20 bg-primary/10 px-4 py-3 text-sm text-primary">
+              {{ dataManagementStatus }}
+            </div>
+            <div v-if="dataManagementError" class="mt-5 border border-error/20 bg-error-container/20 px-4 py-3 text-sm text-on-error-container">
+              {{ dataManagementError }}
+            </div>
+            <div class="mt-6 flex flex-col gap-4">
+              <button
+                @click="exportBackup"
+                :disabled="isDataManagementBusy || profileLoading || profileSaving || licensesSaving || diveSitesSaving || buddiesSaving || guidesSaving || Boolean(licenseUploadingId)"
+                class="flex w-full items-center justify-between rounded bg-surface-container-lowest p-4 transition-colors hover:bg-surface-bright disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <span class="flex items-center gap-3"><span class="material-symbols-outlined text-secondary">archive</span><span class="text-sm font-headline font-bold">{{ dataManagementAction === 'Exporting Backup' ? 'Building Full Backup' : 'Download Full Backup' }}</span></span>
+                <span class="material-symbols-outlined text-secondary/50">chevron_right</span>
+              </button>
+              <button
+                @click="triggerBackupImport"
+                :disabled="isDataManagementBusy || profileLoading || profileSaving || licensesSaving || diveSitesSaving || buddiesSaving || guidesSaving || Boolean(licenseUploadingId)"
+                class="flex w-full items-center justify-between rounded bg-surface-container-lowest p-4 transition-colors hover:bg-surface-bright disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <span class="flex items-center gap-3"><span class="material-symbols-outlined text-secondary">upload_file</span><span class="text-sm font-headline font-bold">{{ dataManagementAction === 'Importing Backup' ? 'Importing Backup' : 'Import From Backup' }}</span></span>
+                <span class="material-symbols-outlined text-secondary/50">chevron_right</span>
+              </button>
+            </div>
+            <input
+              ref="backupImportInput"
+              type="file"
+              accept=".json,application/json"
+              class="hidden"
+              @change="handleBackupImportSelection"
+            />
+          </div>
+        </div>
         </div>
       </section>
 

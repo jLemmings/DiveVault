@@ -77,6 +77,26 @@ class FakeConn:
         return None
 
 
+class FakeNominatimClient:
+    def search(self, query: str) -> dict:
+        normalized = query.strip()
+        if not normalized:
+            raise ValueError("Missing search query")
+        if normalized.lower() == "missing place":
+            return {"query": normalized, "found": False, "result": None}
+        if normalized.lower() == "service down":
+            raise RuntimeError("Nominatim search failed: upstream unavailable")
+        return {
+            "query": normalized,
+            "found": True,
+            "result": {
+                "name": f"{normalized}, Example Reef",
+                "latitude": 25.3104,
+                "longitude": -80.2961,
+            },
+        }
+
+
 @pytest.fixture()
 def server_fixture(monkeypatch):
     store = {
@@ -107,6 +127,27 @@ def server_fixture(monkeypatch):
         "profile": {
             "name": "Elias Thorne",
             "email": "diver@example.com",
+            "dive_sites": [
+                {
+                    "id": "site-1",
+                    "name": "Blue Hole",
+                    "location": "Blue Hole, Dahab, Egypt",
+                    "latitude": 25.3104,
+                    "longitude": -80.2961,
+                }
+            ],
+            "buddies": [
+                {
+                    "id": "buddy-1",
+                    "name": "Sam",
+                }
+            ],
+            "guides": [
+                {
+                    "id": "guide-1",
+                    "name": "Kai",
+                }
+            ],
             "licenses": [
                 {
                     "id": "license-1",
@@ -141,6 +182,14 @@ def server_fixture(monkeypatch):
             "updated_at": "2026-03-24T00:00:00+00:00",
         }
 
+    def fake_list_device_states(_conn, user_id: str):
+        assert user_id == "user-1"
+        return [
+            dict(state)
+            for (entry_user_id, _vendor, _product), state in store["device_state"].items()
+            if entry_user_id == user_id
+        ]
+
     def fake_list_dives(_conn, user_id: str, include_samples: bool, include_raw_data: bool, limit: int, offset: int):
         assert user_id == "user-1"
         dives = [dict(item) for item in store["dives"]]
@@ -161,6 +210,17 @@ def server_fixture(monkeypatch):
                     payload["raw_data_b64"] = base64.b64encode(b"abc").decode("ascii")
                 return payload
         return None
+
+    def fake_list_all_dives(_conn, user_id: str, include_samples: bool, include_raw_data: bool):
+        dives, _ = fake_list_dives(
+            _conn,
+            user_id,
+            include_samples=include_samples,
+            include_raw_data=include_raw_data,
+            limit=10000,
+            offset=0,
+        )
+        return dives
 
     def fake_insert_dive_record(_conn, user_id: str, payload: dict):
         assert user_id == "user-1"
@@ -224,6 +284,12 @@ def server_fixture(monkeypatch):
         for key in ("name", "email"):
             if key in (payload or {}):
                 next_profile[key] = payload[key]
+        if isinstance((payload or {}).get("dive_sites"), list):
+            next_profile["dive_sites"] = payload["dive_sites"]
+        if isinstance((payload or {}).get("buddies"), list):
+            next_profile["buddies"] = payload["buddies"]
+        if isinstance((payload or {}).get("guides"), list):
+            next_profile["guides"] = payload["guides"]
         if isinstance((payload or {}).get("licenses"), list):
             next_profile["licenses"] = payload["licenses"]
         next_profile["updated_at"] = "2026-03-29T10:05:00+00:00"
@@ -270,7 +336,9 @@ def server_fixture(monkeypatch):
     monkeypatch.setattr(dive_backend, "open_db", fake_open_db)
     monkeypatch.setattr(dive_backend, "get_device_state", fake_get_device_state)
     monkeypatch.setattr(dive_backend, "save_device_state", fake_save_device_state)
+    monkeypatch.setattr(dive_backend, "list_device_states", fake_list_device_states)
     monkeypatch.setattr(dive_backend, "list_dives", fake_list_dives)
+    monkeypatch.setattr(dive_backend, "list_all_dives", fake_list_all_dives)
     monkeypatch.setattr(dive_backend, "get_dive", fake_get_dive)
     monkeypatch.setattr(dive_backend, "insert_dive_record", fake_insert_dive_record)
     monkeypatch.setattr(dive_backend, "get_dive_id_by_uid", fake_get_dive_id_by_uid)
@@ -293,6 +361,7 @@ def server_fixture(monkeypatch):
         server.cors_origin = "http://localhost:5173"
         server.frontend_dir = frontend_dir
         server.cli_auth_manager = FakeCliAuthManager()
+        server.nominatim_client = FakeNominatimClient()
 
         thread = threading.Thread(target=server.serve_forever, daemon=True)
         thread.start()
@@ -388,11 +457,30 @@ def test_authenticated_get_endpoints(server_fixture):
 
     profile = request(server, "GET", "/api/profile", token="session")
     assert profile.status == 200
+    assert profile.json()["dive_sites"][0]["name"] == "Blue Hole"
+    assert profile.json()["dive_sites"][0]["location"] == "Blue Hole, Dahab, Egypt"
+    assert profile.json()["buddies"][0]["name"] == "Sam"
+    assert profile.json()["guides"][0]["name"] == "Kai"
     assert profile.json()["licenses"][0]["certification_name"] == "Master Scuba Diver"
     assert profile.json()["licenses"][0]["pdf"] is None
 
     missing_profile_license = request(server, "GET", "/api/profile/licenses/license-1/pdf", token="session")
     assert missing_profile_license.status == 404
+
+    geocode = request(server, "GET", "/api/geocode/search?q=Blue%20Hole", token="session")
+    assert geocode.status == 200
+    assert geocode.json()["found"] is True
+    assert geocode.json()["result"]["latitude"] == 25.3104
+
+    geocode_missing_query = request(server, "GET", "/api/geocode/search", token="session")
+    assert geocode_missing_query.status == 400
+
+    geocode_not_found = request(server, "GET", "/api/geocode/search?q=missing%20place", token="session")
+    assert geocode_not_found.status == 200
+    assert geocode_not_found.json()["found"] is False
+
+    geocode_upstream_error = request(server, "GET", "/api/geocode/search?q=service%20down", token="session")
+    assert geocode_upstream_error.status == 503
 
     unknown_cli_request = request(server, "GET", "/api/cli-auth/request?code=NOPE")
     assert unknown_cli_request.status == 404
@@ -505,6 +593,42 @@ def test_post_and_put_endpoints(server_fixture):
         "/api/profile",
         token="session",
         payload={
+            "dive_sites": [
+                {
+                    "id": "site-1",
+                    "name": "Blue Hole",
+                    "location": "Blue Hole, Dahab, Egypt",
+                    "latitude": 25.3104,
+                    "longitude": -80.2961,
+                },
+                {
+                    "id": "site-2",
+                    "name": "House Reef",
+                    "location": "House Reef, Marsa Alam, Egypt",
+                    "latitude": 24.4672,
+                    "longitude": 54.3501,
+                }
+            ],
+            "buddies": [
+                {
+                    "id": "buddy-1",
+                    "name": "Sam",
+                },
+                {
+                    "id": "buddy-2",
+                    "name": "Kai",
+                }
+            ],
+            "guides": [
+                {
+                    "id": "guide-1",
+                    "name": "Kai",
+                },
+                {
+                    "id": "guide-2",
+                    "name": "Mira",
+                }
+            ],
             "licenses": [
                 {
                     "id": "license-1",
@@ -526,6 +650,13 @@ def test_post_and_put_endpoints(server_fixture):
         },
     )
     assert update_profile.status == 200
+    assert len(update_profile.json()["dive_sites"]) == 2
+    assert update_profile.json()["dive_sites"][1]["name"] == "House Reef"
+    assert update_profile.json()["dive_sites"][1]["location"] == "House Reef, Marsa Alam, Egypt"
+    assert len(update_profile.json()["buddies"]) == 2
+    assert update_profile.json()["buddies"][1]["name"] == "Kai"
+    assert len(update_profile.json()["guides"]) == 2
+    assert update_profile.json()["guides"][1]["name"] == "Mira"
     assert len(update_profile.json()["licenses"]) == 2
     assert update_profile.json()["licenses"][0]["company"] == "SSI"
     assert update_profile.json()["licenses"][1]["company"] == "TDI"
@@ -560,6 +691,133 @@ def test_post_and_put_endpoints(server_fixture):
 
     put_not_found = request(server, "PUT", "/api/nope", token="session", payload={})
     assert put_not_found.status == 404
+
+
+def test_export_and_backup_endpoints(server_fixture):
+    server = server_fixture
+
+    csv_export = request(server, "GET", "/api/exports/dives.csv", token="session")
+    assert csv_export.status == 200
+    assert csv_export.headers["Content-Type"] == "text/csv; charset=utf-8"
+    assert "attachment;" in csv_export.headers["Content-Disposition"]
+    assert "dive_uid" in csv_export.body.decode("utf-8")
+    assert "uid-1" in csv_export.body.decode("utf-8")
+
+    pdf_export = request(server, "GET", "/api/exports/dives.pdf", token="session")
+    assert pdf_export.status == 200
+    assert pdf_export.headers["Content-Type"] == "application/pdf"
+    assert pdf_export.body.startswith(b"%PDF-")
+
+    backup_export = request(server, "GET", "/api/backup/export", token="session")
+    assert backup_export.status == 200
+    assert backup_export.headers["Content-Type"] == "application/json; charset=utf-8"
+    backup_payload = backup_export.json()
+    assert backup_payload["version"] == 1
+    assert len(backup_payload["dives"]) == 1
+    assert backup_payload["profile"]["dive_sites"][0]["name"] == "Blue Hole"
+    assert backup_payload["license_documents"] == []
+
+    invalid_import = request(server, "POST", "/api/backup/import", token="session", payload={"version": 999})
+    assert invalid_import.status == 400
+
+    imported_backup = request(
+        server,
+        "POST",
+        "/api/backup/import",
+        token="session",
+        payload={
+            "version": 1,
+            "profile": {
+                "name": "Elias Thorne",
+                "email": "diver@example.com",
+                "licenses": [
+                    {
+                        "id": "license-1",
+                        "company": "PADI",
+                        "certification_name": "Advanced Open Water",
+                        "student_number": "AOW-55",
+                        "certification_date": "2025-06-01",
+                        "instructor_number": "PADI-7788",
+                    }
+                ],
+                "dive_sites": [
+                    {
+                        "id": "site-1",
+                        "name": "Blue Hole",
+                        "location": "Blue Hole, Dahab, Egypt",
+                        "latitude": 25.3104,
+                        "longitude": -80.2961,
+                    },
+                    {
+                        "id": "site-2",
+                        "name": "Elphinstone",
+                        "location": "Elphinstone Reef, Egypt",
+                        "latitude": 24.9103,
+                        "longitude": 35.8552,
+                    }
+                ],
+                "buddies": [{"id": "buddy-1", "name": "Sam"}],
+                "guides": [{"id": "guide-1", "name": "Kai"}],
+            },
+            "license_documents": [
+                {
+                    "license_id": "license-1",
+                    "filename": "license.pdf",
+                    "content_type": "application/pdf",
+                    "data_b64": base64.b64encode(b"%PDF-1.7\nbackup").decode("ascii"),
+                }
+            ],
+            "device_states": [
+                {
+                    "vendor": "Mares",
+                    "product": "Smart Air",
+                    "fingerprint_hex": "ff00aa",
+                }
+            ],
+            "dives": [
+                {
+                    "vendor": "Mares",
+                    "product": "Smart Air",
+                    "fingerprint_hex": "ff00aa",
+                    "dive_uid": "uid-backup-1",
+                    "started_at": "2026-03-25T08:00:00+00:00",
+                    "duration_seconds": 3200,
+                    "max_depth_m": 28.4,
+                    "avg_depth_m": 14.1,
+                    "fields": {
+                        "logbook": {
+                            "site": "Elphinstone",
+                            "buddy": "Sam",
+                            "guide": "Kai",
+                            "notes": "Backup import dive",
+                            "status": "complete",
+                        }
+                    },
+                    "raw_sha256": "sha-backup-1",
+                    "raw_data_b64": base64.b64encode(b"backup-raw").decode("ascii"),
+                    "samples": [{"time_seconds": 0, "depth_m": 0.0}],
+                    "imported_at": "2026-03-25T10:00:00+00:00",
+                }
+            ],
+        },
+    )
+    assert imported_backup.status == 200
+    assert imported_backup.json()["summary"]["dives_inserted"] == 1
+    assert imported_backup.json()["summary"]["device_states_imported"] == 1
+    assert imported_backup.json()["summary"]["license_documents_imported"] == 1
+    assert imported_backup.json()["profile"]["dive_sites"][1]["name"] == "Elphinstone"
+
+    dives_after_import = request(server, "GET", "/api/dives?include_samples=1", token="session")
+    assert dives_after_import.status == 200
+    assert dives_after_import.json()["total"] == 2
+
+    device_state_after_import = request(server, "GET", "/api/device-state?vendor=Mares&product=Smart%20Air", token="session")
+    assert device_state_after_import.status == 200
+    assert device_state_after_import.json()["fingerprint_hex"] == "ff00aa"
+
+    license_after_import = request(server, "GET", "/api/profile/licenses/license-1/pdf", token="session")
+    assert license_after_import.status == 200
+    assert license_after_import.body.startswith(b"%PDF-")
 
 
 def test_delete_endpoints(server_fixture):
@@ -599,9 +857,14 @@ def test_route_manifest_requires_test_updates_for_new_endpoints():
         "/config.js",
         "/api/device-state",
         "/api/profile",
+        "/api/exports/dives.csv",
+        "/api/exports/dives.pdf",
+        "/api/backup/export",
+        "/api/geocode/search",
         "/api/auth/me",
         "/api/cli-auth/request",
         "/api/dives",
+        "/api/backup/import",
         "/api/cli-auth/approve",
         "regex:/api/dives/(\\d+)",
         "regex:/api/dives/(\\d+)/logbook",

@@ -1,8 +1,114 @@
-import { dayOfMonth, monthShort, formatDate, diveTitle, diveSubtitle, formatDepth, formatDepthNumber, formatDateTime, durationShort, formatTemperature, surfaceTemperature, profileBars, diveModeLabel, pressureUsedLabel, decoStatusLabel, formatAccumulatedDuration, formatBarTotal, filledIconStyle, numberOrZero, oxygenToxicityPercent } from "../core.js";
+import L from "leaflet";
+import { dayOfMonth, monthShort, formatDate, diveTitle, diveSubtitle, formatDepth, formatDepthNumber, formatDateTime, durationShort, formatTemperature, surfaceTemperature, profileBars, diveModeLabel, pressureUsedLabel, decoStatusLabel, formatAccumulatedDuration, formatBarTotal, filledIconStyle, numberOrZero, oxygenToxicityPercent, parseDate } from "../core.js";
+
+function numericCoordinate(value) {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string") {
+    const parsed = Number.parseFloat(value.trim());
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
+function validCoordinates(lat, lon) {
+  return typeof lat === "number"
+    && Number.isFinite(lat)
+    && lat >= -90
+    && lat <= 90
+    && typeof lon === "number"
+    && Number.isFinite(lon)
+    && lon >= -180
+    && lon <= 180;
+}
+
+function extractCoordinates(source) {
+  if (!source || typeof source !== "object") return null;
+  const lat = numericCoordinate(source.lat ?? source.latitude);
+  const lon = numericCoordinate(source.lon ?? source.lng ?? source.long ?? source.longitude);
+  return validCoordinates(lat, lon) ? { lat, lon } : null;
+}
+
+function diveCoordinates(dive) {
+  const candidates = [
+    dive?.fields?.location,
+    dive?.fields?.gps,
+    dive?.fields?.position,
+    dive?.fields?.coordinates,
+    dive?.location,
+    dive?.gps
+  ];
+  return candidates.map(extractCoordinates).find(Boolean) || null;
+}
+
+function markerDiameter(count) {
+  return 14 + Math.min(count - 1, 6) * 4;
+}
+
+function coordinateLabel(value, positive, negative) {
+  const direction = value >= 0 ? positive : negative;
+  return `${Math.abs(value).toFixed(2)}${direction}`;
+}
+
+function normalizeSiteName(value) {
+  return typeof value === "string" ? value.trim().toLowerCase() : "";
+}
+
+function savedSiteCoordinates(dive, diveSites) {
+  const siteName = normalizeSiteName(dive?.fields?.logbook?.site);
+  if (!siteName || !Array.isArray(diveSites)) return null;
+
+  const matchingSite = diveSites.find((site) => normalizeSiteName(site?.name) === siteName);
+  if (!matchingSite) return null;
+
+  return extractCoordinates({
+    lat: matchingSite.latitude ?? matchingSite.lat,
+    lon: matchingSite.longitude ?? matchingSite.lon
+  });
+}
+
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll("\"", "&quot;")
+    .replaceAll("'", "&#39;");
+}
 
 export default {
   name: "DashboardView",
-  props: ["dives", "stats", "setView", "backendHealthy", "openDive", "currentUserName", "importedDiveCount", "openImportQueue"],
+  props: ["dives", "allDives", "diveSites", "stats", "setView", "backendHealthy", "openDive", "currentUserName", "importedDiveCount", "openImportQueue"],
+  data() {
+    return {
+      diveMap: null,
+      diveTileLayer: null,
+      diveMarkerLayer: null
+    };
+  },
+  mounted() {
+    this.$nextTick(() => {
+      this.initializeDiveMap();
+      this.syncDiveMap();
+    });
+    window.addEventListener("resize", this.handleMapResize);
+  },
+  beforeUnmount() {
+    window.removeEventListener("resize", this.handleMapResize);
+    if (this.diveMap) {
+      this.diveMap.remove();
+      this.diveMap = null;
+      this.diveTileLayer = null;
+      this.diveMarkerLayer = null;
+    }
+  },
+  watch: {
+    diveMapMarkers: {
+      handler() {
+        this.$nextTick(() => this.syncDiveMap());
+      },
+      deep: true
+    }
+  },
   methods: {
     dayOfMonth,
     monthShort,
@@ -20,11 +126,119 @@ export default {
     pressureUsedLabel,
     decoStatusLabel,
     formatAccumulatedDuration,
-    formatBarTotal
+    formatBarTotal,
+    coordinateLabel,
+    handleMapResize() {
+      if (!this.diveMap) return;
+      this.diveMap.invalidateSize(false);
+    },
+    initializeDiveMap() {
+      if (this.diveMap || !this.$refs.diveMapCanvas) return;
+
+      const map = L.map(this.$refs.diveMapCanvas, {
+        zoomControl: false,
+        attributionControl: false,
+        scrollWheelZoom: false,
+        zoomSnap: 0.25,
+        zoomDelta: 0.5,
+        minZoom: 1.5,
+        maxZoom: 12,
+        worldCopyJump: true
+      });
+
+      L.control.zoom({ position: "bottomright" }).addTo(map);
+      L.control.attribution({ position: "bottomleft", prefix: false }).addTo(map);
+
+      this.diveTileLayer = L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        maxZoom: 19,
+        className: "dive-theme-map-tiles",
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a> contributors'
+      }).addTo(map);
+      this.diveMarkerLayer = L.layerGroup().addTo(map);
+      this.diveMap = map;
+    },
+    diveMarkerIcon(marker) {
+      const size = markerDiameter(marker.count) + 10;
+      const countLabel = marker.count > 1
+        ? `<span class="dive-map-marker-count">${marker.count}</span>`
+        : '<span class="dive-map-marker-ping"></span>';
+
+      return L.divIcon({
+        className: "dive-map-marker-shell",
+        iconSize: [size, size],
+        iconAnchor: [size / 2, size / 2],
+        popupAnchor: [0, -Math.round(size / 2)],
+        html: `
+          <span class="dive-map-marker-ring" style="width:${size}px;height:${size}px;">
+            <span class="dive-map-marker-core">${countLabel}</span>
+          </span>
+        `
+      });
+    },
+    diveMarkerPopup(marker) {
+      const diveLabel = marker.count === 1 ? "1 dive" : `${marker.count} dives`;
+      return `
+        <div class="dive-map-popup-card">
+          <p class="dive-map-popup-eyebrow">Logged Location</p>
+          <h5 class="dive-map-popup-title">${escapeHtml(marker.label)}</h5>
+          <p class="dive-map-popup-meta">${escapeHtml(diveLabel)} | ${escapeHtml(this.coordinateLabel(marker.latitude, "N", "S"))} / ${escapeHtml(this.coordinateLabel(marker.longitude, "E", "W"))}</p>
+        </div>
+      `;
+    },
+    syncDiveMap() {
+      if (!this.$refs.diveMapCanvas) return;
+      this.initializeDiveMap();
+      if (!this.diveMap || !this.diveMarkerLayer) return;
+
+      this.diveMarkerLayer.clearLayers();
+
+      if (!this.diveMapMarkers.length) {
+        this.diveMap.setView([18, 8], 1.75);
+        this.handleMapResize();
+        return;
+      }
+
+      const bounds = [];
+      this.diveMapMarkers.forEach((marker) => {
+        const position = L.latLng(marker.latitude, marker.longitude);
+        bounds.push(position);
+
+        const leafletMarker = L.marker(position, {
+          icon: this.diveMarkerIcon(marker),
+          title: `${marker.label} | ${marker.count} dive${marker.count === 1 ? "" : "s"}`
+        });
+        leafletMarker.bindPopup(this.diveMarkerPopup(marker), {
+          className: "dive-map-popup",
+          closeButton: false,
+          autoPanPadding: [24, 24],
+          offset: [0, -8]
+        });
+        leafletMarker.on("click", () => {
+          leafletMarker.openPopup();
+          this.openDive(marker.representativeId);
+        });
+        leafletMarker.addTo(this.diveMarkerLayer);
+      });
+
+      if (bounds.length === 1) {
+        this.diveMap.setView(bounds[0], 4.25);
+      } else {
+        this.diveMap.fitBounds(L.latLngBounds(bounds), {
+          paddingTopLeft: [36, 72],
+          paddingBottomRight: [36, 112],
+          maxZoom: 5.5
+        });
+      }
+
+      this.handleMapResize();
+    }
   },
   computed: {
     recentDives() {
       return this.dives.slice(0, 5);
+    },
+    mapSourceDives() {
+      return Array.isArray(this.allDives) && this.allDives.length ? this.allDives : this.dives;
     },
     featuredDive() {
       return this.recentDives[0] || null;
@@ -57,6 +271,73 @@ export default {
     importedDiveLabel() {
       const count = Number(this.importedDiveCount || 0);
       return `${count} imported ${count === 1 ? "dive" : "dives"} awaiting completion`;
+    },
+    diveMapMarkers() {
+      const markers = new Map();
+
+      this.mapSourceDives.forEach((dive) => {
+        const coordinates = diveCoordinates(dive) || savedSiteCoordinates(dive, this.diveSites);
+        if (!coordinates) return;
+
+        const key = `${coordinates.lat.toFixed(2)}:${coordinates.lon.toFixed(2)}`;
+        const existing = markers.get(key);
+        const diveDate = parseDate(dive?.started_at);
+        const siteLabel = dive?.fields?.logbook?.site?.trim() || diveTitle(dive);
+
+        if (existing) {
+          existing.count += 1;
+          if (diveDate && (!existing.latestDiveDate || diveDate > existing.latestDiveDate)) {
+            existing.latestDiveDate = diveDate;
+            existing.representativeId = dive.id;
+            existing.label = siteLabel;
+          }
+          return;
+        }
+
+        markers.set(key, {
+          key,
+          count: 1,
+          label: siteLabel,
+          representativeId: dive.id,
+          latestDiveDate: diveDate,
+          latitude: coordinates.lat,
+          longitude: coordinates.lon
+        });
+      });
+
+      return Array.from(markers.values()).sort((left, right) => {
+        if (right.count !== left.count) return right.count - left.count;
+        return (right.latestDiveDate?.getTime() || 0) - (left.latestDiveDate?.getTime() || 0);
+      });
+    },
+    hasDiveMapMarkers() {
+      return this.diveMapMarkers.length > 0;
+    },
+    mappedDiveCount() {
+      return this.diveMapMarkers.reduce((sum, marker) => sum + marker.count, 0);
+    },
+    mappedSiteCount() {
+      return this.diveMapMarkers.length;
+    },
+    unmappedDiveCount() {
+      return Math.max(this.mapSourceDives.length - this.mappedDiveCount, 0);
+    },
+    mapCoverageLabel() {
+      if (!this.mapSourceDives.length) return "No dives loaded";
+      if (!this.hasDiveMapMarkers) return "No coordinates found in imported logs";
+      if (!this.unmappedDiveCount) return "Geotag coverage complete";
+      return `${this.unmappedDiveCount} ${this.unmappedDiveCount === 1 ? "dive is" : "dives are"} missing coordinates`;
+    },
+    mapTopSites() {
+      return this.diveMapMarkers.slice(0, 4);
+    },
+    mapFooterNote() {
+      if (!this.hasDiveMapMarkers) return "Import coordinates into the dive payload or saved dive sites to populate the live map.";
+      return "Searchable dive metadata now drives a live charted map. Select a marker to open the most recent dive from that location.";
+    },
+    mapTelemetryLabel() {
+      if (!this.hasDiveMapMarkers) return "Awaiting usable GPS telemetry";
+      return `${this.mappedDiveCount} ${this.mappedDiveCount === 1 ? "dive" : "dives"} plotted across ${this.mappedSiteCount} ${this.mappedSiteCount === 1 ? "site" : "sites"}`;
     }
   },
   template: `
@@ -226,17 +507,35 @@ export default {
         <section class="space-y-6">
           <div class="space-y-6">
             <div class="relative h-[400px] overflow-hidden bg-surface-container-low">
-              <div class="absolute inset-0 opacity-25 mix-blend-screen bg-[radial-gradient(circle_at_30%_40%,rgba(156,202,255,0.3),transparent_18rem),radial-gradient(circle_at_70%_60%,rgba(255,183,125,0.15),transparent_16rem),linear-gradient(180deg,#062135,#001525)]"></div>
-              <div class="absolute inset-0 bg-gradient-to-t from-surface-dim via-transparent to-transparent"></div>
-              <div class="absolute left-6 top-6 z-10">
-                <h4 class="font-headline text-xl font-bold tracking-tight">DIVE ACTIVITY: <span class="text-primary">EPSILON-9</span></h4>
-                <p class="font-label text-[10px] font-bold uppercase tracking-[0.24em] text-secondary">Telemetry coverage from imported dive logs</p>
+              <div ref="diveMapCanvas" class="dive-theme-map absolute inset-0"></div>
+              <div class="pointer-events-none absolute inset-0 opacity-25 mix-blend-screen bg-[radial-gradient(circle_at_24%_32%,rgba(156,202,255,0.24),transparent_16rem),radial-gradient(circle_at_78%_68%,rgba(255,183,125,0.16),transparent_14rem),linear-gradient(180deg,#07253a,#00111e)]"></div>
+              <div class="pointer-events-none absolute inset-0 bg-gradient-to-t from-surface-dim/85 via-transparent to-transparent"></div>
+              <div class="pointer-events-none absolute inset-y-0 left-0 w-56 bg-[linear-gradient(90deg,rgba(0,15,29,0.34),transparent)]"></div>
+              <div class="absolute left-6 top-6 z-[500]">
+                <h4 class="font-headline text-xl font-bold tracking-tight">DIVE MAP: <span class="text-primary">GLOBAL LOGBOOK</span></h4>
+                <p class="font-label text-[10px] font-bold uppercase tracking-[0.24em] text-secondary">{{ mapTelemetryLabel }}</p>
               </div>
-              <div class="absolute left-[30%] top-[40%] h-3 w-3 rounded-full bg-primary shadow-[0_0_16px_rgba(156,202,255,0.9)]"></div>
-              <div class="absolute left-[68%] top-[62%] h-3 w-3 rounded-full bg-tertiary shadow-[0_0_16px_rgba(255,183,125,0.75)]"></div>
-              <div class="absolute bottom-6 right-6 z-10 flex gap-2">
-                <button class="bg-surface-container-high/80 p-2 text-secondary transition-colors hover:text-primary"><span class="material-symbols-outlined">zoom_in</span></button>
-                <button class="bg-surface-container-high/80 p-2 text-secondary transition-colors hover:text-primary"><span class="material-symbols-outlined">zoom_out</span></button>
+              <div class="absolute bottom-6 left-6 right-6 z-[500] flex items-end justify-between gap-6">
+                <div class="max-w-2xl space-y-3">
+                  <div class="flex flex-wrap gap-2">
+                    <span class="bg-background/40 px-3 py-2 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-primary">{{ mappedDiveCount }} mapped dives</span>
+                    <span class="bg-background/40 px-3 py-2 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-tertiary">{{ mappedSiteCount }} unique sites</span>
+                    <span class="bg-background/40 px-3 py-2 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">{{ mapCoverageLabel }}</span>
+                  </div>
+                  <p class="max-w-xl text-sm leading-6 text-on-surface-variant">{{ mapFooterNote }}</p>
+                </div>
+                <div v-if="mapTopSites.length" class="hidden min-w-[18rem] bg-background/35 p-4 lg:block">
+                  <p class="font-label text-[10px] font-bold uppercase tracking-[0.22em] text-primary">Top Locations</p>
+                  <div class="mt-3 space-y-2">
+                    <div v-for="site in mapTopSites" :key="'site-' + site.key" class="flex items-center justify-between gap-4 text-sm">
+                      <div class="min-w-0">
+                        <p class="truncate font-semibold text-on-surface">{{ site.label }}</p>
+                        <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">{{ coordinateLabel(site.latitude, 'N', 'S') }} / {{ coordinateLabel(site.longitude, 'E', 'W') }}</p>
+                      </div>
+                      <span class="font-headline text-lg font-bold text-tertiary">{{ site.count }}</span>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
             <div class="bg-surface-container-low p-6">
@@ -279,3 +578,4 @@ export default {
     </section>
   `
 };
+
