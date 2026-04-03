@@ -315,6 +315,8 @@ class NominatimClient:
             "q": query,
             "format": "jsonv2",
             "limit": "1",
+            "addressdetails": "1",
+            "accept-language": "en",
         }
         if self.email:
             params["email"] = self.email
@@ -325,6 +327,7 @@ class NominatimClient:
             headers={
                 "User-Agent": self.user_agent,
                 "Accept": "application/json",
+                "Accept-Language": "en",
             },
             method="GET",
         )
@@ -342,6 +345,7 @@ class NominatimClient:
             return {"query": query, "found": False, "result": None}
 
         first_result = payload[0] if isinstance(payload[0], dict) else {}
+        address = first_result.get("address") if isinstance(first_result.get("address"), dict) else {}
         try:
             latitude = float(first_result.get("lat"))
             longitude = float(first_result.get("lon"))
@@ -353,6 +357,7 @@ class NominatimClient:
             "found": True,
             "result": {
                 "name": first_result.get("display_name") or query,
+                "country": address.get("country") if isinstance(address.get("country"), str) else "",
                 "latitude": latitude,
                 "longitude": longitude,
             },
@@ -538,6 +543,24 @@ def wait_for_database(
         f"Database is unreachable after {retries} attempt(s): {last_error}. "
         f"Check that PostgreSQL is running and DATABASE_URL points to {redacted_database_url}."
     )
+
+
+def run_startup_database_migrations(database_url: str) -> None:
+    redacted_database_url = redact_database_url(database_url)
+    started_at = time.perf_counter()
+    LOGGER.info("Running database migrations database_url=%s", redacted_database_url)
+    conn = None
+    try:
+        conn = open_db(database_url)
+    except Exception:
+        LOGGER.exception("Database migrations failed database_url=%s", redacted_database_url)
+        raise
+    finally:
+        if conn is not None:
+            conn.close()
+
+    elapsed_ms = int((time.perf_counter() - started_at) * 1000)
+    LOGGER.info("Database migrations completed database_url=%s elapsed_ms=%d", redacted_database_url, elapsed_ms)
 
 
 BACKUP_EXPORT_VERSION = 1
@@ -1064,6 +1087,17 @@ class DiveBackendHandler(BaseHTTPRequestHandler):
         LOGGER.info("GET %s query=%s", path, dict(query))
 
         if path in {"/health", "/api/health"}:
+            database_ready = bool(getattr(self.server, "database_ready", False))
+            database_ready_error = getattr(self.server, "database_ready_error", "")
+            if not database_ready:
+                payload = {
+                    "status": "starting",
+                    "database": "migrating",
+                }
+                if database_ready_error:
+                    payload["error"] = database_ready_error
+                self._send_json(503, payload)
+                return
             self._send_json(200, {"status": "ok"})
             return
 
@@ -1821,9 +1855,12 @@ def main() -> None:
         retry_delay_seconds=args.db_startup_retry_delay_seconds,
         connect_timeout_seconds=args.db_connect_timeout_seconds,
     )
+    run_startup_database_migrations(args.database_url)
 
     server = ThreadingHTTPServer((args.host, args.port), DiveBackendHandler)
     server.database_url = args.database_url
+    server.database_ready = True
+    server.database_ready_error = ""
     server.cli_auth_manager = CliSyncTokenManager(
         request_ttl_seconds=args.cli_auth_request_ttl,
         token_ttl_seconds=args.cli_auth_token_ttl,
@@ -1846,8 +1883,6 @@ def main() -> None:
         args.cors_origin,
         server.frontend_dir,
     )
-    print(f"Serving dive backend on http://{args.host}:{args.port}")
-    print(f"Database URL: {redact_database_url(args.database_url)}")
     try:
         server.serve_forever()
     except KeyboardInterrupt:

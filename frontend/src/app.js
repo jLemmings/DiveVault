@@ -1,4 +1,4 @@
-import { UserButton, useAuth, useUser } from "@clerk/vue";
+import { useAuth, useUser } from "@clerk/vue";
 import { filledIconStyle, importDraftSeed, isImportComplete, effectiveImportDraft, missingImportFields, paddedDiveIndex, isCommittedDive } from "./core.js";
 import DashboardView from "./components/dashboard.js";
 import DiveDetailView from "./components/dive-detail.js";
@@ -8,7 +8,10 @@ import EquipmentView from "./components/equipment.js";
 import LogbookEditorView from "./components/logbook-edit.js";
 import LoginView from "./components/login.js";
 import LogsView from "./components/logs.js";
-import SettingsView from "./components/settings.js";
+import SettingsView, { SETTINGS_SECTIONS } from "./components/settings.js";
+
+const DEFAULT_SETTINGS_SECTION = SETTINGS_SECTIONS[0]?.id || "diver-details";
+const SETTINGS_SECTION_IDS = new Set(SETTINGS_SECTIONS.map((section) => section.id));
 
 export default {
   name: "DiveVaultApp",
@@ -21,8 +24,7 @@ export default {
     LogbookEditorView,
     DiveDetailView,
     EquipmentView,
-    SettingsView,
-    UserButton
+    SettingsView
   },
   setup() {
     const { getToken, isLoaded, isSignedIn, sessionId, signOut } = useAuth();
@@ -72,6 +74,8 @@ export default {
       lastAuthenticatedSessionId: null,
       requestTimeoutMs: 15000,
       cliAuthCode: "",
+      activeSettingsSection: DEFAULT_SETTINGS_SECTION,
+      settingsMenuExpanded: false,
       filledIconStyle,
       navItems: [
         { id: "dashboard", label: "Dashboard", mobileLabel: "Dashboard", icon: "dashboard", mobileIcon: "dashboard", eyebrow: "Dive Overview", title: "Logbook" },
@@ -115,6 +119,16 @@ export default {
       const firstName = this.clerkUser?.firstName?.trim() || "";
       const lastName = this.clerkUser?.lastName?.trim() || "";
       return [firstName, lastName].filter(Boolean).join(" ") || this.currentUserEmail || "Diver";
+    },
+    currentUserInitials() {
+      const source = this.currentUserName || "Diver";
+      const initials = source
+        .split(/\s+/)
+        .filter(Boolean)
+        .slice(0, 2)
+        .map((part) => part.charAt(0).toUpperCase())
+        .join("");
+      return initials || "DV";
     },
     activeSection() {
       if (this.activeView === "edit" && this.selectedEditDive) {
@@ -170,9 +184,18 @@ export default {
     },
     importedDiveCount() {
       return this.dives.length - this.committedDives.length;
+    },
+    settingsSubnavItems() {
+      return SETTINGS_SECTIONS;
     }
   },
   methods: {
+    normalizeSettingsSection(sectionId) {
+      return SETTINGS_SECTION_IDS.has(sectionId) ? sectionId : DEFAULT_SETTINGS_SECTION;
+    },
+    settingsHash(sectionId = this.activeSettingsSection) {
+      return `settings/${this.normalizeSettingsSection(sectionId)}`;
+    },
     resetAuthenticatedState() {
       this.isAuthenticated = false;
       this.sessionEmail = "";
@@ -203,6 +226,8 @@ export default {
         averageMaxDepth: 0,
         bottomTimeProgress: 0
       };
+      this.activeSettingsSection = DEFAULT_SETTINGS_SECTION;
+      this.settingsMenuExpanded = false;
       this.lastAuthenticatedSessionId = null;
     },
     async syncAuthState() {
@@ -285,8 +310,29 @@ export default {
     setSearchText(value) {
       this.searchText = value;
     },
+    async signOutUser() {
+      if (typeof this.clerkSignOut !== "function") {
+        return;
+      }
+      await this.clerkSignOut({ redirectUrl: "/" });
+    },
     isDisabledNavItem(view) {
       return Boolean(this.navItems.find((item) => item.id === view)?.disabled);
+    },
+    async handleNavItemClick(view) {
+      if (this.isDisabledNavItem(view)) {
+        return;
+      }
+      if (view === "settings") {
+        if (this.activeView === "settings") {
+          this.settingsMenuExpanded = !this.settingsMenuExpanded;
+          return;
+        }
+        this.settingsMenuExpanded = true;
+      } else {
+        this.settingsMenuExpanded = false;
+      }
+      await this.setView(view);
     },
     async setView(view) {
       if (this.isDisabledNavItem(view)) {
@@ -299,10 +345,22 @@ export default {
       if (view !== "settings") this.cliAuthCode = "";
       this.importError = "";
       this.importStatusMessage = "";
-      window.location.hash = view;
+      window.location.hash = view === "settings" ? this.settingsHash() : view;
       if (this.isAuthenticated && ["dashboard", "logs", "imports", "edit"].includes(view)) {
         await this.fetchDives();
       }
+    },
+    setSettingsSection(sectionId) {
+      this.activeView = "settings";
+      this.activeSettingsSection = this.normalizeSettingsSection(sectionId);
+      this.settingsMenuExpanded = true;
+      this.selectedDiveId = null;
+      this.selectedImportId = null;
+      this.selectedEditDiveId = null;
+      this.cliAuthCode = "";
+      this.importError = "";
+      this.importStatusMessage = "";
+      window.location.hash = this.settingsHash(this.activeSettingsSection);
     },
     openDive(diveId) {
       this.activeView = "logs";
@@ -627,8 +685,8 @@ export default {
       if (!this.isAuthenticated) return;
       const hash = window.location.hash.replace("#", "");
       const [view, segment, value] = hash.split("/");
-      this.cliAuthCode = view === "settings" && segment === "cli-auth" ? decodeURIComponent(value || "") : "";
       if (view === "imports") {
+        this.cliAuthCode = "";
         this.activeView = "imports";
         this.selectedDiveId = null;
         this.selectedEditDiveId = null;
@@ -636,12 +694,29 @@ export default {
         return;
       }
       if (view === "edit") {
+        this.cliAuthCode = "";
         this.activeView = "edit";
         this.selectedDiveId = null;
         this.selectedImportId = null;
         this.selectedEditDiveId = segment || null;
         return;
       }
+      if (view === "settings") {
+        this.activeView = "settings";
+        this.settingsMenuExpanded = true;
+        this.selectedDiveId = null;
+        this.selectedImportId = null;
+        this.selectedEditDiveId = null;
+        if (segment === "cli-auth") {
+          this.cliAuthCode = decodeURIComponent(value || "");
+          this.activeSettingsSection = "data-management";
+        } else {
+          this.cliAuthCode = "";
+          this.activeSettingsSection = this.normalizeSettingsSection(segment);
+        }
+        return;
+      }
+      this.cliAuthCode = "";
       if (this.navItems.some((item) => item.id === view && !item.disabled)) {
         this.activeView = view;
         this.selectedDiveId = view === "logs" && segment ? segment : null;
@@ -720,20 +795,42 @@ export default {
     </div>
     <login-view v-else-if="!isAuthenticated"></login-view>
     <div v-else class="min-h-screen bg-background text-on-background">
-      <aside class="fixed inset-y-0 left-0 z-40 hidden w-20 flex-col bg-background shadow-[40px_0_40px_-20px_rgba(0,15,29,0.4)] md:flex md:w-64">
-        <div class="p-6">
-          <div class="flex h-14 w-14 items-center justify-center rounded-2xl border border-primary/20 bg-surface-container-high text-primary shadow-panel">
-            <span class="material-symbols-outlined text-3xl" :style="filledIconStyle">waves</span>
+      <aside class="fixed inset-y-0 left-0 z-40 hidden w-64 flex-col bg-background shadow-[40px_0_40px_-20px_rgba(0,15,29,0.4)] md:flex">
+        <div class="flex justify-center px-6 pb-4 pt-6">
+          <div class="flex h-28 w-28 items-center justify-center overflow-hidden rounded-3xl shadow-panel">
+            <img src="/logo.png" alt="DiveVault" class="h-full w-full object-cover" />
           </div>
         </div>
         <nav class="mt-8 flex-1 space-y-2">
-          <button v-for="item in navItems" :key="item.id" @click="setView(item.id)" :disabled="item.disabled" class="group flex w-full items-center gap-4 p-4 text-left transition-all duration-300 disabled:cursor-not-allowed disabled:opacity-100" :class="item.disabled ? 'border-l-4 border-tertiary bg-tertiary/12 text-tertiary' : (activeView === item.id ? 'border-r-4 border-primary bg-surface-container-high/70 text-primary' : 'text-secondary opacity-70 hover:bg-surface-container-high hover:text-primary hover:opacity-100')">
-            <span class="material-symbols-outlined transition-transform group-active:scale-90" :style="activeView === item.id && !item.disabled ? filledIconStyle : ''">{{ item.icon }}</span>
-            <span class="hidden items-center gap-2 font-label text-[10px] font-bold uppercase tracking-[0.2em] md:flex">
-              <span>{{ item.label }}</span>
-              <span v-if="item.badge" class="rounded bg-tertiary px-2 py-0.5 text-[9px] font-black tracking-[0.18em] text-background">{{ item.badge }}</span>
-            </span>
-          </button>
+          <div v-for="item in navItems" :key="item.id" class="space-y-2">
+            <button @click="handleNavItemClick(item.id)" :disabled="item.disabled" class="group flex w-full items-center gap-4 p-4 text-left transition-all duration-300 disabled:cursor-not-allowed disabled:opacity-100" :class="item.disabled ? 'border-l-4 border-tertiary bg-tertiary/12 text-tertiary' : (activeView === item.id ? 'border-r-4 border-primary bg-surface-container-high/70 text-primary' : 'text-secondary opacity-70 hover:bg-surface-container-high hover:text-primary hover:opacity-100')">
+              <span class="material-symbols-outlined transition-transform group-active:scale-90" :style="activeView === item.id && !item.disabled ? filledIconStyle : ''">{{ item.icon }}</span>
+              <span class="hidden items-center gap-2 font-label text-[10px] font-bold uppercase tracking-[0.2em] md:flex">
+                <span>{{ item.label }}</span>
+                <span v-if="item.badge" class="rounded bg-tertiary px-2 py-0.5 text-[9px] font-black tracking-[0.18em] text-background">{{ item.badge }}</span>
+              </span>
+              <span v-if="item.id === 'settings'" class="material-symbols-outlined ml-auto hidden text-base opacity-70 md:flex">
+                {{ activeView === 'settings' && settingsMenuExpanded ? 'keyboard_arrow_down' : 'keyboard_arrow_right' }}
+              </span>
+            </button>
+            <div
+              v-if="item.id === 'settings' && activeView === 'settings' && settingsMenuExpanded"
+              class="ml-14 mr-4 flex flex-col gap-1 border-l border-primary/10 pl-4"
+            >
+              <button
+                v-for="section in settingsSubnavItems"
+                :key="section.id"
+                @click="setSettingsSection(section.id)"
+                class="flex items-start gap-3 rounded-xl px-3 py-2 text-left transition-colors"
+                :class="activeSettingsSection === section.id ? 'bg-surface-container-high/80 text-primary' : 'text-secondary opacity-80 hover:bg-surface-container-high/60 hover:text-primary hover:opacity-100'"
+              >
+                <span class="material-symbols-outlined mt-0.5 text-[18px]" :style="activeSettingsSection === section.id ? filledIconStyle : ''">{{ section.icon }}</span>
+                <div class="min-w-0">
+                  <p class="font-label text-[9px] font-bold uppercase tracking-[0.18em]">{{ section.label }}</p>
+                </div>
+              </button>
+            </div>
+          </div>
         </nav>
         <div class="mt-auto p-6">
           <button @click="openImportQueue()" class="hidden w-full items-center justify-center gap-2 bg-primary px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-on-primary transition-all hover:brightness-110 md:flex">
@@ -745,14 +842,29 @@ export default {
       <header class="fixed left-0 right-0 top-0 z-30 h-16 border-b border-primary/10 bg-surface-container-high/95 backdrop-blur-xl md:left-64 md:bg-background/80">
         <div class="flex h-full items-center justify-between px-6 md:hidden">
           <div class="flex items-center gap-3">
-            <span class="material-symbols-outlined text-primary">waves</span>
+            <div class="flex h-14 w-14 items-center justify-center overflow-hidden rounded-2xl shadow-panel">
+              <img src="/logo.png" alt="DiveVault" class="h-full w-full object-cover" />
+            </div>
             <h2 class="font-headline text-lg font-bold uppercase tracking-[0.14em] text-primary">DiveVault</h2>
           </div>
-          <user-button after-sign-out-url="/"></user-button>
+          <button @click="signOutUser" class="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-primary/15 bg-surface-container-high text-[11px] font-bold uppercase tracking-[0.12em] text-primary">
+            {{ currentUserInitials }}
+          </button>
         </div>
         <div class="hidden h-full items-center justify-between px-8 md:flex">
           <h2 class="font-headline text-2xl font-bold tracking-[0.08em] text-primary">DiveVault</h2>
-          <user-button after-sign-out-url="/"></user-button>
+          <div class="flex items-center gap-3 rounded-2xl border border-primary/10 bg-surface-container-high/70 px-3 py-2 text-on-surface">
+            <div class="flex h-10 w-10 items-center justify-center rounded-2xl bg-primary/12 text-[11px] font-bold uppercase tracking-[0.14em] text-primary">
+              {{ currentUserInitials }}
+            </div>
+            <div class="min-w-0">
+              <p class="max-w-[12rem] truncate text-sm font-semibold text-on-surface">{{ currentUserName }}</p>
+              <p class="max-w-[12rem] truncate text-xs text-secondary">{{ currentUserEmail }}</p>
+            </div>
+            <button @click="signOutUser" class="inline-flex items-center justify-center rounded-xl border border-primary/15 px-3 py-2 font-label text-[10px] font-bold uppercase tracking-[0.16em] text-primary transition-colors hover:bg-surface-container-high">
+              Sign Out
+            </button>
+          </div>
         </div>
       </header>
       <main class="pb-24 pt-20 md:ml-64">
@@ -773,7 +885,7 @@ export default {
           <logbook-editor-view v-else-if="activeView === 'edit' && selectedEditDive" :dive="selectedEditDive" :draft="selectedEditDraft" :dive-sites="profileDiveSites" :buddies="profileBuddies" :guides="profileGuides" :saving-import-id="savingImportId" :deleting-dive-id="deletingDiveId" :status-message="importStatusMessage" :error-message="importError" :update-dive-draft="updateImportDraft" :save-dive-logbook="saveExistingDiveLogbook" :delete-dive="deleteDive" :close-editor="closeDiveEditor"></logbook-editor-view>
           <dive-detail-view v-else-if="activeView === 'logs' && selectedDive" :dive="selectedDive" :deleting-dive-id="deletingDiveId" :close-detail="closeDiveDetail" :open-dive-editor="openDiveEditor" :delete-dive="deleteDive"></dive-detail-view>
           <equipment-view v-else-if="activeView === 'equipment'" :search-text="searchText"></equipment-view>
-          <settings-view v-else-if="activeView === 'settings'" :cli-auth-code="cliAuthCode" :profile-updated="handleProfileUpdated" :refresh-dives="fetchDives"></settings-view>
+          <settings-view v-else-if="activeView === 'settings'" :cli-auth-code="cliAuthCode" :active-section="activeSettingsSection" :set-active-section="setSettingsSection" :profile-updated="handleProfileUpdated" :refresh-dives="fetchDives"></settings-view>
         </div>
       </main>
       <nav class="fixed bottom-0 left-0 right-0 z-40 flex items-center justify-around border-t border-primary/10 bg-surface-container-low/80 px-4 pb-6 pt-3 backdrop-blur-xl md:hidden">

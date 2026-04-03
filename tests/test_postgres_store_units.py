@@ -239,6 +239,7 @@ def test_decode_user_profile_row_includes_license_metadata():
                     "id": "site-1",
                     "name": "Blue Hole",
                     "location": "Blue Hole, Dahab, Egypt",
+                    "country": "Egypt",
                     "latitude": 25.3104,
                     "longitude": -80.2961,
                 }
@@ -272,6 +273,7 @@ def test_decode_user_profile_row_includes_license_metadata():
     assert profile["email"] == "diver@example.com"
     assert profile["dive_sites"][0]["name"] == "Blue Hole"
     assert profile["dive_sites"][0]["location"] == "Blue Hole, Dahab, Egypt"
+    assert profile["dive_sites"][0]["country"] == "Egypt"
     assert profile["dive_sites"][0]["latitude"] == 25.3104
     assert profile["buddies"][0]["name"] == "Sam"
     assert profile["guides"][0]["name"] == "Kai"
