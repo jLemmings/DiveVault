@@ -91,6 +91,7 @@ class FakeNominatimClient:
             "found": True,
             "result": {
                 "name": f"{normalized}, Example Reef",
+                "country": "Egypt",
                 "latitude": 25.3104,
                 "longitude": -80.2961,
             },
@@ -132,6 +133,7 @@ def server_fixture(monkeypatch):
                     "id": "site-1",
                     "name": "Blue Hole",
                     "location": "Blue Hole, Dahab, Egypt",
+                    "country": "Egypt",
                     "latitude": 25.3104,
                     "longitude": -80.2961,
                 }
@@ -356,6 +358,8 @@ def server_fixture(monkeypatch):
 
         server = dive_backend.ThreadingHTTPServer(("127.0.0.1", 0), dive_backend.DiveBackendHandler)
         server.database_url = "postgresql://unused"
+        server.database_ready = True
+        server.database_ready_error = ""
         server.clerk_verifier = FakeVerifier()
         server.clerk_publishable_key = "pk_test_123"
         server.cors_origin = "http://localhost:5173"
@@ -459,6 +463,7 @@ def test_authenticated_get_endpoints(server_fixture):
     assert profile.status == 200
     assert profile.json()["dive_sites"][0]["name"] == "Blue Hole"
     assert profile.json()["dive_sites"][0]["location"] == "Blue Hole, Dahab, Egypt"
+    assert profile.json()["dive_sites"][0]["country"] == "Egypt"
     assert profile.json()["buddies"][0]["name"] == "Sam"
     assert profile.json()["guides"][0]["name"] == "Kai"
     assert profile.json()["licenses"][0]["certification_name"] == "Master Scuba Diver"
@@ -470,6 +475,7 @@ def test_authenticated_get_endpoints(server_fixture):
     geocode = request(server, "GET", "/api/geocode/search?q=Blue%20Hole", token="session")
     assert geocode.status == 200
     assert geocode.json()["found"] is True
+    assert geocode.json()["result"]["country"] == "Egypt"
     assert geocode.json()["result"]["latitude"] == 25.3104
 
     geocode_missing_query = request(server, "GET", "/api/geocode/search", token="session")
@@ -484,6 +490,20 @@ def test_authenticated_get_endpoints(server_fixture):
 
     unknown_cli_request = request(server, "GET", "/api/cli-auth/request?code=NOPE")
     assert unknown_cli_request.status == 404
+
+
+def test_health_reports_starting_until_database_ready(server_fixture):
+    server = server_fixture
+    server.database_ready = False
+    server.database_ready_error = "startup migrations still running"
+
+    health = request(server, "GET", "/health")
+    assert health.status == 503
+    assert health.json() == {
+        "status": "starting",
+        "database": "migrating",
+        "error": "startup migrations still running",
+    }
 
 
 def test_post_and_put_endpoints(server_fixture):
@@ -598,6 +618,7 @@ def test_post_and_put_endpoints(server_fixture):
                     "id": "site-1",
                     "name": "Blue Hole",
                     "location": "Blue Hole, Dahab, Egypt",
+                    "country": "Egypt",
                     "latitude": 25.3104,
                     "longitude": -80.2961,
                 },
@@ -605,6 +626,7 @@ def test_post_and_put_endpoints(server_fixture):
                     "id": "site-2",
                     "name": "House Reef",
                     "location": "House Reef, Marsa Alam, Egypt",
+                    "country": "Egypt",
                     "latitude": 24.4672,
                     "longitude": 54.3501,
                 }
@@ -653,6 +675,7 @@ def test_post_and_put_endpoints(server_fixture):
     assert len(update_profile.json()["dive_sites"]) == 2
     assert update_profile.json()["dive_sites"][1]["name"] == "House Reef"
     assert update_profile.json()["dive_sites"][1]["location"] == "House Reef, Marsa Alam, Egypt"
+    assert update_profile.json()["dive_sites"][1]["country"] == "Egypt"
     assert len(update_profile.json()["buddies"]) == 2
     assert update_profile.json()["buddies"][1]["name"] == "Kai"
     assert len(update_profile.json()["guides"]) == 2

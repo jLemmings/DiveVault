@@ -70,6 +70,7 @@ function emptyDiveSite() {
     id: createDiveSiteId(),
     name: "",
     location: "",
+    country: "",
     latitude: "",
     longitude: ""
   };
@@ -109,6 +110,7 @@ function normalizeDiveSites(diveSites) {
       id: site?.id || `site-${index + 1}`,
       name: typeof site?.name === "string" ? site.name : "",
       location: typeof site?.location === "string" ? site.location : "",
+      country: typeof site?.country === "string" ? site.country : "",
       latitude: site?.latitude ?? site?.lat ?? "",
       longitude: site?.longitude ?? site?.lon ?? ""
     }))
@@ -196,6 +198,7 @@ function editableDiveSitePayload(site) {
     id: site.id,
     name: site.name.trim(),
     location: site.location.trim(),
+    country: site.country.trim(),
     latitude: site.latitude === "" ? null : Number.parseFloat(site.latitude),
     longitude: site.longitude === "" ? null : Number.parseFloat(site.longitude)
   };
@@ -206,6 +209,7 @@ function comparableDiveSites(diveSites) {
     id: site.id,
     name: site.name.trim(),
     location: site.location.trim(),
+    country: site.country.trim(),
     latitude: site.latitude === "" ? "" : String(site.latitude).trim(),
     longitude: site.longitude === "" ? "" : String(site.longitude).trim()
   }));
@@ -239,7 +243,7 @@ function comparableGuides(guides) {
   }));
 }
 
-const SETTINGS_SECTIONS = [
+export const SETTINGS_SECTIONS = [
   { id: "diver-details", label: "Diver Details", icon: "badge", description: "Profile and certifications" },
   { id: "dive-sites", label: "Dive Sites", icon: "pin_drop", description: "Locations and GPS coordinates" },
   { id: "buddies", label: "Buddies", icon: "groups", description: "Saved dive partners" },
@@ -362,6 +366,14 @@ export default {
       type: String,
       default: ""
     },
+    activeSection: {
+      type: String,
+      default: () => SETTINGS_SECTIONS[0]?.id || "diver-details"
+    },
+    setActiveSection: {
+      type: Function,
+      default: null
+    },
     profileUpdated: {
       type: Function,
       default: null
@@ -412,9 +424,18 @@ export default {
       desktopSyncStatus: "",
       desktopSyncError: "",
       desktopSyncApproving: false,
-      activeSettingsSection: "diver-details",
+      profileStatusTimeoutId: null,
       pendingLicenseUploadId: null,
-      activeLicensePreview: null
+      activeLicensePreview: null,
+      pendingRemoval: null,
+      editingLicenseIds: [],
+      editingDiveSiteIds: [],
+      editingBuddyIds: [],
+      editingGuideIds: [],
+      expandedLicenseIds: [],
+      expandedDiveSiteIds: [],
+      expandedBuddyIds: [],
+      expandedGuideIds: []
     };
   },
   computed: {
@@ -431,12 +452,6 @@ export default {
       const lastName = this.clerkUser?.lastName?.trim() || "";
       return [firstName, lastName].filter(Boolean).join(" ") || this.currentUserEmail || "";
     },
-    displayName() {
-      return this.settingsProfile.name || this.currentUserName || "Diver";
-    },
-    displayEmail() {
-      return this.settingsProfile.email || this.currentUserEmail || "No email available";
-    },
     licenses() {
       return this.settingsProfile.licenses;
     },
@@ -449,8 +464,51 @@ export default {
     guides() {
       return this.settingsProfile.guides;
     },
+    visibleLicenses() {
+      return this.areLicensesEditing ? this.licenseDrafts : this.licenses;
+    },
+    visibleDiveSites() {
+      return this.areDiveSitesEditing ? this.diveSiteDrafts : this.diveSites;
+    },
+    visibleBuddies() {
+      return this.areBuddiesEditing ? this.buddyDrafts : this.buddies;
+    },
+    visibleGuides() {
+      return this.areGuidesEditing ? this.guideDrafts : this.guides;
+    },
+    isInteractionLocked() {
+      return this.profileLoading
+        || this.profileSaving
+        || this.licensesSaving
+        || this.diveSitesSaving
+        || this.buddiesSaving
+        || this.guidesSaving
+        || Boolean(this.licenseUploadingId);
+    },
+    hasUnsavedProfileChanges() {
+      return JSON.stringify({
+        name: (this.profileDraft.name || "").trim(),
+        email: (this.profileDraft.email || "").trim()
+      }) !== JSON.stringify({
+        name: (this.settingsProfile.name || "").trim(),
+        email: (this.settingsProfile.email || "").trim()
+      });
+    },
+    settingsOverviewStats() {
+      return [
+        { id: "licenses", label: "Licenses", value: this.licenses.length, icon: "workspace_premium" },
+        { id: "sites", label: "Dive Sites", value: this.diveSites.length, icon: "pin_drop" },
+        { id: "buddies", label: "Buddies", value: this.buddies.length, icon: "groups" },
+        { id: "guides", label: "Guides", value: this.guides.length, icon: "support_agent" }
+      ];
+    },
     settingsSections() {
       return SETTINGS_SECTIONS;
+    },
+    activeSettingsSection() {
+      return SETTINGS_SECTIONS.some((section) => section.id === this.activeSection)
+        ? this.activeSection
+        : (SETTINGS_SECTIONS[0]?.id || "diver-details");
     },
     isDataManagementBusy() {
       return Boolean(this.dataManagementAction);
@@ -468,12 +526,43 @@ export default {
         this.syncClerkDefaults();
       },
       immediate: true
+    },
+    profileStatus(value) {
+      this.clearProfileStatusTimer();
+      if (!value) {
+        return;
+      }
+      this.profileStatusTimeoutId = window.setTimeout(() => {
+        this.profileStatus = "";
+        this.profileStatusTimeoutId = null;
+      }, 3000);
+    },
+    activeSettingsSection() {
+      this.clearProfileStatusFeedback();
     }
   },
   mounted() {
     this.fetchProfile();
   },
+  beforeUnmount() {
+    this.clearProfileStatusTimer();
+  },
   methods: {
+    clearProfileStatusTimer() {
+      if (this.profileStatusTimeoutId) {
+        window.clearTimeout(this.profileStatusTimeoutId);
+        this.profileStatusTimeoutId = null;
+      }
+    },
+    clearProfileStatusFeedback() {
+      this.clearProfileStatusTimer();
+      this.profileStatus = "";
+    },
+    selectSettingsSection(sectionId) {
+      if (typeof this.setActiveSection === "function") {
+        this.setActiveSection(sectionId);
+      }
+    },
     syncClerkDefaults() {
       if (!this.settingsProfile.name && this.currentUserName) {
         this.settingsProfile.name = this.currentUserName;
@@ -510,6 +599,11 @@ export default {
       this.diveSiteDrafts = cloneDiveSites(this.settingsProfile.dive_sites);
       this.buddyDrafts = cloneBuddies(this.settingsProfile.buddies);
       this.guideDrafts = cloneGuides(this.settingsProfile.guides);
+      this.editingLicenseIds = [];
+      this.editingDiveSiteIds = [];
+      this.editingBuddyIds = [];
+      this.editingGuideIds = [];
+      this.syncExpandedPanels();
     },
     notifyProfileUpdated(profile) {
       if (typeof this.profileUpdated === "function") {
@@ -553,12 +647,6 @@ export default {
     },
     guideTitle(guide, index) {
       return guide.name || `Guide ${index + 1}`;
-    },
-    diveSiteCoordinateSummary(site) {
-      const hasLatitude = site?.latitude !== "" && site?.latitude !== null && site?.latitude !== undefined;
-      const hasLongitude = site?.longitude !== "" && site?.longitude !== null && site?.longitude !== undefined;
-      if (!hasLatitude || !hasLongitude) return "No GPS coordinates saved";
-      return `Lat ${site.latitude}, Lon ${site.longitude}`;
     },
     async authenticatedFetch(resource, options = {}) {
       const token = await this.clerkGetToken({ skipCache: true });
@@ -782,6 +870,7 @@ export default {
     cancelLicensesEdit() {
       this.licenseDrafts = cloneLicenses(this.settingsProfile.licenses);
       this.pendingLicenseUploadId = null;
+      this.editingLicenseIds = [];
       this.areLicensesEditing = false;
     },
     beginDiveSitesEdit() {
@@ -792,6 +881,7 @@ export default {
     },
     cancelDiveSitesEdit() {
       this.diveSiteDrafts = cloneDiveSites(this.settingsProfile.dive_sites);
+      this.editingDiveSiteIds = [];
       this.areDiveSitesEditing = false;
     },
     beginBuddiesEdit() {
@@ -802,6 +892,7 @@ export default {
     },
     cancelBuddiesEdit() {
       this.buddyDrafts = cloneBuddies(this.settingsProfile.buddies);
+      this.editingBuddyIds = [];
       this.areBuddiesEditing = false;
     },
     beginGuidesEdit() {
@@ -812,6 +903,7 @@ export default {
     },
     cancelGuidesEdit() {
       this.guideDrafts = cloneGuides(this.settingsProfile.guides);
+      this.editingGuideIds = [];
       this.areGuidesEditing = false;
     },
     async saveLicenses() {
@@ -841,6 +933,7 @@ export default {
         this.notifyProfileUpdated(this.settingsProfile);
         this.resetDraftsFromProfile();
         this.areLicensesEditing = false;
+        this.editingLicenseIds = [];
         this.profileStatus = "Licenses updated.";
       } catch (error) {
         this.profileError = error?.message || "Could not save the license list.";
@@ -851,26 +944,206 @@ export default {
     addLicense() {
       this.licenseDrafts = [...this.licenseDrafts, emptyLicense()];
     },
+    addLicenseEntry() {
+      if (!this.areLicensesEditing) {
+        this.beginLicensesEdit();
+      }
+      const draft = emptyLicense();
+      this.licenseDrafts = [...this.licenseDrafts, draft];
+      this.editingLicenseIds = [draft.id];
+      if (!this.isLicenseExpanded(draft.id)) {
+        this.toggleLicenseDetails(draft.id);
+      }
+    },
     addDiveSite() {
       this.diveSiteDrafts = [...this.diveSiteDrafts, emptyDiveSite()];
+    },
+    addDiveSiteEntry() {
+      if (!this.areDiveSitesEditing) {
+        this.beginDiveSitesEdit();
+      }
+      const draft = emptyDiveSite();
+      this.diveSiteDrafts = [...this.diveSiteDrafts, draft];
+      this.editingDiveSiteIds = [draft.id];
+      if (!this.isDiveSiteExpanded(draft.id)) {
+        this.toggleDiveSiteDetails(draft.id);
+      }
     },
     addBuddy() {
       this.buddyDrafts = [...this.buddyDrafts, emptyBuddy()];
     },
+    addBuddyEntry() {
+      if (!this.areBuddiesEditing) {
+        this.beginBuddiesEdit();
+      }
+      const draft = emptyBuddy();
+      this.buddyDrafts = [...this.buddyDrafts, draft];
+      this.editingBuddyIds = [draft.id];
+      if (!this.isBuddyExpanded(draft.id)) {
+        this.toggleBuddyDetails(draft.id);
+      }
+    },
     addGuide() {
       this.guideDrafts = [...this.guideDrafts, emptyGuide()];
     },
+    addGuideEntry() {
+      if (!this.areGuidesEditing) {
+        this.beginGuidesEdit();
+      }
+      const draft = emptyGuide();
+      this.guideDrafts = [...this.guideDrafts, draft];
+      this.editingGuideIds = [draft.id];
+      if (!this.isGuideExpanded(draft.id)) {
+        this.toggleGuideDetails(draft.id);
+      }
+    },
     removeLicense(index) {
+      const removedLicense = this.licenseDrafts[index];
       this.licenseDrafts = this.licenseDrafts.filter((_, entryIndex) => entryIndex !== index);
+      if (removedLicense?.id) {
+        this.editingLicenseIds = this.editingLicenseIds.filter((entryId) => entryId !== removedLicense.id);
+        if (!this.editingLicenseIds.length) {
+          this.areLicensesEditing = false;
+        }
+      }
     },
     removeDiveSite(index) {
+      const removedSite = this.diveSiteDrafts[index];
       this.diveSiteDrafts = this.diveSiteDrafts.filter((_, entryIndex) => entryIndex !== index);
+      if (removedSite?.id) {
+        this.editingDiveSiteIds = this.editingDiveSiteIds.filter((entryId) => entryId !== removedSite.id);
+      }
     },
     removeBuddy(index) {
+      const removedBuddy = this.buddyDrafts[index];
       this.buddyDrafts = this.buddyDrafts.filter((_, entryIndex) => entryIndex !== index);
+      if (removedBuddy?.id) {
+        this.editingBuddyIds = this.editingBuddyIds.filter((entryId) => entryId !== removedBuddy.id);
+      }
     },
     removeGuide(index) {
+      const removedGuide = this.guideDrafts[index];
       this.guideDrafts = this.guideDrafts.filter((_, entryIndex) => entryIndex !== index);
+      if (removedGuide?.id) {
+        this.editingGuideIds = this.editingGuideIds.filter((entryId) => entryId !== removedGuide.id);
+      }
+    },
+    openRemovalDialog(type, itemId, label, kindLabel) {
+      this.pendingRemoval = {
+        type,
+        itemId,
+        label: label || kindLabel,
+        kindLabel
+      };
+    },
+    closeRemovalDialog() {
+      this.pendingRemoval = null;
+    },
+    async confirmPendingRemoval() {
+      const pending = this.pendingRemoval;
+      if (!pending) return;
+
+      const collectionByType = {
+        license: this.licenseDrafts,
+        "dive-site": this.diveSiteDrafts,
+        buddy: this.buddyDrafts,
+        guide: this.guideDrafts
+      };
+      const currentCollection = collectionByType[pending.type] || [];
+      const index = currentCollection.findIndex((entry) => entry?.id === pending.itemId);
+      if (index === -1) {
+        this.closeRemovalDialog();
+        return;
+      }
+
+      this.closeRemovalDialog();
+      if (pending.type === "license") {
+        await this.removeLicenseConfirmed(index);
+        return;
+      }
+      if (pending.type === "dive-site") {
+        await this.removeDiveSiteConfirmed(index);
+        return;
+      }
+      if (pending.type === "buddy") {
+        await this.removeBuddyConfirmed(index);
+        return;
+      }
+      if (pending.type === "guide") {
+        await this.removeGuideConfirmed(index);
+      }
+    },
+    confirmRemoveLicense(index) {
+      const license = this.licenseDrafts[index];
+      if (!license) return;
+      const label = this.licenseTitle(license, index);
+      this.openRemovalDialog("license", license.id, label, "this license");
+    },
+    async removeLicenseConfirmed(index) {
+      const license = this.licenseDrafts[index];
+      if (!license) return;
+      const label = this.licenseTitle(license, index);
+      const existedOnServer = this.licenseExistsOnServer(license.id);
+      this.removeLicense(index);
+      if (existedOnServer) {
+        await this.saveLicenses();
+      } else {
+        this.profileStatus = `${label} removed.`;
+      }
+    },
+    confirmRemoveDiveSite(index) {
+      const site = this.diveSiteDrafts[index];
+      if (!site) return;
+      const label = this.diveSiteTitle(site, index);
+      this.openRemovalDialog("dive-site", site.id, label, "this dive site");
+    },
+    async removeDiveSiteConfirmed(index) {
+      const site = this.diveSiteDrafts[index];
+      if (!site) return;
+      const label = this.diveSiteTitle(site, index);
+      const existedOnServer = this.settingsProfile.dive_sites.some((entry) => entry.id === site.id);
+      this.removeDiveSite(index);
+      if (existedOnServer) {
+        await this.saveDiveSites();
+      } else {
+        this.profileStatus = `${label} removed.`;
+      }
+    },
+    confirmRemoveBuddy(index) {
+      const buddy = this.buddyDrafts[index];
+      if (!buddy) return;
+      const label = this.buddyTitle(buddy, index);
+      this.openRemovalDialog("buddy", buddy.id, label, "this buddy");
+    },
+    async removeBuddyConfirmed(index) {
+      const buddy = this.buddyDrafts[index];
+      if (!buddy) return;
+      const label = this.buddyTitle(buddy, index);
+      const existedOnServer = this.settingsProfile.buddies.some((entry) => entry.id === buddy.id);
+      this.removeBuddy(index);
+      if (existedOnServer) {
+        await this.saveBuddies();
+      } else {
+        this.profileStatus = `${label} removed.`;
+      }
+    },
+    confirmRemoveGuide(index) {
+      const guide = this.guideDrafts[index];
+      if (!guide) return;
+      const label = this.guideTitle(guide, index);
+      this.openRemovalDialog("guide", guide.id, label, "this guide");
+    },
+    async removeGuideConfirmed(index) {
+      const guide = this.guideDrafts[index];
+      if (!guide) return;
+      const label = this.guideTitle(guide, index);
+      const existedOnServer = this.settingsProfile.guides.some((entry) => entry.id === guide.id);
+      this.removeGuide(index);
+      if (existedOnServer) {
+        await this.saveGuides();
+      } else {
+        this.profileStatus = `${label} removed.`;
+      }
     },
     isLookingUpDiveSite(siteId) {
       return this.diveSiteLookupId === siteId;
@@ -903,6 +1176,7 @@ export default {
         const nextDrafts = this.diveSiteDrafts.slice();
         nextDrafts[index] = {
           ...nextDrafts[index],
+          country: typeof payload.result.country === "string" ? payload.result.country : nextDrafts[index].country,
           latitude: String(payload.result.latitude),
           longitude: String(payload.result.longitude)
         };
@@ -941,6 +1215,7 @@ export default {
         this.notifyProfileUpdated(this.settingsProfile);
         this.resetDraftsFromProfile();
         this.areDiveSitesEditing = false;
+        this.editingDiveSiteIds = [];
         this.profileStatus = "Dive sites updated.";
       } catch (error) {
         this.profileError = error?.message || "Could not save the dive site list.";
@@ -975,6 +1250,7 @@ export default {
         this.notifyProfileUpdated(this.settingsProfile);
         this.resetDraftsFromProfile();
         this.areBuddiesEditing = false;
+        this.editingBuddyIds = [];
         this.profileStatus = "Buddies updated.";
       } catch (error) {
         this.profileError = error?.message || "Could not save the buddy list.";
@@ -1009,6 +1285,7 @@ export default {
         this.notifyProfileUpdated(this.settingsProfile);
         this.resetDraftsFromProfile();
         this.areGuidesEditing = false;
+        this.editingGuideIds = [];
         this.profileStatus = "Guides updated.";
       } catch (error) {
         this.profileError = error?.message || "Could not save the guide list.";
@@ -1132,245 +1409,321 @@ export default {
     closeLicensePreview() {
       this.activeLicensePreview = null;
     },
-    selectSettingsSection(sectionId) {
-      this.activeSettingsSection = sectionId;
+    syncExpandedPanels() {
+      const retainVisibleIds = (existingIds, items) => existingIds.filter((id) => items.some((item) => item.id === id));
+
+      this.expandedLicenseIds = retainVisibleIds(this.expandedLicenseIds, this.settingsProfile.licenses);
+      this.expandedDiveSiteIds = retainVisibleIds(this.expandedDiveSiteIds, this.settingsProfile.dive_sites);
+      this.expandedBuddyIds = retainVisibleIds(this.expandedBuddyIds, this.settingsProfile.buddies);
+      this.expandedGuideIds = retainVisibleIds(this.expandedGuideIds, this.settingsProfile.guides);
+    },
+    toggleExpandedItem(key, id) {
+      const current = Array.isArray(this[key]) ? this[key] : [];
+      this[key] = current.includes(id)
+        ? current.filter((entryId) => entryId !== id)
+        : [...current, id];
+    },
+    isExpandedItem(key, id) {
+      return Array.isArray(this[key]) && this[key].includes(id);
+    },
+    toggleLicenseDetails(licenseId) {
+      this.toggleExpandedItem("expandedLicenseIds", licenseId);
+    },
+    isLicenseEditing(licenseId) {
+      return this.editingLicenseIds.includes(licenseId);
+    },
+    editLicenseItem(licenseId) {
+      if (!this.areLicensesEditing) {
+        this.beginLicensesEdit();
+      }
+      if (!this.isLicenseExpanded(licenseId)) {
+        this.toggleLicenseDetails(licenseId);
+      }
+      this.editingLicenseIds = [licenseId];
+    },
+    isLicenseExpanded(licenseId) {
+      return this.isExpandedItem("expandedLicenseIds", licenseId);
+    },
+    toggleDiveSiteDetails(siteId) {
+      this.toggleExpandedItem("expandedDiveSiteIds", siteId);
+    },
+    isDiveSiteEditing(siteId) {
+      return this.editingDiveSiteIds.includes(siteId);
+    },
+    editDiveSiteItem(siteId) {
+      if (!this.areDiveSitesEditing) {
+        this.beginDiveSitesEdit();
+      }
+      if (!this.isDiveSiteExpanded(siteId)) {
+        this.toggleDiveSiteDetails(siteId);
+      }
+      this.editingDiveSiteIds = [siteId];
+    },
+    isDiveSiteExpanded(siteId) {
+      return this.isExpandedItem("expandedDiveSiteIds", siteId);
+    },
+    editBuddyItem(buddyId) {
+      if (!this.areBuddiesEditing) {
+        this.beginBuddiesEdit();
+      }
+      if (!this.isBuddyExpanded(buddyId)) {
+        this.toggleBuddyDetails(buddyId);
+      }
+      this.editingBuddyIds = [buddyId];
+    },
+    toggleBuddyDetails(buddyId) {
+      this.toggleExpandedItem("expandedBuddyIds", buddyId);
+    },
+    isBuddyEditing(buddyId) {
+      return this.editingBuddyIds.includes(buddyId);
+    },
+    isBuddyExpanded(buddyId) {
+      return this.isExpandedItem("expandedBuddyIds", buddyId);
+    },
+    editGuideItem(guideId) {
+      if (!this.areGuidesEditing) {
+        this.beginGuidesEdit();
+      }
+      if (!this.isGuideExpanded(guideId)) {
+        this.toggleGuideDetails(guideId);
+      }
+      this.editingGuideIds = [guideId];
+    },
+    toggleGuideDetails(guideId) {
+      this.toggleExpandedItem("expandedGuideIds", guideId);
+    },
+    isGuideEditing(guideId) {
+      return this.editingGuideIds.includes(guideId);
+    },
+    isGuideExpanded(guideId) {
+      return this.isExpandedItem("expandedGuideIds", guideId);
+    },
+    diveSiteHasCoordinates(site) {
+      return site?.latitude !== "" && site?.latitude !== null && site?.latitude !== undefined
+        && site?.longitude !== "" && site?.longitude !== null && site?.longitude !== undefined;
     },
     formatBytes,
     formatDateTime
   },
   template: `
-    <section class="space-y-10 text-on-surface">
-      <div class="max-w-5xl">
-        <p class="font-label text-[10px] font-bold uppercase tracking-[0.3em] text-primary">System Configuration</p>
-        <h3 class="mt-2 font-headline text-5xl font-bold tracking-tight text-primary">Settings</h3>
-        <p class="mt-3 max-w-3xl text-sm text-secondary">Manage your authenticated diver profile, saved dive sites, certification list, embedded license documents, and desktop sync access.</p>
+    <section class="space-y-8 text-on-surface">
+      <div class="settings-hero settings-panel">
+        <div class="settings-hero-copy">
+          <p class="font-label text-[10px] font-bold uppercase tracking-[0.3em] text-primary">System Configuration</p>
+          <h3 class="mt-3 font-headline text-4xl font-bold tracking-tight text-primary md:text-5xl">Settings</h3>
+          <p class="mt-4 max-w-3xl text-sm leading-7 text-secondary">Manage your diver identity, saved dive data, certification documents, exports, and desktop sync access without digging through long forms.</p>
+        </div>
+
+        <div class="settings-stat-grid">
+          <article v-for="stat in settingsOverviewStats" :key="stat.id" class="settings-stat-card">
+            <div class="flex items-center justify-between gap-3">
+              <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">{{ stat.label }}</p>
+              <span class="material-symbols-outlined text-primary/80">{{ stat.icon }}</span>
+            </div>
+            <div v-if="profileLoading" class="settings-loading-bar settings-loading-bar-stat mt-4"></div>
+            <p v-else class="mt-3 font-headline text-3xl font-bold text-on-surface">{{ stat.value }}</p>
+          </article>
+        </div>
       </div>
 
-      <div v-if="profileStatus" class="max-w-4xl border border-primary/20 bg-primary/10 px-5 py-4 text-sm text-primary shadow-panel">{{ profileStatus }}</div>
-      <div v-if="profileError" class="max-w-4xl border border-error/20 bg-error-container/20 px-5 py-4 text-sm text-on-error-container shadow-panel">{{ profileError }}</div>
+      <div v-if="profileStatus" class="settings-feedback border-primary/20 bg-primary/10 text-primary shadow-panel">{{ profileStatus }}</div>
+      <div v-if="profileError" class="settings-feedback border-error/20 bg-error-container/20 text-on-error-container shadow-panel">{{ profileError }}</div>
 
-      <section class="grid grid-cols-1 gap-8 lg:grid-cols-[260px_minmax(0,1fr)]">
-        <aside class="h-fit bg-surface-container-low p-4 shadow-panel">
-          <p class="font-label text-[10px] font-bold uppercase tracking-[0.22em] text-primary">Settings Menu</p>
-          <nav class="mt-4 flex gap-3 overflow-x-auto pb-2 lg:flex-col lg:overflow-visible lg:pb-0">
-            <button
-              v-for="section in settingsSections"
-              :key="section.id"
-              @click="selectSettingsSection(section.id)"
-              class="min-w-[12rem] border px-4 py-4 text-left transition-colors lg:min-w-0"
-              :class="activeSettingsSection === section.id ? 'border-primary/30 bg-surface-container-high text-primary' : 'border-primary/10 bg-background/20 text-secondary hover:border-primary/20 hover:text-on-surface'"
-            >
-              <div class="flex items-center gap-3">
-                <span class="material-symbols-outlined text-lg">{{ section.icon }}</span>
-                <div>
-                  <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em]">{{ section.label }}</p>
-                  <p class="mt-1 text-xs leading-5 opacity-80">{{ section.description }}</p>
-                </div>
+      <div class="settings-panel flex gap-3 overflow-x-auto p-3 md:hidden">
+        <button
+          v-for="section in settingsSections"
+          :key="section.id"
+          @click="selectSettingsSection(section.id)"
+          class="min-w-[14rem] shrink-0 rounded-2xl border px-4 py-3 text-left transition-colors"
+          :class="activeSettingsSection === section.id ? 'border-primary/30 bg-surface-container-high text-primary' : 'border-primary/10 bg-background/10 text-secondary'"
+        >
+          <div class="flex items-start gap-3">
+            <span class="material-symbols-outlined mt-0.5 text-lg">{{ section.icon }}</span>
+            <div>
+              <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em]">{{ section.label }}</p>
+              <p class="mt-2 text-xs leading-5 opacity-80">{{ section.description }}</p>
+            </div>
+          </div>
+        </button>
+      </div>
+
+      <section class="settings-content">
+          <div v-if="profileLoading" class="settings-panel settings-card settings-loading-state">
+            <div>
+              <p class="font-label text-[10px] font-bold uppercase tracking-[0.24em] text-primary">Loading</p>
+              <h4 class="mt-2 font-headline text-3xl font-bold tracking-tight text-on-surface">Preparing Your Settings</h4>
+              <p class="mt-3 max-w-3xl text-sm leading-7 text-secondary">Fetching licenses, dive sites, buddies, guides, and saved profile details.</p>
+            </div>
+
+            <div class="settings-loading-grid">
+              <div class="settings-loading-card">
+                <div class="settings-loading-bar settings-loading-bar-title"></div>
+                <div class="settings-loading-bar settings-loading-bar-body"></div>
+                <div class="settings-loading-bar settings-loading-bar-body settings-loading-bar-short"></div>
               </div>
-            </button>
-          </nav>
-        </aside>
-
-        <div class="flex flex-col gap-8">
-          <div v-if="activeSettingsSection === 'diver-details'" class="group relative overflow-hidden bg-surface-container-low p-8">
-            <div class="absolute -right-10 -top-10 h-32 w-32 rounded-full bg-primary/5 blur-3xl"></div>
-            <div class="relative z-10 flex flex-col gap-6 xl:flex-row xl:items-start">
-              <div class="flex h-24 w-24 items-center justify-center rounded-lg border border-primary/20 bg-surface-container-highest text-primary">
-                <span class="material-symbols-outlined text-4xl">badge</span>
+              <div class="settings-loading-card">
+                <div class="settings-loading-bar settings-loading-bar-title"></div>
+                <div class="settings-loading-bar settings-loading-bar-body"></div>
+                <div class="settings-loading-bar settings-loading-bar-body"></div>
               </div>
-              <div class="flex-1 space-y-5">
-                <div class="flex flex-wrap items-start justify-between gap-4">
-                  <div>
-                    <h4 class="font-label text-[10px] font-bold uppercase tracking-[0.24em] text-primary">Operational Identity</h4>
-                    <h3 class="mt-2 font-headline text-2xl font-bold">{{ displayName }}</h3>
-                    <p class="mt-1 text-sm text-secondary">{{ displayEmail }}</p>
-                  </div>
-                  <div v-if="!profileLoading" class="flex gap-3">
-                    <button
-                      v-if="!isProfileEditing"
-                      @click="beginProfileEdit"
-                      :disabled="profileSaving || licensesSaving || diveSitesSaving || buddiesSaving || guidesSaving || Boolean(licenseUploadingId)"
-                      class="bg-surface-container-highest px-4 py-2 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-primary disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      Edit
-                    </button>
-                    <template v-else>
-                      <button
-                        @click="cancelProfileEdit"
-                        :disabled="profileSaving || licensesSaving || diveSitesSaving || buddiesSaving || guidesSaving || Boolean(licenseUploadingId)"
-                        class="border border-primary/15 px-4 py-2 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-secondary disabled:cursor-not-allowed disabled:opacity-60"
-                      >
-                        Cancel
-                      </button>
-                      <button
-                        @click="saveProfile"
-                        :disabled="profileSaving || licensesSaving || diveSitesSaving || buddiesSaving || guidesSaving || Boolean(licenseUploadingId)"
-                        class="bg-primary px-4 py-2 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-on-primary disabled:cursor-not-allowed disabled:opacity-60"
-                      >
-                        {{ profileSaving ? 'Saving Profile' : 'Save Profile' }}
-                      </button>
-                    </template>
-                  </div>
-                </div>
-
-                <div v-if="profileLoading" class="rounded border border-primary/10 bg-surface-container-highest/40 px-4 py-3 text-sm text-secondary">
-                  Loading user profile...
-                </div>
-
-                <div v-else-if="isProfileEditing" class="grid gap-4 md:grid-cols-2">
-                  <label class="space-y-2">
-                    <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Name</span>
-                    <input v-model="profileDraft.name" type="text" class="w-full border border-primary/10 bg-surface-container-high/35 px-4 py-3 text-sm text-on-surface placeholder:text-secondary/50 focus:border-primary/30 focus:ring-1 focus:ring-primary" placeholder="Diver name" />
-                  </label>
-                  <label class="space-y-2">
-                    <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Email</span>
-                    <input v-model="profileDraft.email" type="email" class="w-full border border-primary/10 bg-surface-container-high/35 px-4 py-3 text-sm text-on-surface placeholder:text-secondary/50 focus:border-primary/30 focus:ring-1 focus:ring-primary" placeholder="diver@example.com" />
-                  </label>
-                </div>
-
-                <div v-else class="grid gap-4 md:grid-cols-2">
-                  <div class="border border-primary/10 bg-surface-container-high/25 px-4 py-4">
-                    <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Name</p>
-                    <p class="mt-2 text-base font-semibold text-on-surface">{{ displayValue(settingsProfile.name || currentUserName, 'Not provided') }}</p>
-                  </div>
-                  <div class="border border-primary/10 bg-surface-container-high/25 px-4 py-4">
-                    <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Email</p>
-                    <p class="mt-2 text-base font-semibold text-on-surface">{{ displayValue(settingsProfile.email || currentUserEmail, 'Not provided') }}</p>
-                  </div>
-                </div>
+              <div class="settings-loading-card">
+                <div class="settings-loading-bar settings-loading-bar-title"></div>
+                <div class="settings-loading-bar settings-loading-bar-body"></div>
+                <div class="settings-loading-bar settings-loading-bar-body settings-loading-bar-short"></div>
               </div>
             </div>
           </div>
 
-          <div v-if="activeSettingsSection === 'diver-details'" class="bg-surface-container-high p-6">
-            <div class="mb-6 flex items-center justify-between gap-4">
-              <div class="flex items-center gap-3">
-                <span class="material-symbols-outlined text-primary">workspace_premium</span>
-                <h4 class="font-label text-[10px] font-bold uppercase tracking-[0.24em] text-primary">Diving Licenses</h4>
+          <template v-else>
+          <div v-if="activeSettingsSection === 'diver-details'" class="settings-panel settings-card">
+            <div class="settings-card-header">
+              <div>
+                <p class="font-label text-[10px] font-bold uppercase tracking-[0.24em] text-primary">Diving Licenses</p>
+                <h4 class="mt-2 font-headline text-3xl font-bold tracking-tight text-on-surface">Certifications And PDFs</h4>
+                <p class="mt-3 max-w-3xl text-sm leading-7 text-secondary">Certificates stay compact until opened, so the saved list is easier to scan and the attached PDFs are still one click away.</p>
               </div>
-              <div class="flex flex-wrap gap-3">
-                <button
-                  v-if="!areLicensesEditing"
-                  @click="beginLicensesEdit"
-                  :disabled="profileLoading || profileSaving || licensesSaving || diveSitesSaving || buddiesSaving || guidesSaving || Boolean(licenseUploadingId)"
-                  class="bg-surface-container-highest px-4 py-2 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-primary disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  Edit
-                </button>
-                <template v-else>
-                  <button
-                    @click="addLicense"
-                    :disabled="licensesSaving || profileSaving || diveSitesSaving || buddiesSaving || guidesSaving || Boolean(licenseUploadingId)"
-                    class="bg-surface-container-highest px-4 py-2 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-primary disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    Add License
-                  </button>
-                  <button
-                    @click="cancelLicensesEdit"
-                    :disabled="licensesSaving || profileSaving || diveSitesSaving || buddiesSaving || guidesSaving || Boolean(licenseUploadingId)"
-                    class="border border-primary/15 px-4 py-2 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-secondary disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    @click="saveLicenses"
-                    :disabled="profileLoading || licensesSaving || profileSaving || diveSitesSaving || buddiesSaving || guidesSaving || Boolean(licenseUploadingId)"
-                    class="bg-primary px-4 py-2 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-on-primary disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    {{ licensesSaving ? 'Saving Licenses' : 'Save License List' }}
-                  </button>
-                </template>
+              <div class="settings-toolbar">
+                <button @click="addLicenseEntry" :disabled="isInteractionLocked" class="settings-button settings-button-secondary">Add License</button>
               </div>
             </div>
 
-            <div v-if="!areLicensesEditing && licenses.length === 0" class="rounded border border-dashed border-primary/20 bg-surface-container-lowest p-5">
+            <div v-if="!areLicensesEditing && licenses.length === 0" class="settings-empty-state">
               <p class="font-headline text-lg font-bold">No saved licenses</p>
-              <p class="mt-2 text-sm text-secondary">Use Edit to add your first certification entry and attach its PDF.</p>
+              <p class="mt-2 text-sm text-secondary">Use Add License to create your first certification entry and attach its PDF.</p>
             </div>
 
-            <div v-else-if="areLicensesEditing && licenseDrafts.length === 0" class="rounded border border-dashed border-primary/20 bg-surface-container-lowest p-5">
+            <div v-else-if="areLicensesEditing && licenseDrafts.length === 0" class="settings-empty-state">
               <p class="font-headline text-lg font-bold">No saved licenses</p>
               <p class="mt-2 text-sm text-secondary">Add your first certification entry to build a reusable license list.</p>
             </div>
 
-            <div v-else class="space-y-5">
-              <article v-for="(license, index) in (areLicensesEditing ? licenseDrafts : licenses)" :key="license.id" class="border border-primary/10 bg-surface-container-lowest/35 p-5">
-                <div class="mb-4 flex items-center justify-between gap-4">
-                  <div>
+            <div v-else class="space-y-4">
+              <article v-for="(license, index) in visibleLicenses" :key="license.id" class="settings-item-card">
+                <div class="settings-item-header">
+                  <div class="min-w-0">
                     <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">License {{ index + 1 }}</p>
-                    <p class="mt-1 text-sm text-on-surface-variant">{{ licenseTitle(license, index) }}</p>
+                    <h5 class="mt-2 font-headline text-2xl font-bold tracking-tight text-on-surface">{{ licenseTitle(license, index) }}</h5>
+                    <div class="settings-chip-row mt-3">
+                      <span class="settings-chip">{{ displayValue(license.company, 'Company pending') }}</span>
+                      <span class="settings-chip" :class="license.pdf ? 'is-accent' : ''">{{ license.pdf ? 'PDF attached' : 'No PDF' }}</span>
+                    </div>
                   </div>
-                  <button v-if="areLicensesEditing" @click="removeLicense(index)" class="bg-error-container/20 px-3 py-2 font-label text-[10px] font-bold uppercase tracking-[0.16em] text-on-error-container">
-                    Remove
-                  </button>
+
+                  <div class="settings-toolbar">
+                    <button
+                      v-if="!isLicenseEditing(license.id)"
+                      @click="toggleLicenseDetails(license.id)"
+                      class="settings-button settings-button-ghost"
+                    >
+                      {{ isLicenseExpanded(license.id) ? 'Hide Details' : 'Show Details' }}
+                    </button>
+                    <button
+                      v-if="!isLicenseEditing(license.id) && isLicenseExpanded(license.id)"
+                      @click="editLicenseItem(license.id)"
+                      class="settings-button settings-button-secondary"
+                    >
+                      Edit License
+                    </button>
+                    <button
+                      v-if="isLicenseEditing(license.id)"
+                      @click="confirmRemoveLicense(index)"
+                      class="settings-button settings-button-danger"
+                    >
+                      Remove
+                    </button>
+                    <button
+                      v-if="isLicenseEditing(license.id)"
+                      @click="cancelLicensesEdit"
+                      :disabled="isInteractionLocked"
+                      class="settings-button settings-button-ghost"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      v-if="isLicenseEditing(license.id)"
+                      @click="saveLicenses"
+                      :disabled="isInteractionLocked"
+                      class="settings-button settings-button-primary"
+                    >
+                      {{ licensesSaving ? 'Saving License' : 'Save License' }}
+                    </button>
+                  </div>
                 </div>
 
-                <div class="grid gap-5 xl:grid-cols-[minmax(0,1fr)_340px]">
-                  <div v-if="areLicensesEditing" class="grid gap-4 md:grid-cols-2">
+                <div v-if="isLicenseEditing(license.id) || isLicenseExpanded(license.id)" class="grid gap-5 xl:grid-cols-[minmax(0,1fr)_320px]">
+                  <div v-if="isLicenseEditing(license.id)" class="settings-form-grid">
                     <label class="space-y-2">
                       <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Company</span>
-                      <input v-model="license.company" type="text" class="w-full border border-primary/10 bg-surface-container-high/35 px-4 py-3 text-sm text-on-surface placeholder:text-secondary/50 focus:border-primary/30 focus:ring-1 focus:ring-primary" placeholder="PADI / SSI / NAUI" />
+                      <input v-model="license.company" type="text" class="settings-input" placeholder="PADI / SSI / NAUI" />
                     </label>
                     <label class="space-y-2">
                       <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Certification Name</span>
-                      <input v-model="license.certification_name" type="text" class="w-full border border-primary/10 bg-surface-container-high/35 px-4 py-3 text-sm text-on-surface placeholder:text-secondary/50 focus:border-primary/30 focus:ring-1 focus:ring-primary" placeholder="Advanced Open Water" />
+                      <input v-model="license.certification_name" type="text" class="settings-input" placeholder="Advanced Open Water" />
                     </label>
                     <label class="space-y-2">
                       <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Student Number</span>
-                      <input v-model="license.student_number" type="text" class="w-full border border-primary/10 bg-surface-container-high/35 px-4 py-3 text-sm text-on-surface placeholder:text-secondary/50 focus:border-primary/30 focus:ring-1 focus:ring-primary" placeholder="Student or certification number" />
+                      <input v-model="license.student_number" type="text" class="settings-input" placeholder="Student or certification number" />
                     </label>
                     <label class="space-y-2">
                       <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Certification Date</span>
-                      <input v-model="license.certification_date" type="text" class="w-full border border-primary/10 bg-surface-container-high/35 px-4 py-3 text-sm text-on-surface placeholder:text-secondary/50 focus:border-primary/30 focus:ring-1 focus:ring-primary" placeholder="YYYY-MM-DD" />
+                      <input v-model="license.certification_date" type="text" class="settings-input" placeholder="YYYY-MM-DD" />
                     </label>
                     <label class="space-y-2 md:col-span-2">
                       <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Instructor Number</span>
-                      <input v-model="license.instructor_number" type="text" class="w-full border border-primary/10 bg-surface-container-high/35 px-4 py-3 text-sm text-on-surface placeholder:text-secondary/50 focus:border-primary/30 focus:ring-1 focus:ring-primary" placeholder="Instructor number" />
+                      <input v-model="license.instructor_number" type="text" class="settings-input" placeholder="Instructor number" />
                     </label>
                   </div>
 
-                  <div v-else class="grid gap-4 md:grid-cols-2">
-                    <div class="border border-primary/10 bg-surface-container-high/25 px-4 py-4">
+                  <div v-else class="settings-detail-grid">
+                    <div class="settings-info-card">
                       <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Company</p>
                       <p class="mt-2 text-base font-semibold text-on-surface">{{ displayValue(license.company) }}</p>
                     </div>
-                    <div class="border border-primary/10 bg-surface-container-high/25 px-4 py-4">
-                      <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Certification Name</p>
+                    <div class="settings-info-card">
+                      <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Certification</p>
                       <p class="mt-2 text-base font-semibold text-on-surface">{{ displayValue(license.certification_name) }}</p>
                     </div>
-                    <div class="border border-primary/10 bg-surface-container-high/25 px-4 py-4">
+                    <div class="settings-info-card">
                       <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Student Number</p>
                       <p class="mt-2 text-base font-semibold text-on-surface">{{ displayValue(license.student_number) }}</p>
                     </div>
-                    <div class="border border-primary/10 bg-surface-container-high/25 px-4 py-4">
+                    <div class="settings-info-card">
                       <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Certification Date</p>
                       <p class="mt-2 text-base font-semibold text-on-surface">{{ displayValue(license.certification_date) }}</p>
                     </div>
-                    <div class="border border-primary/10 bg-surface-container-high/25 px-4 py-4 md:col-span-2">
+                    <div class="settings-info-card md:col-span-2">
                       <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Instructor Number</p>
                       <p class="mt-2 text-base font-semibold text-on-surface">{{ displayValue(license.instructor_number) }}</p>
                     </div>
                   </div>
 
-                  <div class="space-y-3 border border-primary/10 bg-background/25 p-4">
+                  <div class="settings-side-panel">
                     <div class="flex items-center justify-between gap-3">
                       <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-primary">License PDF</p>
-                      <button v-if="areLicensesEditing" @click="triggerLicensePicker(license.id)" :disabled="isUploadingLicense(license.id)" class="bg-surface-container-highest px-3 py-2 font-label text-[10px] font-bold uppercase tracking-[0.16em] text-primary disabled:opacity-60">
+                      <button
+                        v-if="isLicenseEditing(license.id)"
+                        @click="triggerLicensePicker(license.id)"
+                        :disabled="isUploadingLicense(license.id)"
+                        class="settings-button settings-button-secondary"
+                      >
                         {{ isUploadingLicense(license.id) ? 'Uploading...' : (license.pdf ? 'Replace PDF' : 'Upload PDF') }}
                       </button>
                     </div>
+
                     <div v-if="license.pdf" class="space-y-3">
-                      <div class="rounded border border-primary/10 bg-surface-container-highest/35 px-3 py-3 text-sm text-secondary">
+                      <div class="settings-file-meta">
                         <p class="font-semibold text-on-surface">{{ license.pdf.filename }}</p>
-                        <p class="mt-1">{{ formatBytes(license.pdf.size_bytes) }} - Uploaded {{ formatDateTime(license.pdf.uploaded_at) }}</p>
+                        <p class="mt-1 text-sm text-secondary">{{ formatBytes(license.pdf.size_bytes) }} · Uploaded {{ formatDateTime(license.pdf.uploaded_at) }}</p>
                       </div>
                       <license-pdf-preview :pdf="license.pdf" :authenticated-fetch="authenticatedFetch" @open-preview="openLicensePreview($event, license)" />
                     </div>
-                    <div v-else class="rounded border border-dashed border-primary/20 bg-surface-container-lowest p-4">
+
+                    <div v-else class="settings-empty-state">
                       <p class="font-headline text-base font-bold">No PDF attached</p>
-                      <p class="mt-2 text-sm text-secondary">{{ areLicensesEditing ? 'Upload the certification PDF for this specific license entry.' : 'Open Edit to attach a certification PDF to this license entry.' }}</p>
+                      <p class="mt-2 text-sm text-secondary">{{ isLicenseEditing(license.id) ? 'Upload the certification PDF for this specific license entry.' : 'Open the license and switch to edit mode to attach a PDF.' }}</p>
                     </div>
-                    <p v-if="areLicensesEditing && !licenseExistsOnServer(license.id)" class="text-[10px] uppercase tracking-[0.14em] text-secondary/70">
+
+                    <p v-if="isLicenseEditing(license.id) && !licenseExistsOnServer(license.id)" class="text-[10px] uppercase tracking-[0.14em] text-secondary/70">
                       Save this new license before uploading its PDF.
                     </p>
                   </div>
@@ -1381,347 +1734,340 @@ export default {
             <input ref="licenseInput" @change="handleLicenseSelection" type="file" accept="application/pdf,.pdf" class="hidden" />
           </div>
 
-          <div v-if="activeSettingsSection === 'dive-sites'" class="bg-surface-container-high p-6">
-            <div class="mb-6 flex items-center justify-between gap-4">
-              <div class="flex items-center gap-3">
-                <span class="material-symbols-outlined text-primary">pin_drop</span>
-                <div>
-                  <h4 class="font-label text-[10px] font-bold uppercase tracking-[0.24em] text-primary">Dive Sites</h4>
-                  <p class="mt-2 max-w-2xl text-sm text-secondary">Build the reusable site list used by the logbook editors. Saved GPS coordinates also drive the dashboard map.</p>
-                </div>
+          <div v-if="activeSettingsSection === 'dive-sites'" class="settings-panel settings-card">
+            <div class="settings-card-header">
+              <div>
+                <p class="font-label text-[10px] font-bold uppercase tracking-[0.24em] text-primary">Dive Sites</p>
+                <h4 class="mt-2 font-headline text-3xl font-bold tracking-tight text-on-surface">Reusable Site Directory</h4>
+                <p class="mt-3 max-w-3xl text-sm leading-7 text-secondary">Locations are summarized first, with GPS detail tucked underneath so the list feels more like a directory and less like a long form dump.</p>
               </div>
-              <div class="flex flex-wrap gap-3">
-                <button
-                  v-if="!areDiveSitesEditing"
-                  @click="beginDiveSitesEdit"
-                  :disabled="profileLoading || profileSaving || licensesSaving || diveSitesSaving || buddiesSaving || guidesSaving || Boolean(licenseUploadingId)"
-                  class="bg-surface-container-highest px-4 py-2 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-primary disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  Edit
-                </button>
-                <template v-else>
-                  <button
-                    @click="addDiveSite"
-                    :disabled="diveSitesSaving || profileSaving || licensesSaving || buddiesSaving || guidesSaving || Boolean(licenseUploadingId)"
-                    class="bg-surface-container-highest px-4 py-2 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-primary disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    Add Dive Site
-                  </button>
-                  <button
-                    @click="cancelDiveSitesEdit"
-                    :disabled="diveSitesSaving || profileSaving || licensesSaving || buddiesSaving || guidesSaving || Boolean(licenseUploadingId)"
-                    class="border border-primary/15 px-4 py-2 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-secondary disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    @click="saveDiveSites"
-                    :disabled="profileLoading || profileSaving || licensesSaving || diveSitesSaving || buddiesSaving || guidesSaving || Boolean(licenseUploadingId)"
-                    class="bg-primary px-4 py-2 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-on-primary disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    {{ diveSitesSaving ? 'Saving Dive Sites' : 'Save Dive Sites' }}
-                  </button>
-                </template>
+              <div class="settings-toolbar">
+                <button @click="addDiveSiteEntry" :disabled="isInteractionLocked" class="settings-button settings-button-secondary">Add Dive Site</button>
               </div>
             </div>
 
-            <div v-if="!areDiveSitesEditing && diveSites.length === 0" class="rounded border border-dashed border-primary/20 bg-surface-container-lowest p-5">
+            <div v-if="!areDiveSitesEditing && diveSites.length === 0" class="settings-empty-state">
               <p class="font-headline text-lg font-bold">No saved dive sites</p>
-              <p class="mt-2 text-sm text-secondary">Create sites here so logbook entries can select them and the dashboard map can plot your dives.</p>
+              <p class="mt-2 text-sm text-secondary">Create sites here so logbook entries can reuse them and the dashboard map can plot your dives.</p>
             </div>
 
-            <div v-else-if="areDiveSitesEditing && diveSiteDrafts.length === 0" class="rounded border border-dashed border-primary/20 bg-surface-container-lowest p-5">
+            <div v-else-if="areDiveSitesEditing && diveSiteDrafts.length === 0" class="settings-empty-state">
               <p class="font-headline text-lg font-bold">No saved dive sites</p>
               <p class="mt-2 text-sm text-secondary">Add the first site in your logbook catalog.</p>
             </div>
 
-            <div v-else class="space-y-5">
-              <article v-for="(site, index) in (areDiveSitesEditing ? diveSiteDrafts : diveSites)" :key="site.id" class="border border-primary/10 bg-surface-container-lowest/35 p-5">
-                <div class="mb-4 flex items-center justify-between gap-4">
-                  <div>
+            <div v-else class="space-y-4">
+              <article v-for="(site, index) in visibleDiveSites" :key="site.id" class="settings-item-card">
+                <div class="settings-item-header">
+                  <div class="min-w-0">
                     <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Dive Site {{ index + 1 }}</p>
-                    <p class="mt-1 text-sm text-on-surface-variant">{{ diveSiteTitle(site, index) }}</p>
+                    <h5 class="mt-2 font-headline text-2xl font-bold tracking-tight text-on-surface">{{ diveSiteTitle(site, index) }}</h5>
+                    <div class="settings-chip-row mt-3">
+                      <span class="settings-chip">{{ displayValue(site.location, 'Location pending') }}</span>
+                      <span class="settings-chip" :class="diveSiteHasCoordinates(site) ? 'is-accent' : ''">{{ diveSiteHasCoordinates(site) ? 'GPS ready' : 'No GPS' }}</span>
+                    </div>
                   </div>
-                  <button v-if="areDiveSitesEditing" @click="removeDiveSite(index)" class="bg-error-container/20 px-3 py-2 font-label text-[10px] font-bold uppercase tracking-[0.16em] text-on-error-container">
-                    Remove
-                  </button>
-                </div>
 
-                <div v-if="areDiveSitesEditing" class="grid gap-4 md:grid-cols-3">
-                  <label class="space-y-2">
-                    <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Site Name</span>
-                    <input v-model="site.name" type="text" class="w-full border border-primary/10 bg-surface-container-high/35 px-4 py-3 text-sm text-on-surface placeholder:text-secondary/50 focus:border-primary/30 focus:ring-1 focus:ring-primary" placeholder="North Wall / Training Reef" />
-                  </label>
-                  <label class="space-y-2 md:col-span-2">
-                    <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Location</span>
-                    <input v-model="site.location" type="text" class="w-full border border-primary/10 bg-surface-container-high/35 px-4 py-3 text-sm text-on-surface placeholder:text-secondary/50 focus:border-primary/30 focus:ring-1 focus:ring-primary" placeholder="Blue Hole, Dahab, Egypt" />
-                  </label>
-                  <div class="md:col-span-3">
+                  <div class="settings-toolbar">
                     <button
-                      @click="searchDiveSiteLocation(index)"
-                      :disabled="isLookingUpDiveSite(site.id)"
-                      class="bg-surface-container-highest px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-primary disabled:cursor-not-allowed disabled:opacity-60"
+                      v-if="!isDiveSiteEditing(site.id)"
+                      @click="toggleDiveSiteDetails(site.id)"
+                      class="settings-button settings-button-ghost"
                     >
-                      {{ isLookingUpDiveSite(site.id) ? 'Searching GPS' : 'Search GPS From Location' }}
+                      {{ isDiveSiteExpanded(site.id) ? 'Hide Details' : 'Show Details' }}
+                    </button>
+                    <button
+                      v-if="!isDiveSiteEditing(site.id) && isDiveSiteExpanded(site.id)"
+                      @click="editDiveSiteItem(site.id)"
+                      class="settings-button settings-button-secondary"
+                    >
+                      Edit Site
+                    </button>
+                    <button
+                      v-if="isDiveSiteEditing(site.id)"
+                      @click="confirmRemoveDiveSite(index)"
+                      class="settings-button settings-button-danger"
+                    >
+                      Remove
+                    </button>
+                    <button
+                      v-if="isDiveSiteEditing(site.id)"
+                      @click="cancelDiveSitesEdit"
+                      :disabled="isInteractionLocked"
+                      class="settings-button settings-button-ghost"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      v-if="isDiveSiteEditing(site.id)"
+                      @click="saveDiveSites"
+                      :disabled="isInteractionLocked"
+                      class="settings-button settings-button-primary"
+                    >
+                      {{ diveSitesSaving ? 'Saving Dive Site' : 'Save Dive Site' }}
                     </button>
                   </div>
-                  <label class="space-y-2">
-                    <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Latitude</span>
-                    <input v-model="site.latitude" type="number" step="any" min="-90" max="90" class="w-full border border-primary/10 bg-surface-container-high/35 px-4 py-3 text-sm text-on-surface placeholder:text-secondary/50 focus:border-primary/30 focus:ring-1 focus:ring-primary" placeholder="25.1234" />
-                  </label>
-                  <label class="space-y-2">
-                    <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Longitude</span>
-                    <input v-model="site.longitude" type="number" step="any" min="-180" max="180" class="w-full border border-primary/10 bg-surface-container-high/35 px-4 py-3 text-sm text-on-surface placeholder:text-secondary/50 focus:border-primary/30 focus:ring-1 focus:ring-primary" placeholder="-80.4567" />
-                  </label>
-                  <div class="border border-primary/10 bg-background/25 px-4 py-4">
-                    <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-primary">GPS Status</p>
-                    <p class="mt-2 text-sm text-on-surface">{{ diveSiteCoordinateSummary(site) }}</p>
-                  </div>
                 </div>
 
-                <div v-else class="grid gap-4 md:grid-cols-3">
-                  <div class="border border-primary/10 bg-surface-container-high/25 px-4 py-4">
-                    <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Site Name</p>
-                    <p class="mt-2 text-base font-semibold text-on-surface">{{ displayValue(site.name) }}</p>
+                <div v-if="isDiveSiteEditing(site.id) || isDiveSiteExpanded(site.id)" class="space-y-5">
+                  <div v-if="isDiveSiteEditing(site.id)" class="space-y-5">
+                    <label class="space-y-2">
+                      <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Site Name</span>
+                      <input v-model="site.name" type="text" class="settings-input" placeholder="North Wall / Training Reef" />
+                    </label>
+                    <div class="settings-side-panel mt-3">
+                      <div class="flex flex-col gap-4">
+                        <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                          <div>
+                            <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-primary">GPS Lookup</p>
+                            <p class="mt-2 text-sm text-secondary">Search from the location text, then fine-tune latitude and longitude manually if needed.</p>
+                          </div>
+                          <button
+                            @click="searchDiveSiteLocation(index)"
+                            :disabled="isLookingUpDiveSite(site.id)"
+                            class="settings-button settings-button-secondary"
+                          >
+                            {{ isLookingUpDiveSite(site.id) ? 'Searching GPS' : 'Search GPS From Location' }}
+                          </button>
+                        </div>
+                        <div class="settings-form-grid settings-form-grid-wide">
+                          <label class="space-y-2 md:col-span-2">
+                            <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Location</span>
+                            <input v-model="site.location" type="text" class="settings-input" placeholder="Blue Hole, Dahab, Egypt" />
+                          </label>
+                          <label class="space-y-2">
+                            <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Country</span>
+                            <input v-model="site.country" type="text" class="settings-input" placeholder="Egypt" />
+                          </label>
+                        </div>
+                        <div class="settings-form-grid settings-form-grid-wide">
+                          <label class="space-y-2">
+                            <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Latitude</span>
+                            <input v-model="site.latitude" type="number" step="any" min="-90" max="90" class="settings-input" placeholder="25.1234" />
+                          </label>
+                          <label class="space-y-2">
+                            <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Longitude</span>
+                            <input v-model="site.longitude" type="number" step="any" min="-180" max="180" class="settings-input" placeholder="-80.4567" />
+                          </label>
+                        </div>
+                      </div>
+                    </div>
                   </div>
-                  <div class="border border-primary/10 bg-surface-container-high/25 px-4 py-4 md:col-span-2">
-                    <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Location</p>
-                    <p class="mt-2 text-base font-semibold text-on-surface">{{ displayValue(site.location, 'Not set') }}</p>
-                  </div>
-                  <div class="border border-primary/10 bg-surface-container-high/25 px-4 py-4">
-                    <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Latitude</p>
-                    <p class="mt-2 text-base font-semibold text-on-surface">{{ displayValue(site.latitude, 'Not set') }}</p>
-                  </div>
-                  <div class="border border-primary/10 bg-surface-container-high/25 px-4 py-4">
-                    <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Longitude</p>
-                    <p class="mt-2 text-base font-semibold text-on-surface">{{ displayValue(site.longitude, 'Not set') }}</p>
-                  </div>
-                  <div class="border border-primary/10 bg-surface-container-high/25 px-4 py-4">
-                    <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-primary">Map</p>
-                    <p class="mt-2 text-base font-semibold text-on-surface">{{ diveSiteCoordinateSummary(site) }}</p>
+
+                  <div v-else class="settings-detail-grid">
+                    <div class="settings-info-card">
+                      <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Site Name</p>
+                      <p class="mt-2 text-base font-semibold text-on-surface">{{ displayValue(site.name) }}</p>
+                    </div>
+                    <div class="settings-info-card">
+                      <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Country</p>
+                      <p class="mt-2 text-base font-semibold text-on-surface">{{ displayValue(site.country, 'Not set') }}</p>
+                    </div>
+                    <div class="settings-info-card md:col-span-2">
+                      <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Location</p>
+                      <p class="mt-2 text-base font-semibold text-on-surface">{{ displayValue(site.location, 'Not set') }}</p>
+                    </div>
+                    <div class="settings-info-card">
+                      <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Latitude</p>
+                      <p class="mt-2 text-base font-semibold text-on-surface">{{ displayValue(site.latitude, 'Not set') }}</p>
+                    </div>
+                    <div class="settings-info-card">
+                      <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Longitude</p>
+                      <p class="mt-2 text-base font-semibold text-on-surface">{{ displayValue(site.longitude, 'Not set') }}</p>
+                    </div>
                   </div>
                 </div>
               </article>
             </div>
           </div>
 
-          <div v-if="activeSettingsSection === 'buddies'" class="bg-surface-container-high p-8 shadow-panel">
-            <div class="mb-8 flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+          <div v-if="activeSettingsSection === 'buddies'" class="settings-panel settings-card">
+            <div class="settings-card-header">
               <div>
                 <p class="font-label text-[10px] font-bold uppercase tracking-[0.24em] text-primary">Buddies</p>
-                <h4 class="mt-2 font-headline text-3xl font-bold tracking-tight">Saved Dive Buddy List</h4>
-                <p class="mt-3 max-w-3xl text-sm leading-7 text-secondary">Add divers you regularly log dives with. Saved buddies appear as selectable values in the import queue and dive logbook editor.</p>
+                <h4 class="mt-2 font-headline text-3xl font-bold tracking-tight text-on-surface">Saved Dive Buddy List</h4>
+                <p class="mt-3 max-w-3xl text-sm leading-7 text-secondary">Buddy names now scan as a compact grid instead of a long vertical stack.</p>
               </div>
-              <div class="flex flex-wrap gap-3">
-                <template v-if="!areBuddiesEditing">
-                  <button
-                    @click="beginBuddiesEdit"
-                    :disabled="profileLoading || profileSaving || licensesSaving || diveSitesSaving || buddiesSaving || guidesSaving || Boolean(licenseUploadingId)"
-                    class="border border-primary/15 px-4 py-2 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-secondary disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    Edit Buddies
-                  </button>
-                </template>
-                <template v-else>
-                  <button
-                    @click="addBuddy"
-                    :disabled="buddiesSaving || profileSaving || licensesSaving || diveSitesSaving || guidesSaving || Boolean(licenseUploadingId)"
-                    class="border border-primary/15 px-4 py-2 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-secondary disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    Add Buddy
-                  </button>
-                  <button
-                    @click="cancelBuddiesEdit"
-                    :disabled="buddiesSaving || profileSaving || licensesSaving || diveSitesSaving || guidesSaving || Boolean(licenseUploadingId)"
-                    class="border border-primary/15 px-4 py-2 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-secondary disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    @click="saveBuddies"
-                    :disabled="profileLoading || profileSaving || licensesSaving || diveSitesSaving || buddiesSaving || guidesSaving || Boolean(licenseUploadingId)"
-                    class="bg-primary px-4 py-2 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-on-primary disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    {{ buddiesSaving ? 'Saving Buddies' : 'Save Buddies' }}
-                  </button>
-                </template>
+              <div class="settings-toolbar">
+                <button @click="addBuddyEntry" :disabled="isInteractionLocked" class="settings-button settings-button-secondary">Add Buddy</button>
               </div>
             </div>
 
-            <div v-if="!areBuddiesEditing && buddies.length === 0" class="rounded border border-dashed border-primary/20 bg-surface-container-lowest p-5">
+            <div v-if="!areBuddiesEditing && buddies.length === 0" class="settings-empty-state">
               <p class="font-headline text-lg font-bold">No saved buddies</p>
               <p class="mt-2 text-sm text-secondary">Create a reusable buddy list here so dive logs can select names instead of retyping them.</p>
             </div>
 
-            <div v-else-if="areBuddiesEditing && buddyDrafts.length === 0" class="rounded border border-dashed border-primary/20 bg-surface-container-lowest p-5">
+            <div v-else-if="areBuddiesEditing && buddyDrafts.length === 0" class="settings-empty-state">
               <p class="font-headline text-lg font-bold">No saved buddies</p>
               <p class="mt-2 text-sm text-secondary">Add the first diver you want available in your logbook forms.</p>
             </div>
 
-            <div v-else class="space-y-5">
-              <article v-for="(buddy, index) in (areBuddiesEditing ? buddyDrafts : buddies)" :key="buddy.id" class="border border-primary/10 bg-surface-container-lowest/35 p-5">
-                <div class="mb-4 flex items-center justify-between gap-4">
+            <div v-else class="settings-compact-grid">
+              <article v-for="(buddy, index) in visibleBuddies" :key="buddy.id" class="settings-compact-card">
+                <div class="flex items-start justify-between gap-3">
                   <div>
                     <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Buddy {{ index + 1 }}</p>
-                    <p class="mt-1 text-sm text-on-surface-variant">{{ buddyTitle(buddy, index) }}</p>
+                    <h5 class="mt-2 font-headline text-xl font-bold text-on-surface">{{ buddyTitle(buddy, index) }}</h5>
                   </div>
-                  <button v-if="areBuddiesEditing" @click="removeBuddy(index)" class="bg-error-container/20 px-3 py-2 font-label text-[10px] font-bold uppercase tracking-[0.16em] text-on-error-container">
-                    Remove
-                  </button>
+                  <div class="settings-toolbar">
+                    <button
+                      v-if="!isBuddyEditing(buddy.id)"
+                      @click="toggleBuddyDetails(buddy.id)"
+                      class="settings-button settings-button-ghost"
+                    >
+                      {{ isBuddyExpanded(buddy.id) ? 'Hide Info' : 'Show Info' }}
+                    </button>
+                    <button
+                      v-if="!isBuddyEditing(buddy.id) && isBuddyExpanded(buddy.id)"
+                      @click="editBuddyItem(buddy.id)"
+                      class="settings-button settings-button-secondary"
+                    >
+                      Edit Buddy
+                    </button>
+                    <button v-if="isBuddyEditing(buddy.id)" @click="confirmRemoveBuddy(index)" class="settings-button settings-button-danger">Remove</button>
+                    <button v-if="isBuddyEditing(buddy.id)" @click="cancelBuddiesEdit" :disabled="isInteractionLocked" class="settings-button settings-button-ghost">Cancel</button>
+                    <button v-if="isBuddyEditing(buddy.id)" @click="saveBuddies" :disabled="isInteractionLocked" class="settings-button settings-button-primary">{{ buddiesSaving ? 'Saving Buddy' : 'Save Buddy' }}</button>
+                  </div>
                 </div>
 
-                <div v-if="areBuddiesEditing" class="grid gap-4 md:grid-cols-[minmax(0,1fr)_220px]">
+                <div v-if="isBuddyEditing(buddy.id)" class="mt-5 space-y-3">
                   <label class="space-y-2">
                     <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Buddy Name</span>
-                    <input v-model="buddy.name" type="text" class="w-full border border-primary/10 bg-surface-container-high/35 px-4 py-3 text-sm text-on-surface placeholder:text-secondary/50 focus:border-primary/30 focus:ring-1 focus:ring-primary" placeholder="Sam Carter" />
+                    <input v-model="buddy.name" type="text" class="settings-input" placeholder="Sam Carter" />
                   </label>
-                  <div class="border border-primary/10 bg-background/25 px-4 py-4">
-                    <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-primary">Usage</p>
-                    <p class="mt-2 text-sm text-on-surface">Appears in dive log buddy pickers.</p>
-                  </div>
                 </div>
 
-                <div v-else class="grid gap-4 md:grid-cols-[minmax(0,1fr)_220px]">
-                  <div class="border border-primary/10 bg-surface-container-high/25 px-4 py-4">
-                    <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Buddy Name</p>
-                    <p class="mt-2 text-base font-semibold text-on-surface">{{ displayValue(buddy.name) }}</p>
-                  </div>
-                  <div class="border border-primary/10 bg-surface-container-high/25 px-4 py-4">
-                    <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-primary">Status</p>
-                    <p class="mt-2 text-base font-semibold text-on-surface">Available in logbook</p>
-                  </div>
+                <div v-else-if="isBuddyExpanded(buddy.id)" class="mt-5">
+                  <p class="text-sm leading-6 text-secondary">Available in dive-log buddy pickers and import workflows.</p>
                 </div>
               </article>
             </div>
           </div>
 
-          <div v-if="activeSettingsSection === 'dive-guide'" class="bg-surface-container-high p-8 shadow-panel">
-            <div class="mb-8 flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+          <div v-if="activeSettingsSection === 'dive-guide'" class="settings-panel settings-card">
+            <div class="settings-card-header">
               <div>
                 <p class="font-label text-[10px] font-bold uppercase tracking-[0.24em] text-primary">Dive Guide</p>
-                <h4 class="mt-2 font-headline text-3xl font-bold tracking-tight">Saved Dive Guide List</h4>
-                <p class="mt-3 max-w-3xl text-sm leading-7 text-secondary">Add guides and instructors you dive with regularly. Saved guide names appear as searchable suggestions in the import queue and logbook editor.</p>
+                <h4 class="mt-2 font-headline text-3xl font-bold tracking-tight text-on-surface">Saved Guide List</h4>
+                <p class="mt-3 max-w-3xl text-sm leading-7 text-secondary">Guides and instructors now use the same denser layout as buddies, which makes longer lists much easier to browse.</p>
               </div>
-              <div class="flex flex-wrap gap-3">
-                <template v-if="!areGuidesEditing">
-                  <button
-                    @click="beginGuidesEdit"
-                    :disabled="profileLoading || profileSaving || licensesSaving || diveSitesSaving || buddiesSaving || guidesSaving || Boolean(licenseUploadingId)"
-                    class="border border-primary/15 px-4 py-2 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-secondary disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    Edit Guides
-                  </button>
-                </template>
-                <template v-else>
-                  <button
-                    @click="addGuide"
-                    :disabled="guidesSaving || profileSaving || licensesSaving || diveSitesSaving || buddiesSaving || Boolean(licenseUploadingId)"
-                    class="border border-primary/15 px-4 py-2 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-secondary disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    Add Guide
-                  </button>
-                  <button
-                    @click="cancelGuidesEdit"
-                    :disabled="guidesSaving || profileSaving || licensesSaving || diveSitesSaving || buddiesSaving || Boolean(licenseUploadingId)"
-                    class="border border-primary/15 px-4 py-2 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-secondary disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    @click="saveGuides"
-                    :disabled="profileLoading || profileSaving || licensesSaving || diveSitesSaving || buddiesSaving || guidesSaving || Boolean(licenseUploadingId)"
-                    class="bg-primary px-4 py-2 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-on-primary disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    {{ guidesSaving ? 'Saving Guides' : 'Save Guides' }}
-                  </button>
-                </template>
+              <div class="settings-toolbar">
+                <button @click="addGuideEntry" :disabled="isInteractionLocked" class="settings-button settings-button-secondary">Add Guide</button>
               </div>
             </div>
 
-            <div v-if="!areGuidesEditing && guides.length === 0" class="rounded border border-dashed border-primary/20 bg-surface-container-lowest p-5">
+            <div v-if="!areGuidesEditing && guides.length === 0" class="settings-empty-state">
               <p class="font-headline text-lg font-bold">No saved guides</p>
               <p class="mt-2 text-sm text-secondary">Create a reusable guide list here so dive logs can search and reuse names instead of retyping them.</p>
             </div>
 
-            <div v-else-if="areGuidesEditing && guideDrafts.length === 0" class="rounded border border-dashed border-primary/20 bg-surface-container-lowest p-5">
+            <div v-else-if="areGuidesEditing && guideDrafts.length === 0" class="settings-empty-state">
               <p class="font-headline text-lg font-bold">No saved guides</p>
               <p class="mt-2 text-sm text-secondary">Add the first guide or instructor you want available in your logbook forms.</p>
             </div>
 
-            <div v-else class="space-y-5">
-              <article v-for="(guide, index) in (areGuidesEditing ? guideDrafts : guides)" :key="guide.id" class="border border-primary/10 bg-surface-container-lowest/35 p-5">
-                <div class="mb-4 flex items-center justify-between gap-4">
+            <div v-else class="settings-compact-grid">
+              <article v-for="(guide, index) in visibleGuides" :key="guide.id" class="settings-compact-card">
+                <div class="flex items-start justify-between gap-3">
                   <div>
                     <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Guide {{ index + 1 }}</p>
-                    <p class="mt-1 text-sm text-on-surface-variant">{{ guideTitle(guide, index) }}</p>
+                    <h5 class="mt-2 font-headline text-xl font-bold text-on-surface">{{ guideTitle(guide, index) }}</h5>
                   </div>
-                  <button v-if="areGuidesEditing" @click="removeGuide(index)" class="bg-error-container/20 px-3 py-2 font-label text-[10px] font-bold uppercase tracking-[0.16em] text-on-error-container">
-                    Remove
-                  </button>
+                  <div class="settings-toolbar">
+                    <button
+                      v-if="!isGuideEditing(guide.id)"
+                      @click="toggleGuideDetails(guide.id)"
+                      class="settings-button settings-button-ghost"
+                    >
+                      {{ isGuideExpanded(guide.id) ? 'Hide Info' : 'Show Info' }}
+                    </button>
+                    <button
+                      v-if="!isGuideEditing(guide.id) && isGuideExpanded(guide.id)"
+                      @click="editGuideItem(guide.id)"
+                      class="settings-button settings-button-secondary"
+                    >
+                      Edit Guide
+                    </button>
+                    <button v-if="isGuideEditing(guide.id)" @click="confirmRemoveGuide(index)" class="settings-button settings-button-danger">Remove</button>
+                    <button v-if="isGuideEditing(guide.id)" @click="cancelGuidesEdit" :disabled="isInteractionLocked" class="settings-button settings-button-ghost">Cancel</button>
+                    <button v-if="isGuideEditing(guide.id)" @click="saveGuides" :disabled="isInteractionLocked" class="settings-button settings-button-primary">{{ guidesSaving ? 'Saving Guide' : 'Save Guide' }}</button>
+                  </div>
                 </div>
 
-                <div v-if="areGuidesEditing" class="grid gap-4 md:grid-cols-[minmax(0,1fr)_220px]">
+                <div v-if="isGuideEditing(guide.id)" class="mt-5 space-y-3">
                   <label class="space-y-2">
                     <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Guide Name</span>
-                    <input v-model="guide.name" type="text" class="w-full border border-primary/10 bg-surface-container-high/35 px-4 py-3 text-sm text-on-surface placeholder:text-secondary/50 focus:border-primary/30 focus:ring-1 focus:ring-primary" placeholder="Kai Jensen" />
+                    <input v-model="guide.name" type="text" class="settings-input" placeholder="Kai Jensen" />
                   </label>
-                  <div class="border border-primary/10 bg-background/25 px-4 py-4">
-                    <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-primary">Usage</p>
-                    <p class="mt-2 text-sm text-on-surface">Appears in dive log guide pickers.</p>
-                  </div>
                 </div>
 
-                <div v-else class="grid gap-4 md:grid-cols-[minmax(0,1fr)_220px]">
-                  <div class="border border-primary/10 bg-surface-container-high/25 px-4 py-4">
-                    <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Guide Name</p>
-                    <p class="mt-2 text-base font-semibold text-on-surface">{{ displayValue(guide.name) }}</p>
-                  </div>
-                  <div class="border border-primary/10 bg-surface-container-high/25 px-4 py-4">
-                    <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-primary">Status</p>
-                    <p class="mt-2 text-base font-semibold text-on-surface">Available in logbook</p>
-                  </div>
+                <div v-else-if="isGuideExpanded(guide.id)" class="mt-5">
+                  <p class="text-sm leading-6 text-secondary">Available in dive-log guide pickers and import workflows.</p>
                 </div>
               </article>
             </div>
           </div>
 
-        <div v-if="activeSettingsSection === 'data-management'" class="flex flex-col gap-8">
-          <div class="glass-panel bg-surface-container-high p-6 shadow-panel">
-            <h4 class="mb-6 font-label text-[10px] font-bold uppercase tracking-[0.24em] text-primary">Data Management</h4>
-            <p class="max-w-3xl text-sm leading-7 text-secondary">Export your dive log as a printable PDF, download raw telemetry as CSV, and manage desktop sync access for the Windows importer.</p>
-            <div v-if="dataManagementStatus" class="mt-5 border border-primary/20 bg-primary/10 px-4 py-3 text-sm text-primary">
-              {{ dataManagementStatus }}
+          <div v-if="activeSettingsSection === 'data-management'" class="settings-panel settings-card">
+            <div class="settings-card-header">
+              <div>
+                <p class="font-label text-[10px] font-bold uppercase tracking-[0.24em] text-primary">Data Management</p>
+                <h4 class="mt-2 font-headline text-3xl font-bold tracking-tight text-on-surface">Exports And Desktop Sync</h4>
+                <p class="mt-3 max-w-3xl text-sm leading-7 text-secondary">The actions below are organized as clear task cards instead of one long button list.</p>
+              </div>
             </div>
-            <div v-if="dataManagementError" class="mt-5 border border-error/20 bg-error-container/20 px-4 py-3 text-sm text-on-error-container">
-              {{ dataManagementError }}
-            </div>
-            <div class="flex flex-col gap-4">
+
+            <div v-if="dataManagementStatus" class="settings-feedback border-primary/20 bg-primary/10 text-primary">{{ dataManagementStatus }}</div>
+            <div v-if="dataManagementError" class="settings-feedback border-error/20 bg-error-container/20 text-on-error-container">{{ dataManagementError }}</div>
+
+            <div class="settings-action-grid">
               <button
                 @click="exportDivePdf"
-                :disabled="isDataManagementBusy || profileLoading || profileSaving || licensesSaving || diveSitesSaving || buddiesSaving || guidesSaving || Boolean(licenseUploadingId)"
-                class="flex w-full items-center justify-between rounded bg-surface-container-lowest p-4 transition-colors hover:bg-surface-bright disabled:cursor-not-allowed disabled:opacity-60"
+                :disabled="isDataManagementBusy || isInteractionLocked"
+                class="settings-action-card"
               >
-                <span class="flex items-center gap-3"><span class="material-symbols-outlined text-secondary">picture_as_pdf</span><span class="text-sm font-headline font-bold">{{ dataManagementAction === 'Exporting PDF' ? 'Exporting Dive PDF' : 'Export Logs (PDF)' }}</span></span>
-                <span class="material-symbols-outlined text-secondary/50">chevron_right</span>
+                <div>
+                  <div class="flex items-center gap-3">
+                    <span class="material-symbols-outlined text-primary">picture_as_pdf</span>
+                    <p class="font-headline text-xl font-bold text-on-surface">{{ dataManagementAction === 'Exporting PDF' ? 'Exporting Dive PDF' : 'Export Logs (PDF)' }}</p>
+                  </div>
+                  <p class="mt-3 text-sm leading-6 text-secondary">Generate a printable logbook export for review, sharing, or offline archiving.</p>
+                </div>
+                <span class="material-symbols-outlined text-secondary/60">north_east</span>
               </button>
+
               <button
                 @click="exportDiveCsv"
-                :disabled="isDataManagementBusy || profileLoading || profileSaving || licensesSaving || diveSitesSaving || buddiesSaving || guidesSaving || Boolean(licenseUploadingId)"
-                class="flex w-full items-center justify-between rounded bg-surface-container-lowest p-4 transition-colors hover:bg-surface-bright disabled:cursor-not-allowed disabled:opacity-60"
+                :disabled="isDataManagementBusy || isInteractionLocked"
+                class="settings-action-card"
               >
-                <span class="flex items-center gap-3"><span class="material-symbols-outlined text-secondary">table_chart</span><span class="text-sm font-headline font-bold">{{ dataManagementAction === 'Exporting CSV' ? 'Exporting Telemetry CSV' : 'Raw Telemetry (CSV)' }}</span></span>
-                <span class="material-symbols-outlined text-secondary/50">chevron_right</span>
+                <div>
+                  <div class="flex items-center gap-3">
+                    <span class="material-symbols-outlined text-primary">table_chart</span>
+                    <p class="font-headline text-xl font-bold text-on-surface">{{ dataManagementAction === 'Exporting CSV' ? 'Exporting Telemetry CSV' : 'Raw Telemetry (CSV)' }}</p>
+                  </div>
+                  <p class="mt-3 text-sm leading-6 text-secondary">Download the raw dive telemetry for spreadsheet analysis or external processing.</p>
+                </div>
+                <span class="material-symbols-outlined text-secondary/60">north_east</span>
               </button>
             </div>
-            <div class="mt-8 border-t border-outline-variant/10 pt-8">
-              <h5 class="mb-3 font-label text-[10px] font-bold uppercase tracking-[0.24em] text-primary">Desktop Sync Login</h5>
-              <p class="text-sm leading-6 text-secondary" v-if="!hasCliAuthCode">Launch the Windows Dive Sync app and click Sign In. It will open this page with a one-time approval request so you can authorize the desktop sync session from your browser.</p>
-              <p class="text-sm leading-6 text-secondary" v-else>The Windows Dive Sync app is requesting access to your account. Approve it once, then return to the desktop app to start importing dives.</p>
+
+            <div class="settings-side-panel mt-6">
+              <div class="flex items-start justify-between gap-4">
+                <div>
+                  <p class="font-label text-[10px] font-bold uppercase tracking-[0.24em] text-primary">Desktop Sync Login</p>
+                  <p class="mt-3 max-w-3xl text-sm leading-7 text-secondary" v-if="!hasCliAuthCode">Launch the Windows Dive Sync app and click Sign In. It will open this page with a one-time approval request so you can authorize the desktop sync session from your browser.</p>
+                  <p class="mt-3 max-w-3xl text-sm leading-7 text-secondary" v-else>The Windows Dive Sync app is requesting access to your account. Approve it once, then return to the desktop app to start importing dives.</p>
+                </div>
+                <span class="settings-chip" :class="hasCliAuthCode ? 'is-accent' : ''">{{ hasCliAuthCode ? 'Approval waiting' : 'Idle' }}</span>
+              </div>
+
               <button
                 v-if="hasCliAuthCode"
                 @click="approveDesktopSync"
                 :disabled="desktopSyncApproving"
-                class="mt-4 flex w-full items-center justify-between rounded bg-primary px-4 py-4 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-on-primary transition-all hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
+                class="settings-button settings-button-primary mt-5 w-full justify-between"
               >
                 <span class="flex items-center gap-3">
                   <span class="material-symbols-outlined text-sm">verified_user</span>
@@ -1733,34 +2079,48 @@ export default {
               <p v-if="desktopSyncError" class="mt-3 text-sm text-error">{{ desktopSyncError }}</p>
             </div>
           </div>
-        </div>
 
-        <div v-if="activeSettingsSection === 'backup'" class="flex flex-col gap-8">
-          <div class="glass-panel bg-surface-container-high p-6 shadow-panel">
-            <h4 class="mb-6 font-label text-[10px] font-bold uppercase tracking-[0.24em] text-primary">Backup</h4>
-            <p class="max-w-3xl text-sm leading-7 text-secondary">Download a complete backup of your account data or restore from a previous backup. The backup includes profile data, saved lists, device sync state, license PDFs, and all imported dives.</p>
-            <div v-if="dataManagementStatus" class="mt-5 border border-primary/20 bg-primary/10 px-4 py-3 text-sm text-primary">
-              {{ dataManagementStatus }}
+          <div v-if="activeSettingsSection === 'backup'" class="settings-panel settings-card">
+            <div class="settings-card-header">
+              <div>
+                <p class="font-label text-[10px] font-bold uppercase tracking-[0.24em] text-primary">Backup</p>
+                <h4 class="mt-2 font-headline text-3xl font-bold tracking-tight text-on-surface">Backup And Restore</h4>
+                <p class="mt-3 max-w-3xl text-sm leading-7 text-secondary">Backup tasks are separated from everyday exports so destructive restore actions feel more deliberate and easier to understand.</p>
+              </div>
             </div>
-            <div v-if="dataManagementError" class="mt-5 border border-error/20 bg-error-container/20 px-4 py-3 text-sm text-on-error-container">
-              {{ dataManagementError }}
-            </div>
-            <div class="mt-6 flex flex-col gap-4">
+
+            <div v-if="dataManagementStatus" class="settings-feedback border-primary/20 bg-primary/10 text-primary">{{ dataManagementStatus }}</div>
+            <div v-if="dataManagementError" class="settings-feedback border-error/20 bg-error-container/20 text-on-error-container">{{ dataManagementError }}</div>
+
+            <div class="settings-action-grid">
               <button
                 @click="exportBackup"
-                :disabled="isDataManagementBusy || profileLoading || profileSaving || licensesSaving || diveSitesSaving || buddiesSaving || guidesSaving || Boolean(licenseUploadingId)"
-                class="flex w-full items-center justify-between rounded bg-surface-container-lowest p-4 transition-colors hover:bg-surface-bright disabled:cursor-not-allowed disabled:opacity-60"
+                :disabled="isDataManagementBusy || isInteractionLocked"
+                class="settings-action-card"
               >
-                <span class="flex items-center gap-3"><span class="material-symbols-outlined text-secondary">archive</span><span class="text-sm font-headline font-bold">{{ dataManagementAction === 'Exporting Backup' ? 'Building Full Backup' : 'Download Full Backup' }}</span></span>
-                <span class="material-symbols-outlined text-secondary/50">chevron_right</span>
+                <div>
+                  <div class="flex items-center gap-3">
+                    <span class="material-symbols-outlined text-primary">archive</span>
+                    <p class="font-headline text-xl font-bold text-on-surface">{{ dataManagementAction === 'Exporting Backup' ? 'Building Full Backup' : 'Download Full Backup' }}</p>
+                  </div>
+                  <p class="mt-3 text-sm leading-6 text-secondary">Save your account data, saved lists, PDFs, and imported dive state into one archive.</p>
+                </div>
+                <span class="material-symbols-outlined text-secondary/60">download</span>
               </button>
+
               <button
                 @click="triggerBackupImport"
-                :disabled="isDataManagementBusy || profileLoading || profileSaving || licensesSaving || diveSitesSaving || buddiesSaving || guidesSaving || Boolean(licenseUploadingId)"
-                class="flex w-full items-center justify-between rounded bg-surface-container-lowest p-4 transition-colors hover:bg-surface-bright disabled:cursor-not-allowed disabled:opacity-60"
+                :disabled="isDataManagementBusy || isInteractionLocked"
+                class="settings-action-card"
               >
-                <span class="flex items-center gap-3"><span class="material-symbols-outlined text-secondary">upload_file</span><span class="text-sm font-headline font-bold">{{ dataManagementAction === 'Importing Backup' ? 'Importing Backup' : 'Import From Backup' }}</span></span>
-                <span class="material-symbols-outlined text-secondary/50">chevron_right</span>
+                <div>
+                  <div class="flex items-center gap-3">
+                    <span class="material-symbols-outlined text-primary">upload_file</span>
+                    <p class="font-headline text-xl font-bold text-on-surface">{{ dataManagementAction === 'Importing Backup' ? 'Importing Backup' : 'Import From Backup' }}</p>
+                  </div>
+                  <p class="mt-3 text-sm leading-6 text-secondary">Restore from a previously exported backup when moving systems or recovering state.</p>
+                </div>
+                <span class="material-symbols-outlined text-secondary/60">upload</span>
               </button>
             </div>
             <input
@@ -1771,8 +2131,7 @@ export default {
               @change="handleBackupImportSelection"
             />
           </div>
-        </div>
-        </div>
+          </template>
       </section>
 
       <div
@@ -1789,12 +2148,42 @@ export default {
             <button
               type="button"
               @click="closeLicensePreview"
-              class="bg-surface-container-highest px-3 py-2 font-label text-[10px] font-bold uppercase tracking-[0.16em] text-primary"
+              class="settings-button settings-button-secondary"
             >
               Close
             </button>
           </div>
           <img :src="activeLicensePreview.image" :alt="activeLicensePreview.filename" class="mx-auto max-h-[80vh] w-auto max-w-full bg-white" />
+        </div>
+      </div>
+
+      <div
+        v-if="pendingRemoval"
+        @click.self="closeRemovalDialog"
+        class="fixed inset-0 z-[60] flex items-center justify-center bg-background/88 px-6 py-8 backdrop-blur-sm"
+      >
+        <div class="settings-confirm-dialog">
+          <div>
+            <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-primary">Confirm Removal</p>
+            <h3 class="mt-3 font-headline text-2xl font-bold tracking-tight text-on-surface">Remove {{ pendingRemoval.label }}?</h3>
+            <p class="mt-3 text-sm text-secondary">This action cannot be undone.</p>
+          </div>
+          <div class="settings-confirm-actions">
+            <button
+              type="button"
+              @click="closeRemovalDialog"
+              class="settings-button settings-button-ghost"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              @click="confirmPendingRemoval"
+              class="settings-button settings-button-danger"
+            >
+              Remove
+            </button>
+          </div>
         </div>
       </div>
     </section>

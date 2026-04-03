@@ -67,6 +67,7 @@ def test_decode_profile_license_payload_rejects_non_pdf():
 
 def test_nominatim_client_search_parses_result_and_caches(monkeypatch):
     calls = {"count": 0}
+    seen = {"url": None, "accept_language": None}
 
     class FakeResponse:
         def __enter__(self):
@@ -77,9 +78,14 @@ def test_nominatim_client_search_parses_result_and_caches(monkeypatch):
 
         def read(self):
             calls["count"] += 1
-            return b'[{"display_name":"Blue Hole, Example Reef","lat":"25.3104","lon":"-80.2961"}]'
+            return b'[{"display_name":"Blue Hole, Example Reef","address":{"country":"Egypt"},"lat":"25.3104","lon":"-80.2961"}]'
 
-    monkeypatch.setattr(dive_backend.urlrequest, "urlopen", lambda req, timeout=15: FakeResponse())
+    def fake_urlopen(req, timeout=15):
+        seen["url"] = req.full_url
+        seen["accept_language"] = req.headers.get("Accept-language")
+        return FakeResponse()
+
+    monkeypatch.setattr(dive_backend.urlrequest, "urlopen", fake_urlopen)
 
     client = dive_backend.NominatimClient(base_url="https://nominatim.example", user_agent="DiveVault/Tests")
 
@@ -87,7 +93,10 @@ def test_nominatim_client_search_parses_result_and_caches(monkeypatch):
     second = client.search("Blue Hole")
 
     assert first["found"] is True
+    assert first["result"]["country"] == "Egypt"
     assert first["result"]["latitude"] == 25.3104
+    assert "accept-language=en" in seen["url"]
+    assert seen["accept_language"] == "en"
     assert second == first
     assert calls["count"] == 1
 
@@ -250,6 +259,25 @@ def test_wait_for_database_raises_clear_error_when_unreachable(monkeypatch):
             retry_delay_seconds=0.1,
             connect_timeout_seconds=3,
         )
+
+
+def test_run_startup_database_migrations_opens_and_closes_connection(monkeypatch):
+    calls = {"opened": 0, "closed": 0}
+
+    class FakeConn:
+        def close(self):
+            calls["closed"] += 1
+
+    def fake_open_db(database_url: str):
+        calls["opened"] += 1
+        assert database_url == "postgresql://user:secret@example.com:5432/dive"
+        return FakeConn()
+
+    monkeypatch.setattr(dive_backend, "open_db", fake_open_db)
+
+    dive_backend.run_startup_database_migrations("postgresql://user:secret@example.com:5432/dive")
+
+    assert calls == {"opened": 1, "closed": 1}
 
 
 def test_cli_sync_token_manager_tracks_requests_and_tokens(monkeypatch):

@@ -71,6 +71,45 @@ CREATE TABLE IF NOT EXISTS user_profile_license_documents (
     uploaded_at TEXT NOT NULL,
     PRIMARY KEY (user_id, license_id)
 );
+
+CREATE TABLE IF NOT EXISTS user_profile_licenses (
+    user_id TEXT NOT NULL,
+    license_id TEXT NOT NULL,
+    sort_order INTEGER NOT NULL,
+    company TEXT,
+    certification_name TEXT,
+    student_number TEXT,
+    certification_date TEXT,
+    instructor_number TEXT,
+    PRIMARY KEY (user_id, license_id)
+);
+
+CREATE TABLE IF NOT EXISTS user_profile_dive_sites (
+    user_id TEXT NOT NULL,
+    site_id TEXT NOT NULL,
+    sort_order INTEGER NOT NULL,
+    name TEXT,
+    location TEXT,
+    country TEXT,
+    latitude DOUBLE PRECISION,
+    longitude DOUBLE PRECISION,
+    PRIMARY KEY (user_id, site_id)
+);
+
+CREATE TABLE IF NOT EXISTS user_profile_buddies (
+    user_id TEXT NOT NULL,
+    buddy_id TEXT NOT NULL,
+    sort_order INTEGER NOT NULL,
+    name TEXT,
+    PRIMARY KEY (user_id, buddy_id)
+);
+
+CREATE TABLE IF NOT EXISTS user_profile_guides (
+    user_id TEXT NOT NULL,
+    guide_id TEXT NOT NULL,
+    name TEXT,
+    PRIMARY KEY (user_id, guide_id)
+);
 """
 
 LOGBOOK_REQUIRED_FIELDS = ("site", "buddy", "guide")
@@ -227,6 +266,13 @@ def init_db(conn: psycopg.Connection) -> None:
         cur.execute("DROP INDEX IF EXISTS idx_dives_started_at")
         cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_dives_user_dive_uid ON dives (user_id, dive_uid)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_dives_user_started_at ON dives (user_id, started_at DESC, id DESC)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_user_profile_licenses_user_sort ON user_profile_licenses (user_id, sort_order ASC, license_id ASC)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_user_profile_dive_sites_user_sort ON user_profile_dive_sites (user_id, sort_order ASC, site_id ASC)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_user_profile_buddies_user_sort ON user_profile_buddies (user_id, sort_order ASC, buddy_id ASC)")
+        cur.execute("ALTER TABLE user_profile_guides DROP COLUMN IF EXISTS sort_order")
+        cur.execute("DROP INDEX IF EXISTS idx_user_profile_guides_user_sort")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_user_profile_guides_user_name ON user_profile_guides (user_id, LOWER(name), name, guide_id)")
+    backfill_profile_collection_tables(conn)
     conn.commit()
 
 
@@ -320,6 +366,7 @@ def normalize_profile_dive_site(entry: dict | None) -> dict:
         "id": clean_profile_text(source.get("id")),
         "name": clean_profile_text(source.get("name")),
         "location": clean_profile_text(source.get("location")),
+        "country": clean_profile_text(source.get("country")),
         "latitude": latitude,
         "longitude": longitude,
     }
@@ -441,6 +488,282 @@ def normalize_profile_guides(entries: object) -> list[dict]:
         normalized.append(normalized_entry)
 
     return normalized
+
+
+def decode_profile_collection(value: object) -> list[dict]:
+    if isinstance(value, str):
+        try:
+            value = json.loads(value)
+        except json.JSONDecodeError:
+            return []
+    return value if isinstance(value, list) else []
+
+
+def legacy_profile_licenses_from_row(row: dict | None) -> list[dict]:
+    source = row or {}
+    normalized_licenses = normalize_profile_licenses(decode_profile_collection(source.get("licenses_json")))
+    if normalized_licenses:
+        return normalized_licenses
+
+    legacy_license = normalize_profile_license(
+        {
+            "id": "license-1",
+            "company": source.get("license_company"),
+            "certification_name": source.get("license_certification_name") or source.get("certification"),
+            "student_number": source.get("license_student_number") or source.get("registry"),
+            "certification_date": source.get("license_certification_date"),
+            "instructor_number": source.get("license_instructor_number"),
+        }
+    )
+    return [legacy_license] if profile_license_has_values(legacy_license) else []
+
+
+def legacy_profile_dive_sites_from_row(row: dict | None) -> list[dict]:
+    return normalize_profile_dive_sites(decode_profile_collection((row or {}).get("dive_sites_json")))
+
+
+def legacy_profile_buddies_from_row(row: dict | None) -> list[dict]:
+    return normalize_profile_buddies(decode_profile_collection((row or {}).get("buddies_json")))
+
+
+def legacy_profile_guides_from_row(row: dict | None) -> list[dict]:
+    return normalize_profile_guides(decode_profile_collection((row or {}).get("guides_json")))
+
+
+def fetch_user_profile_licenses(conn: psycopg.Connection, user_id: str) -> list[dict]:
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT license_id, company, certification_name, student_number, certification_date, instructor_number
+            FROM user_profile_licenses
+            WHERE user_id=%s
+            ORDER BY sort_order ASC, license_id ASC
+            """,
+            (user_id,),
+        )
+        rows = cur.fetchall()
+
+    return normalize_profile_licenses(
+        [
+            {
+                "id": row.get("license_id"),
+                "company": row.get("company"),
+                "certification_name": row.get("certification_name"),
+                "student_number": row.get("student_number"),
+                "certification_date": row.get("certification_date"),
+                "instructor_number": row.get("instructor_number"),
+            }
+            for row in rows
+        ]
+    )
+
+
+def fetch_user_profile_dive_sites(conn: psycopg.Connection, user_id: str) -> list[dict]:
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT site_id, name, location, country, latitude, longitude
+            FROM user_profile_dive_sites
+            WHERE user_id=%s
+            ORDER BY sort_order ASC, site_id ASC
+            """,
+            (user_id,),
+        )
+        rows = cur.fetchall()
+
+    return normalize_profile_dive_sites(
+        [
+            {
+                "id": row.get("site_id"),
+                "name": row.get("name"),
+                "location": row.get("location"),
+                "country": row.get("country"),
+                "latitude": row.get("latitude"),
+                "longitude": row.get("longitude"),
+            }
+            for row in rows
+        ]
+    )
+
+
+def fetch_user_profile_buddies(conn: psycopg.Connection, user_id: str) -> list[dict]:
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT buddy_id, name
+            FROM user_profile_buddies
+            WHERE user_id=%s
+            ORDER BY sort_order ASC, buddy_id ASC
+            """,
+            (user_id,),
+        )
+        rows = cur.fetchall()
+
+    return normalize_profile_buddies(
+        [
+            {
+                "id": row.get("buddy_id"),
+                "name": row.get("name"),
+            }
+            for row in rows
+        ]
+    )
+
+
+def fetch_user_profile_guides(conn: psycopg.Connection, user_id: str) -> list[dict]:
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT guide_id, name
+            FROM user_profile_guides
+            WHERE user_id=%s
+            ORDER BY LOWER(name) ASC, name ASC, guide_id ASC
+            """,
+            (user_id,),
+        )
+        rows = cur.fetchall()
+
+    return normalize_profile_guides(
+        [
+            {
+                "id": row.get("guide_id"),
+                "name": row.get("name"),
+            }
+            for row in rows
+        ]
+    )
+
+
+def resolve_user_profile_collections(conn: psycopg.Connection, user_id: str, row: dict | None) -> tuple[list[dict], list[dict], list[dict], list[dict]]:
+    licenses = fetch_user_profile_licenses(conn, user_id)
+    dive_sites = fetch_user_profile_dive_sites(conn, user_id)
+    buddies = fetch_user_profile_buddies(conn, user_id)
+    guides = fetch_user_profile_guides(conn, user_id)
+
+    if not licenses:
+        licenses = legacy_profile_licenses_from_row(row)
+    if not dive_sites:
+        dive_sites = legacy_profile_dive_sites_from_row(row)
+    if not buddies:
+        buddies = legacy_profile_buddies_from_row(row)
+    if not guides:
+        guides = legacy_profile_guides_from_row(row)
+
+    return licenses, dive_sites, buddies, guides
+
+
+def replace_user_profile_licenses(cur: psycopg.Cursor, user_id: str, licenses: list[dict]) -> None:
+    cur.execute("DELETE FROM user_profile_licenses WHERE user_id=%s", (user_id,))
+    for index, license_entry in enumerate(licenses):
+        cur.execute(
+            """
+            INSERT INTO user_profile_licenses(
+                user_id, license_id, sort_order, company, certification_name, student_number, certification_date, instructor_number
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            """,
+            (
+                user_id,
+                license_entry["id"],
+                index,
+                clean_profile_text(license_entry.get("company")),
+                clean_profile_text(license_entry.get("certification_name")),
+                clean_profile_text(license_entry.get("student_number")),
+                clean_profile_text(license_entry.get("certification_date")),
+                clean_profile_text(license_entry.get("instructor_number")),
+            ),
+        )
+
+
+def replace_user_profile_dive_sites(cur: psycopg.Cursor, user_id: str, dive_sites: list[dict]) -> None:
+    cur.execute("DELETE FROM user_profile_dive_sites WHERE user_id=%s", (user_id,))
+    for index, site in enumerate(dive_sites):
+        cur.execute(
+            """
+            INSERT INTO user_profile_dive_sites(
+                user_id, site_id, sort_order, name, location, country, latitude, longitude
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            """,
+            (
+                user_id,
+                site["id"],
+                index,
+                clean_profile_text(site.get("name")),
+                clean_profile_text(site.get("location")),
+                clean_profile_text(site.get("country")),
+                clean_coordinate_value(site.get("latitude")),
+                clean_coordinate_value(site.get("longitude")),
+            ),
+        )
+
+
+def replace_user_profile_buddies(cur: psycopg.Cursor, user_id: str, buddies: list[dict]) -> None:
+    cur.execute("DELETE FROM user_profile_buddies WHERE user_id=%s", (user_id,))
+    for index, buddy in enumerate(buddies):
+        cur.execute(
+            """
+            INSERT INTO user_profile_buddies(user_id, buddy_id, sort_order, name)
+            VALUES (%s, %s, %s, %s)
+            """,
+            (
+                user_id,
+                buddy["id"],
+                index,
+                clean_profile_text(buddy.get("name")),
+            ),
+        )
+
+
+def replace_user_profile_guides(cur: psycopg.Cursor, user_id: str, guides: list[dict]) -> None:
+    cur.execute("DELETE FROM user_profile_guides WHERE user_id=%s", (user_id,))
+    for guide in guides:
+        cur.execute(
+            """
+            INSERT INTO user_profile_guides(user_id, guide_id, name)
+            VALUES (%s, %s, %s)
+            """,
+            (
+                user_id,
+                guide["id"],
+                clean_profile_text(guide.get("name")),
+            ),
+        )
+
+
+def backfill_profile_collection_tables(conn: psycopg.Connection) -> None:
+    with conn.cursor() as cur:
+        cur.execute("SELECT * FROM user_profile")
+        rows = cur.fetchall()
+
+    for row in rows:
+        user_id = clean_profile_text(row.get("user_id"))
+        if not user_id:
+            continue
+
+        licenses = legacy_profile_licenses_from_row(row)
+        dive_sites = legacy_profile_dive_sites_from_row(row)
+        buddies = legacy_profile_buddies_from_row(row)
+        guides = legacy_profile_guides_from_row(row)
+
+        with conn.cursor() as cur:
+            cur.execute("SELECT 1 FROM user_profile_licenses WHERE user_id=%s LIMIT 1", (user_id,))
+            has_license_rows = cur.fetchone() is not None
+            cur.execute("SELECT 1 FROM user_profile_dive_sites WHERE user_id=%s LIMIT 1", (user_id,))
+            has_dive_site_rows = cur.fetchone() is not None
+            cur.execute("SELECT 1 FROM user_profile_buddies WHERE user_id=%s LIMIT 1", (user_id,))
+            has_buddy_rows = cur.fetchone() is not None
+            cur.execute("SELECT 1 FROM user_profile_guides WHERE user_id=%s LIMIT 1", (user_id,))
+            has_guide_rows = cur.fetchone() is not None
+
+            if licenses and not has_license_rows:
+                replace_user_profile_licenses(cur, user_id, licenses)
+            if dive_sites and not has_dive_site_rows:
+                replace_user_profile_dive_sites(cur, user_id, dive_sites)
+            if buddies and not has_buddy_rows:
+                replace_user_profile_buddies(cur, user_id, buddies)
+            if guides and not has_guide_rows:
+                replace_user_profile_guides(cur, user_id, guides)
 
 
 def profile_license_document_summary(*, license_id: str, filename: str, content_type: str, data: bytes, uploaded_at: str | None) -> dict:
@@ -844,28 +1167,20 @@ def empty_user_profile() -> dict:
     }
 
 
-def decode_user_profile_row(row: dict | None, license_documents: dict[str, dict] | None = None) -> dict:
+def decode_user_profile_row(
+    row: dict | None,
+    license_documents: dict[str, dict] | None = None,
+    *,
+    licenses: list[dict] | None = None,
+    dive_sites: list[dict] | None = None,
+    buddies: list[dict] | None = None,
+    guides: list[dict] | None = None,
+) -> dict:
     if not row:
         return empty_user_profile()
 
     license_documents = license_documents or {}
-    licenses = row.get("licenses_json")
-    if isinstance(licenses, str):
-        licenses = json.loads(licenses)
-    normalized_licenses = normalize_profile_licenses(licenses)
-    if not normalized_licenses:
-        legacy_license = normalize_profile_license(
-            {
-                "id": "license-1",
-                "company": row.get("license_company"),
-                "certification_name": row.get("license_certification_name") or row.get("certification"),
-                "student_number": row.get("license_student_number") or row.get("registry"),
-                "certification_date": row.get("license_certification_date"),
-                "instructor_number": row.get("license_instructor_number"),
-            }
-        )
-        if profile_license_has_values(legacy_license):
-            normalized_licenses = [legacy_license]
+    normalized_licenses = normalize_profile_licenses(licenses) if licenses is not None else legacy_profile_licenses_from_row(row)
 
     legacy_pdf = None
     if row.get("license_pdf_data") is not None and normalized_licenses:
@@ -888,20 +1203,9 @@ def decode_user_profile_row(row: dict | None, license_documents: dict[str, dict]
             "pdf": pdf_summary,
         })
 
-    dive_sites = row.get("dive_sites_json")
-    if isinstance(dive_sites, str):
-        dive_sites = json.loads(dive_sites)
-    normalized_dive_sites = normalize_profile_dive_sites(dive_sites)
-
-    buddies = row.get("buddies_json")
-    if isinstance(buddies, str):
-        buddies = json.loads(buddies)
-    normalized_buddies = normalize_profile_buddies(buddies)
-
-    guides = row.get("guides_json")
-    if isinstance(guides, str):
-        guides = json.loads(guides)
-    normalized_guides = normalize_profile_guides(guides)
+    normalized_dive_sites = normalize_profile_dive_sites(dive_sites) if dive_sites is not None else legacy_profile_dive_sites_from_row(row)
+    normalized_buddies = normalize_profile_buddies(buddies) if buddies is not None else legacy_profile_buddies_from_row(row)
+    normalized_guides = normalize_profile_guides(guides) if guides is not None else legacy_profile_guides_from_row(row)
 
     payload = {
         "name": clean_profile_text(row.get("name")),
@@ -944,7 +1248,15 @@ def get_user_profile(conn: psycopg.Connection, user_id: str) -> dict:
     with conn.cursor() as cur:
         cur.execute("SELECT * FROM user_profile WHERE user_id=%s", (user_id,))
         row = cur.fetchone()
-    return decode_user_profile_row(row, get_user_profile_license_document_summaries(conn, user_id))
+    licenses, dive_sites, buddies, guides = resolve_user_profile_collections(conn, user_id, row)
+    return decode_user_profile_row(
+        row,
+        get_user_profile_license_document_summaries(conn, user_id),
+        licenses=licenses,
+        dive_sites=dive_sites,
+        buddies=buddies,
+        guides=guides,
+    )
 
 
 def save_user_profile(conn: psycopg.Connection, user_id: str, payload: dict | None) -> dict:
@@ -957,10 +1269,7 @@ def save_user_profile(conn: psycopg.Connection, user_id: str, payload: dict | No
         updated_at = now_iso()
         existing_name = clean_profile_text(existing.get("name"))
         existing_email = clean_profile_text(existing.get("email"))
-        existing_licenses = normalize_profile_licenses(existing.get("licenses_json"))
-        existing_dive_sites = normalize_profile_dive_sites(existing.get("dive_sites_json"))
-        existing_buddies = normalize_profile_buddies(existing.get("buddies_json"))
-        existing_guides = normalize_profile_guides(existing.get("guides_json"))
+        existing_licenses, existing_dive_sites, existing_buddies, existing_guides = resolve_user_profile_collections(conn, user_id, existing)
         licenses = normalize_profile_licenses(source.get("licenses")) if "licenses" in source else existing_licenses
         dive_sites = normalize_profile_dive_sites(source.get("dive_sites")) if "dive_sites" in source else existing_dive_sites
         buddies = normalize_profile_buddies(source.get("buddies")) if "buddies" in source else existing_buddies
@@ -1017,6 +1326,10 @@ def save_user_profile(conn: psycopg.Connection, user_id: str, payload: dict | No
                 updated_at,
             ),
         )
+        replace_user_profile_licenses(cur, user_id, licenses)
+        replace_user_profile_dive_sites(cur, user_id, dive_sites)
+        replace_user_profile_buddies(cur, user_id, buddies)
+        replace_user_profile_guides(cur, user_id, guides)
         if licenses:
             cur.execute(
                 "DELETE FROM user_profile_license_documents WHERE user_id=%s AND license_id <> ALL(%s)",
@@ -1042,7 +1355,7 @@ def save_user_profile_license_pdf(
         row = cur.fetchone()
 
         existing = row or {}
-        existing_licenses = normalize_profile_licenses(existing.get("licenses_json"))
+        existing_licenses, existing_dive_sites, existing_buddies, existing_guides = resolve_user_profile_collections(conn, user_id, existing)
         if not any(license["id"] == license_id for license in existing_licenses):
             legacy_license = normalize_profile_license(
                 {
@@ -1101,10 +1414,10 @@ def save_user_profile_license_pdf(
                 user_id,
                 clean_profile_text(existing.get("name")),
                 clean_profile_text(existing.get("email")),
-                Jsonb(normalize_profile_licenses(existing.get("licenses_json"))),
-                Jsonb(normalize_profile_dive_sites(existing.get("dive_sites_json"))),
-                Jsonb(normalize_profile_buddies(existing.get("buddies_json"))),
-                Jsonb(normalize_profile_guides(existing.get("guides_json"))),
+                Jsonb(existing_licenses),
+                Jsonb(existing_dive_sites),
+                Jsonb(existing_buddies),
+                Jsonb(existing_guides),
                 clean_profile_text(existing.get("certification")),
                 clean_profile_text(existing.get("registry")),
                 clean_profile_text(existing.get("license_company")),
@@ -1161,20 +1474,7 @@ def get_user_profile_license_pdf(conn: psycopg.Connection, user_id: str, license
     if not profile_row:
         return None
 
-    licenses = normalize_profile_licenses(profile_row.get("licenses_json"))
-    if not licenses:
-        legacy_license = normalize_profile_license(
-            {
-                "id": "license-1",
-                "company": profile_row.get("license_company"),
-                "certification_name": profile_row.get("license_certification_name") or profile_row.get("certification"),
-                "student_number": profile_row.get("license_student_number") or profile_row.get("registry"),
-                "certification_date": profile_row.get("license_certification_date"),
-                "instructor_number": profile_row.get("license_instructor_number"),
-            }
-        )
-        if profile_license_has_values(legacy_license):
-            licenses = [legacy_license]
+    licenses, _, _, _ = resolve_user_profile_collections(conn, user_id, profile_row)
 
     if licenses and licenses[0]["id"] == license_id and profile_row.get("license_pdf_data") is not None:
         return {
