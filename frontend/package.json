@@ -9,7 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@clerk/vue": "^2.0.7",
+    "@clerk/vue": "^2.0.8",
     "leaflet": "^1.9.4",
     "pdfjs-dist": "^5.6.205",
     "vue": "^3.5.32"
