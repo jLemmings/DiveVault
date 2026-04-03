@@ -162,12 +162,13 @@ Run tests with:
 
 Container publishing and GitHub release packaging are driven by [`frontend/package.json`](./frontend/package.json).
 
-- Pushes to `master` create a Git tag and GitHub release in `v<version>` format, for example `v0.1.0`, based on the current package version.
-- The workflow publishes container images tagged with the clean version, `stable`, and `latest`.
-- The workflow also attaches a `divevault-<version>.tar.gz` release bundle built from the repository plus the compiled frontend assets.
-- If the tag or release for that package version already exists, the workflow fails so a duplicate version cannot be published.
+- Pushes to `master` publish a snapshot container image tag in `v<version>-<short-sha>` format, for example `v0.1.0-a1b2c3d`, based on the current package version.
+- Published GitHub Releases must be created in the GitHub UI with a tag that matches `v<version>` from [`frontend/package.json`](./frontend/package.json).
+- Release builds publish the clean `v<version>` container tag plus `stable` and `latest`.
+- Release builds also attach a `divevault-<version>.tar.gz` bundle built from the repository plus the compiled frontend assets.
+- If the package version still matches the previous published release, the release workflow fails so the version must be bumped before publishing again.
 
-This keeps `frontend/package.json` as the single release version source and makes each `master` merge an explicit versioned release.
+This keeps `frontend/package.json` as the single release version source while separating snapshot builds on `master` from UI-driven releases.
 
 ## libdivecomputer
 
