@@ -321,3 +321,53 @@ def test_cli_sync_token_manager_rejects_missing_or_expired_request(monkeypatch):
     manager.create_request()
 
     assert manager.approve_request("expired-code", {"sub": "user-1"}) is None
+
+
+def test_cli_sync_token_manager_uses_database_persistence(monkeypatch):
+    calls = []
+
+    class FakeConn:
+        def close(self):
+            calls.append(("close",))
+
+    monkeypatch.setattr(dive_backend, "open_db", lambda database_url: calls.append(("open_db", database_url)) or FakeConn())
+    monkeypatch.setattr(
+        dive_backend,
+        "create_cli_sync_request",
+        lambda conn, **kwargs: calls.append(("create", kwargs)) or {"code": kwargs["code"], "status": "pending", "created_at": kwargs["now_timestamp"], "expires_at": kwargs["now_timestamp"] + kwargs["request_ttl_seconds"], "token": None, "token_expires_at": None, "user_id": None, "email": None},
+    )
+    monkeypatch.setattr(
+        dive_backend,
+        "get_cli_sync_request_status",
+        lambda conn, code, **kwargs: calls.append(("status", code, kwargs)) or {"code": code, "status": "pending"},
+    )
+    monkeypatch.setattr(
+        dive_backend,
+        "approve_cli_sync_request",
+        lambda conn, code, claims, **kwargs: calls.append(("approve", code, claims, kwargs)) or {"code": code, "status": "approved", "token": kwargs["token"], "token_expires_at": kwargs["now_timestamp"] + kwargs["token_ttl_seconds"], "user_id": claims["sub"], "email": claims.get("email")},
+    )
+    monkeypatch.setattr(
+        dive_backend,
+        "verify_cli_sync_token",
+        lambda conn, token, **kwargs: calls.append(("verify", token, kwargs)) or {"token_type": "cli_sync", "sub": "user-1", "expires_at": kwargs["now_timestamp"] + 30},
+    )
+    monkeypatch.setattr(dive_backend.time, "time", lambda: 100.0)
+    monkeypatch.setattr(dive_backend.secrets, "token_urlsafe", lambda size: {24: "request-code", 32: "sync-token"}.get(size, f"token-{size}"))
+
+    manager = dive_backend.CliSyncTokenManager(
+        request_ttl_seconds=10,
+        token_ttl_seconds=30,
+        database_url="postgresql://user:secret@example.com:5432/dive",
+    )
+
+    created = manager.create_request()
+    status = manager.get_request_status("request-code")
+    approved = manager.approve_request("request-code", {"sub": "user-1", "email": "diver@example.com"})
+    claims = manager.verify_token("dvsync_sync-token")
+
+    assert created["code"] == "request-code"
+    assert status == {"code": "request-code", "status": "pending"}
+    assert approved["status"] == "approved"
+    assert approved["token"] == "dvsync_sync-token"
+    assert claims["token_type"] == "cli_sync"
+    assert ("open_db", "postgresql://user:secret@example.com:5432/dive") in calls
