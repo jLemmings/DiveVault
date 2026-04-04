@@ -243,6 +243,17 @@ function comparableGuides(guides) {
   }));
 }
 
+function normalizeSettingsText(value) {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function compareSettingsText(left, right) {
+  return normalizeSettingsText(left).localeCompare(normalizeSettingsText(right), undefined, {
+    sensitivity: "base",
+    numeric: true
+  });
+}
+
 export const SETTINGS_SECTIONS = [
   { id: "diver-details", label: "Diver Details", icon: "badge", description: "Profile and certifications" },
   { id: "dive-sites", label: "Dive Sites", icon: "pin_drop", description: "Locations and GPS coordinates" },
@@ -427,6 +438,10 @@ export default {
       profileStatusTimeoutId: null,
       pendingLicenseUploadId: null,
       activeLicensePreview: null,
+      licenseFilter: "",
+      diveSiteFilter: "",
+      buddyFilter: "",
+      guideFilter: "",
       pendingCreation: null,
       pendingCreationError: "",
       pendingCreationSubmitting: false,
@@ -473,16 +488,45 @@ export default {
       return this.settingsProfile.guides;
     },
     visibleLicenses() {
-      return this.areLicensesEditing ? this.licenseDrafts : this.licenses;
+      return this.sortAndFilterCollection(
+        this.areLicensesEditing ? this.licenseDrafts : this.licenses,
+        this.licenseFilter,
+        (license) => this.licenseSortKey(license),
+        (license) => [
+          license?.certification_name,
+          license?.company,
+          license?.student_number,
+          license?.instructor_number
+        ],
+        this.editingLicenseIds
+      );
     },
     visibleDiveSites() {
-      return this.areDiveSitesEditing ? this.diveSiteDrafts : this.diveSites;
+      return this.sortAndFilterCollection(
+        this.areDiveSitesEditing ? this.diveSiteDrafts : this.diveSites,
+        this.diveSiteFilter,
+        (site) => this.diveSiteSortKey(site),
+        (site) => [site?.name, site?.location, site?.country],
+        this.editingDiveSiteIds
+      );
     },
     visibleBuddies() {
-      return this.areBuddiesEditing ? this.buddyDrafts : this.buddies;
+      return this.sortAndFilterCollection(
+        this.areBuddiesEditing ? this.buddyDrafts : this.buddies,
+        this.buddyFilter,
+        (buddy) => this.buddySortKey(buddy),
+        (buddy) => [buddy?.name],
+        this.editingBuddyIds
+      );
     },
     visibleGuides() {
-      return this.areGuidesEditing ? this.guideDrafts : this.guides;
+      return this.sortAndFilterCollection(
+        this.areGuidesEditing ? this.guideDrafts : this.guides,
+        this.guideFilter,
+        (guide) => this.guideSortKey(guide),
+        (guide) => [guide?.name],
+        this.editingGuideIds
+      );
     },
     isInteractionLocked() {
       return this.profileLoading
@@ -656,6 +700,9 @@ export default {
     licenseTitle(license, index) {
       return license.certification_name || license.company || `License ${index + 1}`;
     },
+    licenseSortKey(license) {
+      return license?.certification_name || license?.company || license?.student_number || license?.id || "";
+    },
     licenseExistsOnServer(licenseId) {
       return this.settingsProfile.licenses.some((license) => license.id === licenseId);
     },
@@ -678,11 +725,41 @@ export default {
     diveSiteTitle(site, index) {
       return site.name || `Dive Site ${index + 1}`;
     },
+    diveSiteSortKey(site) {
+      return site?.name || site?.location || site?.country || site?.id || "";
+    },
     buddyTitle(buddy, index) {
       return buddy.name || `Buddy ${index + 1}`;
     },
+    buddySortKey(buddy) {
+      return buddy?.name || buddy?.id || "";
+    },
     guideTitle(guide, index) {
       return guide.name || `Guide ${index + 1}`;
+    },
+    guideSortKey(guide) {
+      return guide?.name || guide?.id || "";
+    },
+    normalizeFilterValue(value) {
+      return normalizeSettingsText(value).toLocaleLowerCase();
+    },
+    sortAndFilterCollection(items, filterValue, getSortKey, getSearchValues, alwaysIncludeIds = []) {
+      const filterTerm = this.normalizeFilterValue(filterValue);
+      const includedIds = new Set(Array.isArray(alwaysIncludeIds) ? alwaysIncludeIds : []);
+      return [...(Array.isArray(items) ? items : [])]
+        .filter((item) => {
+          if (includedIds.has(item?.id)) return true;
+          if (!filterTerm) return true;
+          return getSearchValues(item).some((value) => this.normalizeFilterValue(value).includes(filterTerm));
+        })
+        .sort((left, right) => {
+          const primaryComparison = compareSettingsText(getSortKey(left), getSortKey(right));
+          if (primaryComparison !== 0) return primaryComparison;
+          return compareSettingsText(left?.id, right?.id);
+        });
+    },
+    findCollectionIndexById(collection, itemId) {
+      return Array.isArray(collection) ? collection.findIndex((entry) => entry?.id === itemId) : -1;
     },
     async authenticatedFetch(resource, options = {}) {
       const token = await this.clerkGetToken({ skipCache: true });
@@ -1104,6 +1181,12 @@ export default {
       const label = this.licenseTitle(license, index);
       this.openRemovalDialog("license", license.id, label, "this license");
     },
+    confirmRemoveLicenseItem(licenseId) {
+      const index = this.findCollectionIndexById(this.licenseDrafts, licenseId);
+      if (index !== -1) {
+        this.confirmRemoveLicense(index);
+      }
+    },
     async removeLicenseConfirmed(index) {
       const license = this.licenseDrafts[index];
       if (!license) return;
@@ -1121,6 +1204,12 @@ export default {
       if (!site) return;
       const label = this.diveSiteTitle(site, index);
       this.openRemovalDialog("dive-site", site.id, label, "this dive site");
+    },
+    confirmRemoveDiveSiteItem(siteId) {
+      const index = this.findCollectionIndexById(this.diveSiteDrafts, siteId);
+      if (index !== -1) {
+        this.confirmRemoveDiveSite(index);
+      }
     },
     async removeDiveSiteConfirmed(index) {
       const site = this.diveSiteDrafts[index];
@@ -1140,6 +1229,12 @@ export default {
       const label = this.buddyTitle(buddy, index);
       this.openRemovalDialog("buddy", buddy.id, label, "this buddy");
     },
+    confirmRemoveBuddyItem(buddyId) {
+      const index = this.findCollectionIndexById(this.buddyDrafts, buddyId);
+      if (index !== -1) {
+        this.confirmRemoveBuddy(index);
+      }
+    },
     async removeBuddyConfirmed(index) {
       const buddy = this.buddyDrafts[index];
       if (!buddy) return;
@@ -1157,6 +1252,12 @@ export default {
       if (!guide) return;
       const label = this.guideTitle(guide, index);
       this.openRemovalDialog("guide", guide.id, label, "this guide");
+    },
+    confirmRemoveGuideItem(guideId) {
+      const index = this.findCollectionIndexById(this.guideDrafts, guideId);
+      if (index !== -1) {
+        this.confirmRemoveGuide(index);
+      }
     },
     async removeGuideConfirmed(index) {
       const guide = this.guideDrafts[index];
@@ -1212,6 +1313,13 @@ export default {
       } finally {
         this.diveSiteLookupId = null;
       }
+    },
+    searchDiveSiteLocationById(siteId) {
+      const index = this.findCollectionIndexById(this.diveSiteDrafts, siteId);
+      if (index !== -1) {
+        return this.searchDiveSiteLocation(index);
+      }
+      return undefined;
     },
     async saveDiveSites() {
       this.diveSitesSaving = true;
@@ -1775,6 +1883,11 @@ export default {
               </div>
             </div>
 
+            <label class="settings-filter-field mb-4">
+              <span class="material-symbols-outlined text-[18px] text-secondary/70">search</span>
+              <input v-model="licenseFilter" type="text" class="settings-input" placeholder="Filter licenses" />
+            </label>
+
             <div v-if="!areLicensesEditing && licenses.length === 0" class="settings-empty-state">
               <p class="font-headline text-lg font-bold">No saved licenses</p>
               <p class="mt-2 text-sm text-secondary">Use Add License to create your first certification entry and attach its PDF.</p>
@@ -1783,6 +1896,11 @@ export default {
             <div v-else-if="areLicensesEditing && licenseDrafts.length === 0" class="settings-empty-state">
               <p class="font-headline text-lg font-bold">No saved licenses</p>
               <p class="mt-2 text-sm text-secondary">Add your first certification entry to build a reusable license list.</p>
+            </div>
+
+            <div v-else-if="visibleLicenses.length === 0" class="settings-empty-state">
+              <p class="font-headline text-lg font-bold">No matching licenses</p>
+              <p class="mt-2 text-sm text-secondary">Adjust the filter to see the rest of your certification list.</p>
             </div>
 
             <div v-else class="space-y-4">
@@ -1807,7 +1925,7 @@ export default {
                     </button>
                     <button
                       v-if="isLicenseEditing(license.id)"
-                      @click="confirmRemoveLicense(index)"
+                      @click="confirmRemoveLicenseItem(license.id)"
                       class="settings-button settings-button-danger"
                     >
                       Remove
@@ -1927,6 +2045,11 @@ export default {
               </div>
             </div>
 
+            <label class="settings-filter-field mb-4">
+              <span class="material-symbols-outlined text-[18px] text-secondary/70">search</span>
+              <input v-model="diveSiteFilter" type="text" class="settings-input" placeholder="Filter dive sites" />
+            </label>
+
             <div v-if="!areDiveSitesEditing && diveSites.length === 0" class="settings-empty-state">
               <p class="font-headline text-lg font-bold">No saved dive sites</p>
               <p class="mt-2 text-sm text-secondary">Create sites here so logbook entries can reuse them and the dashboard map can plot your dives.</p>
@@ -1935,6 +2058,11 @@ export default {
             <div v-else-if="areDiveSitesEditing && diveSiteDrafts.length === 0" class="settings-empty-state">
               <p class="font-headline text-lg font-bold">No saved dive sites</p>
               <p class="mt-2 text-sm text-secondary">Add the first site in your logbook catalog.</p>
+            </div>
+
+            <div v-else-if="visibleDiveSites.length === 0" class="settings-empty-state">
+              <p class="font-headline text-lg font-bold">No matching dive sites</p>
+              <p class="mt-2 text-sm text-secondary">Adjust the filter to see the rest of your saved site directory.</p>
             </div>
 
             <div v-else class="space-y-4">
@@ -1968,7 +2096,7 @@ export default {
                     </button>
                     <button
                       v-if="isDiveSiteEditing(site.id)"
-                      @click="confirmRemoveDiveSite(index)"
+                      @click="confirmRemoveDiveSiteItem(site.id)"
                       class="settings-button settings-button-danger"
                     >
                       Remove
@@ -2006,7 +2134,7 @@ export default {
                             <p class="mt-2 text-sm text-secondary">Search from the location text, then fine-tune latitude and longitude manually if needed.</p>
                           </div>
                           <button
-                            @click="searchDiveSiteLocation(index)"
+                            @click="searchDiveSiteLocationById(site.id)"
                             :disabled="isLookingUpDiveSite(site.id)"
                             class="settings-button settings-button-secondary"
                           >
@@ -2076,6 +2204,11 @@ export default {
               </div>
             </div>
 
+            <label class="settings-filter-field mb-4">
+              <span class="material-symbols-outlined text-[18px] text-secondary/70">search</span>
+              <input v-model="buddyFilter" type="text" class="settings-input" placeholder="Filter buddies" />
+            </label>
+
             <div v-if="!areBuddiesEditing && buddies.length === 0" class="settings-empty-state">
               <p class="font-headline text-lg font-bold">No saved buddies</p>
               <p class="mt-2 text-sm text-secondary">Create a reusable buddy list here so dive logs can select names instead of retyping them.</p>
@@ -2084,6 +2217,11 @@ export default {
             <div v-else-if="areBuddiesEditing && buddyDrafts.length === 0" class="settings-empty-state">
               <p class="font-headline text-lg font-bold">No saved buddies</p>
               <p class="mt-2 text-sm text-secondary">Add the first diver you want available in your logbook forms.</p>
+            </div>
+
+            <div v-else-if="visibleBuddies.length === 0" class="settings-empty-state">
+              <p class="font-headline text-lg font-bold">No matching buddies</p>
+              <p class="mt-2 text-sm text-secondary">Adjust the filter to see the rest of your saved buddy list.</p>
             </div>
 
             <div v-else class="settings-compact-grid">
@@ -2101,7 +2239,7 @@ export default {
                     >
                       Edit Buddy
                     </button>
-                    <button v-if="isBuddyEditing(buddy.id)" @click="confirmRemoveBuddy(index)" class="settings-button settings-button-danger">Remove</button>
+                    <button v-if="isBuddyEditing(buddy.id)" @click="confirmRemoveBuddyItem(buddy.id)" class="settings-button settings-button-danger">Remove</button>
                     <button v-if="isBuddyEditing(buddy.id)" @click="cancelBuddiesEdit" :disabled="isInteractionLocked" class="settings-button settings-button-ghost">Cancel</button>
                     <button v-if="isBuddyEditing(buddy.id)" @click="saveBuddies" :disabled="isInteractionLocked" class="settings-button settings-button-primary">{{ buddiesSaving ? 'Saving Buddy' : 'Save Buddy' }}</button>
                   </div>
@@ -2129,6 +2267,11 @@ export default {
               </div>
             </div>
 
+            <label class="settings-filter-field mb-4">
+              <span class="material-symbols-outlined text-[18px] text-secondary/70">search</span>
+              <input v-model="guideFilter" type="text" class="settings-input" placeholder="Filter guides" />
+            </label>
+
             <div v-if="!areGuidesEditing && guides.length === 0" class="settings-empty-state">
               <p class="font-headline text-lg font-bold">No saved guides</p>
               <p class="mt-2 text-sm text-secondary">Create a reusable guide list here so dive logs can search and reuse names instead of retyping them.</p>
@@ -2137,6 +2280,11 @@ export default {
             <div v-else-if="areGuidesEditing && guideDrafts.length === 0" class="settings-empty-state">
               <p class="font-headline text-lg font-bold">No saved guides</p>
               <p class="mt-2 text-sm text-secondary">Add the first guide or instructor you want available in your logbook forms.</p>
+            </div>
+
+            <div v-else-if="visibleGuides.length === 0" class="settings-empty-state">
+              <p class="font-headline text-lg font-bold">No matching guides</p>
+              <p class="mt-2 text-sm text-secondary">Adjust the filter to see the rest of your saved guide list.</p>
             </div>
 
             <div v-else class="settings-compact-grid">
@@ -2154,7 +2302,7 @@ export default {
                     >
                       Edit Guide
                     </button>
-                    <button v-if="isGuideEditing(guide.id)" @click="confirmRemoveGuide(index)" class="settings-button settings-button-danger">Remove</button>
+                    <button v-if="isGuideEditing(guide.id)" @click="confirmRemoveGuideItem(guide.id)" class="settings-button settings-button-danger">Remove</button>
                     <button v-if="isGuideEditing(guide.id)" @click="cancelGuidesEdit" :disabled="isInteractionLocked" class="settings-button settings-button-ghost">Cancel</button>
                     <button v-if="isGuideEditing(guide.id)" @click="saveGuides" :disabled="isInteractionLocked" class="settings-button settings-button-primary">{{ guidesSaving ? 'Saving Guide' : 'Save Guide' }}</button>
                   </div>
