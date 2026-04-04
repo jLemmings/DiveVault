@@ -88,15 +88,17 @@ export default {
     return {
       diveMap: null,
       diveTileLayer: null,
+      diveLabelLayer: null,
       diveMarkerLayer: null,
       showMissingCoordinateDives: false,
-      isMapExpanded: false
+      isMapExpanded: false,
+      mapViewportInitialized: false
     };
   },
   mounted() {
     this.$nextTick(() => {
       this.initializeDiveMap();
-      this.syncDiveMap();
+      this.syncDiveMap({ reframe: true });
     });
     window.addEventListener("resize", this.handleMapResize);
   },
@@ -106,13 +108,14 @@ export default {
       this.diveMap.remove();
       this.diveMap = null;
       this.diveTileLayer = null;
+      this.diveLabelLayer = null;
       this.diveMarkerLayer = null;
     }
   },
   watch: {
     diveMapMarkers: {
       handler() {
-        this.$nextTick(() => this.syncDiveMap());
+        this.$nextTick(() => this.syncDiveMap({ reframe: !this.mapViewportInitialized }));
       },
       deep: true
     },
@@ -169,18 +172,19 @@ export default {
       L.control.zoom({ position: "bottomright" }).addTo(map);
 
       this.diveTileLayer = L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
-        maxZoom: 19,
+        maxZoom: 16,
         className: "dive-theme-map-tiles",
         referrerPolicy: "origin"
-      }).addTo(map);
+      });
+      this.diveTileLayer.setUrl("https://server.arcgisonline.com/arcgis/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}");
+      this.diveTileLayer.addTo(map);
       this.diveMarkerLayer = L.layerGroup().addTo(map);
+      map.on("zoomend", () => this.syncDiveMap({ preserveViewport: true }));
       this.diveMap = map;
     },
     diveMarkerIcon(marker) {
       const size = markerDiameter(marker.count) + 10;
-      const countLabel = marker.count > 1
-        ? `<span class="dive-map-marker-count">${marker.count}</span>`
-        : '<span class="dive-map-marker-ping"></span>';
+      const countLabel = `<span class="dive-map-marker-count">${marker.count}</span>`;
 
       return L.divIcon({
         className: "dive-map-marker-shell",
@@ -196,28 +200,131 @@ export default {
     },
     diveMarkerBubble(marker) {
       const diveLabel = marker.count === 1 ? "1 dive" : `${marker.count} dives`;
+      const locationLabel = marker.siteCount > 1 ? `${marker.siteCount} sites in this sector` : marker.label;
+      const sitePreview = marker.siteCount > 1
+        ? `${marker.siteLabels.slice(0, 3).join(" / ")}${marker.siteCount > 3 ? ` +${marker.siteCount - 3} more` : ""}`
+        : "";
       return `
         <div class="dive-map-info-bubble">
-          <p class="dive-map-info-title">${escapeHtml(marker.label)}</p>
+          <p class="dive-map-info-title">${escapeHtml(locationLabel)}</p>
           <p class="dive-map-info-meta">${escapeHtml(diveLabel)} | ${escapeHtml(this.coordinateLabel(marker.latitude, "N", "S"))} / ${escapeHtml(this.coordinateLabel(marker.longitude, "E", "W"))}</p>
+          ${sitePreview ? `<p class="dive-map-info-sites">${escapeHtml(sitePreview)}</p>` : ""}
         </div>
       `;
     },
-    syncDiveMap() {
+    sectorSizeForZoom(zoom) {
+      if (zoom >= 9) return 0.08;
+      if (zoom >= 8) return 0.12;
+      if (zoom >= 7) return 0.18;
+      if (zoom >= 6) return 0.3;
+      if (zoom >= 5) return 0.6;
+      return 1.2;
+    },
+    sectorBucketValue(value, sectorSize) {
+      return Math.floor(value / sectorSize) * sectorSize;
+    },
+    displayDiveMapMarkers() {
+      if (!this.diveMapMarkers.length) return [];
+
+      const sectorSize = this.sectorSizeForZoom(this.diveMap?.getZoom?.() ?? 4.25);
+      const sectors = new Map();
+
+      this.diveMapMarkers.forEach((marker) => {
+        const bucketLat = this.sectorBucketValue(marker.latitude, sectorSize);
+        const bucketLon = this.sectorBucketValue(marker.longitude, sectorSize);
+        const key = `${bucketLat.toFixed(3)}:${bucketLon.toFixed(3)}`;
+        const existing = sectors.get(key);
+
+        if (existing) {
+          existing.count += marker.count;
+          existing.siteCount += 1;
+          existing.latitudeTotal += marker.latitude * marker.count;
+          existing.longitudeTotal += marker.longitude * marker.count;
+          existing.sourceMarkers.push(marker);
+          if (!existing.siteLabels.includes(marker.label)) {
+            existing.siteLabels.push(marker.label);
+          }
+          if (marker.latestDiveDate && (!existing.latestDiveDate || marker.latestDiveDate > existing.latestDiveDate)) {
+            existing.latestDiveDate = marker.latestDiveDate;
+            existing.representativeId = marker.representativeId;
+          }
+          return;
+        }
+
+        sectors.set(key, {
+          key,
+          count: marker.count,
+          siteCount: 1,
+          label: marker.label,
+          siteLabels: [marker.label],
+          representativeId: marker.representativeId,
+          latestDiveDate: marker.latestDiveDate,
+          latitudeTotal: marker.latitude * marker.count,
+          longitudeTotal: marker.longitude * marker.count,
+          sourceMarkers: [marker]
+        });
+      });
+
+      return Array.from(sectors.values())
+        .map((sector) => ({
+          key: sector.key,
+          count: sector.count,
+          siteCount: sector.siteCount,
+          label: sector.label,
+          siteLabels: sector.siteLabels,
+          representativeId: sector.representativeId,
+          latestDiveDate: sector.latestDiveDate,
+          latitude: sector.latitudeTotal / sector.count,
+          longitude: sector.longitudeTotal / sector.count,
+          sourceMarkers: sector.sourceMarkers
+        }))
+        .sort((left, right) => {
+          if (right.count !== left.count) return right.count - left.count;
+          return (right.latestDiveDate?.getTime() || 0) - (left.latestDiveDate?.getTime() || 0);
+        });
+    },
+    zoomIntoMarkerSector(marker) {
+      if (!this.diveMap) return;
+
+      const sourceMarkers = Array.isArray(marker?.sourceMarkers) ? marker.sourceMarkers : [];
+      const positions = sourceMarkers.map((entry) => L.latLng(entry.latitude, entry.longitude));
+
+      if (!positions.length) {
+        this.diveMap.flyTo([marker.latitude, marker.longitude], Math.min((this.diveMap.getZoom?.() || 4.25) + 2, 10), { duration: 0.45 });
+        return;
+      }
+
+      if (positions.length === 1) {
+        this.diveMap.flyTo(positions[0], Math.min((this.diveMap.getZoom?.() || 4.25) + 2, 10), { duration: 0.45 });
+        return;
+      }
+
+      this.diveMap.flyToBounds(L.latLngBounds(positions), {
+        padding: [72, 72],
+        maxZoom: 9,
+        duration: 0.45
+      });
+    },
+    syncDiveMap(options = {}) {
       if (!this.$refs.diveMapCanvas) return;
       this.initializeDiveMap();
       if (!this.diveMap || !this.diveMarkerLayer) return;
 
+      const { preserveViewport = false, reframe = false } = options;
       this.diveMarkerLayer.clearLayers();
+      const displayMarkers = this.displayDiveMapMarkers();
 
-      if (!this.diveMapMarkers.length) {
-        this.diveMap.setView([18, 8], 1.75);
+      if (!displayMarkers.length) {
+        if (!preserveViewport) {
+          this.diveMap.setView([18, 8], 1.75);
+        }
+        this.mapViewportInitialized = false;
         this.handleMapResize();
         return;
       }
 
       const bounds = [];
-      this.diveMapMarkers.forEach((marker) => {
+      displayMarkers.forEach((marker) => {
         const position = L.latLng(marker.latitude, marker.longitude);
         bounds.push(position);
 
@@ -229,17 +336,23 @@ export default {
           direction: "top",
           offset: [0, -8]
         });
+        leafletMarker.on("click", () => {
+          this.zoomIntoMarkerSector(marker);
+        });
         leafletMarker.addTo(this.diveMarkerLayer);
       });
 
-      if (bounds.length === 1) {
-        this.diveMap.setView(bounds[0], 4.25);
-      } else {
-        this.diveMap.fitBounds(L.latLngBounds(bounds), {
-          paddingTopLeft: [36, 72],
-          paddingBottomRight: [36, 112],
-          maxZoom: 5.5
-        });
+      if (!preserveViewport && (reframe || !this.mapViewportInitialized)) {
+        if (bounds.length === 1) {
+          this.diveMap.setView(bounds[0], 4.25);
+        } else {
+          this.diveMap.fitBounds(L.latLngBounds(bounds), {
+            paddingTopLeft: [36, 72],
+            paddingBottomRight: [36, 112],
+            maxZoom: 5.5
+          });
+        }
+        this.mapViewportInitialized = true;
       }
 
       this.handleMapResize();
@@ -398,7 +511,12 @@ export default {
       return `${this.unmappedDiveCount} ${this.unmappedDiveCount === 1 ? "dive is" : "dives are"} missing coordinates`;
     },
     mapTopSites() {
-      return this.diveMapMarkers.slice(0, 4);
+      return this.diveMapMarkers
+        .slice(0, 4)
+        .map((site) => ({
+          ...site,
+          label: site.label.replace(/[^\x20-\x7E]/g, "").trim() || site.label
+        }));
     },
     mapFooterNote() {
       if (!this.hasDiveMapMarkers) return "Add coordinates to saved dive sites to place committed dives accurately on the map.";
