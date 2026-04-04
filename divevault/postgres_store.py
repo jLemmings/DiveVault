@@ -922,7 +922,7 @@ def replace_user_profile_guides(cur: psycopg.Cursor, user_id: str, guides: list[
 
 
 def backfill_profile_collection_tables(conn: psycopg.Connection) -> None:
-    with conn.cursor() as cur:
+    with conn.cursor(row_factory=dict_row) as cur:
         cur.execute("SELECT * FROM user_profile")
         rows = cur.fetchall()
 

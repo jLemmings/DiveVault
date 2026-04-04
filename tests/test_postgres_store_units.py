@@ -396,3 +396,69 @@ def test_summarize_dives_calculates_average_fields():
     assert summary["averageDurationSeconds"] == 2100.0
     assert summary["averageMaxDepth"] == 21.0
     assert summary["totalBarConsumed"] == 140
+
+
+def test_backfill_profile_collection_tables_requests_dict_rows_for_user_profile_scan():
+    class FakeSelectCursor:
+        def __init__(self):
+            self.query = None
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def execute(self, query, params=None):
+            self.query = query
+            self.params = params
+
+        def fetchall(self):
+            return [
+                {
+                    "user_id": "user-1",
+                    "licenses_json": [],
+                    "dive_sites_json": [],
+                    "buddies_json": [],
+                    "guides_json": [],
+                }
+            ]
+
+    class FakeExistsCursor:
+        def __init__(self):
+            self.fetchone_calls = 0
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def execute(self, query, params=None):
+            self.query = query
+            self.params = params
+
+        def fetchone(self):
+            self.fetchone_calls += 1
+            return None
+
+    class FakeConnection:
+        def __init__(self):
+            self.row_factories = []
+            self.select_cursor = FakeSelectCursor()
+            self.exists_cursor = FakeExistsCursor()
+            self.cursor_calls = 0
+
+        def cursor(self, row_factory=None):
+            self.row_factories.append(row_factory)
+            self.cursor_calls += 1
+            if self.cursor_calls == 1:
+                return self.select_cursor
+            return self.exists_cursor
+
+    conn = FakeConnection()
+
+    postgres_store.backfill_profile_collection_tables(conn)
+
+    assert conn.row_factories[0] is postgres_store.dict_row
+    assert conn.select_cursor.query == "SELECT * FROM user_profile"
