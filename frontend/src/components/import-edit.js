@@ -1,4 +1,5 @@
 import { canCompleteImport, filledIconStyle, formatDate, formatDateTime, formatDepthNumber, formatTemperature, gasSummary, importCompletionPercent, importTemperature, isCommittedDive, missingImportFields, paddedDiveIndex, durationShort, numberOrZero } from "../core.js";
+import MetadataAutocompleteField from "./metadata-autocomplete.js";
 
 function normalizeSiteName(value) {
   return typeof value === "string" ? value.trim().toLowerCase() : "";
@@ -8,8 +9,18 @@ function normalizeBuddyName(value) {
   return typeof value === "string" ? value.trim().toLowerCase() : "";
 }
 
+function sortNamedCollection(collection) {
+  if (!Array.isArray(collection)) return [];
+  return [...collection]
+    .filter((item) => typeof item?.name === "string" && item.name.trim())
+    .sort((left, right) => left.name.localeCompare(right.name, undefined, { sensitivity: "base", numeric: true }));
+}
+
 export default {
   name: "DiveImportEditorView",
+  components: {
+    MetadataAutocompleteField
+  },
   props: [
     "dive",
     "draft",
@@ -25,8 +36,16 @@ export default {
     "saveImportDraft",
     "deleteDive",
     "applyBuddyGuideToPendingImports",
+    "createDiveSite",
     "backToQueue"
   ],
+  data() {
+    return {
+      diveSiteCreatePending: false,
+      diveSiteCreateError: "",
+      diveSiteCreateStatus: ""
+    };
+  },
   computed: {
     selectedDraft() {
       return this.draft || null;
@@ -53,16 +72,13 @@ export default {
       return String(this.deletingDiveId) === String(this.dive?.id);
     },
     savedDiveSites() {
-      if (!Array.isArray(this.diveSites)) return [];
-      return this.diveSites.filter((site) => typeof site?.name === "string" && site.name.trim());
+      return sortNamedCollection(this.diveSites);
     },
     savedBuddies() {
-      if (!Array.isArray(this.buddies)) return [];
-      return this.buddies.filter((buddy) => typeof buddy?.name === "string" && buddy.name.trim());
+      return sortNamedCollection(this.buddies);
     },
     savedGuides() {
-      if (!Array.isArray(this.guides)) return [];
-      return this.guides.filter((guide) => typeof guide?.name === "string" && guide.name.trim());
+      return sortNamedCollection(this.guides);
     },
     selectedDiveSite() {
       const siteName = normalizeSiteName(this.selectedDraft?.site);
@@ -77,14 +93,9 @@ export default {
     filledIconStyle() {
       return filledIconStyle;
     },
-    siteOptionsId() {
-      return `import-site-options-${this.dive?.id || "draft"}`;
-    },
-    buddyOptionsId() {
-      return `import-buddy-options-${this.dive?.id || "draft"}`;
-    },
-    guideOptionsId() {
-      return `import-guide-options-${this.dive?.id || "draft"}`;
+    canCreateDiveSite() {
+      const siteName = typeof this.selectedDraft?.site === "string" ? this.selectedDraft.site.trim() : "";
+      return Boolean(siteName) && !this.selectedDiveSite;
     }
   },
   methods: {
@@ -99,12 +110,38 @@ export default {
     updateField(key, value) {
       if (!this.dive) return;
       this.updateImportDraft(this.dive.id, key, value);
+      if (key === "site") {
+        this.clearDiveSiteCreateFeedback();
+      }
     },
     updateSite(value) {
       this.updateField("site", value);
     },
     updateBuddy(value) {
       this.updateField("buddy", value);
+    },
+    clearDiveSiteCreateFeedback() {
+      this.diveSiteCreateError = "";
+      this.diveSiteCreateStatus = "";
+    },
+    async saveCurrentDiveSite() {
+      const siteName = typeof this.selectedDraft?.site === "string" ? this.selectedDraft.site.trim() : "";
+      if (!siteName || typeof this.createDiveSite !== "function") return;
+
+      this.diveSiteCreatePending = true;
+      this.diveSiteCreateError = "";
+      this.diveSiteCreateStatus = "";
+      try {
+        const savedSite = await this.createDiveSite({ name: siteName });
+        if (savedSite?.name && savedSite.name !== this.selectedDraft?.site) {
+          this.updateSite(savedSite.name);
+        }
+        this.diveSiteCreateStatus = `${savedSite?.name || siteName} added to your saved dive sites.`;
+      } catch (error) {
+        this.diveSiteCreateError = error?.message || "Could not save the dive site.";
+      } finally {
+        this.diveSiteCreatePending = false;
+      }
     },
     saveDraft(commit = false) {
       if (!this.dive) return;
@@ -144,6 +181,22 @@ export default {
         return "GPS coordinates unavailable";
       }
       return `Lat ${latitude}, Lon ${longitude}`;
+    },
+    formatDiveSiteSuggestionDetail(site) {
+      if (!site) return "";
+      const parts = [];
+      if (typeof site.location === "string" && site.location.trim()) {
+        parts.push(site.location.trim());
+      }
+      if (typeof site.country === "string" && site.country.trim()) {
+        parts.push(site.country.trim());
+      }
+      const latitude = site.latitude ?? site.lat;
+      const longitude = site.longitude ?? site.lon;
+      if (latitude !== null && latitude !== undefined && latitude !== "" && longitude !== null && longitude !== undefined && longitude !== "") {
+        parts.push("GPS ready");
+      }
+      return parts.join(" / ");
     },
     durationMinutes(dive) {
       return Math.round(numberOrZero(dive?.duration_seconds) / 60);
@@ -221,32 +274,55 @@ export default {
           <section class="space-y-4 rounded-2xl bg-surface-container-low p-5 shadow-panel">
             <label class="block space-y-2">
               <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Dive Site</span>
-              <input :value="selectedDraft.site" @input="updateSite($event.target.value)" :list="savedDiveSites.length ? siteOptionsId : null" type="text" placeholder="Blue Hole / House Reef" class="w-full rounded-lg border-none bg-surface-container-high px-4 py-3 text-sm text-on-surface placeholder:text-secondary/50 focus:ring-1 focus:ring-primary" />
-              <datalist v-if="savedDiveSites.length" :id="siteOptionsId">
-                <option v-for="site in savedDiveSites" :key="site.id" :value="site.name"></option>
-              </datalist>
+              <metadata-autocomplete-field
+                :model-value="selectedDraft.site"
+                @update:model-value="updateSite"
+                :options="savedDiveSites"
+                placeholder="Blue Hole / House Reef"
+                input-class="w-full rounded-lg border-none bg-surface-container-high px-4 py-3 pr-12 text-sm text-on-surface placeholder:text-secondary/50 focus:ring-1 focus:ring-primary"
+                :option-detail="formatDiveSiteSuggestionDetail"
+              />
               <p class="text-xs leading-5 text-on-surface-variant">
                 {{ savedDiveSites.length ? 'Search saved dive sites from Settings or enter a custom value.' : 'No saved dive sites yet. Add them in Settings to reuse them here.' }}
               </p>
               <p v-if="selectedDiveSite" class="text-xs leading-5 text-primary">{{ siteCoordinateLabel(selectedDiveSite) }}</p>
+              <div v-if="canCreateDiveSite || diveSiteCreateStatus || diveSiteCreateError" class="space-y-2">
+                <button
+                  v-if="canCreateDiveSite"
+                  @click="saveCurrentDiveSite()"
+                  :disabled="diveSiteCreatePending"
+                  class="inline-flex items-center gap-2 rounded-lg bg-surface-container-highest px-3 py-2 font-label text-[10px] font-bold uppercase tracking-[0.16em] text-primary disabled:opacity-50"
+                >
+                  <span class="material-symbols-outlined text-sm">add_location_alt</span>
+                  {{ diveSiteCreatePending ? 'Saving Dive Site...' : 'Save As Reusable Dive Site' }}
+                </button>
+                <p v-if="diveSiteCreateStatus" class="text-xs leading-5 text-primary">{{ diveSiteCreateStatus }}</p>
+                <p v-if="diveSiteCreateError" class="text-xs leading-5 text-on-error-container">{{ diveSiteCreateError }}</p>
+              </div>
             </label>
             <div class="grid grid-cols-1 gap-4">
               <label class="block space-y-2">
                 <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Buddy</span>
-                <input :value="selectedDraft.buddy" @input="updateBuddy($event.target.value)" :list="savedBuddies.length ? buddyOptionsId : null" type="text" placeholder="Diver name" class="w-full rounded-lg border-none bg-surface-container-high px-4 py-3 text-sm text-on-surface placeholder:text-secondary/50 focus:ring-1 focus:ring-primary" />
-                <datalist v-if="savedBuddies.length" :id="buddyOptionsId">
-                  <option v-for="buddy in savedBuddies" :key="buddy.id" :value="buddy.name"></option>
-                </datalist>
+                <metadata-autocomplete-field
+                  :model-value="selectedDraft.buddy"
+                  @update:model-value="updateBuddy"
+                  :options="savedBuddies"
+                  placeholder="Diver name"
+                  input-class="w-full rounded-lg border-none bg-surface-container-high px-4 py-3 pr-12 text-sm text-on-surface placeholder:text-secondary/50 focus:ring-1 focus:ring-primary"
+                />
                 <p class="text-xs leading-5 text-on-surface-variant">
                   {{ savedBuddies.length ? 'Search saved buddies from Settings or enter a custom value.' : 'No saved buddies yet. Add them in Settings to reuse them here.' }}
                 </p>
               </label>
               <label class="block space-y-2">
                 <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Guide</span>
-                <input :value="selectedDraft.guide" @input="updateField('guide', $event.target.value)" :list="savedGuides.length ? guideOptionsId : null" type="text" placeholder="Guide or instructor" class="w-full rounded-lg border-none bg-surface-container-high px-4 py-3 text-sm text-on-surface placeholder:text-secondary/50 focus:ring-1 focus:ring-primary" />
-                <datalist v-if="savedGuides.length" :id="guideOptionsId">
-                  <option v-for="guide in savedGuides" :key="guide.id" :value="guide.name"></option>
-                </datalist>
+                <metadata-autocomplete-field
+                  :model-value="selectedDraft.guide"
+                  @update:model-value="updateField('guide', $event)"
+                  :options="savedGuides"
+                  placeholder="Guide or instructor"
+                  input-class="w-full rounded-lg border-none bg-surface-container-high px-4 py-3 pr-12 text-sm text-on-surface placeholder:text-secondary/50 focus:ring-1 focus:ring-primary"
+                />
                 <p class="text-xs leading-5 text-on-surface-variant">
                   {{ savedGuides.length ? 'Search saved guides from Settings or enter a custom value.' : 'No saved guides yet. Add them in Settings to reuse them here.' }}
                 </p>
@@ -349,33 +425,56 @@ export default {
 
               <label class="block space-y-2">
                 <span class="font-label text-[10px] font-bold uppercase tracking-[0.2em] text-secondary">Dive Site</span>
-                <input :value="selectedDraft.site" @input="updateSite($event.target.value)" :list="savedDiveSites.length ? siteOptionsId : null" type="text" placeholder="Blue Hole / House Reef" class="w-full border border-primary/10 bg-surface-container-high/35 px-4 py-3 text-sm text-on-surface placeholder:text-secondary/50 focus:border-primary/30 focus:ring-1 focus:ring-primary" />
-                <datalist v-if="savedDiveSites.length" :id="siteOptionsId">
-                  <option v-for="site in savedDiveSites" :key="site.id" :value="site.name"></option>
-                </datalist>
+                <metadata-autocomplete-field
+                  :model-value="selectedDraft.site"
+                  @update:model-value="updateSite"
+                  :options="savedDiveSites"
+                  placeholder="Blue Hole / House Reef"
+                  input-class="w-full border border-primary/10 bg-surface-container-high/35 px-4 py-3 pr-12 text-sm text-on-surface placeholder:text-secondary/50 focus:border-primary/30 focus:ring-1 focus:ring-primary"
+                  :option-detail="formatDiveSiteSuggestionDetail"
+                />
                 <p class="text-xs leading-5 text-on-surface-variant">
                   {{ savedDiveSites.length ? 'Search saved dive sites from Settings or enter a custom value.' : 'No saved dive sites yet. Add them in Settings to reuse them here.' }}
                 </p>
                 <p v-if="selectedDiveSite" class="text-xs leading-5 text-primary">{{ siteCoordinateLabel(selectedDiveSite) }}</p>
+                <div v-if="canCreateDiveSite || diveSiteCreateStatus || diveSiteCreateError" class="space-y-2">
+                  <button
+                    v-if="canCreateDiveSite"
+                    @click="saveCurrentDiveSite()"
+                    :disabled="diveSiteCreatePending"
+                    class="inline-flex items-center gap-2 bg-surface-container-high px-3 py-2 font-label text-[10px] font-bold uppercase tracking-[0.16em] text-primary disabled:opacity-50"
+                  >
+                    <span class="material-symbols-outlined text-sm">add_location_alt</span>
+                    {{ diveSiteCreatePending ? 'Saving Dive Site...' : 'Save As Reusable Dive Site' }}
+                  </button>
+                  <p v-if="diveSiteCreateStatus" class="text-xs leading-5 text-primary">{{ diveSiteCreateStatus }}</p>
+                  <p v-if="diveSiteCreateError" class="text-xs leading-5 text-on-error-container">{{ diveSiteCreateError }}</p>
+                </div>
               </label>
 
               <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <label class="block space-y-2">
                   <span class="font-label text-[10px] font-bold uppercase tracking-[0.2em] text-secondary">Buddy</span>
-                  <input :value="selectedDraft.buddy" @input="updateBuddy($event.target.value)" :list="savedBuddies.length ? buddyOptionsId : null" type="text" placeholder="Diver name" class="w-full border border-primary/10 bg-surface-container-high/35 px-4 py-3 text-sm text-on-surface placeholder:text-secondary/50 focus:border-primary/30 focus:ring-1 focus:ring-primary" />
-                  <datalist v-if="savedBuddies.length" :id="buddyOptionsId">
-                    <option v-for="buddy in savedBuddies" :key="buddy.id" :value="buddy.name"></option>
-                  </datalist>
+                  <metadata-autocomplete-field
+                    :model-value="selectedDraft.buddy"
+                    @update:model-value="updateBuddy"
+                    :options="savedBuddies"
+                    placeholder="Diver name"
+                    input-class="w-full border border-primary/10 bg-surface-container-high/35 px-4 py-3 pr-12 text-sm text-on-surface placeholder:text-secondary/50 focus:border-primary/30 focus:ring-1 focus:ring-primary"
+                  />
                   <p class="text-xs leading-5 text-on-surface-variant">
                     {{ savedBuddies.length ? 'Search saved buddies from Settings or enter a custom value.' : 'No saved buddies yet. Add them in Settings to reuse them here.' }}
                   </p>
                 </label>
                 <label class="block space-y-2">
                   <span class="font-label text-[10px] font-bold uppercase tracking-[0.2em] text-secondary">Guide</span>
-                  <input :value="selectedDraft.guide" @input="updateField('guide', $event.target.value)" :list="savedGuides.length ? guideOptionsId : null" type="text" placeholder="Guide or instructor" class="w-full border border-primary/10 bg-surface-container-high/35 px-4 py-3 text-sm text-on-surface placeholder:text-secondary/50 focus:border-primary/30 focus:ring-1 focus:ring-primary" />
-                  <datalist v-if="savedGuides.length" :id="guideOptionsId">
-                    <option v-for="guide in savedGuides" :key="guide.id" :value="guide.name"></option>
-                  </datalist>
+                  <metadata-autocomplete-field
+                    :model-value="selectedDraft.guide"
+                    @update:model-value="updateField('guide', $event)"
+                    :options="savedGuides"
+                    placeholder="Guide or instructor"
+                    input-class="w-full border border-primary/10 bg-surface-container-high/35 px-4 py-3 pr-12 text-sm text-on-surface placeholder:text-secondary/50 focus:border-primary/30 focus:ring-1 focus:ring-primary"
+                  />
                   <p class="text-xs leading-5 text-on-surface-variant">
                     {{ savedGuides.length ? 'Search saved guides from Settings or enter a custom value.' : 'No saved guides yet. Add them in Settings to reuse them here.' }}
                   </p>

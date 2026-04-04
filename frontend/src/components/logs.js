@@ -1,13 +1,12 @@
-import { diveModeLabel, formatDate, numberOrZero, parseDate, formatTime, formatDepth, formatTemperature, durationShort, surfaceTemperature, diveTitle } from "../core.js";
+import { formatDate, numberOrZero, parseDate, formatTime, formatDepth, formatTemperature, durationShort, surfaceTemperature, diveTitle, pressureUsedLabel, importDraftSeed } from "../core.js";
 
 export default {
   name: "LogsView",
-  props: ["dives", "searchText", "openDive", "openImportQueue", "setSearchText", "deleteDive", "deletingDiveId", "statusMessage", "errorMessage"],
+  props: ["dives", "searchText", "openDive", "openImportQueue", "setSearchText", "statusMessage", "errorMessage"],
   data() {
     return {
       sortOption: "newest",
       deviceFilter: "all",
-      modeFilter: "all",
       currentPage: 1,
       pageSize: 8
     };
@@ -21,31 +20,27 @@ export default {
     },
     deviceFilter() {
       this.currentPage = 1;
-    },
-    modeFilter() {
-      this.currentPage = 1;
     }
   },
   computed: {
     deviceOptions() {
       return [...new Set(this.dives.map((dive) => `${dive.vendor} ${dive.product}`))];
     },
-    modeOptions() {
-      return [...new Set(this.dives.map((dive) => diveModeLabel(dive)))];
-    },
     filteredDives() {
       const search = (this.searchText || "").toLowerCase();
       const filtered = this.dives.filter((dive) => {
         const device = `${dive.vendor} ${dive.product}`;
+        const site = this.diveSiteLabel(dive);
         const matchesSearch = !search || [
           device,
-          diveModeLabel(dive),
+          site,
+          dive.vendor,
+          dive.product,
           dive.raw_sha256,
           formatDate(dive.started_at)
         ].join(" ").toLowerCase().includes(search);
         const matchesDevice = this.deviceFilter === "all" || device === this.deviceFilter;
-        const matchesMode = this.modeFilter === "all" || diveModeLabel(dive) === this.modeFilter;
-        return matchesSearch && matchesDevice && matchesMode;
+        return matchesSearch && matchesDevice;
       });
       const sorted = [...filtered];
       sorted.sort((left, right) => {
@@ -87,13 +82,19 @@ export default {
     formatTemperature,
     formatDurationShort: durationShort,
     surfaceTemperature,
-    diveModeLabel,
     diveTitle,
-    removeDive(diveId) {
-      this.deleteDive(diveId);
+    pressureUsedLabel,
+    diveSiteLabel(dive) {
+      const site = typeof importDraftSeed(dive)?.site === "string" ? importDraftSeed(dive).site.trim() : "";
+      return site || "Site pending";
     },
-    isDeleting(diveId) {
-      return String(this.deletingDiveId) === String(diveId);
+    diveComputerLabel(dive) {
+      const product = typeof dive?.product === "string" ? dive.product.trim() : "";
+      return product || "Unknown computer";
+    },
+    diveDeviceLabel(dive) {
+      const vendor = typeof dive?.vendor === "string" ? dive.vendor.trim() : "";
+      return vendor || "Unknown device";
     }
   },
   template: `
@@ -125,12 +126,6 @@ export default {
 
         <div class="space-y-4">
           <article v-for="dive in pagedDives" :key="'mobile-log-' + dive.id" @click="openDive(dive.id)" @keyup.enter="openDive(dive.id)" tabindex="0" role="button" class="rounded-xl bg-surface-container-low p-4 transition-all active:scale-[0.98] focus:bg-surface-container-high focus:outline-none">
-            <div class="mb-3 flex justify-end">
-              <button @click.stop="removeDive(dive.id)" :disabled="isDeleting(dive.id)" class="inline-flex items-center gap-2 rounded-lg bg-error-container/20 px-3 py-2 font-label text-[10px] font-bold uppercase tracking-[0.16em] text-on-error-container disabled:opacity-50">
-                <span class="material-symbols-outlined text-sm">delete</span>
-                {{ isDeleting(dive.id) ? 'Removing...' : 'Remove' }}
-              </button>
-            </div>
             <div class="flex gap-4">
               <div class="relative flex h-24 w-16 flex-shrink-0 flex-col items-center justify-center overflow-hidden rounded bg-surface-container-high">
                 <div class="absolute inset-0 opacity-10" style="background-image: radial-gradient(circle at 2px 2px, #9ccaff 1px, transparent 0); background-size: 8px 8px;"></div>
@@ -142,10 +137,11 @@ export default {
                   <div class="min-w-0">
                     <h3 class="truncate font-headline text-lg font-bold tracking-tight">{{ diveTitle(dive) }}</h3>
                     <p class="font-label text-[10px] font-bold uppercase tracking-[0.16em] text-on-surface-variant">{{ formatDate(dive.started_at) }} | {{ formatTime(dive.started_at) }}</p>
+                    <p class="mt-1 truncate text-sm text-secondary">{{ diveSiteLabel(dive) }}</p>
                   </div>
                   <span class="material-symbols-outlined text-sm text-on-surface-variant">chevron_right</span>
                 </div>
-                <div class="mt-4 flex items-center gap-6">
+                <div class="mt-4 grid grid-cols-3 gap-4">
                   <div class="flex flex-col">
                     <span class="font-label text-[9px] font-bold uppercase tracking-[0.14em] text-on-surface-variant/60">Max Depth</span>
                     <span class="font-headline text-sm font-semibold text-primary">{{ formatDepth(dive.max_depth_m) }}</span>
@@ -154,8 +150,9 @@ export default {
                     <span class="font-label text-[9px] font-bold uppercase tracking-[0.14em] text-on-surface-variant/60">Duration</span>
                     <span class="font-headline text-sm font-semibold">{{ formatDurationShort(dive.duration_seconds) }}</span>
                   </div>
-                  <div class="ml-auto">
-                    <span class="rounded bg-primary/10 px-2 py-1 font-label text-[9px] font-bold uppercase tracking-[0.14em]" :class="dive.max_depth_m > 40 ? 'bg-tertiary/10 text-tertiary' : 'text-primary'">{{ dive.max_depth_m > 40 ? 'Alert Log' : 'Success' }}</span>
+                  <div class="flex flex-col">
+                    <span class="font-label text-[9px] font-bold uppercase tracking-[0.14em] text-on-surface-variant/60">Bar Used</span>
+                    <span class="font-headline text-sm font-semibold text-tertiary">{{ pressureUsedLabel(dive) }}</span>
                   </div>
                 </div>
               </div>
@@ -229,13 +226,6 @@ export default {
                 <option v-for="device in deviceOptions" :key="device" :value="device">{{ device }}</option>
               </select>
             </div>
-            <div class="flex items-center gap-2 bg-surface-container-high px-4 py-3">
-              <span class="material-symbols-outlined text-primary">filter_alt</span>
-              <select v-model="modeFilter" class="border-none bg-transparent p-0 pr-6 text-sm font-bold text-on-surface focus:ring-0">
-                <option value="all">All Modes</option>
-                <option v-for="mode in modeOptions" :key="mode" :value="mode">{{ mode }}</option>
-              </select>
-            </div>
           </div>
         </div>
         <div class="border-l-2 border-primary bg-surface-container-high p-6">
@@ -249,30 +239,23 @@ export default {
       </div>
       <div class="overflow-hidden bg-surface-container-low shadow-panel">
         <div class="hidden grid-cols-12 gap-4 bg-surface-container-high/50 px-8 py-4 font-label text-[10px] font-bold uppercase tracking-[0.22em] text-secondary md:grid">
-          <div class="col-span-1">Dive ID</div><div class="col-span-3">Deployment Date</div><div class="col-span-2">Device</div><div class="col-span-2">Mode</div><div class="col-span-1 text-center">Depth</div><div class="col-span-1 text-center">Duration</div><div class="col-span-1 text-center">Temp</div><div class="col-span-1 text-right">Action</div>
+          <div class="col-span-1">Dive ID</div><div class="col-span-2">Date</div><div class="col-span-2">Dive Site</div><div class="col-span-1">Device</div><div class="col-span-2">Dive Computer</div><div class="col-span-1 text-center">Depth</div><div class="col-span-1 text-center">Duration</div><div class="col-span-1 text-center">Bar Used</div><div class="col-span-1 text-center">Temp</div>
         </div>
         <div class="divide-y divide-outline-variant/10">
           <article v-for="dive in pagedDives" :key="dive.id" @click="openDive(dive.id)" @keyup.enter="openDive(dive.id)" tabindex="0" role="button" class="grid cursor-pointer gap-4 px-5 py-6 text-left transition-colors hover:bg-surface-container-highest/30 focus:bg-surface-container-highest/30 focus:outline-none md:grid-cols-12 md:px-8">
             <div class="md:col-span-1"><p class="font-headline text-sm font-bold tracking-widest text-primary">#{{ dive.id }}</p></div>
-            <div class="md:col-span-3"><p class="text-sm font-bold">{{ formatDate(dive.started_at) }}</p><p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-on-surface-variant">{{ formatTime(dive.started_at) }}</p></div>
-            <div class="md:col-span-2"><p class="text-sm font-extrabold">{{ dive.vendor }}</p><p class="text-xs text-on-surface-variant">{{ dive.product }}</p></div>
-            <div class="md:col-span-2"><span class="inline-flex bg-surface-container-highest px-3 py-1 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-primary">{{ diveModeLabel(dive) }}</span></div>
+            <div class="md:col-span-2"><p class="text-sm font-bold">{{ formatDate(dive.started_at) }}</p><p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-on-surface-variant">{{ formatTime(dive.started_at) }}</p></div>
+            <div class="md:col-span-2"><p class="text-sm font-extrabold">{{ diveSiteLabel(dive) }}</p></div>
+            <div class="md:col-span-1"><p class="text-sm font-extrabold">{{ diveDeviceLabel(dive) }}</p></div>
+            <div class="md:col-span-2"><p class="text-sm font-extrabold">{{ diveComputerLabel(dive) }}</p><p class="text-xs text-on-surface-variant">{{ diveTitle(dive) }}</p></div>
             <div class="md:col-span-1 md:text-center"><p class="font-headline text-lg font-bold" :class="dive.max_depth_m > 40 ? 'text-tertiary' : 'text-on-surface'">{{ formatDepth(dive.max_depth_m) }}</p></div>
             <div class="md:col-span-1 md:text-center"><p class="font-headline text-sm font-medium">{{ formatDurationShort(dive.duration_seconds) }}</p></div>
+            <div class="md:col-span-1 md:text-center"><p class="text-sm font-bold text-tertiary">{{ pressureUsedLabel(dive) }}</p></div>
             <div class="md:col-span-1 md:text-center"><p class="text-sm font-bold text-secondary">{{ formatTemperature(surfaceTemperature(dive)) }}</p></div>
-            <div class="md:col-span-1 md:text-right">
-              <div class="flex items-center justify-end gap-2">
-                <button @click.stop="removeDive(dive.id)" :disabled="isDeleting(dive.id)" class="inline-flex items-center gap-1 bg-error-container/20 px-3 py-2 font-label text-[10px] font-bold uppercase tracking-[0.16em] text-on-error-container transition-colors hover:bg-error-container/30 disabled:opacity-50">
-                  <span class="material-symbols-outlined text-sm">delete</span>
-                  {{ isDeleting(dive.id) ? 'Removing...' : 'Remove' }}
-                </button>
-                <span class="material-symbols-outlined text-on-surface-variant transition-colors hover:text-primary">analytics</span>
-              </div>
-            </div>
           </article>
           <div v-if="pagedDives.length === 0" class="px-8 py-16 text-center">
             <p class="font-headline text-2xl font-bold">No dives match the current filters</p>
-            <p class="mt-2 text-on-surface-variant">Change the search, mode, or device filters, or complete imported dives before they enter the logbook.</p>
+            <p class="mt-2 text-on-surface-variant">Change the search or device filters, or complete imported dives before they enter the logbook.</p>
             <button @click="openImportQueue()" class="mt-5 bg-primary px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-on-primary">
               Open Imported Queue
             </button>
