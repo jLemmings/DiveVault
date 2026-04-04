@@ -427,6 +427,10 @@ export default {
       profileStatusTimeoutId: null,
       pendingLicenseUploadId: null,
       activeLicensePreview: null,
+      pendingCreation: null,
+      pendingCreationError: "",
+      pendingCreationSubmitting: false,
+      pendingCreationLookupLoading: false,
       pendingRemoval: null,
       editingLicenseIds: [],
       editingDiveSiteIds: [],
@@ -435,7 +439,11 @@ export default {
       expandedLicenseIds: [],
       expandedDiveSiteIds: [],
       expandedBuddyIds: [],
-      expandedGuideIds: []
+      expandedGuideIds: [],
+      licenseExpandedSnapshot: null,
+      diveSiteExpandedSnapshot: null,
+      buddyExpandedSnapshot: null,
+      guideExpandedSnapshot: null
     };
   },
   computed: {
@@ -512,6 +520,30 @@ export default {
     },
     isDataManagementBusy() {
       return Boolean(this.dataManagementAction);
+    },
+    pendingCreationType() {
+      return this.pendingCreation?.type || "";
+    },
+    pendingCreationDraft() {
+      return this.pendingCreation?.draft || null;
+    },
+    pendingCreationTitle() {
+      const titleByType = {
+        license: "Add License",
+        "dive-site": "Add Dive Site",
+        buddy: "Add Buddy",
+        guide: "Add Guide"
+      };
+      return titleByType[this.pendingCreationType] || "Add Item";
+    },
+    pendingCreationSubmitLabel() {
+      const labelByType = {
+        license: "Save License",
+        "dive-site": "Save Dive Site",
+        buddy: "Save Buddy",
+        guide: "Save Guide"
+      };
+      return labelByType[this.pendingCreationType] || "Save";
     }
   },
   watch: {
@@ -603,6 +635,10 @@ export default {
       this.editingDiveSiteIds = [];
       this.editingBuddyIds = [];
       this.editingGuideIds = [];
+      this.licenseExpandedSnapshot = null;
+      this.diveSiteExpandedSnapshot = null;
+      this.buddyExpandedSnapshot = null;
+      this.guideExpandedSnapshot = null;
       this.syncExpandedPanels();
     },
     notifyProfileUpdated(profile) {
@@ -864,6 +900,9 @@ export default {
     beginLicensesEdit() {
       this.profileError = "";
       this.profileStatus = "";
+      if (!this.areLicensesEditing) {
+        this.licenseExpandedSnapshot = [...this.expandedLicenseIds];
+      }
       this.licenseDrafts = cloneLicenses(this.settingsProfile.licenses);
       this.areLicensesEditing = true;
     },
@@ -872,10 +911,15 @@ export default {
       this.pendingLicenseUploadId = null;
       this.editingLicenseIds = [];
       this.areLicensesEditing = false;
+      this.expandedLicenseIds = Array.isArray(this.licenseExpandedSnapshot) ? [...this.licenseExpandedSnapshot] : [];
+      this.licenseExpandedSnapshot = null;
     },
     beginDiveSitesEdit() {
       this.profileError = "";
       this.profileStatus = "";
+      if (!this.areDiveSitesEditing) {
+        this.diveSiteExpandedSnapshot = [...this.expandedDiveSiteIds];
+      }
       this.diveSiteDrafts = cloneDiveSites(this.settingsProfile.dive_sites);
       this.areDiveSitesEditing = true;
     },
@@ -883,10 +927,15 @@ export default {
       this.diveSiteDrafts = cloneDiveSites(this.settingsProfile.dive_sites);
       this.editingDiveSiteIds = [];
       this.areDiveSitesEditing = false;
+      this.expandedDiveSiteIds = Array.isArray(this.diveSiteExpandedSnapshot) ? [...this.diveSiteExpandedSnapshot] : [];
+      this.diveSiteExpandedSnapshot = null;
     },
     beginBuddiesEdit() {
       this.profileError = "";
       this.profileStatus = "";
+      if (!this.areBuddiesEditing) {
+        this.buddyExpandedSnapshot = [...this.expandedBuddyIds];
+      }
       this.buddyDrafts = cloneBuddies(this.settingsProfile.buddies);
       this.areBuddiesEditing = true;
     },
@@ -894,10 +943,15 @@ export default {
       this.buddyDrafts = cloneBuddies(this.settingsProfile.buddies);
       this.editingBuddyIds = [];
       this.areBuddiesEditing = false;
+      this.expandedBuddyIds = Array.isArray(this.buddyExpandedSnapshot) ? [...this.buddyExpandedSnapshot] : [];
+      this.buddyExpandedSnapshot = null;
     },
     beginGuidesEdit() {
       this.profileError = "";
       this.profileStatus = "";
+      if (!this.areGuidesEditing) {
+        this.guideExpandedSnapshot = [...this.expandedGuideIds];
+      }
       this.guideDrafts = cloneGuides(this.settingsProfile.guides);
       this.areGuidesEditing = true;
     },
@@ -905,6 +959,8 @@ export default {
       this.guideDrafts = cloneGuides(this.settingsProfile.guides);
       this.editingGuideIds = [];
       this.areGuidesEditing = false;
+      this.expandedGuideIds = Array.isArray(this.guideExpandedSnapshot) ? [...this.guideExpandedSnapshot] : [];
+      this.guideExpandedSnapshot = null;
     },
     async saveLicenses() {
       this.licensesSaving = true;
@@ -934,6 +990,7 @@ export default {
         this.resetDraftsFromProfile();
         this.areLicensesEditing = false;
         this.editingLicenseIds = [];
+        this.licenseExpandedSnapshot = null;
         this.profileStatus = "Licenses updated.";
       } catch (error) {
         this.profileError = error?.message || "Could not save the license list.";
@@ -942,60 +999,28 @@ export default {
       }
     },
     addLicense() {
-      this.licenseDrafts = [...this.licenseDrafts, emptyLicense()];
+      this.licenseDrafts = [emptyLicense(), ...this.licenseDrafts];
     },
     addLicenseEntry() {
-      if (!this.areLicensesEditing) {
-        this.beginLicensesEdit();
-      }
-      const draft = emptyLicense();
-      this.licenseDrafts = [...this.licenseDrafts, draft];
-      this.editingLicenseIds = [draft.id];
-      if (!this.isLicenseExpanded(draft.id)) {
-        this.toggleLicenseDetails(draft.id);
-      }
+      this.openCreateDialog("license");
     },
     addDiveSite() {
-      this.diveSiteDrafts = [...this.diveSiteDrafts, emptyDiveSite()];
+      this.diveSiteDrafts = [emptyDiveSite(), ...this.diveSiteDrafts];
     },
     addDiveSiteEntry() {
-      if (!this.areDiveSitesEditing) {
-        this.beginDiveSitesEdit();
-      }
-      const draft = emptyDiveSite();
-      this.diveSiteDrafts = [...this.diveSiteDrafts, draft];
-      this.editingDiveSiteIds = [draft.id];
-      if (!this.isDiveSiteExpanded(draft.id)) {
-        this.toggleDiveSiteDetails(draft.id);
-      }
+      this.openCreateDialog("dive-site");
     },
     addBuddy() {
-      this.buddyDrafts = [...this.buddyDrafts, emptyBuddy()];
+      this.buddyDrafts = [emptyBuddy(), ...this.buddyDrafts];
     },
     addBuddyEntry() {
-      if (!this.areBuddiesEditing) {
-        this.beginBuddiesEdit();
-      }
-      const draft = emptyBuddy();
-      this.buddyDrafts = [...this.buddyDrafts, draft];
-      this.editingBuddyIds = [draft.id];
-      if (!this.isBuddyExpanded(draft.id)) {
-        this.toggleBuddyDetails(draft.id);
-      }
+      this.openCreateDialog("buddy");
     },
     addGuide() {
-      this.guideDrafts = [...this.guideDrafts, emptyGuide()];
+      this.guideDrafts = [emptyGuide(), ...this.guideDrafts];
     },
     addGuideEntry() {
-      if (!this.areGuidesEditing) {
-        this.beginGuidesEdit();
-      }
-      const draft = emptyGuide();
-      this.guideDrafts = [...this.guideDrafts, draft];
-      this.editingGuideIds = [draft.id];
-      if (!this.isGuideExpanded(draft.id)) {
-        this.toggleGuideDetails(draft.id);
-      }
+      this.openCreateDialog("guide");
     },
     removeLicense(index) {
       const removedLicense = this.licenseDrafts[index];
@@ -1216,6 +1241,7 @@ export default {
         this.resetDraftsFromProfile();
         this.areDiveSitesEditing = false;
         this.editingDiveSiteIds = [];
+        this.diveSiteExpandedSnapshot = null;
         this.profileStatus = "Dive sites updated.";
       } catch (error) {
         this.profileError = error?.message || "Could not save the dive site list.";
@@ -1251,6 +1277,7 @@ export default {
         this.resetDraftsFromProfile();
         this.areBuddiesEditing = false;
         this.editingBuddyIds = [];
+        this.buddyExpandedSnapshot = null;
         this.profileStatus = "Buddies updated.";
       } catch (error) {
         this.profileError = error?.message || "Could not save the buddy list.";
@@ -1286,6 +1313,7 @@ export default {
         this.resetDraftsFromProfile();
         this.areGuidesEditing = false;
         this.editingGuideIds = [];
+        this.guideExpandedSnapshot = null;
         this.profileStatus = "Guides updated.";
       } catch (error) {
         this.profileError = error?.message || "Could not save the guide list.";
@@ -1408,6 +1436,166 @@ export default {
     },
     closeLicensePreview() {
       this.activeLicensePreview = null;
+    },
+    openCreateDialog(type) {
+      const draftByType = {
+        license: emptyLicense,
+        "dive-site": emptyDiveSite,
+        buddy: emptyBuddy,
+        guide: emptyGuide
+      };
+      const createDraft = draftByType[type];
+      if (!createDraft) return;
+      this.pendingCreation = {
+        type,
+        draft: createDraft()
+      };
+      this.pendingCreationError = "";
+      this.pendingCreationSubmitting = false;
+      this.pendingCreationLookupLoading = false;
+    },
+    closeCreateDialog() {
+      if (this.pendingCreationSubmitting) return;
+      this.pendingCreation = null;
+      this.pendingCreationError = "";
+      this.pendingCreationLookupLoading = false;
+    },
+    validatePendingCreation() {
+      const draft = this.pendingCreationDraft;
+      if (!draft) return "Nothing to save.";
+      if (this.pendingCreationType === "license" && !draft.company.trim() && !draft.certification_name.trim()) {
+        return "Add a company or certification name before saving the license.";
+      }
+      if (this.pendingCreationType === "dive-site" && !draft.name.trim()) {
+        return "Enter a site name before saving the dive site.";
+      }
+      if (this.pendingCreationType === "buddy" && !draft.name.trim()) {
+        return "Enter a buddy name before saving the buddy.";
+      }
+      if (this.pendingCreationType === "guide" && !draft.name.trim()) {
+        return "Enter a guide name before saving the guide.";
+      }
+      return "";
+    },
+    async searchPendingDiveSiteLocation() {
+      const site = this.pendingCreationDraft;
+      if (!site || this.pendingCreationType !== "dive-site") return;
+
+      const query = typeof site.location === "string" ? site.location.trim() : "";
+      if (!query) {
+        this.pendingCreationError = "Enter a location before searching for GPS coordinates.";
+        return;
+      }
+
+      this.pendingCreationLookupLoading = true;
+      this.pendingCreationError = "";
+      this.profileStatus = "";
+      try {
+        const response = await this.authenticatedFetch(`/api/geocode/search?q=${encodeURIComponent(query)}`);
+        const payload = await response.json().catch(() => null);
+        if (!response.ok) {
+          throw new Error(payload?.error || `API returned ${response.status}`);
+        }
+        if (!payload?.found || !payload?.result) {
+          this.pendingCreationError = `No coordinates found for "${query}".`;
+          return;
+        }
+
+        this.pendingCreation = {
+          ...this.pendingCreation,
+          draft: {
+            ...site,
+            country: typeof payload.result.country === "string" ? payload.result.country : site.country,
+            latitude: String(payload.result.latitude),
+            longitude: String(payload.result.longitude)
+          }
+        };
+      } catch (error) {
+        this.pendingCreationError = error?.message || "Could not search for GPS coordinates.";
+      } finally {
+        this.pendingCreationLookupLoading = false;
+      }
+    },
+    async confirmCreateDialog() {
+      const validationError = this.validatePendingCreation();
+      if (validationError) {
+        this.pendingCreationError = validationError;
+        return;
+      }
+
+      const draft = this.pendingCreationDraft;
+      const type = this.pendingCreationType;
+      if (!draft || !type) return;
+
+      this.pendingCreationSubmitting = true;
+      this.pendingCreationError = "";
+
+      try {
+        if (type === "license") {
+          const previousDrafts = cloneLicenses(this.licenseDrafts);
+          const previousEditingIds = [...this.editingLicenseIds];
+          const wasEditing = this.areLicensesEditing;
+          if (!this.areLicensesEditing) {
+            this.beginLicensesEdit();
+          }
+          this.licenseDrafts = [draft, ...this.licenseDrafts];
+          await this.saveLicenses();
+          if (this.profileError) {
+            this.licenseDrafts = previousDrafts;
+            this.editingLicenseIds = previousEditingIds;
+            this.areLicensesEditing = wasEditing;
+          }
+        } else if (type === "dive-site") {
+          const previousDrafts = cloneDiveSites(this.diveSiteDrafts);
+          const previousEditingIds = [...this.editingDiveSiteIds];
+          const wasEditing = this.areDiveSitesEditing;
+          if (!this.areDiveSitesEditing) {
+            this.beginDiveSitesEdit();
+          }
+          this.diveSiteDrafts = [draft, ...this.diveSiteDrafts];
+          await this.saveDiveSites();
+          if (this.profileError) {
+            this.diveSiteDrafts = previousDrafts;
+            this.editingDiveSiteIds = previousEditingIds;
+            this.areDiveSitesEditing = wasEditing;
+          }
+        } else if (type === "buddy") {
+          const previousDrafts = cloneBuddies(this.buddyDrafts);
+          const previousEditingIds = [...this.editingBuddyIds];
+          const wasEditing = this.areBuddiesEditing;
+          if (!this.areBuddiesEditing) {
+            this.beginBuddiesEdit();
+          }
+          this.buddyDrafts = [draft, ...this.buddyDrafts];
+          await this.saveBuddies();
+          if (this.profileError) {
+            this.buddyDrafts = previousDrafts;
+            this.editingBuddyIds = previousEditingIds;
+            this.areBuddiesEditing = wasEditing;
+          }
+        } else if (type === "guide") {
+          const previousDrafts = cloneGuides(this.guideDrafts);
+          const previousEditingIds = [...this.editingGuideIds];
+          const wasEditing = this.areGuidesEditing;
+          if (!this.areGuidesEditing) {
+            this.beginGuidesEdit();
+          }
+          this.guideDrafts = [draft, ...this.guideDrafts];
+          await this.saveGuides();
+          if (this.profileError) {
+            this.guideDrafts = previousDrafts;
+            this.editingGuideIds = previousEditingIds;
+            this.areGuidesEditing = wasEditing;
+          }
+        }
+
+        if (!this.profileError) {
+          this.pendingCreation = null;
+        }
+      } finally {
+        this.pendingCreationSubmitting = false;
+        this.pendingCreationLookupLoading = false;
+      }
     },
     syncExpandedPanels() {
       const retainVisibleIds = (existingIds, items) => existingIds.filter((id) => items.some((item) => item.id === id));
@@ -1612,13 +1800,6 @@ export default {
                   <div class="settings-toolbar">
                     <button
                       v-if="!isLicenseEditing(license.id)"
-                      @click="toggleLicenseDetails(license.id)"
-                      class="settings-button settings-button-ghost"
-                    >
-                      {{ isLicenseExpanded(license.id) ? 'Hide Details' : 'Show Details' }}
-                    </button>
-                    <button
-                      v-if="!isLicenseEditing(license.id) && isLicenseExpanded(license.id)"
                       @click="editLicenseItem(license.id)"
                       class="settings-button settings-button-secondary"
                     >
@@ -1760,24 +1941,26 @@ export default {
               <article v-for="(site, index) in visibleDiveSites" :key="site.id" class="settings-item-card">
                 <div class="settings-item-header">
                   <div class="min-w-0">
-                    <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Dive Site {{ index + 1 }}</p>
-                    <h5 class="mt-2 font-headline text-2xl font-bold tracking-tight text-on-surface">{{ diveSiteTitle(site, index) }}</h5>
+                    <h5 class="font-headline text-2xl font-bold tracking-tight text-on-surface">{{ diveSiteTitle(site, index) }}</h5>
                     <div class="settings-chip-row mt-3">
-                      <span class="settings-chip">{{ displayValue(site.location, 'Location pending') }}</span>
-                      <span class="settings-chip" :class="diveSiteHasCoordinates(site) ? 'is-accent' : ''">{{ diveSiteHasCoordinates(site) ? 'GPS ready' : 'No GPS' }}</span>
+                      <span class="settings-chip">
+                        <span class="material-symbols-outlined text-[14px]">location_on</span>
+                        {{ displayValue(site.location, 'Location pending') }}
+                      </span>
+                      <span class="settings-chip">
+                        <span class="material-symbols-outlined text-[14px]">public</span>
+                        {{ displayValue(site.country, 'Country pending') }}
+                      </span>
+                      <span class="settings-chip" :class="diveSiteHasCoordinates(site) ? 'is-accent' : ''">
+                        <span class="material-symbols-outlined text-[14px]">{{ diveSiteHasCoordinates(site) ? 'my_location' : 'location_off' }}</span>
+                        {{ diveSiteHasCoordinates(site) ? 'GPS ready' : 'No GPS' }}
+                      </span>
                     </div>
                   </div>
 
                   <div class="settings-toolbar">
                     <button
                       v-if="!isDiveSiteEditing(site.id)"
-                      @click="toggleDiveSiteDetails(site.id)"
-                      class="settings-button settings-button-ghost"
-                    >
-                      {{ isDiveSiteExpanded(site.id) ? 'Hide Details' : 'Show Details' }}
-                    </button>
-                    <button
-                      v-if="!isDiveSiteEditing(site.id) && isDiveSiteExpanded(site.id)"
                       @click="editDiveSiteItem(site.id)"
                       class="settings-button settings-button-secondary"
                     >
@@ -1913,13 +2096,6 @@ export default {
                   <div class="settings-toolbar">
                     <button
                       v-if="!isBuddyEditing(buddy.id)"
-                      @click="toggleBuddyDetails(buddy.id)"
-                      class="settings-button settings-button-ghost"
-                    >
-                      {{ isBuddyExpanded(buddy.id) ? 'Hide Info' : 'Show Info' }}
-                    </button>
-                    <button
-                      v-if="!isBuddyEditing(buddy.id) && isBuddyExpanded(buddy.id)"
                       @click="editBuddyItem(buddy.id)"
                       class="settings-button settings-button-secondary"
                     >
@@ -1936,10 +2112,6 @@ export default {
                     <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Buddy Name</span>
                     <input v-model="buddy.name" type="text" class="settings-input" placeholder="Sam Carter" />
                   </label>
-                </div>
-
-                <div v-else-if="isBuddyExpanded(buddy.id)" class="mt-5">
-                  <p class="text-sm leading-6 text-secondary">Available in dive-log buddy pickers and import workflows.</p>
                 </div>
               </article>
             </div>
@@ -1977,13 +2149,6 @@ export default {
                   <div class="settings-toolbar">
                     <button
                       v-if="!isGuideEditing(guide.id)"
-                      @click="toggleGuideDetails(guide.id)"
-                      class="settings-button settings-button-ghost"
-                    >
-                      {{ isGuideExpanded(guide.id) ? 'Hide Info' : 'Show Info' }}
-                    </button>
-                    <button
-                      v-if="!isGuideEditing(guide.id) && isGuideExpanded(guide.id)"
                       @click="editGuideItem(guide.id)"
                       class="settings-button settings-button-secondary"
                     >
@@ -2000,10 +2165,6 @@ export default {
                     <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Guide Name</span>
                     <input v-model="guide.name" type="text" class="settings-input" placeholder="Kai Jensen" />
                   </label>
-                </div>
-
-                <div v-else-if="isGuideExpanded(guide.id)" class="mt-5">
-                  <p class="text-sm leading-6 text-secondary">Available in dive-log guide pickers and import workflows.</p>
                 </div>
               </article>
             </div>
@@ -2133,6 +2294,137 @@ export default {
           </div>
           </template>
       </section>
+
+      <div
+        v-if="pendingCreation"
+        @click.self="closeCreateDialog"
+        class="fixed inset-0 z-[55] flex items-center justify-center bg-background/88 px-6 py-8 backdrop-blur-sm"
+      >
+        <div class="settings-modal-card">
+          <div class="flex items-start justify-between gap-4">
+            <div>
+              <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-primary">New Entry</p>
+              <h3 class="mt-3 font-headline text-2xl font-bold tracking-tight text-on-surface">{{ pendingCreationTitle }}</h3>
+              <p class="mt-3 text-sm text-secondary">This entry stays out of the list until you save it here.</p>
+            </div>
+            <button
+              type="button"
+              @click="closeCreateDialog"
+              :disabled="pendingCreationSubmitting"
+              class="settings-button settings-button-ghost"
+            >
+              Close
+            </button>
+          </div>
+
+          <div v-if="pendingCreationError" class="settings-feedback mt-5 border-error/20 bg-error-container/20 text-on-error-container">
+            {{ pendingCreationError }}
+          </div>
+
+          <div v-if="pendingCreationType === 'license'" class="settings-modal-grid mt-6">
+            <label class="space-y-2">
+              <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Company</span>
+              <input v-model="pendingCreationDraft.company" type="text" class="settings-input" placeholder="PADI / SSI / NAUI" />
+            </label>
+            <label class="space-y-2">
+              <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Certification Name</span>
+              <input v-model="pendingCreationDraft.certification_name" type="text" class="settings-input" placeholder="Advanced Open Water" />
+            </label>
+            <label class="space-y-2">
+              <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Student Number</span>
+              <input v-model="pendingCreationDraft.student_number" type="text" class="settings-input" placeholder="Student or certification number" />
+            </label>
+            <label class="space-y-2">
+              <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Certification Date</span>
+              <input v-model="pendingCreationDraft.certification_date" type="text" class="settings-input" placeholder="YYYY-MM-DD" />
+            </label>
+            <label class="space-y-2 md:col-span-2">
+              <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Instructor Number</span>
+              <input v-model="pendingCreationDraft.instructor_number" type="text" class="settings-input" placeholder="Instructor number" />
+            </label>
+            <div class="settings-side-panel md:col-span-2">
+              <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-primary">PDF Upload</p>
+              <p class="mt-2 text-sm text-secondary">Save the license first. You can attach or replace the PDF from the saved license card.</p>
+            </div>
+          </div>
+
+          <div v-else-if="pendingCreationType === 'dive-site'" class="settings-modal-section mt-6">
+            <label class="space-y-2">
+              <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Site Name</span>
+              <input v-model="pendingCreationDraft.name" type="text" class="settings-input" placeholder="North Wall / Training Reef" />
+            </label>
+            <div class="settings-side-panel settings-modal-subsection">
+              <div class="settings-modal-section">
+                <div class="settings-modal-header">
+                  <div>
+                    <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-primary">GPS Lookup</p>
+                    <p class="settings-modal-copy mt-2 text-sm text-secondary">Search from the location text, then adjust latitude and longitude if needed.</p>
+                  </div>
+                  <button
+                    type="button"
+                    @click="searchPendingDiveSiteLocation"
+                    :disabled="pendingCreationLookupLoading"
+                    class="settings-button settings-button-secondary settings-modal-lookup-button"
+                  >
+                    {{ pendingCreationLookupLoading ? 'Searching GPS' : 'Search GPS From Location' }}
+                  </button>
+                </div>
+                <label class="space-y-2">
+                  <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Location</span>
+                  <input v-model="pendingCreationDraft.location" type="text" class="settings-input" placeholder="Blue Hole, Dahab, Egypt" />
+                </label>
+                <div class="settings-modal-site-grid">
+                  <label class="space-y-2">
+                    <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Country</span>
+                    <input v-model="pendingCreationDraft.country" type="text" class="settings-input" placeholder="Egypt" />
+                  </label>
+                  <label class="space-y-2">
+                    <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Latitude</span>
+                    <input v-model="pendingCreationDraft.latitude" type="number" step="any" min="-90" max="90" class="settings-input" placeholder="25.1234" />
+                  </label>
+                  <label class="space-y-2">
+                    <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Longitude</span>
+                    <input v-model="pendingCreationDraft.longitude" type="number" step="any" min="-180" max="180" class="settings-input" placeholder="-80.4567" />
+                  </label>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div v-else-if="pendingCreationType === 'buddy'" class="settings-modal-grid mt-6">
+            <label class="space-y-2 md:col-span-2">
+              <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Buddy Name</span>
+              <input v-model="pendingCreationDraft.name" type="text" class="settings-input" placeholder="Sam Carter" />
+            </label>
+          </div>
+
+          <div v-else-if="pendingCreationType === 'guide'" class="settings-modal-grid mt-6">
+            <label class="space-y-2 md:col-span-2">
+              <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Guide Name</span>
+              <input v-model="pendingCreationDraft.name" type="text" class="settings-input" placeholder="Kai Jensen" />
+            </label>
+          </div>
+
+          <div class="settings-modal-actions">
+            <button
+              type="button"
+              @click="closeCreateDialog"
+              :disabled="pendingCreationSubmitting"
+              class="settings-button settings-button-ghost"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              @click="confirmCreateDialog"
+              :disabled="pendingCreationSubmitting"
+              class="settings-button settings-button-primary"
+            >
+              {{ pendingCreationSubmitting ? 'Saving...' : pendingCreationSubmitLabel }}
+            </button>
+          </div>
+        </div>
+      </div>
 
       <div
         v-if="activeLicensePreview"
