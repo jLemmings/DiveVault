@@ -1,5 +1,5 @@
 import L from "leaflet";
-import { dayOfMonth, monthShort, formatDate, diveTitle, diveSubtitle, formatDepth, formatDepthNumber, formatDateTime, durationShort, formatTemperature, surfaceTemperature, profileBars, diveModeLabel, pressureUsedLabel, decoStatusLabel, formatAccumulatedDuration, formatBarTotal, filledIconStyle, numberOrZero, oxygenToxicityPercent, parseDate } from "../core.js";
+import { dayOfMonth, monthShort, formatDate, formatTime, diveTitle, diveSubtitle, formatDepth, formatDepthNumber, formatDateTime, durationShort, formatTemperature, surfaceTemperature, profileBars, diveModeLabel, pressureUsedLabel, decoStatusLabel, formatAccumulatedDuration, formatBarTotal, filledIconStyle, numberOrZero, oxygenToxicityPercent, parseDate, importDraftSeed } from "../core.js";
 
 function numericCoordinate(value) {
   if (typeof value === "number" && Number.isFinite(value)) return value;
@@ -53,13 +53,19 @@ function normalizeSiteName(value) {
   return typeof value === "string" ? value.trim().toLowerCase() : "";
 }
 
-function savedSiteCoordinates(dive, diveSites) {
-  const siteName = normalizeSiteName(dive?.fields?.logbook?.site);
+function diveSiteName(dive) {
+  const siteName = importDraftSeed(dive)?.site;
+  return typeof siteName === "string" ? siteName.trim() : "";
+}
+
+function matchingSavedSite(dive, diveSites) {
+  const siteName = normalizeSiteName(diveSiteName(dive));
   if (!siteName || !Array.isArray(diveSites)) return null;
+  return diveSites.find((site) => normalizeSiteName(site?.name) === siteName) || null;
+}
 
-  const matchingSite = diveSites.find((site) => normalizeSiteName(site?.name) === siteName);
+function savedSiteCoordinates(matchingSite) {
   if (!matchingSite) return null;
-
   return extractCoordinates({
     lat: matchingSite.latitude ?? matchingSite.lat,
     lon: matchingSite.longitude ?? matchingSite.lon
@@ -82,7 +88,9 @@ export default {
     return {
       diveMap: null,
       diveTileLayer: null,
-      diveMarkerLayer: null
+      diveMarkerLayer: null,
+      showMissingCoordinateDives: false,
+      isMapExpanded: false
     };
   },
   mounted() {
@@ -107,12 +115,23 @@ export default {
         this.$nextTick(() => this.syncDiveMap());
       },
       deep: true
+    },
+    unmappedDiveCount(value) {
+      if (!value) {
+        this.showMissingCoordinateDives = false;
+      }
+    },
+    isMapExpanded() {
+      this.$nextTick(() => {
+        this.handleMapResize();
+      });
     }
   },
   methods: {
     dayOfMonth,
     monthShort,
     formatDate,
+    formatTime,
     diveTitle,
     diveSubtitle,
     formatDepth,
@@ -128,6 +147,7 @@ export default {
     formatAccumulatedDuration,
     formatBarTotal,
     coordinateLabel,
+    diveSiteName,
     handleMapResize() {
       if (!this.diveMap) return;
       this.diveMap.invalidateSize(false);
@@ -174,13 +194,12 @@ export default {
         `
       });
     },
-    diveMarkerPopup(marker) {
+    diveMarkerBubble(marker) {
       const diveLabel = marker.count === 1 ? "1 dive" : `${marker.count} dives`;
       return `
-        <div class="dive-map-popup-card">
-          <p class="dive-map-popup-eyebrow">Logged Location</p>
-          <h5 class="dive-map-popup-title">${escapeHtml(marker.label)}</h5>
-          <p class="dive-map-popup-meta">${escapeHtml(diveLabel)} | ${escapeHtml(this.coordinateLabel(marker.latitude, "N", "S"))} / ${escapeHtml(this.coordinateLabel(marker.longitude, "E", "W"))}</p>
+        <div class="dive-map-info-bubble">
+          <p class="dive-map-info-title">${escapeHtml(marker.label)}</p>
+          <p class="dive-map-info-meta">${escapeHtml(diveLabel)} | ${escapeHtml(this.coordinateLabel(marker.latitude, "N", "S"))} / ${escapeHtml(this.coordinateLabel(marker.longitude, "E", "W"))}</p>
         </div>
       `;
     },
@@ -203,18 +222,12 @@ export default {
         bounds.push(position);
 
         const leafletMarker = L.marker(position, {
-          icon: this.diveMarkerIcon(marker),
-          title: `${marker.label} | ${marker.count} dive${marker.count === 1 ? "" : "s"}`
+          icon: this.diveMarkerIcon(marker)
         });
-        leafletMarker.bindPopup(this.diveMarkerPopup(marker), {
-          className: "dive-map-popup",
-          closeButton: false,
-          autoPanPadding: [24, 24],
+        leafletMarker.bindTooltip(this.diveMarkerBubble(marker), {
+          className: "dive-map-tooltip",
+          direction: "top",
           offset: [0, -8]
-        });
-        leafletMarker.on("click", () => {
-          leafletMarker.openPopup();
-          this.openDive(marker.representativeId);
         });
         leafletMarker.addTo(this.diveMarkerLayer);
       });
@@ -230,6 +243,23 @@ export default {
       }
 
       this.handleMapResize();
+    },
+    toggleMissingCoordinateDives() {
+      if (!this.unmappedDiveCount) return;
+      this.showMissingCoordinateDives = !this.showMissingCoordinateDives;
+    },
+    toggleMapExpanded() {
+      this.isMapExpanded = !this.isMapExpanded;
+    },
+    closeMapExpanded() {
+      this.isMapExpanded = false;
+    },
+    closeMissingCoordinateDives() {
+      this.showMissingCoordinateDives = false;
+    },
+    openMissingCoordinateDive(diveId) {
+      this.showMissingCoordinateDives = false;
+      this.openDive(diveId);
     }
   },
   computed: {
@@ -237,7 +267,7 @@ export default {
       return this.dives.slice(0, 5);
     },
     mapSourceDives() {
-      return Array.isArray(this.allDives) && this.allDives.length ? this.allDives : this.dives;
+      return Array.isArray(this.dives) ? this.dives : [];
     },
     featuredDive() {
       return this.recentDives[0] || null;
@@ -275,13 +305,20 @@ export default {
       const markers = new Map();
 
       this.mapSourceDives.forEach((dive) => {
-        const coordinates = diveCoordinates(dive) || savedSiteCoordinates(dive, this.diveSites);
+        const savedSite = matchingSavedSite(dive, this.diveSites);
+        const coordinates = savedSiteCoordinates(savedSite) || diveCoordinates(dive);
         if (!coordinates) return;
 
-        const key = `${coordinates.lat.toFixed(2)}:${coordinates.lon.toFixed(2)}`;
+        const siteName = diveSiteName(dive);
+        const key = savedSite?.id
+          || normalizeSiteName(savedSite?.name)
+          || normalizeSiteName(siteName)
+          || `${coordinates.lat.toFixed(4)}:${coordinates.lon.toFixed(4)}`;
         const existing = markers.get(key);
         const diveDate = parseDate(dive?.started_at);
-        const siteLabel = dive?.fields?.logbook?.site?.trim() || diveTitle(dive);
+        const siteLabel = (typeof savedSite?.name === "string" && savedSite.name.trim())
+          || siteName
+          || diveTitle(dive);
 
         if (existing) {
           existing.count += 1;
@@ -319,11 +356,44 @@ export default {
       return this.diveMapMarkers.length;
     },
     unmappedDiveCount() {
-      return Math.max(this.mapSourceDives.length - this.mappedDiveCount, 0);
+      return this.missingCoordinateDives.length;
+    },
+    missingCoordinateDives() {
+      return this.mapSourceDives
+        .filter((dive) => {
+          const savedSite = matchingSavedSite(dive, this.diveSites);
+          const coordinates = savedSiteCoordinates(savedSite) || diveCoordinates(dive);
+          return !coordinates;
+        })
+        .map((dive) => {
+          const savedSite = matchingSavedSite(dive, this.diveSites);
+          const siteName = diveSiteName(dive);
+          let reason = "No usable coordinates found";
+
+          if (!siteName) {
+            reason = "No dive site assigned";
+          } else if (!savedSite) {
+            reason = "Dive site is not linked to a saved site in Settings";
+          } else {
+            reason = "Saved dive site has no coordinates";
+          }
+
+          return {
+            id: dive.id,
+            date: dive.started_at,
+            siteName: siteName || "Site pending",
+            title: diveTitle(dive),
+            device: `${dive.vendor || "Unknown"} ${dive.product || ""}`.trim(),
+            depth: formatDepth(dive.max_depth_m),
+            duration: durationShort(dive.duration_seconds),
+            reason
+          };
+        })
+        .sort((left, right) => (parseDate(right.date)?.getTime() || 0) - (parseDate(left.date)?.getTime() || 0));
     },
     mapCoverageLabel() {
       if (!this.mapSourceDives.length) return "No dives loaded";
-      if (!this.hasDiveMapMarkers) return "No coordinates found in imported logs";
+      if (!this.hasDiveMapMarkers) return "No coordinates found in committed dives or saved dive sites";
       if (!this.unmappedDiveCount) return "Geotag coverage complete";
       return `${this.unmappedDiveCount} ${this.unmappedDiveCount === 1 ? "dive is" : "dives are"} missing coordinates`;
     },
@@ -331,8 +401,8 @@ export default {
       return this.diveMapMarkers.slice(0, 4);
     },
     mapFooterNote() {
-      if (!this.hasDiveMapMarkers) return "Import coordinates into the dive payload or saved dive sites to populate the live map.";
-      return "Searchable dive metadata now drives a live charted map. Select a marker to open the most recent dive from that location.";
+      if (!this.hasDiveMapMarkers) return "Add coordinates to saved dive sites to place committed dives accurately on the map.";
+      return "Saved dive-site coordinates take priority over raw telemetry so the map reflects the curated logbook location for each dive.";
     },
     mapTelemetryLabel() {
       if (!this.hasDiveMapMarkers) return "Awaiting usable GPS telemetry";
@@ -513,14 +583,47 @@ export default {
                     <p class="mt-2 font-label text-[10px] font-bold uppercase tracking-[0.24em] text-secondary">{{ mapTelemetryLabel }}</p>
                   </div>
                   <div class="flex flex-wrap gap-3">
+                    <button
+                      @click="toggleMapExpanded()"
+                      class="border border-primary/15 bg-surface-container-high px-3 py-2 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-primary transition-colors hover:border-primary/30 hover:text-on-surface"
+                    >
+                      {{ isMapExpanded ? 'Close Map' : 'Expand Map' }}
+                    </button>
                     <span class="border border-primary/15 bg-surface-container-high px-3 py-2 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-primary">{{ mappedDiveCount }} mapped dives</span>
                     <span class="border border-tertiary/15 bg-surface-container-high px-3 py-2 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-tertiary">{{ mappedSiteCount }} unique sites</span>
-                    <span class="border border-outline-variant/15 bg-surface-container-high px-3 py-2 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">{{ mapCoverageLabel }}</span>
+                    <button
+                      v-if="unmappedDiveCount"
+                      @click="toggleMissingCoordinateDives()"
+                      class="border border-outline-variant/15 bg-surface-container-high px-3 py-2 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary transition-colors hover:border-primary/25 hover:text-primary"
+                    >
+                      {{ mapCoverageLabel }}
+                    </button>
+                    <span v-else class="border border-outline-variant/15 bg-surface-container-high px-3 py-2 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">{{ mapCoverageLabel }}</span>
                   </div>
                 </div>
 
-                <div class="dive-map-shell relative overflow-hidden border border-primary/10 bg-surface-container-low shadow-panel">
-                  <div ref="diveMapCanvas" class="dive-theme-map"></div>
+                <div
+                  :class="isMapExpanded ? 'fixed inset-0 z-[490] flex items-center justify-center bg-background/88 px-6 py-8 backdrop-blur-sm' : 'relative'"
+                  @click.self="closeMapExpanded()"
+                >
+                  <div :class="isMapExpanded ? 'w-full max-w-7xl' : ''">
+                    <div :class="['dive-map-shell relative overflow-hidden border border-primary/10 bg-surface-container-low shadow-panel']" :style="isMapExpanded ? { height: '85vh' } : null">
+                      <div v-if="isMapExpanded" class="absolute left-6 top-6 z-[480] flex items-center gap-3">
+                        <div class="border border-primary/15 bg-background/65 px-4 py-3 backdrop-blur-sm">
+                          <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-primary">Expanded Map</p>
+                          <p class="mt-1 text-sm text-on-surface-variant">{{ mapTelemetryLabel }}</p>
+                        </div>
+                      </div>
+                      <button
+                        v-if="isMapExpanded"
+                        @click="closeMapExpanded()"
+                        class="absolute right-6 top-6 z-[480] bg-background/65 px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary backdrop-blur-sm transition-colors hover:text-primary"
+                      >
+                        Close
+                      </button>
+                      <div ref="diveMapCanvas" class="dive-theme-map"></div>
+                    </div>
+                  </div>
                 </div>
               </div>
 
@@ -537,9 +640,63 @@ export default {
                 </div>
               </div>
             </div>
+
           </div>
         </section>
       </section>
+
+      <div
+        v-if="showMissingCoordinateDives && missingCoordinateDives.length"
+        class="fixed inset-0 z-[500] flex items-center justify-center bg-background/88 px-6 py-8 backdrop-blur-sm"
+        @click.self="closeMissingCoordinateDives()"
+      >
+        <section class="max-h-full w-full max-w-6xl overflow-auto border border-tertiary/18 bg-[linear-gradient(180deg,rgba(19,44,64,0.98),rgba(6,29,45,0.98))] p-6 shadow-panel md:p-8">
+          <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+              <p class="font-label text-[10px] font-bold uppercase tracking-[0.22em] text-tertiary">Missing Coordinates</p>
+              <h5 class="mt-2 font-headline text-3xl font-bold tracking-tight">{{ unmappedDiveCount }} {{ unmappedDiveCount === 1 ? 'Dive Needs Coordinates' : 'Dives Need Coordinates' }}</h5>
+              <p class="mt-3 max-w-3xl text-sm leading-7 text-on-surface-variant">These committed logbook dives do not currently resolve to a saved dive-site coordinate or usable embedded GPS position.</p>
+            </div>
+            <button @click="closeMissingCoordinateDives()" class="self-start bg-surface-container-high px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary transition-colors hover:text-primary">
+              Close
+            </button>
+          </div>
+
+          <div class="mt-6 grid gap-4 xl:grid-cols-2">
+            <article v-for="dive in missingCoordinateDives" :key="'missing-coordinate-' + dive.id" class="border border-outline-variant/10 bg-surface-container-high/55 p-4">
+              <div class="flex items-start justify-between gap-4">
+                <div class="min-w-0">
+                  <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Dive #{{ dive.id }}</p>
+                  <h6 class="mt-2 truncate font-headline text-xl font-bold text-on-surface">{{ dive.siteName }}</h6>
+                  <p class="mt-1 text-sm text-on-surface-variant">{{ dive.title }}</p>
+                </div>
+                <button @click="openMissingCoordinateDive(dive.id)" class="bg-primary px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-on-primary">
+                  Open Dive
+                </button>
+              </div>
+
+              <div class="mt-4 grid gap-3 md:grid-cols-2">
+                <div>
+                  <p class="font-label text-[10px] font-bold uppercase tracking-[0.16em] text-secondary">Date</p>
+                  <p class="mt-1 text-sm font-semibold text-on-surface">{{ formatDate(dive.date) }} {{ formatTime(dive.date) }}</p>
+                </div>
+                <div>
+                  <p class="font-label text-[10px] font-bold uppercase tracking-[0.16em] text-secondary">Dive Computer</p>
+                  <p class="mt-1 text-sm font-semibold text-on-surface">{{ dive.device }}</p>
+                </div>
+                <div>
+                  <p class="font-label text-[10px] font-bold uppercase tracking-[0.16em] text-secondary">Depth / Duration</p>
+                  <p class="mt-1 text-sm font-semibold text-on-surface">{{ dive.depth }} / {{ dive.duration }}</p>
+                </div>
+                <div>
+                  <p class="font-label text-[10px] font-bold uppercase tracking-[0.16em] text-secondary">Issue</p>
+                  <p class="mt-1 text-sm font-semibold text-tertiary">{{ dive.reason }}</p>
+                </div>
+              </div>
+            </article>
+          </div>
+        </section>
+      </div>
     </section>
   `
 };

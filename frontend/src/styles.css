@@ -213,6 +213,64 @@ body {
   margin: 0;
 }
 
+.dive-map-tooltip.leaflet-tooltip {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.dive-map-tooltip.leaflet-tooltip::before {
+  display: none;
+}
+
+.dive-map-tooltip .leaflet-tooltip-content {
+  margin: 0;
+}
+
+.dive-map-info-bubble {
+  position: relative;
+  min-width: 12rem;
+  border: 1px solid rgba(156, 202, 255, 0.18);
+  border-radius: 0.85rem;
+  background: linear-gradient(180deg, rgba(10, 27, 42, 0.98), rgba(6, 21, 33, 0.98));
+  padding: 0.7rem 0.85rem;
+  box-shadow:
+    0 16px 34px rgba(0, 12, 24, 0.42),
+    inset 0 1px 0 rgba(205, 229, 255, 0.04);
+}
+
+.dive-map-info-bubble::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: -0.42rem;
+  width: 0.85rem;
+  height: 0.85rem;
+  border-right: 1px solid rgba(156, 202, 255, 0.18);
+  border-bottom: 1px solid rgba(156, 202, 255, 0.18);
+  background: rgba(6, 21, 33, 0.98);
+  transform: translateX(-50%) rotate(45deg);
+}
+
+.dive-map-info-title {
+  margin: 0;
+  font-family: "Space Grotesk", sans-serif;
+  font-size: 0.95rem;
+  font-weight: 700;
+  line-height: 1.2;
+  color: #f3f8ff;
+}
+
+.dive-map-info-meta {
+  margin: 0.35rem 0 0;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #9ccaff;
+}
+
 .dive-map-popup-card {
   padding: 12px 14px;
   min-width: 13rem;
