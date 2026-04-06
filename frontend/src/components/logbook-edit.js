@@ -1,4 +1,4 @@
-import { canCompleteImport, formatDate, formatDateTime, formatDepthNumber, formatTemperature, importTemperature, missingImportFields, paddedDiveIndex, durationShort, numberOrZero } from "../core.js";
+import { buildDiveSequenceMap, canCompleteImport, formatDate, formatDateTime, formatDepthNumber, formatTemperature, importTemperature, missingImportFields, paddedDiveIndex, durationShort, numberOrZero } from "../core.js";
 import MetadataAutocompleteField from "./metadata-autocomplete.js";
 
 function normalizeSiteName(value) {
@@ -23,6 +23,7 @@ export default {
   },
   props: [
     "dive",
+    "allDives",
     "draft",
     "diveSites",
     "buddies",
@@ -45,6 +46,13 @@ export default {
     };
   },
   computed: {
+    tankVolumeOptions() {
+      return [
+        { label: "9L", value: "9" },
+        { label: "12L", value: "12" },
+        { label: "15L", value: "15" }
+      ];
+    },
     selectedDraft() {
       return this.draft || null;
     },
@@ -91,11 +99,16 @@ export default {
     canCreateDiveSite() {
       const siteName = typeof this.selectedDraft?.site === "string" ? this.selectedDraft.site.trim() : "";
       return Boolean(siteName) && !this.selectedDiveSite;
+    },
+    diveSequenceMap() {
+      return buildDiveSequenceMap(this.allDives);
     }
   },
   methods: {
-    paddedDiveIndex,
     formatDateTime,
+    displayDiveIndex(dive) {
+      return paddedDiveIndex(dive, this.diveSequenceMap);
+    },
     updateField(key, value) {
       if (!this.dive) return;
       this.updateDiveDraft(this.dive.id, key, value);
@@ -183,7 +196,7 @@ export default {
           <section class="border border-primary/10 bg-surface-container-low p-8 shadow-panel">
             <div class="flex flex-wrap items-center gap-3">
               <span class="bg-primary/10 px-3 py-1 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-primary">Logbook Entry</span>
-              <span class="bg-surface-container-high px-3 py-1 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">{{ paddedDiveIndex(dive) }}</span>
+              <span class="bg-surface-container-high px-3 py-1 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">{{ displayDiveIndex(dive) }}</span>
             </div>
             <h3 class="mt-5 font-headline text-5xl font-bold tracking-tight">Edit Existing Dive</h3>
             <p class="mt-4 max-w-3xl text-sm leading-7 text-on-surface-variant">
@@ -232,7 +245,7 @@ export default {
             <h4 class="mt-2 font-headline text-3xl font-bold tracking-tight">Dive Registry Fields</h4>
           </div>
 
-          <div class="grid gap-4 md:grid-cols-3">
+          <div class="grid gap-4 md:grid-cols-4">
             <label class="space-y-2">
               <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Dive Site</span>
               <metadata-autocomplete-field
@@ -287,6 +300,13 @@ export default {
                 {{ savedGuides.length ? 'Search saved guides from Settings or enter a custom value.' : 'No saved guides yet. Add them in Settings to reuse them here.' }}
               </p>
             </label>
+            <label class="space-y-2">
+              <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Tank Volume</span>
+              <select :value="selectedDraft.tank_volume_l || ''" @change="updateField('tank_volume_l', $event.target.value)" class="w-full border border-primary/10 bg-background/35 px-4 py-3 text-sm text-on-surface focus:border-primary/30 focus:ring-1 focus:ring-primary">
+                <option value="">Select tank volume</option>
+                <option v-for="option in tankVolumeOptions" :key="'logbook-tank-' + option.value" :value="option.value">{{ option.label }}</option>
+              </select>
+            </label>
           </div>
 
           <div class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_280px]">
@@ -301,7 +321,7 @@ export default {
                 <div class="mt-4 space-y-3 text-sm text-on-surface-variant">
                   <div class="flex items-start justify-between gap-3">
                     <span>Dive ID</span>
-                    <span class="text-on-surface">{{ paddedDiveIndex(dive) }}</span>
+                    <span class="text-on-surface">{{ displayDiveIndex(dive) }}</span>
                   </div>
                   <div class="flex items-start justify-between gap-3">
                     <span>Started</span>

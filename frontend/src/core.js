@@ -157,8 +157,39 @@ function compactDateStamp(value) {
   return `${day}.${month}.${year}`;
 }
 
-function paddedDiveIndex(dive) {
-  return `#${String(dive?.id ?? 0).padStart(4, "0")}`;
+function buildDiveSequenceMap(dives) {
+  const sequenceMap = new Map();
+  if (!Array.isArray(dives)) return sequenceMap;
+
+  dives
+    .filter((dive) => dive && isCommittedDive(dive))
+    .slice()
+    .sort((left, right) => {
+      const leftTime = parseDate(left?.started_at)?.getTime() || 0;
+      const rightTime = parseDate(right?.started_at)?.getTime() || 0;
+      if (leftTime !== rightTime) return leftTime - rightTime;
+      return numberOrZero(left?.id) - numberOrZero(right?.id);
+    })
+    .forEach((dive, index) => {
+      sequenceMap.set(String(dive.id), index + 1);
+    });
+
+  return sequenceMap;
+}
+
+function resolvedDiveSequenceMap(sequenceSource) {
+  return sequenceSource instanceof Map ? sequenceSource : buildDiveSequenceMap(sequenceSource);
+}
+
+function diveSequenceNumber(dive, sequenceSource) {
+  if (!dive) return null;
+  return resolvedDiveSequenceMap(sequenceSource).get(String(dive.id)) ?? null;
+}
+
+function paddedDiveIndex(dive, sequenceSource) {
+  const sequenceNumber = diveSequenceNumber(dive, sequenceSource);
+  const fallbackId = numberOrZero(dive?.id);
+  return `#${String(sequenceNumber ?? fallbackId).padStart(4, "0")}`;
 }
 
 function logbookFields(dive) {
@@ -173,11 +204,16 @@ function logbookStatus(source) {
 
 function importDraftSeed(dive) {
   const logbook = logbookFields(dive);
+  const tank = primaryTank(dive);
+  const tankVolume = typeof tank?.volume === "number" && Number.isFinite(tank.volume)
+    ? String(Math.round(tank.volume))
+    : "";
   return {
     site: typeof logbook.site === "string" ? logbook.site : "",
     buddy: typeof logbook.buddy === "string" ? logbook.buddy : "",
     guide: typeof logbook.guide === "string" ? logbook.guide : "",
     notes: typeof logbook.notes === "string" ? logbook.notes : "",
+    tank_volume_l: tankVolume,
     status: logbookStatus(logbook),
     completed_at: typeof logbook.completed_at === "string" ? logbook.completed_at : ""
   };
@@ -490,7 +526,7 @@ function pressureChartPath(dive) {
   const height = 250;
   const series = downsampleSeries(pressureSeries(dive));
   if (!series.length) {
-    return "M10,18 L120,40 L230,84 L350,118 L470,154 L590,188 L700,220 L790,238";
+    return "";
   }
   const range = pressureRange(dive);
   const maxX = Math.max(numberOrZero(dive?.duration_seconds), series[series.length - 1]?.time || 1, 1);
@@ -642,6 +678,8 @@ export {
   dayOfMonth,
   monthShort,
   compactDateStamp,
+  buildDiveSequenceMap,
+  diveSequenceNumber,
   paddedDiveIndex,
   importDraftSeed,
   effectiveImportDraft,

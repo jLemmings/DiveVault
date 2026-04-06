@@ -160,6 +160,8 @@ function emptyProfile() {
   return {
     name: "",
     email: "",
+    public_dives_enabled: false,
+    public_slug: "",
     licenses: [],
     dive_sites: [],
     buddies: [],
@@ -171,6 +173,8 @@ function cloneProfile(profile = {}) {
   return {
     name: profile?.name || "",
     email: profile?.email || "",
+    public_dives_enabled: Boolean(profile?.public_dives_enabled),
+    public_slug: profile?.public_slug || "",
     licenses: cloneLicenses(profile?.licenses),
     dive_sites: cloneDiveSites(profile?.dive_sites),
     buddies: cloneBuddies(profile?.buddies),
@@ -410,6 +414,9 @@ export default {
         name: "",
         email: ""
       },
+      publicSharingDraft: {
+        public_dives_enabled: false
+      },
       licenseDrafts: [],
       diveSiteDrafts: [],
       buddyDrafts: [],
@@ -421,6 +428,7 @@ export default {
       areGuidesEditing: false,
       profileLoading: true,
       profileSaving: false,
+      publicSharingSaving: false,
       licensesSaving: false,
       diveSitesSaving: false,
       buddiesSaving: false,
@@ -440,6 +448,9 @@ export default {
       activeLicensePreview: null,
       licenseFilter: "",
       diveSiteFilter: "",
+      diveSitePage: 1,
+      diveSitePageSize: 10,
+      diveSitePageSizeOptions: [5, 10, 20, 50],
       buddyFilter: "",
       guideFilter: "",
       pendingCreation: null,
@@ -510,6 +521,19 @@ export default {
         this.editingDiveSiteIds
       );
     },
+    diveSitePageCount() {
+      return Math.max(1, Math.ceil(this.visibleDiveSites.length / this.diveSitePageSize));
+    },
+    pagedDiveSites() {
+      const start = (this.diveSitePage - 1) * this.diveSitePageSize;
+      return this.visibleDiveSites.slice(start, start + this.diveSitePageSize);
+    },
+    diveSitePaginationLabel() {
+      if (!this.visibleDiveSites.length) return "0 dive sites";
+      const start = (this.diveSitePage - 1) * this.diveSitePageSize + 1;
+      const end = Math.min(this.diveSitePage * this.diveSitePageSize, this.visibleDiveSites.length);
+      return `${start}-${end} of ${this.visibleDiveSites.length} dive sites`;
+    },
     visibleBuddies() {
       return this.sortAndFilterCollection(
         this.areBuddiesEditing ? this.buddyDrafts : this.buddies,
@@ -531,6 +555,7 @@ export default {
     isInteractionLocked() {
       return this.profileLoading
         || this.profileSaving
+        || this.publicSharingSaving
         || this.licensesSaving
         || this.diveSitesSaving
         || this.buddiesSaving
@@ -545,6 +570,13 @@ export default {
         name: (this.settingsProfile.name || "").trim(),
         email: (this.settingsProfile.email || "").trim()
       });
+    },
+    hasUnsavedPublicSharingChanges() {
+      return Boolean(this.publicSharingDraft.public_dives_enabled) !== Boolean(this.settingsProfile.public_dives_enabled);
+    },
+    publicProfileUrl() {
+      if (!this.settingsProfile.public_slug || typeof window === "undefined") return "";
+      return `${window.location.origin}/public/${this.settingsProfile.public_slug}`;
     },
     settingsOverviewStats() {
       return [
@@ -613,8 +645,25 @@ export default {
         this.profileStatusTimeoutId = null;
       }, 3000);
     },
+    diveSiteFilter() {
+      this.diveSitePage = 1;
+    },
+    diveSitePageSize() {
+      this.diveSitePage = 1;
+    },
+    areDiveSitesEditing() {
+      this.diveSitePage = 1;
+    },
+    visibleDiveSites() {
+      if (this.diveSitePage > this.diveSitePageCount) {
+        this.diveSitePage = this.diveSitePageCount;
+      }
+    },
     activeSettingsSection() {
       this.clearProfileStatusFeedback();
+      if (this.activeSettingsSection === "dive-sites") {
+        this.diveSitePage = 1;
+      }
     }
   },
   mounted() {
@@ -660,6 +709,8 @@ export default {
       return cloneProfile({
         name: payload?.name || "",
         email: payload?.email || "",
+        public_dives_enabled: Boolean(payload?.public_dives_enabled),
+        public_slug: payload?.public_slug || "",
         licenses: normalizeLicenses(payload?.licenses),
         dive_sites: normalizeDiveSites(payload?.dive_sites),
         buddies: normalizeBuddies(payload?.buddies),
@@ -670,6 +721,9 @@ export default {
       this.profileDraft = {
         name: this.settingsProfile.name,
         email: this.settingsProfile.email
+      };
+      this.publicSharingDraft = {
+        public_dives_enabled: Boolean(this.settingsProfile.public_dives_enabled)
       };
       this.licenseDrafts = cloneLicenses(this.settingsProfile.licenses);
       this.diveSiteDrafts = cloneDiveSites(this.settingsProfile.dive_sites);
@@ -725,8 +779,21 @@ export default {
     diveSiteTitle(site, index) {
       return site.name || `Dive Site ${index + 1}`;
     },
+    pagedDiveSiteTitle(site, index) {
+      return this.diveSiteTitle(site, ((this.diveSitePage - 1) * this.diveSitePageSize) + index);
+    },
     diveSiteSortKey(site) {
       return site?.name || site?.location || site?.country || site?.id || "";
+    },
+    nextDiveSitePage() {
+      if (this.diveSitePage < this.diveSitePageCount) {
+        this.diveSitePage += 1;
+      }
+    },
+    previousDiveSitePage() {
+      if (this.diveSitePage > 1) {
+        this.diveSitePage -= 1;
+      }
     },
     buddyTitle(buddy, index) {
       return buddy.name || `Buddy ${index + 1}`;
@@ -972,6 +1039,49 @@ export default {
         this.profileError = error?.message || "Could not save the user profile.";
       } finally {
         this.profileSaving = false;
+      }
+    },
+    async savePublicSharing() {
+      this.publicSharingSaving = true;
+      this.profileStatus = "";
+      this.profileError = "";
+      try {
+        const response = await this.authenticatedFetch("/api/profile", {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            public_dives_enabled: Boolean(this.publicSharingDraft.public_dives_enabled)
+          })
+        });
+        const payload = await response.json().catch(() => null);
+        if (!response.ok) {
+          throw new Error(payload?.error || `API returned ${response.status}`);
+        }
+        this.settingsProfile = this.hydrateProfile(payload);
+        this.notifyProfileUpdated(this.settingsProfile);
+        this.resetDraftsFromProfile();
+        this.profileStatus = this.settingsProfile.public_dives_enabled
+          ? "Public dive profile enabled."
+          : "Public dive profile disabled.";
+      } catch (error) {
+        this.profileError = error?.message || "Could not update public dive sharing.";
+      } finally {
+        this.publicSharingSaving = false;
+      }
+    },
+    async copyPublicProfileUrl() {
+      if (!this.publicProfileUrl || !navigator?.clipboard?.writeText) {
+        this.profileError = "Clipboard access is unavailable in this browser.";
+        return;
+      }
+      try {
+        await navigator.clipboard.writeText(this.publicProfileUrl);
+        this.profileStatus = "Public profile link copied.";
+        this.profileError = "";
+      } catch (_error) {
+        this.profileError = "Could not copy the public profile link.";
       }
     },
     beginLicensesEdit() {
@@ -1803,11 +1913,16 @@ export default {
   },
   template: `
     <section class="space-y-8 text-on-surface">
-      <div class="settings-hero settings-panel">
-        <div class="settings-hero-copy">
-          <p class="font-label text-[10px] font-bold uppercase tracking-[0.3em] text-primary">System Configuration</p>
-          <h3 class="mt-3 font-headline text-4xl font-bold tracking-tight text-primary md:text-5xl">Settings</h3>
-          <p class="mt-4 max-w-3xl text-sm leading-7 text-secondary">Manage your diver identity, saved dive data, certification documents, exports, and desktop sync access without digging through long forms.</p>
+      <header class="space-y-6">
+        <div class="flex flex-col justify-between gap-6 lg:flex-row lg:items-end">
+          <div>
+            <div class="mb-2 flex items-center gap-3">
+              <span class="h-2 w-2 rounded-full bg-primary shadow-[0_0_12px_rgba(156,202,255,0.8)]"></span>
+              <span class="font-label text-[10px] font-bold uppercase tracking-[0.3em] text-primary">System Configuration</span>
+            </div>
+            <h3 class="font-headline text-5xl font-bold tracking-tight">Settings</h3>
+            <p class="mt-2 max-w-2xl text-sm text-on-surface-variant">Manage your diver identity, saved dive data, certification documents, exports, and desktop sync access without digging through long forms.</p>
+          </div>
         </div>
 
         <div class="settings-stat-grid">
@@ -1820,7 +1935,7 @@ export default {
             <p v-else class="mt-3 font-headline text-3xl font-bold text-on-surface">{{ stat.value }}</p>
           </article>
         </div>
-      </div>
+      </header>
 
       <div v-if="profileStatus" class="settings-feedback border-primary/20 bg-primary/10 text-primary shadow-panel">{{ profileStatus }}</div>
       <div v-if="profileError" class="settings-feedback border-error/20 bg-error-container/20 text-on-error-container shadow-panel">{{ profileError }}</div>
@@ -1872,6 +1987,41 @@ export default {
 
           <template v-else>
           <div v-if="activeSettingsSection === 'diver-details'" class="settings-panel settings-card">
+            <div class="mb-8 rounded-2xl border border-primary/15 bg-surface-container-low p-6">
+              <div class="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
+                <div class="max-w-3xl">
+                  <p class="font-label text-[10px] font-bold uppercase tracking-[0.24em] text-primary">Public Dive Profile</p>
+                  <h4 class="mt-2 font-headline text-3xl font-bold tracking-tight text-on-surface">Share Completed Dives And Dive Map</h4>
+                  <p class="mt-3 text-sm leading-7 text-secondary">When enabled, the public page only exposes completed dive entries and their map positions. Licenses, saved buddies, guides, and the rest of your private settings stay hidden.</p>
+                </div>
+                <div class="settings-chip" :class="publicSharingDraft.public_dives_enabled ? 'is-accent' : ''">
+                  {{ publicSharingDraft.public_dives_enabled ? 'Public' : 'Private' }}
+                </div>
+              </div>
+
+              <div class="mt-6 flex flex-col gap-6 xl:flex-row xl:items-end xl:justify-between">
+                <label class="flex items-start gap-4 rounded-2xl border border-primary/10 bg-background/20 px-4 py-4">
+                  <input v-model="publicSharingDraft.public_dives_enabled" type="checkbox" class="mt-1 h-5 w-5 rounded border-primary/20 bg-surface-container-high text-primary focus:ring-primary/30" />
+                  <div>
+                    <p class="text-sm font-semibold text-on-surface">Make My Completed Dives Public</p>
+                    <p class="mt-1 text-sm leading-6 text-secondary">Imported drafts stay private until they are completed in the logbook.</p>
+                  </div>
+                </label>
+
+                <div class="flex flex-wrap gap-3">
+                  <button @click="savePublicSharing" :disabled="publicSharingSaving || (!hasUnsavedPublicSharingChanges && publicSharingDraft.public_dives_enabled === settingsProfile.public_dives_enabled)" class="settings-button settings-button-primary">
+                    {{ publicSharingSaving ? 'Saving Share Settings' : 'Save Sharing' }}
+                  </button>
+                  <button v-if="settingsProfile.public_dives_enabled && publicProfileUrl" @click="copyPublicProfileUrl" class="settings-button settings-button-secondary">Copy Public Link</button>
+                </div>
+              </div>
+
+              <div v-if="settingsProfile.public_dives_enabled && publicProfileUrl" class="mt-5 rounded-2xl border border-primary/10 bg-background/20 px-4 py-4">
+                <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Public URL</p>
+                <a :href="publicProfileUrl" target="_blank" rel="noreferrer" class="mt-2 block break-all text-sm font-semibold text-primary hover:text-primary/80">{{ publicProfileUrl }}</a>
+              </div>
+            </div>
+
             <div class="settings-card-header">
               <div>
                 <p class="font-label text-[10px] font-bold uppercase tracking-[0.24em] text-primary">Diving Licenses</p>
@@ -2066,10 +2216,27 @@ export default {
             </div>
 
             <div v-else class="space-y-4">
-              <article v-for="(site, index) in visibleDiveSites" :key="site.id" class="settings-item-card">
+              <div class="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">{{ diveSitePaginationLabel }}</p>
+                <div class="flex flex-col gap-3 sm:flex-row sm:items-center">
+                  <label class="flex items-center gap-3">
+                    <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Dive Sites Per Page</span>
+                    <select v-model.number="diveSitePageSize" class="settings-input min-w-[5.5rem] py-2">
+                      <option v-for="size in diveSitePageSizeOptions" :key="'settings-dive-site-page-size-' + size" :value="size">{{ size }}</option>
+                    </select>
+                  </label>
+                  <div class="flex items-center gap-2">
+                    <button @click="previousDiveSitePage" :disabled="diveSitePage === 1" class="settings-button settings-button-secondary" :class="diveSitePage === 1 ? 'opacity-50' : ''">Previous</button>
+                    <span class="settings-chip">Page {{ diveSitePage }} / {{ diveSitePageCount }}</span>
+                    <button @click="nextDiveSitePage" :disabled="diveSitePage >= diveSitePageCount" class="settings-button settings-button-secondary" :class="diveSitePage >= diveSitePageCount ? 'opacity-50' : ''">Next</button>
+                  </div>
+                </div>
+              </div>
+
+              <article v-for="(site, index) in pagedDiveSites" :key="site.id" class="settings-item-card">
                 <div class="settings-item-header">
                   <div class="min-w-0">
-                    <h5 class="font-headline text-2xl font-bold tracking-tight text-on-surface">{{ diveSiteTitle(site, index) }}</h5>
+                    <h5 class="font-headline text-2xl font-bold tracking-tight text-on-surface">{{ pagedDiveSiteTitle(site, index) }}</h5>
                     <div class="settings-chip-row mt-3">
                       <span class="settings-chip">
                         <span class="material-symbols-outlined text-[14px]">location_on</span>
@@ -2189,6 +2356,15 @@ export default {
                   </div>
                 </div>
               </article>
+
+              <div class="flex flex-col gap-4 border-t border-primary/10 pt-4 md:flex-row md:items-center md:justify-between">
+                <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">{{ diveSitePaginationLabel }}</p>
+                <div class="flex items-center gap-2">
+                  <button @click="previousDiveSitePage" :disabled="diveSitePage === 1" class="settings-button settings-button-secondary" :class="diveSitePage === 1 ? 'opacity-50' : ''">Previous</button>
+                  <span class="settings-chip">Page {{ diveSitePage }} / {{ diveSitePageCount }}</span>
+                  <button @click="nextDiveSitePage" :disabled="diveSitePage >= diveSitePageCount" class="settings-button settings-button-secondary" :class="diveSitePage >= diveSitePageCount ? 'opacity-50' : ''">Next</button>
+                </div>
+              </div>
             </div>
           </div>
 

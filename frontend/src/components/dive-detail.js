@@ -1,8 +1,17 @@
-import { depthChartPath, pressureChartPath, numberOrZero, depthSeries, axisTicks, pressureRange, pressureSeries, profileTimeLabels, checkpointCards, diveNarrative, detailEquipmentTags, pressureRangeLabel, sacRate, oxygenToxicityPercent, diveModeLabel, diveTitle, formatDate, formatTime, formatDateTime, formatDepth, formatDepthNumber, formatTemperature, durationShort, gasMixLabel, primaryGasMix, primaryTank, tankLabel, surfaceTemperature, decoStatusLabel, shortFingerprint, formatDataSize, depthParts, durationParts, temperatureParts, averageDepthValue } from "../core.js";
+import { buildDiveSequenceMap, depthChartPath, pressureChartPath, numberOrZero, depthSeries, axisTicks, pressureRange, pressureSeries, profileTimeLabels, checkpointCards, detailEquipmentTags, pressureRangeLabel, diveModeLabel, diveTitle, formatDate, formatTime, formatDepth, formatDepthNumber, formatTemperature, durationShort, gasMixLabel, primaryGasMix, primaryTank, tankLabel, surfaceTemperature, depthParts, durationParts, temperatureParts, averageDepthValue, importDraftSeed, paddedDiveIndex } from "../core.js";
+
+const PROFILE_CHART_WIDTH = 800;
+const PROFILE_CHART_HEIGHT = 250;
+const PROFILE_CHART_PADDING = 10;
 
 export default {
   name: "DiveDetailView",
-  props: ["dive", "deletingDiveId", "closeDetail", "openDiveEditor", "deleteDive"],
+  props: ["dive", "allDives", "deletingDiveId", "closeDetail", "openDiveEditor", "deleteDive", "publicView"],
+  data() {
+    return {
+      profileHover: null
+    };
+  },
   computed: {
     depthProfile() {
       return depthChartPath(this.dive);
@@ -22,25 +31,35 @@ export default {
     timeLabels() {
       return profileTimeLabels(this.dive);
     },
+    depthPlotSeries() {
+      return depthSeries(this.dive);
+    },
+    pressurePlotSeries() {
+      return pressureSeries(this.dive);
+    },
+    hasPressureProfile() {
+      return this.pressurePlotSeries.length > 0;
+    },
+    profileMaxTime() {
+      const depthLast = this.depthPlotSeries[this.depthPlotSeries.length - 1]?.time || 0;
+      const pressureLast = this.pressurePlotSeries[this.pressurePlotSeries.length - 1]?.time || 0;
+      return Math.max(numberOrZero(this.dive?.duration_seconds), depthLast, pressureLast, 1);
+    },
+    profileMaxDepthValue() {
+      return Math.max(numberOrZero(this.dive?.max_depth_m), ...this.depthPlotSeries.map((point) => point.value), 1);
+    },
+    profileMaxPressureValue() {
+      const range = pressureRange(this.dive);
+      return Math.max(numberOrZero(range.begin), ...this.pressurePlotSeries.map((point) => point.value), 1);
+    },
     checkpoints() {
       return checkpointCards(this.dive);
-    },
-    narrative() {
-      return diveNarrative(this.dive);
     },
     equipmentTags() {
       return detailEquipmentTags(this.dive);
     },
     pressureRangeText() {
       return pressureRangeLabel(this.dive);
-    },
-    sacRateText() {
-      const value = sacRate(this.dive);
-      return typeof value === "number" ? `${value.toFixed(1)} L/min` : "--";
-    },
-    oxygenText() {
-      const value = oxygenToxicityPercent(this.dive);
-      return typeof value === "number" ? `${value.toFixed(0)} CNS%` : "--";
     },
     mobileTimeLabels() {
       if (!this.timeLabels.length) return ["0m", "--", "--"];
@@ -57,6 +76,21 @@ export default {
     averageDepth() {
       return averageDepthValue(this.dive);
     },
+    diveSequenceMap() {
+      return buildDiveSequenceMap(this.allDives);
+    },
+    displayDiveIndex() {
+      return paddedDiveIndex(this.dive, this.diveSequenceMap);
+    },
+    profileHoverTooltipStyle() {
+      if (!this.profileHover) return {};
+      const leftPercent = Math.min(Math.max((this.profileHover.x / PROFILE_CHART_WIDTH) * 100, 12), 88);
+      const topPercent = Math.min(Math.max((this.profileHover.depthY / PROFILE_CHART_HEIGHT) * 100, 12), 88);
+      return {
+        left: `${leftPercent}%`,
+        top: `${topPercent}%`
+      };
+    },
     isDeleting() {
       return String(this.deletingDiveId) === String(this.dive?.id);
     }
@@ -66,7 +100,6 @@ export default {
     diveTitle,
     formatDate,
     formatTime,
-    formatDateTime,
     formatDepth,
     formatDepthNumber,
     formatTemperature,
@@ -77,12 +110,68 @@ export default {
     tankLabel,
     pressureRangeLabel,
     surfaceTemperature,
-    decoStatusLabel,
-    shortFingerprint,
-    formatDataSize,
     depthParts,
     durationParts,
     temperatureParts,
+    diveSiteTitle(dive) {
+      const site = importDraftSeed(dive)?.site;
+      return typeof site === "string" && site.trim() ? site.trim() : diveTitle(dive);
+    },
+    nearestSeriesPoint(series, time) {
+      if (!series.length) return null;
+      return series.reduce((nearest, point) => {
+        if (!nearest) return point;
+        return Math.abs(point.time - time) < Math.abs(nearest.time - time) ? point : nearest;
+      }, null);
+    },
+    profileScaledX(time) {
+      const drawableWidth = PROFILE_CHART_WIDTH - PROFILE_CHART_PADDING * 2;
+      return PROFILE_CHART_PADDING + (time / this.profileMaxTime) * drawableWidth;
+    },
+    profileScaledY(value, maxValue, reverse = false) {
+      const drawableHeight = PROFILE_CHART_HEIGHT - PROFILE_CHART_PADDING * 2;
+      const normalized = maxValue > 0 ? value / maxValue : 0;
+      const scaledY = reverse ? 1 - normalized : normalized;
+      return PROFILE_CHART_PADDING + scaledY * drawableHeight;
+    },
+    profileAxisTickStyle(index) {
+      const y = PROFILE_CHART_PADDING + ((PROFILE_CHART_HEIGHT - PROFILE_CHART_PADDING * 2) * index) / 5;
+      return {
+        top: `${(y / PROFILE_CHART_HEIGHT) * 100}%`
+      };
+    },
+    updateProfileHover(event) {
+      if (!this.depthPlotSeries.length) {
+        this.profileHover = null;
+        return;
+      }
+
+      const bounds = event.currentTarget.getBoundingClientRect();
+      const relativeX = Math.min(Math.max(event.clientX - bounds.left, 0), bounds.width);
+      const drawableWidth = PROFILE_CHART_WIDTH - PROFILE_CHART_PADDING * 2;
+      const normalizedX = bounds.width > 0 ? relativeX / bounds.width : 0;
+      const targetTime = normalizedX * this.profileMaxTime;
+      const depthPoint = this.nearestSeriesPoint(this.depthPlotSeries, targetTime);
+      if (!depthPoint) {
+        this.profileHover = null;
+        return;
+      }
+
+      const pressurePoint = this.nearestSeriesPoint(this.pressurePlotSeries, depthPoint.time);
+      const x = this.profileScaledX(depthPoint.time);
+
+      this.profileHover = {
+        x,
+        depthY: this.profileScaledY(depthPoint.value, this.profileMaxDepthValue),
+        pressureY: pressurePoint ? this.profileScaledY(pressurePoint.value, this.profileMaxPressureValue, true) : null,
+        timeLabel: this.formatDurationShort(depthPoint.time),
+        depthLabel: `${depthPoint.value.toFixed(1)} m`,
+        pressureLabel: pressurePoint ? `${Math.round(pressurePoint.value)} bar` : null
+      };
+    },
+    clearProfileHover() {
+      this.profileHover = null;
+    },
     removeDive() {
       if (!this.dive) return;
       this.deleteDive(this.dive.id);
@@ -104,11 +193,11 @@ export default {
                 Back
               </button>
               <div class="flex items-center gap-2">
-                <button @click="removeDive()" :disabled="isDeleting" class="inline-flex items-center gap-2 rounded-lg bg-error-container/20 px-3 py-2 font-label text-[10px] font-bold uppercase tracking-[0.16em] text-on-error-container disabled:opacity-50">
+                <button v-if="!publicView" @click="removeDive()" :disabled="isDeleting" class="inline-flex items-center gap-2 rounded-lg bg-error-container/20 px-3 py-2 font-label text-[10px] font-bold uppercase tracking-[0.16em] text-on-error-container disabled:opacity-50">
                   <span class="material-symbols-outlined text-sm">delete</span>
                   {{ isDeleting ? 'Removing...' : 'Remove' }}
                 </button>
-                <span class="rounded bg-surface-container-high px-3 py-2 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Dive ID {{ dive.id }}</span>
+                <span class="rounded bg-surface-container-high px-3 py-2 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Dive {{ displayDiveIndex }}</span>
               </div>
             </div>
 
@@ -121,11 +210,8 @@ export default {
                   <span class="rounded bg-tertiary-container/40 px-2 py-1 font-label text-[10px] font-bold uppercase tracking-[0.16em] text-tertiary">{{ diveModeLabel(dive) }}</span>
                   <span class="font-label text-[10px] font-bold uppercase tracking-[0.16em] text-on-surface-variant">{{ formatDate(dive.started_at) }}</span>
                 </div>
-                <h3 class="font-headline text-3xl font-bold tracking-tight text-on-surface">{{ diveTitle(dive) }}</h3>
-                <div class="flex items-center gap-2 text-sm text-on-surface-variant">
-                  <span class="material-symbols-outlined text-sm">monitoring</span>
-                  <span>{{ dive.vendor }} {{ dive.product }}</span>
-                </div>
+                <h3 class="font-headline text-3xl font-bold tracking-tight text-on-surface">{{ diveSiteTitle(dive) }}</h3>
+                <div class="text-sm text-on-surface-variant">Imported {{ formatDate(dive.imported_at) }}</div>
               </div>
             </section>
           </header>
@@ -164,7 +250,7 @@ export default {
                   <div class="h-2 w-2 rounded-full bg-primary"></div>
                   <span class="font-label text-[9px] uppercase text-on-surface-variant">Depth</span>
                 </div>
-                <div class="flex items-center gap-1.5">
+                <div v-if="hasPressureProfile" class="flex items-center gap-1.5">
                   <div class="h-2 w-2 rounded-full border border-tertiary border-dashed"></div>
                   <span class="font-label text-[9px] uppercase text-on-surface-variant">Air</span>
                 </div>
@@ -174,42 +260,67 @@ export default {
             <div class="relative overflow-hidden rounded-xl bg-surface-container-low p-4">
               <div class="absolute inset-0 technical-grid opacity-[0.05]"></div>
               <div class="relative grid grid-cols-[auto_1fr_auto] gap-3">
-                <div class="flex h-48 flex-col justify-between py-1 text-right">
-                  <span class="font-label text-[8px] font-bold uppercase tracking-[0.16em] text-on-surface-variant">Depth</span>
-                  <span v-for="label in depthAxisLabels" :key="'mobile-depth-' + label" class="font-label text-[8px] font-bold uppercase tracking-[0.14em] text-on-surface-variant/60">{{ label }}</span>
+                <div class="relative h-48 w-10 pr-1 text-right">
+                  <span
+                    v-for="(label, index) in depthAxisLabels"
+                    :key="'mobile-depth-' + label"
+                    class="absolute right-1 font-label text-[8px] font-bold uppercase tracking-[0.14em] text-on-surface-variant/60 -translate-y-1/2"
+                    :style="profileAxisTickStyle(index)"
+                  >{{ label }}</span>
                 </div>
-                <svg class="h-48 w-full" viewBox="0 0 800 250" preserveAspectRatio="none">
-                  <line x1="0" x2="800" y1="10" y2="10" stroke="#c1c7d1" stroke-width="1" stroke-dasharray="4" opacity="0.15"></line>
-                  <line x1="0" x2="800" y1="56" y2="56" stroke="#c1c7d1" stroke-width="1" stroke-dasharray="4" opacity="0.15"></line>
-                  <line x1="0" x2="800" y1="102" y2="102" stroke="#c1c7d1" stroke-width="1" stroke-dasharray="4" opacity="0.15"></line>
-                  <line x1="0" x2="800" y1="148" y2="148" stroke="#c1c7d1" stroke-width="1" stroke-dasharray="4" opacity="0.15"></line>
-                  <line x1="0" x2="800" y1="194" y2="194" stroke="#c1c7d1" stroke-width="1" stroke-dasharray="4" opacity="0.15"></line>
-                  <line x1="0" x2="800" y1="240" y2="240" stroke="#c1c7d1" stroke-width="1" stroke-dasharray="4" opacity="0.15"></line>
-                  <path :d="depthProfile.area" :fill="'url(#' + gradientId + ')'" opacity="0.9"></path>
-                  <path :d="depthProfile.line" fill="none" stroke="#9CCAFF" stroke-width="2.5" stroke-linejoin="round"></path>
-                  <path :d="pressureProfile" fill="none" stroke="#FFB77D" stroke-width="2" stroke-dasharray="5"></path>
-                  <defs>
-                    <linearGradient :id="gradientId" x1="0" x2="0" y1="0" y2="1">
-                      <stop offset="0%" stop-color="#80bdfe" stop-opacity="0.26"></stop>
-                      <stop offset="100%" stop-color="#80bdfe" stop-opacity="0"></stop>
-                    </linearGradient>
-                  </defs>
-                </svg>
-                <div class="flex h-48 flex-col justify-between py-1">
-                  <span class="font-label text-[8px] font-bold uppercase tracking-[0.16em] text-on-surface-variant">Air</span>
-                  <span v-for="label in pressureAxisLabels" :key="'mobile-pressure-' + label" class="font-label text-[8px] font-bold uppercase tracking-[0.14em] text-on-surface-variant/60">{{ label }}</span>
+                <div class="relative h-48">
+                  <svg class="h-48 w-full" viewBox="0 0 800 250" preserveAspectRatio="none">
+                    <line x1="0" x2="800" y1="10" y2="10" stroke="#c1c7d1" stroke-width="1" stroke-dasharray="4" opacity="0.15"></line>
+                    <line x1="0" x2="800" y1="56" y2="56" stroke="#c1c7d1" stroke-width="1" stroke-dasharray="4" opacity="0.15"></line>
+                    <line x1="0" x2="800" y1="102" y2="102" stroke="#c1c7d1" stroke-width="1" stroke-dasharray="4" opacity="0.15"></line>
+                    <line x1="0" x2="800" y1="148" y2="148" stroke="#c1c7d1" stroke-width="1" stroke-dasharray="4" opacity="0.15"></line>
+                    <line x1="0" x2="800" y1="194" y2="194" stroke="#c1c7d1" stroke-width="1" stroke-dasharray="4" opacity="0.15"></line>
+                    <line x1="0" x2="800" y1="240" y2="240" stroke="#c1c7d1" stroke-width="1" stroke-dasharray="4" opacity="0.15"></line>
+                    <path :d="depthProfile.area" :fill="'url(#' + gradientId + ')'" opacity="0.9"></path>
+                    <path :d="depthProfile.line" fill="none" stroke="#9CCAFF" stroke-width="2.5" stroke-linejoin="round"></path>
+                    <path v-if="hasPressureProfile" :d="pressureProfile" fill="none" stroke="#FFB77D" stroke-width="2" stroke-dasharray="5"></path>
+                    <line v-if="profileHover" :x1="profileHover.x" :x2="profileHover.x" y1="10" y2="240" stroke="#d9ecff" stroke-width="1.5" stroke-dasharray="4" opacity="0.45"></line>
+                    <circle v-if="profileHover" :cx="profileHover.x" :cy="profileHover.depthY" r="4.5" fill="#9CCAFF" stroke="#0b2940" stroke-width="2"></circle>
+                    <circle v-if="hasPressureProfile && profileHover && profileHover.pressureY !== null" :cx="profileHover.x" :cy="profileHover.pressureY" r="4.5" fill="#FFB77D" stroke="#0b2940" stroke-width="2"></circle>
+                    <rect
+                      x="0"
+                      y="0"
+                      width="800"
+                      height="250"
+                      fill="transparent"
+                      @mousemove="updateProfileHover"
+                      @mouseleave="clearProfileHover"
+                    ></rect>
+                    <defs>
+                      <linearGradient :id="gradientId" x1="0" x2="0" y1="0" y2="1">
+                        <stop offset="0%" stop-color="#80bdfe" stop-opacity="0.26"></stop>
+                        <stop offset="100%" stop-color="#80bdfe" stop-opacity="0"></stop>
+                      </linearGradient>
+                    </defs>
+                  </svg>
+                  <div
+                    v-if="profileHover"
+                    class="pointer-events-none absolute z-10 min-w-[8.5rem] rounded-lg border border-primary/18 bg-background/92 px-3 py-2 text-left shadow-[0_12px_28px_rgba(0,0,0,0.3)] backdrop-blur-sm"
+                    :style="profileHoverTooltipStyle"
+                  >
+                    <p class="font-label text-[8px] font-bold uppercase tracking-[0.16em] text-secondary">{{ profileHover.timeLabel }}</p>
+                    <p class="mt-1 text-xs font-semibold text-primary">Depth: {{ profileHover.depthLabel }}</p>
+                    <p v-if="profileHover.pressureLabel" class="mt-1 text-xs font-semibold text-tertiary">Air: {{ profileHover.pressureLabel }}</p>
+                  </div>
+                </div>
+                <div class="relative h-48 w-12 pl-1">
+                  <span
+                    v-if="hasPressureProfile"
+                    v-for="(label, index) in pressureAxisLabels"
+                    :key="'mobile-pressure-' + label"
+                    class="absolute left-1 font-label text-[8px] font-bold uppercase tracking-[0.14em] text-on-surface-variant/60 -translate-y-1/2"
+                    :style="profileAxisTickStyle(index)"
+                  >{{ label }}</span>
                 </div>
               </div>
               <div class="relative mt-3 flex items-center justify-between font-label text-[8px] font-bold uppercase tracking-[0.16em] text-on-surface-variant/50">
                 <span v-for="label in mobileTimeLabels" :key="'mobile-time-' + label">{{ label }}</span>
               </div>
-            </div>
-          </section>
-
-          <section class="space-y-4">
-            <h4 class="font-headline text-xs font-bold uppercase tracking-[0.2em] text-on-surface-variant">Observations</h4>
-            <div class="rounded-xl border-l-2 border-primary/30 bg-surface-container-low p-5">
-              <p v-for="paragraph in narrative.slice(0, 2)" :key="'mobile-note-' + paragraph" class="text-sm leading-relaxed text-on-surface-variant">{{ paragraph }}</p>
             </div>
           </section>
 
@@ -239,20 +350,6 @@ export default {
             </div>
           </section>
 
-          <section class="grid grid-cols-3 gap-3 rounded-xl bg-surface-container-low p-4">
-            <div>
-              <p class="font-label text-[9px] font-bold uppercase tracking-[0.14em] text-on-surface-variant">SAC Rate</p>
-              <p class="mt-1 font-headline text-lg font-bold text-on-surface">{{ sacRateText }}</p>
-            </div>
-            <div>
-              <p class="font-label text-[9px] font-bold uppercase tracking-[0.14em] text-on-surface-variant">O2 Load</p>
-              <p class="mt-1 font-headline text-lg font-bold text-on-surface">{{ oxygenText }}</p>
-            </div>
-            <div>
-              <p class="font-label text-[9px] font-bold uppercase tracking-[0.14em] text-on-surface-variant">Status</p>
-              <p class="mt-1 font-headline text-lg font-bold" :class="decoStatusLabel(dive) === 'No Deco' ? 'text-primary' : 'text-tertiary'">{{ decoStatusLabel(dive) }}</p>
-            </div>
-          </section>
         </section>
 
         <section class="hidden space-y-8 md:block">
@@ -262,18 +359,17 @@ export default {
               <span class="material-symbols-outlined text-base">arrow_back</span>
               Back To Logs
             </button>
-            <span class="bg-surface-container-high px-3 py-1 font-label text-[10px] font-bold uppercase tracking-[0.22em] text-primary">Dive ID: {{ dive.id }}</span>
+            <span class="bg-surface-container-high px-3 py-1 font-label text-[10px] font-bold uppercase tracking-[0.22em] text-primary">Dive: {{ displayDiveIndex }}</span>
             <span class="font-label text-[10px] font-bold uppercase tracking-[0.22em] text-secondary">{{ formatDate(dive.started_at) }} | {{ formatTime(dive.started_at) }}</span>
-          </div>
-          <div class="flex flex-col gap-6 xl:flex-row xl:items-end xl:justify-between">
-            <div>
-              <h3 class="font-headline text-4xl font-bold tracking-tight text-on-surface md:text-5xl">{{ diveTitle(dive) }}</h3>
+            </div>
+            <div class="flex flex-col gap-6 xl:flex-row xl:items-end xl:justify-between">
+              <div>
+                <h3 class="font-headline text-4xl font-bold tracking-tight text-on-surface md:text-5xl">{{ diveSiteTitle(dive) }}</h3>
               <div class="mt-3 flex flex-wrap items-center gap-3 text-sm text-secondary">
-                <div class="inline-flex items-center gap-2"><span class="material-symbols-outlined text-base">location_on</span><span>{{ diveModeLabel(dive) }} telemetry log from {{ dive.vendor }} {{ dive.product }}</span></div>
                 <span class="bg-surface-container-high px-3 py-1 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-secondary">Imported {{ formatDate(dive.imported_at) }}</span>
               </div>
-            </div>
-            <div class="flex flex-wrap gap-3">
+              </div>
+            <div v-if="!publicView" class="flex flex-wrap gap-3">
               <button class="bg-surface-container-high p-3 text-secondary transition-colors hover:text-primary">
                 <span class="material-symbols-outlined">share</span>
               </button>
@@ -293,67 +389,99 @@ export default {
         </header>
 
         <div class="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-6">
-          <div class="rounded-[1.2rem] bg-surface-container-high p-5">
+          <div class="rounded-[1.2rem] border border-primary/10 bg-surface-container-high p-5 shadow-[inset_0_1px_0_rgba(205,229,255,0.03)]">
             <p class="font-label text-[10px] font-bold uppercase tracking-[0.24em] text-secondary">Duration</p>
-            <p class="mt-2 font-headline text-3xl font-bold">{{ durationParts(dive.duration_seconds).value }}<span class="ml-0.5 text-primary">{{ durationParts(dive.duration_seconds).unit }}</span></p>
+            <p class="mt-2 font-headline text-3xl font-bold text-on-surface">{{ durationParts(dive.duration_seconds).value }}<span class="ml-0.5 text-on-surface">{{ durationParts(dive.duration_seconds).unit }}</span></p>
           </div>
-          <div class="rounded-[1.2rem] border-b-2 border-primary/20 bg-surface-container-high p-5">
+          <div class="rounded-[1.2rem] border border-primary/10 bg-surface-container-high p-5 shadow-[inset_0_1px_0_rgba(205,229,255,0.03)]">
             <p class="font-label text-[10px] font-bold uppercase tracking-[0.24em] text-secondary">Max Depth</p>
-            <p class="mt-2 font-headline text-3xl font-bold text-primary">{{ depthParts(dive.max_depth_m).value }}<span class="ml-0.5 text-primary">{{ depthParts(dive.max_depth_m).unit }}</span></p>
+            <p class="mt-2 font-headline text-3xl font-bold text-on-surface">{{ depthParts(dive.max_depth_m).value }}<span class="ml-0.5 text-on-surface">{{ depthParts(dive.max_depth_m).unit }}</span></p>
           </div>
-          <div class="rounded-[1.2rem] bg-surface-container-high p-5">
+          <div class="rounded-[1.2rem] border border-primary/10 bg-surface-container-high p-5 shadow-[inset_0_1px_0_rgba(205,229,255,0.03)]">
             <p class="font-label text-[10px] font-bold uppercase tracking-[0.24em] text-secondary">Avg Depth</p>
-            <p class="mt-2 font-headline text-3xl font-bold text-secondary">{{ depthParts(averageDepth).value }}<span class="ml-0.5 text-primary">{{ depthParts(averageDepth).unit }}</span></p>
+            <p class="mt-2 font-headline text-3xl font-bold text-on-surface">{{ depthParts(averageDepth).value }}<span class="ml-0.5 text-on-surface">{{ depthParts(averageDepth).unit }}</span></p>
           </div>
-          <div class="rounded-[1.2rem] bg-surface-container-high p-5">
+          <div class="rounded-[1.2rem] border border-primary/10 bg-surface-container-high p-5 shadow-[inset_0_1px_0_rgba(205,229,255,0.03)]">
             <p class="font-label text-[10px] font-bold uppercase tracking-[0.24em] text-secondary">Temperature</p>
-            <p class="mt-2 font-headline text-3xl font-bold">{{ temperatureParts(surfaceTemperature(dive)).value }}<span class="ml-0.5 text-primary">{{ temperatureParts(surfaceTemperature(dive)).unit }}</span></p>
+            <p class="mt-2 font-headline text-3xl font-bold text-on-surface">{{ temperatureParts(surfaceTemperature(dive)).value }}<span class="ml-0.5 text-on-surface">{{ temperatureParts(surfaceTemperature(dive)).unit }}</span></p>
           </div>
-          <div class="rounded-[1.2rem] bg-surface-container-high p-5">
+          <div class="rounded-[1.2rem] border border-primary/10 bg-surface-container-high p-5 shadow-[inset_0_1px_0_rgba(205,229,255,0.03)]">
             <p class="font-label text-[10px] font-bold uppercase tracking-[0.24em] text-secondary">Pressure</p>
-            <p class="mt-2 font-headline text-3xl font-bold">{{ pressureRangeText.replace(' bar', '') }}<span v-if="pressureRangeText !== '--'" class="ml-1 text-primary">bar</span></p>
+            <p class="mt-2 font-headline text-3xl font-bold text-on-surface">{{ pressureRangeText.replace(' bar', '') }}<span v-if="pressureRangeText !== '--'" class="ml-1 text-on-surface">bar</span></p>
           </div>
-          <div class="rounded-[1.2rem] bg-surface-container-high p-5">
+          <div class="rounded-[1.2rem] border border-primary/10 bg-surface-container-high p-5 shadow-[inset_0_1px_0_rgba(205,229,255,0.03)]">
             <p class="font-label text-[10px] font-bold uppercase tracking-[0.24em] text-secondary">Samples</p>
-            <p class="mt-2 font-headline text-3xl font-bold">{{ dive.sample_count }}</p>
+            <p class="mt-2 font-headline text-3xl font-bold text-on-surface">{{ dive.sample_count }}</p>
           </div>
         </div>
 
         <div class="grid grid-cols-12 gap-6">
-          <section class="col-span-12 rounded-[1.5rem] bg-surface-container-high p-6 lg:col-span-8">
+          <section class="col-span-12 rounded-[1.5rem] bg-surface-container-high p-6">
             <div class="mb-8 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
               <h4 class="font-headline text-lg font-bold">Dive Profile</h4>
               <div class="flex flex-wrap gap-4">
                 <div class="flex items-center gap-2"><span class="h-3 w-3 rounded-full bg-primary"></span><span class="font-label text-[10px] font-bold uppercase tracking-[0.22em] text-secondary">Depth (m)</span></div>
-                <div class="flex items-center gap-2"><span class="h-3 w-3 rounded-full bg-tertiary"></span><span class="font-label text-[10px] font-bold uppercase tracking-[0.22em] text-secondary">Air (bar)</span></div>
+                <div v-if="hasPressureProfile" class="flex items-center gap-2"><span class="h-3 w-3 rounded-full bg-tertiary"></span><span class="font-label text-[10px] font-bold uppercase tracking-[0.22em] text-secondary">Air (bar)</span></div>
               </div>
             </div>
             <div class="min-h-[360px]">
               <div class="grid grid-cols-[auto_1fr_auto] gap-4">
-                <div class="flex h-[320px] flex-col justify-between pb-2 pt-2 text-right">
-                  <span class="text-[10px] font-black uppercase tracking-[0.22em] text-secondary">Depth</span>
-                  <span v-for="label in depthAxisLabels" :key="'depth-' + label" class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">{{ label }}</span>
+                <div class="relative h-[320px] w-12 text-right">
+                  <span
+                    v-for="(label, index) in depthAxisLabels"
+                    :key="'depth-' + label"
+                    class="absolute right-0 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary -translate-y-1/2"
+                    :style="profileAxisTickStyle(index)"
+                  >{{ label }}</span>
                 </div>
-                <svg class="h-[320px] w-full" viewBox="0 0 800 250" preserveAspectRatio="none">
-                  <line x1="0" x2="800" y1="10" y2="10" stroke="#c1c7d1" stroke-width="1" stroke-dasharray="4" opacity="0.25"></line>
-                  <line x1="0" x2="800" y1="56" y2="56" stroke="#c1c7d1" stroke-width="1" stroke-dasharray="4" opacity="0.25"></line>
-                  <line x1="0" x2="800" y1="102" y2="102" stroke="#c1c7d1" stroke-width="1" stroke-dasharray="4" opacity="0.25"></line>
-                  <line x1="0" x2="800" y1="148" y2="148" stroke="#c1c7d1" stroke-width="1" stroke-dasharray="4" opacity="0.25"></line>
-                  <line x1="0" x2="800" y1="194" y2="194" stroke="#c1c7d1" stroke-width="1" stroke-dasharray="4" opacity="0.25"></line>
-                  <line x1="0" x2="800" y1="240" y2="240" stroke="#c1c7d1" stroke-width="1" stroke-dasharray="4" opacity="0.25"></line>
-                  <path :d="depthProfile.area" :fill="'url(#' + gradientId + ')'" opacity="0.95"></path>
-                  <path :d="depthProfile.line" fill="none" stroke="#12629d" stroke-width="3" stroke-linejoin="round"></path>
-                  <path :d="pressureProfile" fill="none" stroke="#FFB77D" stroke-width="2.5" stroke-dasharray="6"></path>
-                  <defs>
-                    <linearGradient :id="gradientId" x1="0" x2="0" y1="0" y2="1">
-                      <stop offset="0%" stop-color="#80bdfe" stop-opacity="0.36"></stop>
-                      <stop offset="100%" stop-color="#80bdfe" stop-opacity="0"></stop>
-                    </linearGradient>
-                  </defs>
-                </svg>
-                <div class="flex h-[320px] flex-col justify-between pb-2 pt-2">
-                  <span class="text-[10px] font-black uppercase tracking-[0.22em] text-primary">Air</span>
-                  <span v-for="label in pressureAxisLabels" :key="'pressure-' + label" class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">{{ label }}</span>
+                <div class="relative h-[320px]">
+                  <svg class="h-[320px] w-full" viewBox="0 0 800 250" preserveAspectRatio="none">
+                    <line x1="0" x2="800" y1="10" y2="10" stroke="#c1c7d1" stroke-width="1" stroke-dasharray="4" opacity="0.25"></line>
+                    <line x1="0" x2="800" y1="56" y2="56" stroke="#c1c7d1" stroke-width="1" stroke-dasharray="4" opacity="0.25"></line>
+                    <line x1="0" x2="800" y1="102" y2="102" stroke="#c1c7d1" stroke-width="1" stroke-dasharray="4" opacity="0.25"></line>
+                    <line x1="0" x2="800" y1="148" y2="148" stroke="#c1c7d1" stroke-width="1" stroke-dasharray="4" opacity="0.25"></line>
+                    <line x1="0" x2="800" y1="194" y2="194" stroke="#c1c7d1" stroke-width="1" stroke-dasharray="4" opacity="0.25"></line>
+                    <line x1="0" x2="800" y1="240" y2="240" stroke="#c1c7d1" stroke-width="1" stroke-dasharray="4" opacity="0.25"></line>
+                    <path :d="depthProfile.area" :fill="'url(#' + gradientId + ')'" opacity="0.95"></path>
+                    <path :d="depthProfile.line" fill="none" stroke="#12629d" stroke-width="3" stroke-linejoin="round"></path>
+                    <path v-if="hasPressureProfile" :d="pressureProfile" fill="none" stroke="#FFB77D" stroke-width="2.5" stroke-dasharray="6"></path>
+                    <line v-if="profileHover" :x1="profileHover.x" :x2="profileHover.x" y1="10" y2="240" stroke="#d9ecff" stroke-width="1.5" stroke-dasharray="4" opacity="0.5"></line>
+                    <circle v-if="profileHover" :cx="profileHover.x" :cy="profileHover.depthY" r="5" fill="#9CCAFF" stroke="#0b2940" stroke-width="2.5"></circle>
+                    <circle v-if="hasPressureProfile && profileHover && profileHover.pressureY !== null" :cx="profileHover.x" :cy="profileHover.pressureY" r="5" fill="#FFB77D" stroke="#0b2940" stroke-width="2.5"></circle>
+                    <rect
+                      x="0"
+                      y="0"
+                      width="800"
+                      height="250"
+                      fill="transparent"
+                      @mousemove="updateProfileHover"
+                      @mouseleave="clearProfileHover"
+                    ></rect>
+                    <defs>
+                      <linearGradient :id="gradientId" x1="0" x2="0" y1="0" y2="1">
+                        <stop offset="0%" stop-color="#80bdfe" stop-opacity="0.36"></stop>
+                        <stop offset="100%" stop-color="#80bdfe" stop-opacity="0"></stop>
+                      </linearGradient>
+                    </defs>
+                  </svg>
+                  <div
+                    v-if="profileHover"
+                    class="pointer-events-none absolute z-10 min-w-[9.5rem] rounded-xl border border-primary/18 bg-background/92 px-3 py-2 text-left shadow-[0_16px_34px_rgba(0,0,0,0.34)] backdrop-blur-sm"
+                    :style="profileHoverTooltipStyle"
+                  >
+                    <p class="font-label text-[8px] font-bold uppercase tracking-[0.16em] text-secondary">{{ profileHover.timeLabel }}</p>
+                    <p class="mt-1 text-sm font-semibold text-primary">Depth: {{ profileHover.depthLabel }}</p>
+                    <p v-if="profileHover.pressureLabel" class="mt-1 text-sm font-semibold text-tertiary">Air: {{ profileHover.pressureLabel }}</p>
+                  </div>
+                </div>
+                <div class="relative h-[320px] w-14">
+                  <span
+                    v-if="hasPressureProfile"
+                    v-for="(label, index) in pressureAxisLabels"
+                    :key="'pressure-' + label"
+                    class="absolute left-0 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary -translate-y-1/2"
+                    :style="profileAxisTickStyle(index)"
+                  >{{ label }}</span>
                 </div>
               </div>
               <div class="mt-4 grid grid-cols-6 gap-2 font-label text-[10px] font-bold uppercase tracking-[0.22em] text-secondary">
@@ -365,7 +493,7 @@ export default {
             </div>
           </section>
 
-          <aside class="col-span-12 flex flex-col gap-6 lg:col-span-4">
+          <section class="col-span-12 grid grid-cols-1 gap-6 lg:grid-cols-3">
             <section class="rounded-[1.5rem] bg-surface-container-low p-6">
               <h4 class="text-[10px] font-black uppercase tracking-[0.22em] text-secondary">Gas Configuration</h4>
               <div class="mt-5 space-y-4">
@@ -391,27 +519,7 @@ export default {
               </div>
             </section>
 
-            <section class="rounded-[1.5rem] bg-surface-container-high p-6">
-              <h4 class="text-[10px] font-black uppercase tracking-[0.22em] text-secondary">Telemetry Record</h4>
-              <div class="mt-5 space-y-4 text-sm">
-                <div class="flex items-center justify-between gap-4"><span class="text-secondary">Fingerprint</span><span class="font-mono text-xs font-bold">{{ shortFingerprint(dive.fingerprint_hex || dive.raw_sha256) }}</span></div>
-                <div class="flex items-center justify-between gap-4"><span class="text-secondary">Raw Payload</span><span class="font-bold">{{ formatDataSize(dive.raw_data_size) }}</span></div>
-                <div class="flex items-center justify-between gap-4"><span class="text-secondary">Imported At</span><span class="font-bold">{{ formatDateTime(dive.imported_at) }}</span></div>
-              </div>
-            </section>
-          </aside>
-
-          <section class="col-span-12 rounded-[1.5rem] bg-surface-container-low p-6 lg:col-span-7">
-            <h4 class="mb-6 flex items-center gap-2 font-headline text-lg font-bold">
-              <span class="material-symbols-outlined text-secondary">description</span>
-              Diver's Log & Observations
-            </h4>
-            <div class="space-y-4 text-sm leading-7 text-on-surface-variant">
-              <p v-for="paragraph in narrative" :key="paragraph">{{ paragraph }}</p>
-            </div>
-          </section>
-
-          <section class="col-span-12 rounded-[1.5rem] bg-surface-container-low p-6 lg:col-span-5">
+            <section class="rounded-[1.5rem] bg-surface-container-low p-6">
             <div class="mb-6 flex items-center justify-between gap-4">
               <h4 class="flex items-center gap-2 font-headline text-lg font-bold">
                 <span class="material-symbols-outlined text-secondary">photo_library</span>
@@ -430,30 +538,7 @@ export default {
               </article>
             </div>
           </section>
-        </div>
-
-        <div class="flex flex-wrap items-end gap-8 border-t border-outline-variant/15 pt-8">
-          <div>
-            <p class="text-[10px] font-black uppercase tracking-[0.22em] text-secondary">SAC Rate</p>
-            <p class="mt-1 font-headline text-xl font-bold">{{ sacRateText }}</p>
-          </div>
-          <div>
-            <p class="text-[10px] font-black uppercase tracking-[0.22em] text-secondary">Oxygen Toxicity</p>
-            <p class="mt-1 font-headline text-xl font-bold">{{ oxygenText }}</p>
-          </div>
-          <div>
-            <p class="text-[10px] font-black uppercase tracking-[0.22em] text-secondary">Deco Status</p>
-            <p class="mt-1 font-headline text-xl font-bold" :class="decoStatusLabel(dive) === 'No Deco' ? 'text-emerald-600' : 'text-primary'">{{ decoStatusLabel(dive) }}</p>
-          </div>
-          <div class="ml-auto flex items-center gap-4 bg-surface-container-high px-4 py-3">
-            <div class="flex h-10 w-10 items-center justify-center rounded-full bg-surface-container-highest text-primary">
-              <span class="material-symbols-outlined">verified</span>
-            </div>
-            <div class="text-right">
-              <p class="text-[10px] font-black uppercase tracking-[0.22em] text-secondary">Telemetry Source</p>
-              <p class="text-sm font-bold">{{ dive.vendor }} {{ dive.product }} <span class="ml-1 text-secondary/70">#{{ dive.id }}</span></p>
-            </div>
-          </div>
+          </section>
         </div>
         </section>
       </div>
