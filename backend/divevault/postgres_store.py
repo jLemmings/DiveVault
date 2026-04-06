@@ -314,7 +314,13 @@ def apply_schema_migration_v1(cur: psycopg.Cursor) -> None:
     cur.execute("DROP INDEX IF EXISTS idx_dives_started_at")
     cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_dives_user_dive_uid ON dives (user_id, dive_uid)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_dives_user_started_at ON dives (user_id, started_at DESC, id DESC)")
-    cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_user_profile_public_slug ON user_profile (public_slug) WHERE public_slug IS NOT NULL")
+    cur.execute(
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_user_profile_public_slug
+        ON user_profile (public_slug)
+        WHERE NULLIF(BTRIM(COALESCE(public_slug, '')), '') IS NOT NULL
+        """
+    )
     cur.execute("ALTER TABLE user_profile_guides DROP COLUMN IF EXISTS sort_order")
     cur.execute("DROP INDEX IF EXISTS idx_user_profile_guides_user_sort")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_user_profile_guides_user_name ON user_profile_guides (user_id, LOWER(name), name, guide_id)")
@@ -1779,7 +1785,9 @@ def save_user_profile(conn: psycopg.Connection, user_id: str, payload: dict | No
         existing_email = clean_profile_text(existing.get("email"))
         existing_public_dives_enabled = clean_profile_bool(existing.get("public_dives_enabled"))
         existing_public_slug = clean_profile_text(existing.get("public_slug"))
-        existing_licenses, _, _, _ = resolve_user_profile_collections(conn, user_id, existing)
+        existing_licenses, existing_dive_sites, existing_buddies, existing_guides = resolve_user_profile_collections(
+            conn, user_id, existing
+        )
         licenses = normalize_profile_licenses(source.get("licenses")) if "licenses" in source else existing_licenses
         dive_sites = normalize_profile_dive_sites(source.get("dive_sites")) if "dive_sites" in source else existing_dive_sites
         buddies = normalize_profile_buddies(source.get("buddies")) if "buddies" in source else existing_buddies
@@ -1807,7 +1815,7 @@ def save_user_profile(conn: psycopg.Connection, user_id: str, payload: dict | No
                 clean_profile_text(source.get("name")) if "name" in source else existing_name,
                 clean_profile_text(source.get("email")) if "email" in source else existing_email,
                 public_dives_enabled,
-                public_slug or None,
+                public_slug,
                 updated_at,
             ),
         )
@@ -1864,7 +1872,7 @@ def save_user_profile_license_pdf(
                 clean_profile_text(existing.get("name")),
                 clean_profile_text(existing.get("email")),
                 clean_profile_bool(existing.get("public_dives_enabled")),
-                clean_profile_text(existing.get("public_slug")) or None,
+                clean_profile_text(existing.get("public_slug")),
                 uploaded_at,
             ),
         )
