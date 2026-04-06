@@ -18,7 +18,7 @@ services:
   backend:
     build:
       context: .
-      dockerfile: Dockerfile
+      dockerfile: backend/Dockerfile
     depends_on:
       postgres:
         condition: service_healthy
@@ -37,8 +37,8 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      - ./divevault:/app/divevault
-      - ./migrations:/app/migrations
+      - ./backend/divevault:/app/backend/divevault
+      - ./backend/migrations:/app/backend/migrations
 
 volumes:
   postgres-data:

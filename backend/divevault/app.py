@@ -5,7 +5,7 @@ Simple dive backend backed by PostgreSQL.
 It accepts parsed dives from `mares_smart_air_sync.py` and serves dives to a frontend.
 
 Usage:
-    python -m divevault.app --database-url postgresql://dive:dive@localhost:5432/dive
+    cd backend && python -m divevault.app --database-url postgresql://dive:dive@localhost:5432/dive
 """
 
 from __future__ import annotations
@@ -62,10 +62,11 @@ from divevault.postgres_store import (
 
 
 LOGGER = logging.getLogger("dive_backend")
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
+BACKEND_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = BACKEND_ROOT.parent
 MAX_PROFILE_LICENSE_BYTES = 10 * 1024 * 1024
 
-load_dotenv(PROJECT_ROOT / ".env")
+load_dotenv(REPO_ROOT / ".env")
 
 
 class ClerkAuthError(Exception):
@@ -545,8 +546,15 @@ def build_clerk_verifier(args: argparse.Namespace, *, sync_token_manager: CliSyn
     return None
 
 
-def resolve_frontend_dir(frontend_dir: Path) -> Path:
-    resolved = frontend_dir.resolve()
+def resolve_repo_path(path_value: str | Path) -> Path:
+    candidate = Path(path_value)
+    if not candidate.is_absolute():
+        candidate = REPO_ROOT / candidate
+    return candidate.resolve()
+
+
+def resolve_frontend_dir(frontend_dir: str | Path) -> Path:
+    resolved = resolve_repo_path(frontend_dir)
     if resolved.exists():
         return resolved
 
@@ -1887,7 +1895,11 @@ def main() -> None:
     parser.add_argument("--host", default=os.getenv("HOST", "127.0.0.1"), help="Host interface to bind")
     parser.add_argument("--port", type=int, default=int(os.getenv("PORT", "8000")), help="TCP port to bind")
     parser.add_argument("--cors-origin", default=os.getenv("CORS_ORIGIN", "*"), help="Allowed CORS origin for frontend requests")
-    parser.add_argument("--frontend-dir", default=os.getenv("FRONTEND_DIR", "frontend/dist"), help="Path to static frontend assets")
+    parser.add_argument(
+        "--frontend-dir",
+        default=os.getenv("FRONTEND_DIR", "frontend/dist"),
+        help="Path to static frontend assets, resolved relative to the repository root when not absolute",
+    )
     parser.add_argument("--clerk-publishable-key", default=os.getenv("VITE_CLERK_PUBLISHABLE_KEY"), help="Clerk publishable key exposed to the frontend at runtime")
     parser.add_argument("--clerk-secret-key", default=os.getenv("CLERK_SECRET_KEY"), help="Clerk secret key, required to verify Clerk API keys")
     parser.add_argument("--clerk-api-url", default=os.getenv("CLERK_API_URL", "https://api.clerk.com"), help="Clerk Backend API base URL")
@@ -1942,7 +1954,7 @@ def main() -> None:
     server.clerk_verifier = build_clerk_verifier(args, sync_token_manager=server.cli_auth_manager)
     server.clerk_publishable_key = args.clerk_publishable_key
     server.cors_origin = args.cors_origin
-    server.frontend_dir = resolve_frontend_dir(Path(args.frontend_dir))
+    server.frontend_dir = resolve_frontend_dir(args.frontend_dir)
     server.nominatim_client = NominatimClient(
         base_url=args.nominatim_base_url,
         user_agent=args.nominatim_user_agent,
