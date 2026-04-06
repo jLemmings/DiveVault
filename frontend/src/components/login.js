@@ -453,8 +453,8 @@ export default {
           </main>
         </div>
 
-        <footer class="relative mt-10 px-6 pb-2 pt-8 md:px-12">
-          <div class="mx-auto flex max-w-7xl flex-col items-center justify-between gap-4 border-t border-outline-variant/10 pt-8 text-center md:flex-row md:text-left">
+        <footer class="relative mt-10 px-6 pb-8 pt-8 md:px-12 md:pb-10">
+          <div class="mx-auto flex max-w-7xl flex-col items-center justify-between gap-4 border-t border-primary/18 pt-8 text-center md:flex-row md:text-left">
             <p class="text-[10px] tracking-[0.08em] text-on-surface-variant/50">
               Copyright 2026
             </p>
@@ -462,9 +462,12 @@ export default {
               href="https://github.com/jLemmings/DiveVault"
               target="_blank"
               rel="noreferrer"
-              class="text-[10px] tracking-[0.08em] text-on-surface-variant/50 transition-all hover:text-primary hover:opacity-100"
+              class="inline-flex items-center gap-2 text-[10px] tracking-[0.08em] text-on-surface-variant/50 transition-all hover:text-primary hover:opacity-100"
             >
-              github.com/jLemmings/DiveVault
+              <svg viewBox="0 0 24 24" aria-hidden="true" class="h-3.5 w-3.5 fill-current">
+                <path d="M12 .5C5.65.5.5 5.65.5 12c0 5.08 3.29 9.38 7.86 10.9.58.11.79-.25.79-.56 0-.28-.01-1.2-.02-2.17-3.2.7-3.88-1.36-3.88-1.36-.52-1.33-1.27-1.68-1.27-1.68-1.04-.71.08-.69.08-.69 1.15.08 1.75 1.18 1.75 1.18 1.02 1.76 2.68 1.25 3.34.96.1-.74.4-1.25.72-1.54-2.55-.29-5.23-1.28-5.23-5.68 0-1.25.45-2.27 1.18-3.08-.12-.29-.51-1.48.11-3.09 0 0 .97-.31 3.17 1.18a11.02 11.02 0 0 1 5.78 0c2.2-1.49 3.17-1.18 3.17-1.18.62 1.61.23 2.8.11 3.09.73.81 1.18 1.83 1.18 3.08 0 4.41-2.69 5.38-5.25 5.67.41.35.78 1.05.78 2.12 0 1.53-.01 2.77-.01 3.15 0 .31.21.68.8.56A11.5 11.5 0 0 0 23.5 12C23.5 5.65 18.35.5 12 .5Z" />
+              </svg>
+              <span>jLemmings/DiveVault</span>
             </a>
           </div>
         </footer>
