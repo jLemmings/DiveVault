@@ -181,3 +181,7 @@ Relevant upstream links:
 - Source repository: <https://github.com/libdivecomputer/libdivecomputer>
 
 According to the official project pages, libdivecomputer is an open source cross-platform library for communication with dive computers from multiple manufacturers. DiveVault itself does not embed libdivecomputer directly in this repository, but it is the most relevant upstream project to reference when building or documenting the desktop importer.
+
+## Maintenance Note
+
+This line was added as a minimal smoke-test change to validate automated commit and PR tooling in this environment.
