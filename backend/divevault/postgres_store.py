@@ -501,12 +501,6 @@ def cleanup_cli_sync_auth_with_cursor(cur: psycopg.Cursor, now_timestamp: int) -
     )
 
 
-def cleanup_cli_sync_auth(conn: psycopg.Connection, now_timestamp: int) -> None:
-    with conn.cursor() as cur:
-        cleanup_cli_sync_auth_with_cursor(cur, now_timestamp)
-    conn.commit()
-
-
 def create_cli_sync_request(
     conn: psycopg.Connection,
     *,
@@ -1990,91 +1984,6 @@ def update_dive_logbook(conn: psycopg.Connection, user_id: str, dive_id: int, pa
         )
     conn.commit()
     return get_dive(conn, user_id, dive_id, include_raw_data=False)
-
-
-def import_sqlite_device_state(conn: psycopg.Connection, rows: list[dict], *, user_id: str = "legacy") -> int:
-    if not rows:
-        return 0
-    with conn.cursor() as cur:
-        for row in rows:
-            cur.execute(
-                """
-                INSERT INTO device_state(user_id, vendor, product, fingerprint_hex, updated_at)
-                VALUES (%s, %s, %s, %s, %s)
-                ON CONFLICT (user_id, vendor, product)
-                DO UPDATE SET fingerprint_hex=excluded.fingerprint_hex, updated_at=excluded.updated_at
-                """,
-                (user_id, row["vendor"], row["product"], row["fingerprint_hex"], row["updated_at"]),
-            )
-    conn.commit()
-    return len(rows)
-
-
-def import_sqlite_dive_rows(conn: psycopg.Connection, rows: list[dict], *, user_id: str = "legacy") -> int:
-    if not rows:
-        return 0
-    inserted = 0
-    with conn.cursor() as cur:
-        for row in rows:
-            fields = row["fields_json"]
-            samples = row["samples_json"]
-            if isinstance(fields, str):
-                fields = json.loads(fields)
-            if isinstance(samples, str):
-                samples = json.loads(samples)
-            duration_ms = resolve_duration_milliseconds(row)
-            fields = normalize_dive_fields(fields, samples=samples, duration_seconds=duration_milliseconds_to_seconds(duration_ms))
-            import_payload = row.get("import_payload_json")
-            if isinstance(import_payload, str):
-                import_payload = json.loads(import_payload)
-            if not isinstance(import_payload, dict) or not import_payload:
-                import_payload = build_import_payload_from_row(row, fields, samples)
-
-            cur.execute(
-                """
-                INSERT INTO dives(
-                    id, user_id, vendor, product, fingerprint_hex, dive_uid, started_at,
-                    duration_seconds, duration_ms, max_depth_m, avg_depth_m, import_payload_json,
-                    fields_json, raw_sha256, raw_data, samples_json, imported_at
-                )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                ON CONFLICT (user_id, dive_uid) DO NOTHING
-                RETURNING id
-                """,
-                (
-                    row["id"],
-                    user_id,
-                    row["vendor"],
-                    row["product"],
-                    row["fingerprint_hex"],
-                    row["dive_uid"],
-                    row["started_at"],
-                    None,
-                    duration_ms,
-                    row["max_depth_m"],
-                    row["avg_depth_m"],
-                    Jsonb(import_payload),
-                    Jsonb(fields),
-                    row["raw_sha256"],
-                    row["raw_data"],
-                    Jsonb(samples),
-                    row["imported_at"],
-                ),
-            )
-            if cur.fetchone() is not None:
-                inserted += 1
-
-        cur.execute(
-            """
-            SELECT setval(
-                pg_get_serial_sequence('dives', 'id'),
-                COALESCE((SELECT MAX(id) FROM dives), 1),
-                true
-            )
-            """
-        )
-    conn.commit()
-    return inserted
 
 
 def decode_base64_payload(payload: dict) -> bytes:

@@ -1913,11 +1913,16 @@ export default {
   },
   template: `
     <section class="space-y-8 text-on-surface">
-      <div class="settings-hero settings-panel">
-        <div class="settings-hero-copy">
-          <p class="font-label text-[10px] font-bold uppercase tracking-[0.3em] text-primary">System Configuration</p>
-          <h3 class="mt-3 font-headline text-4xl font-bold tracking-tight text-primary md:text-5xl">Settings</h3>
-          <p class="mt-4 max-w-3xl text-sm leading-7 text-secondary">Manage your diver identity, saved dive data, certification documents, exports, and desktop sync access without digging through long forms.</p>
+      <header class="space-y-6">
+        <div class="flex flex-col justify-between gap-6 lg:flex-row lg:items-end">
+          <div>
+            <div class="mb-2 flex items-center gap-3">
+              <span class="h-2 w-2 rounded-full bg-primary shadow-[0_0_12px_rgba(156,202,255,0.8)]"></span>
+              <span class="font-label text-[10px] font-bold uppercase tracking-[0.3em] text-primary">System Configuration</span>
+            </div>
+            <h3 class="font-headline text-5xl font-bold tracking-tight">Settings</h3>
+            <p class="mt-2 max-w-2xl text-sm text-on-surface-variant">Manage your diver identity, saved dive data, certification documents, exports, and desktop sync access without digging through long forms.</p>
+          </div>
         </div>
 
         <div class="settings-stat-grid">
@@ -1930,7 +1935,7 @@ export default {
             <p v-else class="mt-3 font-headline text-3xl font-bold text-on-surface">{{ stat.value }}</p>
           </article>
         </div>
-      </div>
+      </header>
 
       <div v-if="profileStatus" class="settings-feedback border-primary/20 bg-primary/10 text-primary shadow-panel">{{ profileStatus }}</div>
       <div v-if="profileError" class="settings-feedback border-error/20 bg-error-container/20 text-on-error-container shadow-panel">{{ profileError }}</div>

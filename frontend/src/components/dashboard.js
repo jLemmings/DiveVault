@@ -1,5 +1,5 @@
 import L from "leaflet";
-import { buildDiveSequenceMap, dayOfMonth, monthShort, formatDate, formatTime, diveTitle, diveSubtitle, formatDepth, formatDepthNumber, formatDateTime, durationShort, formatTemperature, surfaceTemperature, diveModeLabel, pressureUsedLabel, decoStatusLabel, formatAccumulatedDuration, formatBarTotal, filledIconStyle, numberOrZero, parseDate, importDraftSeed, paddedDiveIndex } from "../core.js";
+import { buildDiveSequenceMap, dayOfMonth, monthShort, formatDate, formatTime, diveTitle, diveSubtitle, formatDepth, formatDepthNumber, formatDateTime, durationShort, formatTemperature, surfaceTemperature, diveModeLabel, pressureUsedLabel, decoStatusLabel, formatBarTotal, filledIconStyle, numberOrZero, parseDate, importDraftSeed, paddedDiveIndex } from "../core.js";
 import { diveMapPreview } from "../map-preview.js";
 
 function numericCoordinate(value) {
@@ -147,7 +147,6 @@ export default {
     diveModeLabel,
     pressureUsedLabel,
     decoStatusLabel,
-    formatAccumulatedDuration,
     formatBarTotal,
     coordinateLabel,
     diveSiteName,
@@ -561,35 +560,32 @@ export default {
     <section class="space-y-10 text-on-surface">
       <section class="space-y-6 md:hidden">
         <div class="grid grid-cols-2 gap-3">
-          <div class="space-y-2 rounded-xl border-l-2 border-primary/30 bg-surface-container-low p-4">
-            <div class="flex items-start justify-between">
-              <span class="material-symbols-outlined text-xl text-primary">scuba_diving</span>
-              <span class="font-label text-[10px] text-on-surface-variant">LOGGED</span>
-            </div>
-            <div class="pt-2">
-              <div class="font-headline text-3xl font-bold">{{ stats.totalDives }}</div>
-              <div class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-on-surface-variant">Total Dives</div>
+          <div class="flex items-center gap-3 rounded-xl bg-surface-container-low p-4">
+            <span class="material-symbols-outlined flex-shrink-0 leading-none text-primary/60" style="font-size: 2.5rem;" :style="filledIconStyle">database</span>
+            <div class="min-w-0">
+              <div class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-on-surface-variant">Dive Count</div>
+              <div class="mt-2 font-headline text-3xl font-bold">{{ stats.totalDives }}</div>
             </div>
           </div>
-          <div class="space-y-2 rounded-xl border-l-2 border-tertiary/30 bg-surface-container-low p-4">
-            <div class="flex items-start justify-between">
-              <span class="material-symbols-outlined text-xl text-tertiary">straighten</span>
-              <span class="font-label text-[10px] text-on-surface-variant">RECORD</span>
+          <div class="flex items-center gap-3 rounded-xl bg-surface-container-low p-4">
+            <span class="material-symbols-outlined flex-shrink-0 leading-none text-primary/60" style="font-size: 2.5rem;" :style="filledIconStyle">timer</span>
+            <div class="min-w-0">
+              <div class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-on-surface-variant">Bottom Time</div>
+              <div class="mt-2 font-headline text-3xl font-bold">{{ Math.floor((stats.totalSeconds || 0) / 3600) }}<span class="ml-1 text-sm font-normal uppercase text-secondary">h</span> {{ Math.round(((stats.totalSeconds || 0) % 3600) / 60) }}<span class="ml-1 text-sm font-normal uppercase text-secondary">min</span></div>
             </div>
-            <div class="pt-2">
-              <div class="font-headline text-3xl font-bold">{{ formatDepthNumber(stats.maxDepth) }}<span class="ml-1 text-sm text-on-surface-variant">M</span></div>
+          </div>
+          <div class="flex items-center gap-3 rounded-xl bg-surface-container-low p-4">
+            <span class="material-symbols-outlined flex-shrink-0 leading-none text-primary/60" style="font-size: 2.5rem;" :style="filledIconStyle">straighten</span>
+            <div class="min-w-0">
               <div class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-on-surface-variant">Max Depth</div>
+              <div class="mt-2 font-headline text-3xl font-bold">{{ formatDepthNumber(stats.maxDepth) }}<span class="ml-1 text-sm text-on-surface-variant">M</span></div>
             </div>
           </div>
-          <div class="col-span-2 flex items-center justify-between rounded-xl bg-surface-container-high p-4">
-            <div class="flex items-center gap-4">
-              <div class="rounded-lg bg-primary-container p-3 text-primary">
-                <span class="material-symbols-outlined" :style="filledIconStyle">schedule</span>
-              </div>
-              <div>
-                <div class="font-headline text-2xl font-bold">{{ formatAccumulatedDuration(stats.totalSeconds) }}</div>
-                <div class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-on-surface-variant">Accumulated Bottom Time</div>
-              </div>
+          <div class="flex items-center gap-3 rounded-xl border-l-2 border-primary/20 bg-surface-container-low p-4">
+            <span class="material-symbols-outlined flex-shrink-0 leading-none text-primary/60" style="font-size: 2.5rem;" :style="filledIconStyle">water_drop</span>
+            <div class="min-w-0">
+              <div class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-on-surface-variant">Consumption</div>
+              <div class="mt-2 font-headline text-3xl font-bold">{{ formatBarTotal(stats.totalBarConsumed) }}<span class="ml-1 text-sm font-normal uppercase text-secondary">bar</span></div>
             </div>
           </div>
         </div>
@@ -673,30 +669,30 @@ export default {
           </div>
         </section>
         <div class="grid grid-cols-1 gap-4 md:grid-cols-4">
-          <div class="group flex h-48 flex-col justify-between bg-surface-container-low p-6 transition-colors hover:bg-surface-container-high">
-            <span class="material-symbols-outlined text-3xl text-primary/40">database</span>
-            <div>
+          <div class="group flex h-36 items-center justify-center gap-4 bg-surface-container-low px-5 py-4 text-center transition-colors hover:bg-surface-container-high">
+            <span class="material-symbols-outlined flex-shrink-0 leading-none text-primary/60" style="font-size: 3rem;" :style="filledIconStyle">database</span>
+            <div class="min-w-0">
               <p class="font-label text-[10px] font-bold uppercase tracking-[0.24em] text-secondary">Dive Count</p>
               <p class="mt-2 font-headline text-4xl font-bold group-hover:text-primary">{{ stats.totalDives }}</p>
             </div>
           </div>
-          <div class="group flex h-48 flex-col justify-between bg-surface-container-low p-6 transition-colors hover:bg-surface-container-high">
-            <span class="material-symbols-outlined text-3xl text-primary/40">timer</span>
-            <div>
+          <div class="group flex h-36 items-center justify-center gap-4 bg-surface-container-low px-5 py-4 text-center transition-colors hover:bg-surface-container-high">
+            <span class="material-symbols-outlined flex-shrink-0 leading-none text-primary/60" style="font-size: 3rem;" :style="filledIconStyle">timer</span>
+            <div class="min-w-0">
               <p class="font-label text-[10px] font-bold uppercase tracking-[0.24em] text-secondary">Bottom Time</p>
               <p class="mt-2 font-headline text-4xl font-bold group-hover:text-primary">{{ Math.floor((stats.totalSeconds || 0) / 3600) }}<span class="ml-1 text-sm font-normal uppercase text-secondary">h</span> {{ Math.round(((stats.totalSeconds || 0) % 3600) / 60) }}<span class="ml-1 text-sm font-normal uppercase text-secondary">min</span></p>
             </div>
           </div>
-          <div class="group flex h-48 flex-col justify-between bg-surface-container-low p-6 transition-colors hover:bg-surface-container-high">
-            <span class="material-symbols-outlined text-3xl text-primary/40">straighten</span>
-            <div>
+          <div class="group flex h-36 items-center justify-center gap-4 bg-surface-container-low px-5 py-4 text-center transition-colors hover:bg-surface-container-high">
+            <span class="material-symbols-outlined flex-shrink-0 leading-none text-primary/60" style="font-size: 3rem;" :style="filledIconStyle">straighten</span>
+            <div class="min-w-0">
               <p class="font-label text-[10px] font-bold uppercase tracking-[0.24em] text-secondary">Max Depth</p>
               <p class="mt-2 font-headline text-4xl font-bold group-hover:text-primary">{{ formatDepthNumber(stats.maxDepth) }}<span class="ml-1 text-sm font-normal uppercase text-secondary">m</span></p>
             </div>
           </div>
-          <div class="group flex h-48 flex-col justify-between border-l-2 border-primary/20 bg-surface-container-low p-6 transition-colors hover:bg-surface-container-high">
-            <span class="material-symbols-outlined text-3xl text-primary/40">water_drop</span>
-            <div>
+          <div class="group flex h-36 items-center justify-center gap-4 border-l-2 border-primary/20 bg-surface-container-low px-5 py-4 text-center transition-colors hover:bg-surface-container-high">
+            <span class="material-symbols-outlined flex-shrink-0 leading-none text-primary/60" style="font-size: 3rem;" :style="filledIconStyle">water_drop</span>
+            <div class="min-w-0">
               <p class="font-label text-[10px] font-bold uppercase tracking-[0.24em] text-secondary">Consumption</p>
               <p class="mt-2 font-headline text-4xl font-bold">{{ formatBarTotal(stats.totalBarConsumed) }}<span class="ml-1 text-sm font-normal uppercase text-secondary">bar</span></p>
             </div>
