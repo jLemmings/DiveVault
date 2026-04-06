@@ -128,6 +128,8 @@ def server_fixture(monkeypatch):
         "profile": {
             "name": "Elias Thorne",
             "email": "diver@example.com",
+            "public_dives_enabled": True,
+            "public_slug": "elias-thorne",
             "dive_sites": [
                 {
                     "id": "site-1",
@@ -263,7 +265,18 @@ def server_fixture(monkeypatch):
         for dive in store["dives"]:
             if dive["id"] == dive_id:
                 fields = dict(dive.get("fields") or {})
-                fields["logbook"] = payload or {}
+                source = payload or {}
+                fields["logbook"] = source.get("logbook") or source
+                tank_volume_l = source.get("tank_volume_l")
+                if tank_volume_l not in (None, ""):
+                    tanks = list(fields.get("tanks") or [])
+                    primary_tank = dict(tanks[0]) if tanks and isinstance(tanks[0], dict) else {}
+                    primary_tank["volume"] = float(tank_volume_l)
+                    if tanks:
+                        tanks[0] = primary_tank
+                    else:
+                        tanks = [primary_tank]
+                    fields["tanks"] = tanks
                 dive["fields"] = fields
                 return dict(dive)
         return None
@@ -283,9 +296,11 @@ def server_fixture(monkeypatch):
     def fake_save_user_profile(_conn, user_id: str, payload: dict | None):
         assert user_id == "user-1"
         next_profile = dict(store["profile"])
-        for key in ("name", "email"):
+        for key in ("name", "email", "public_slug"):
             if key in (payload or {}):
                 next_profile[key] = payload[key]
+        if "public_dives_enabled" in (payload or {}):
+            next_profile["public_dives_enabled"] = bool(payload["public_dives_enabled"])
         if isinstance((payload or {}).get("dive_sites"), list):
             next_profile["dive_sites"] = payload["dive_sites"]
         if isinstance((payload or {}).get("buddies"), list):
@@ -335,6 +350,19 @@ def server_fixture(monkeypatch):
             "uploaded_at": license_entry["pdf"]["uploaded_at"],
         }
 
+    def fake_get_public_profile_dives(_conn, public_slug: str):
+        if public_slug != store["profile"].get("public_slug") or not store["profile"].get("public_dives_enabled"):
+            return None, [], {}
+        public_dives = [dict(dive) for dive in store["dives"] if dive.get("fields", {}).get("logbook", {}).get("status") == "complete"]
+        return (
+            {
+                "name": store["profile"]["name"],
+                "public_slug": store["profile"]["public_slug"],
+            },
+            public_dives,
+            {"totalDives": len(public_dives)},
+        )
+
     monkeypatch.setattr(dive_backend, "open_db", fake_open_db)
     monkeypatch.setattr(dive_backend, "get_device_state", fake_get_device_state)
     monkeypatch.setattr(dive_backend, "save_device_state", fake_save_device_state)
@@ -342,6 +370,7 @@ def server_fixture(monkeypatch):
     monkeypatch.setattr(dive_backend, "list_dives", fake_list_dives)
     monkeypatch.setattr(dive_backend, "list_all_dives", fake_list_all_dives)
     monkeypatch.setattr(dive_backend, "get_dive", fake_get_dive)
+    monkeypatch.setattr(dive_backend, "get_public_profile_dives", fake_get_public_profile_dives)
     monkeypatch.setattr(dive_backend, "insert_dive_record", fake_insert_dive_record)
     monkeypatch.setattr(dive_backend, "get_dive_id_by_uid", fake_get_dive_id_by_uid)
     monkeypatch.setattr(dive_backend, "update_dive_logbook", fake_update_dive_logbook)
@@ -430,6 +459,18 @@ def test_authenticated_get_endpoints(server_fixture):
     no_auth = request(server, "GET", "/api/dives")
     assert no_auth.status == 401
 
+    public_profile = request(server, "GET", "/api/public/divers/elias-thorne")
+    assert public_profile.status == 200
+    assert public_profile.json()["diver"] == {
+        "name": "Elias Thorne",
+        "public_slug": "elias-thorne",
+    }
+    assert public_profile.json()["dives"][0]["id"] == 1
+    assert "licenses" not in public_profile.json()["diver"]
+
+    missing_public_profile = request(server, "GET", "/api/public/divers/not-found")
+    assert missing_public_profile.status == 404
+
     me = request(server, "GET", "/api/auth/me", token="session")
     assert me.status == 200
     assert me.json()["user_id"] == "user-1"
@@ -461,6 +502,8 @@ def test_authenticated_get_endpoints(server_fixture):
 
     profile = request(server, "GET", "/api/profile", token="session")
     assert profile.status == 200
+    assert profile.json()["public_dives_enabled"] is True
+    assert profile.json()["public_slug"] == "elias-thorne"
     assert profile.json()["dive_sites"][0]["name"] == "Blue Hole"
     assert profile.json()["dive_sites"][0]["location"] == "Blue Hole, Dahab, Egypt"
     assert profile.json()["dive_sites"][0]["country"] == "Egypt"
@@ -586,10 +629,11 @@ def test_post_and_put_endpoints(server_fixture):
         "PUT",
         "/api/dives/1/logbook",
         token="session",
-        payload={"site": "Blue Hole", "buddy": "Sam", "guide": "Kai"},
+        payload={"site": "Blue Hole", "buddy": "Sam", "guide": "Kai", "tank_volume_l": 12},
     )
     assert update_logbook.status == 200
     assert update_logbook.json()["fields"]["logbook"]["site"] == "Blue Hole"
+    assert update_logbook.json()["fields"]["tanks"][0]["volume"] == 12.0
 
     missing_logbook_dive = request(server, "PUT", "/api/dives/999/logbook", token="session", payload={"site": "X"})
     assert missing_logbook_dive.status == 404
@@ -881,17 +925,18 @@ def test_route_manifest_requires_test_updates_for_new_endpoints():
         "/api/device-state",
         "/api/profile",
         "/api/exports/dives.csv",
-        "/api/exports/dives.pdf",
-        "/api/backup/export",
-        "/api/geocode/search",
-        "/api/auth/me",
-        "/api/cli-auth/request",
-        "/api/dives",
-        "/api/backup/import",
-        "/api/cli-auth/approve",
-        "regex:/api/dives/(\\d+)",
-        "regex:/api/dives/(\\d+)/logbook",
-        "regex:/api/profile/licenses/([A-Za-z0-9_-]+)/pdf",
+            "/api/exports/dives.pdf",
+            "/api/backup/export",
+            "/api/geocode/search",
+            "/api/auth/me",
+            "/api/cli-auth/request",
+            "/api/dives",
+            "/api/backup/import",
+            "/api/cli-auth/approve",
+            "regex:/api/public/divers/([a-z0-9-]+)",
+            "regex:/api/dives/(\\d+)",
+            "regex:/api/dives/(\\d+)/logbook",
+            "regex:/api/profile/licenses/([A-Za-z0-9_-]+)/pdf",
         "prefix:/api/*",
     }
 

@@ -219,58 +219,77 @@ def test_sanitize_logbook_payload_preserves_complete_state_for_metadata_edits(mo
     assert payload["completed_at"] == "2026-03-20T08:00:00+00:00"
 
 
+def test_apply_tank_volume_update_sets_primary_tank_volume():
+    fields = postgres_store.apply_tank_volume_update({"tanks": [{"workpressure_bar": 200}]}, {"tank_volume_l": "12"})
+
+    assert fields["tanks"][0]["volume"] == 12.0
+    assert fields["tanks"][0]["workpressure_bar"] == 200
+
+
+def test_clean_tank_volume_value_accepts_supported_sizes_only():
+    assert postgres_store.clean_tank_volume_value("9") == 9.0
+    assert postgres_store.clean_tank_volume_value(12) == 12.0
+    assert postgres_store.clean_tank_volume_value("15") == 15.0
+    assert postgres_store.clean_tank_volume_value("10") is None
+
+
 def test_decode_user_profile_row_includes_license_metadata():
     profile = postgres_store.decode_user_profile_row(
         {
             "name": " Elias Thorne ",
             "email": " diver@example.com ",
-            "licenses_json": [
-                {
-                    "id": "license-1",
-                    "company": "PADI",
-                    "certification_name": "Rescue Diver",
-                    "student_number": "RD-2026-01",
-                    "certification_date": "2025-08-01",
-                    "instructor_number": "PADI-445566",
-                }
-            ],
-            "dive_sites_json": [
-                {
-                    "id": "site-1",
-                    "name": "Blue Hole",
-                    "location": "Blue Hole, Dahab, Egypt",
-                    "country": "Egypt",
-                    "latitude": 25.3104,
-                    "longitude": -80.2961,
-                }
-            ],
-            "buddies_json": [
-                {
-                    "id": "buddy-1",
-                    "name": "Sam",
-                }
-            ],
-            "guides_json": [
-                {
-                    "id": "guide-1",
-                    "name": "Kai",
-                }
-            ],
-            "license_company": " PADI ",
-            "license_certification_name": " Rescue Diver ",
-            "license_student_number": " RD-2026-01 ",
-            "license_certification_date": " 2025-08-01 ",
-            "license_instructor_number": " PADI-445566 ",
-            "license_pdf_name": "licenses.pdf",
-            "license_pdf_content_type": "application/pdf",
-            "license_pdf_data": b"%PDF-1.7\nexample",
-            "license_pdf_uploaded_at": "2026-03-29T10:00:00+00:00",
+            "public_dives_enabled": True,
+            "public_slug": " elias-thorne ",
             "updated_at": "2026-03-29T10:00:00+00:00",
-        }
+        },
+        {
+            "license-1": {
+                "license_id": "license-1",
+                "filename": "licenses.pdf",
+                "content_type": "application/pdf",
+                "size_bytes": len(b"%PDF-1.7\nexample"),
+                "uploaded_at": "2026-03-29T10:00:00+00:00",
+                "preview_url": "/api/profile/licenses/license-1/pdf",
+            }
+        },
+        licenses=[
+            {
+                "id": "license-1",
+                "company": "PADI",
+                "certification_name": "Rescue Diver",
+                "student_number": "RD-2026-01",
+                "certification_date": "2025-08-01",
+                "instructor_number": "PADI-445566",
+            }
+        ],
+        dive_sites=[
+            {
+                "id": "site-1",
+                "name": "Blue Hole",
+                "location": "Blue Hole, Dahab, Egypt",
+                "country": "Egypt",
+                "latitude": 25.3104,
+                "longitude": -80.2961,
+            }
+        ],
+        buddies=[
+            {
+                "id": "buddy-1",
+                "name": "Sam",
+            }
+        ],
+        guides=[
+            {
+                "id": "guide-1",
+                "name": "Kai",
+            }
+        ],
     )
 
     assert profile["name"] == "Elias Thorne"
     assert profile["email"] == "diver@example.com"
+    assert profile["public_dives_enabled"] is True
+    assert profile["public_slug"] == "elias-thorne"
     assert profile["dive_sites"][0]["name"] == "Blue Hole"
     assert profile["dive_sites"][0]["location"] == "Blue Hole, Dahab, Egypt"
     assert profile["dive_sites"][0]["country"] == "Egypt"
@@ -292,35 +311,32 @@ def test_empty_user_profile_has_no_license_pdf():
     profile = postgres_store.decode_user_profile_row(None)
 
     assert profile["name"] == ""
+    assert profile["public_dives_enabled"] is False
+    assert profile["public_slug"] == ""
     assert profile["licenses"] == []
     assert profile["dive_sites"] == []
     assert profile["buddies"] == []
     assert profile["guides"] == []
 
 
-def test_decode_user_profile_row_falls_back_to_legacy_single_license_fields():
-    profile = postgres_store.decode_user_profile_row(
+def test_legacy_profile_licenses_from_row_falls_back_to_legacy_single_license_fields():
+    licenses = postgres_store.legacy_profile_licenses_from_row(
         {
             "name": "Elias",
             "email": "diver@example.com",
             "licenses_json": [],
-            "dive_sites_json": [],
-            "buddies_json": [],
-            "guides_json": [],
             "license_company": "SSI",
             "license_certification_name": "Nitrox",
             "license_student_number": "NX-1",
             "license_certification_date": "2023-04-01",
             "license_instructor_number": "SSI-100",
-            "license_pdf_data": None,
-            "updated_at": "2026-03-29T10:00:00+00:00",
         }
     )
 
-    assert len(profile["licenses"]) == 1
-    assert profile["licenses"][0]["id"] == "license-1"
-    assert profile["licenses"][0]["company"] == "SSI"
-    assert profile["licenses"][0]["certification_name"] == "Nitrox"
+    assert len(licenses) == 1
+    assert licenses[0]["id"] == "license-1"
+    assert licenses[0]["company"] == "SSI"
+    assert licenses[0]["certification_name"] == "Nitrox"
 
 
 def test_delete_dive_removes_matching_record():

@@ -3,6 +3,8 @@ from __future__ import annotations
 import base64
 import binascii
 import json
+import re
+import secrets
 from datetime import datetime, timezone
 
 import psycopg
@@ -42,23 +44,10 @@ CREATE TABLE IF NOT EXISTS dives (
 
 CREATE TABLE IF NOT EXISTS user_profile (
     user_id TEXT PRIMARY KEY,
-    name TEXT,
-    email TEXT,
-    licenses_json JSONB NOT NULL DEFAULT '[]'::jsonb,
-    dive_sites_json JSONB NOT NULL DEFAULT '[]'::jsonb,
-    buddies_json JSONB NOT NULL DEFAULT '[]'::jsonb,
-    guides_json JSONB NOT NULL DEFAULT '[]'::jsonb,
-    certification TEXT,
-    registry TEXT,
-    license_company TEXT,
-    license_certification_name TEXT,
-    license_student_number TEXT,
-    license_certification_date TEXT,
-    license_instructor_number TEXT,
-    license_pdf_name TEXT,
-    license_pdf_content_type TEXT,
-    license_pdf_data BYTEA,
-    license_pdf_uploaded_at TEXT,
+    name TEXT NOT NULL DEFAULT '',
+    email TEXT NOT NULL DEFAULT '',
+    public_dives_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+    public_slug TEXT NOT NULL DEFAULT '',
     updated_at TEXT NOT NULL
 );
 
@@ -75,7 +64,6 @@ CREATE TABLE IF NOT EXISTS user_profile_license_documents (
 CREATE TABLE IF NOT EXISTS user_profile_licenses (
     user_id TEXT NOT NULL,
     license_id TEXT NOT NULL,
-    sort_order INTEGER NOT NULL,
     company TEXT,
     certification_name TEXT,
     student_number TEXT,
@@ -87,7 +75,6 @@ CREATE TABLE IF NOT EXISTS user_profile_licenses (
 CREATE TABLE IF NOT EXISTS user_profile_dive_sites (
     user_id TEXT NOT NULL,
     site_id TEXT NOT NULL,
-    sort_order INTEGER NOT NULL,
     name TEXT,
     location TEXT,
     country TEXT,
@@ -99,7 +86,6 @@ CREATE TABLE IF NOT EXISTS user_profile_dive_sites (
 CREATE TABLE IF NOT EXISTS user_profile_buddies (
     user_id TEXT NOT NULL,
     buddy_id TEXT NOT NULL,
-    sort_order INTEGER NOT NULL,
     name TEXT,
     PRIMARY KEY (user_id, buddy_id)
 );
@@ -128,176 +114,373 @@ CREATE TABLE IF NOT EXISTS cli_sync_auth_requests (
 LOGBOOK_REQUIRED_FIELDS = ("site", "buddy", "guide")
 SAMPLE_TIME_UNIT_SECONDS = "seconds"
 SAMPLE_TIME_UNIT_MILLISECONDS = "milliseconds"
+CURRENT_SCHEMA_VERSION = 5
+SCHEMA_VERSION_SQL = """
+CREATE TABLE IF NOT EXISTS app_schema_version (
+    singleton BOOLEAN PRIMARY KEY DEFAULT TRUE CHECK (singleton),
+    version INTEGER NOT NULL,
+    updated_at TEXT NOT NULL
+);
+"""
 
 
 def now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def ensure_schema_version_table(cur: psycopg.Cursor) -> None:
+    cur.execute(SCHEMA_VERSION_SQL)
+    cur.execute(
+        """
+        INSERT INTO app_schema_version(singleton, version, updated_at)
+        VALUES (TRUE, 0, %s)
+        ON CONFLICT (singleton) DO NOTHING
+        """,
+        (now_iso(),),
+    )
+
+
+def get_schema_version(cur: psycopg.Cursor) -> int:
+    ensure_schema_version_table(cur)
+    cur.execute("SELECT version FROM app_schema_version WHERE singleton=TRUE")
+    row = cur.fetchone()
+    if isinstance(row, dict):
+        return int(row.get("version") or 0)
+    if isinstance(row, tuple):
+        return int(row[0] or 0)
+    return 0
+
+
+def set_schema_version(cur: psycopg.Cursor, version: int) -> None:
+    cur.execute(
+        """
+        UPDATE app_schema_version
+        SET version=%s, updated_at=%s
+        WHERE singleton=TRUE
+        """,
+        (version, now_iso()),
+    )
+
+
+def get_db_schema_version(conn: psycopg.Connection) -> int:
+    with conn.cursor() as cur:
+        return get_schema_version(cur)
+
+
+def apply_schema_migration_v1(cur: psycopg.Cursor) -> None:
+    cur.execute("ALTER TABLE device_state ADD COLUMN IF NOT EXISTS user_id TEXT")
+    cur.execute("ALTER TABLE dives ADD COLUMN IF NOT EXISTS user_id TEXT")
+    cur.execute("ALTER TABLE dives ADD COLUMN IF NOT EXISTS duration_ms BIGINT")
+    cur.execute("ALTER TABLE dives ADD COLUMN IF NOT EXISTS import_payload_json JSONB NOT NULL DEFAULT '{}'::jsonb")
+    cur.execute("ALTER TABLE dives ADD COLUMN IF NOT EXISTS fields_json JSONB NOT NULL DEFAULT '{}'::jsonb")
+    cur.execute("ALTER TABLE dives ADD COLUMN IF NOT EXISTS samples_json JSONB NOT NULL DEFAULT '[]'::jsonb")
+    cur.execute("ALTER TABLE user_profile ADD COLUMN IF NOT EXISTS name TEXT")
+    cur.execute("ALTER TABLE user_profile ADD COLUMN IF NOT EXISTS email TEXT")
+    cur.execute("ALTER TABLE user_profile ADD COLUMN IF NOT EXISTS public_dives_enabled BOOLEAN NOT NULL DEFAULT FALSE")
+    cur.execute("ALTER TABLE user_profile ADD COLUMN IF NOT EXISTS public_slug TEXT")
+    cur.execute("ALTER TABLE user_profile ADD COLUMN IF NOT EXISTS licenses_json JSONB NOT NULL DEFAULT '[]'::jsonb")
+    cur.execute("ALTER TABLE user_profile ADD COLUMN IF NOT EXISTS dive_sites_json JSONB NOT NULL DEFAULT '[]'::jsonb")
+    cur.execute("ALTER TABLE user_profile ADD COLUMN IF NOT EXISTS buddies_json JSONB NOT NULL DEFAULT '[]'::jsonb")
+    cur.execute("ALTER TABLE user_profile ADD COLUMN IF NOT EXISTS guides_json JSONB NOT NULL DEFAULT '[]'::jsonb")
+    cur.execute("ALTER TABLE user_profile ADD COLUMN IF NOT EXISTS certification TEXT")
+    cur.execute("ALTER TABLE user_profile ADD COLUMN IF NOT EXISTS registry TEXT")
+    cur.execute("ALTER TABLE user_profile ADD COLUMN IF NOT EXISTS license_company TEXT")
+    cur.execute("ALTER TABLE user_profile ADD COLUMN IF NOT EXISTS license_certification_name TEXT")
+    cur.execute("ALTER TABLE user_profile ADD COLUMN IF NOT EXISTS license_student_number TEXT")
+    cur.execute("ALTER TABLE user_profile ADD COLUMN IF NOT EXISTS license_certification_date TEXT")
+    cur.execute("ALTER TABLE user_profile ADD COLUMN IF NOT EXISTS license_instructor_number TEXT")
+    cur.execute("ALTER TABLE user_profile ADD COLUMN IF NOT EXISTS license_pdf_name TEXT")
+    cur.execute("ALTER TABLE user_profile ADD COLUMN IF NOT EXISTS license_pdf_content_type TEXT")
+    cur.execute("ALTER TABLE user_profile ADD COLUMN IF NOT EXISTS license_pdf_data BYTEA")
+    cur.execute("ALTER TABLE user_profile ADD COLUMN IF NOT EXISTS license_pdf_uploaded_at TEXT")
+    cur.execute("ALTER TABLE user_profile ADD COLUMN IF NOT EXISTS updated_at TEXT")
+    cur.execute("ALTER TABLE user_profile_license_documents ADD COLUMN IF NOT EXISTS user_id TEXT")
+    cur.execute("ALTER TABLE user_profile_license_documents ADD COLUMN IF NOT EXISTS license_id TEXT")
+    cur.execute("ALTER TABLE user_profile_license_documents ADD COLUMN IF NOT EXISTS filename TEXT")
+    cur.execute("ALTER TABLE user_profile_license_documents ADD COLUMN IF NOT EXISTS content_type TEXT")
+    cur.execute("ALTER TABLE user_profile_license_documents ADD COLUMN IF NOT EXISTS pdf_data BYTEA")
+    cur.execute("ALTER TABLE user_profile_license_documents ADD COLUMN IF NOT EXISTS uploaded_at TEXT")
+    cur.execute("UPDATE device_state SET user_id='legacy' WHERE user_id IS NULL")
+    cur.execute("UPDATE dives SET user_id='legacy' WHERE user_id IS NULL")
+    cur.execute("UPDATE user_profile SET public_dives_enabled=FALSE WHERE public_dives_enabled IS NULL")
+    cur.execute("UPDATE user_profile SET updated_at=%s WHERE updated_at IS NULL", (now_iso(),))
+    cur.execute(
+        """
+        UPDATE user_profile
+        SET licenses_json = jsonb_build_array(
+            jsonb_strip_nulls(
+                jsonb_build_object(
+                    'company', NULLIF(BTRIM(COALESCE(license_company, '')), ''),
+                    'certification_name', NULLIF(BTRIM(COALESCE(license_certification_name, certification, '')), ''),
+                    'student_number', NULLIF(BTRIM(COALESCE(license_student_number, registry, '')), ''),
+                    'certification_date', NULLIF(BTRIM(COALESCE(license_certification_date, '')), ''),
+                    'instructor_number', NULLIF(BTRIM(COALESCE(license_instructor_number, '')), '')
+                )
+            )
+        )
+        WHERE (licenses_json = '[]'::jsonb OR licenses_json IS NULL)
+          AND (
+                NULLIF(BTRIM(COALESCE(license_company, '')), '') IS NOT NULL
+             OR NULLIF(BTRIM(COALESCE(license_certification_name, certification, '')), '') IS NOT NULL
+             OR NULLIF(BTRIM(COALESCE(license_student_number, registry, '')), '') IS NOT NULL
+             OR NULLIF(BTRIM(COALESCE(license_certification_date, '')), '') IS NOT NULL
+             OR NULLIF(BTRIM(COALESCE(license_instructor_number, '')), '') IS NOT NULL
+          )
+        """
+    )
+    cur.execute(
+        """
+        UPDATE dives
+        SET duration_ms = duration_seconds::bigint * 1000
+        WHERE duration_ms IS NULL
+          AND duration_seconds IS NOT NULL
+        """
+    )
+    cur.execute(
+        """
+        UPDATE dives
+        SET import_payload_json = jsonb_build_object(
+            'vendor', vendor,
+            'product', product,
+            'fingerprint_hex', fingerprint_hex,
+            'dive_uid', dive_uid,
+            'started_at', started_at,
+            'duration_ms', duration_ms,
+            'duration_seconds', CASE
+                WHEN duration_ms IS NOT NULL THEN (duration_ms / 1000)::bigint
+                ELSE duration_seconds
+            END,
+            'max_depth_m', max_depth_m,
+            'avg_depth_m', avg_depth_m,
+            'fields', COALESCE(fields_json, '{}'::jsonb),
+            'raw_sha256', raw_sha256,
+            'samples', COALESCE(samples_json, '[]'::jsonb),
+            'imported_at', imported_at
+        )
+        WHERE import_payload_json = '{}'::jsonb
+        """
+    )
+    cur.execute("UPDATE dives SET duration_seconds = NULL WHERE duration_ms IS NOT NULL")
+    cur.execute("ALTER TABLE device_state ALTER COLUMN user_id SET NOT NULL")
+    cur.execute("ALTER TABLE dives ALTER COLUMN user_id SET NOT NULL")
+    cur.execute("ALTER TABLE user_profile ALTER COLUMN public_dives_enabled SET NOT NULL")
+    cur.execute("ALTER TABLE user_profile ALTER COLUMN updated_at SET NOT NULL")
+    cur.execute(
+        """
+        DO $$
+        BEGIN
+            IF EXISTS (
+                SELECT 1
+                FROM pg_constraint
+                WHERE conrelid = 'device_state'::regclass
+                  AND conname = 'device_state_pkey'
+            ) THEN
+                ALTER TABLE device_state DROP CONSTRAINT device_state_pkey;
+            END IF;
+        END $$;
+        """
+    )
+    cur.execute(
+        """
+        DO $$
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1
+                FROM pg_constraint
+                WHERE conrelid = 'device_state'::regclass
+                  AND conname = 'device_state_pkey'
+            ) THEN
+                ALTER TABLE device_state
+                ADD CONSTRAINT device_state_pkey PRIMARY KEY (user_id, vendor, product);
+            END IF;
+        END $$;
+        """
+    )
+    cur.execute(
+        """
+        DO $$
+        BEGIN
+            IF EXISTS (
+                SELECT 1
+                FROM pg_constraint
+                WHERE conrelid = 'dives'::regclass
+                  AND conname = 'dives_dive_uid_key'
+            ) THEN
+                ALTER TABLE dives DROP CONSTRAINT dives_dive_uid_key;
+            END IF;
+        END $$;
+        """
+    )
+    cur.execute("DROP INDEX IF EXISTS idx_dives_started_at")
+    cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_dives_user_dive_uid ON dives (user_id, dive_uid)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_dives_user_started_at ON dives (user_id, started_at DESC, id DESC)")
+    cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_user_profile_public_slug ON user_profile (public_slug) WHERE public_slug IS NOT NULL")
+    cur.execute("ALTER TABLE user_profile_guides DROP COLUMN IF EXISTS sort_order")
+    cur.execute("DROP INDEX IF EXISTS idx_user_profile_guides_user_sort")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_user_profile_guides_user_name ON user_profile_guides (user_id, LOWER(name), name, guide_id)")
+    cur.execute("ALTER TABLE cli_sync_auth_requests ADD COLUMN IF NOT EXISTS status TEXT")
+    cur.execute("ALTER TABLE cli_sync_auth_requests ADD COLUMN IF NOT EXISTS created_at BIGINT")
+    cur.execute("ALTER TABLE cli_sync_auth_requests ADD COLUMN IF NOT EXISTS expires_at BIGINT")
+    cur.execute("ALTER TABLE cli_sync_auth_requests ADD COLUMN IF NOT EXISTS approved_at BIGINT")
+    cur.execute("ALTER TABLE cli_sync_auth_requests ADD COLUMN IF NOT EXISTS token TEXT")
+    cur.execute("ALTER TABLE cli_sync_auth_requests ADD COLUMN IF NOT EXISTS token_expires_at BIGINT")
+    cur.execute("ALTER TABLE cli_sync_auth_requests ADD COLUMN IF NOT EXISTS user_id TEXT")
+    cur.execute("ALTER TABLE cli_sync_auth_requests ADD COLUMN IF NOT EXISTS email TEXT")
+    cur.execute("ALTER TABLE cli_sync_auth_requests ADD COLUMN IF NOT EXISTS session_id TEXT")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_cli_sync_auth_requests_expires_at ON cli_sync_auth_requests (expires_at)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_cli_sync_auth_requests_token_expires_at ON cli_sync_auth_requests (token_expires_at)")
+    cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_cli_sync_auth_requests_token ON cli_sync_auth_requests (token) WHERE token IS NOT NULL")
+
+
+def apply_schema_migration_v2(conn: psycopg.Connection, cur: psycopg.Cursor) -> None:
+    with conn.cursor(row_factory=dict_row) as read_cur:
+        read_cur.execute("SELECT id, fields_json FROM dives")
+        rows = read_cur.fetchall()
+
+    for row in rows:
+        fields = row.get("fields_json") or {}
+        if isinstance(fields, str):
+            fields = json.loads(fields)
+        if not isinstance(fields, dict):
+            fields = {}
+
+        tanks = list(fields.get("tanks") or []) if isinstance(fields.get("tanks"), list) else []
+        primary_tank = dict(tanks[0]) if tanks and isinstance(tanks[0], dict) else {}
+        if clean_tank_volume_value(primary_tank.get("volume")) is not None:
+            continue
+
+        primary_tank["volume"] = 12.0
+        if tanks:
+            tanks[0] = primary_tank
+        else:
+            tanks = [primary_tank]
+        fields["tanks"] = tanks
+        cur.execute("UPDATE dives SET fields_json=%s WHERE id=%s", (Jsonb(fields), row["id"]))
+
+
+def migrate_legacy_profile_license_documents(conn: psycopg.Connection) -> None:
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            """
+            SELECT user_id, license_company, license_certification_name, certification, license_student_number, registry,
+                   license_certification_date, license_instructor_number, license_pdf_name, license_pdf_content_type,
+                   license_pdf_data, license_pdf_uploaded_at
+            FROM user_profile
+            WHERE license_pdf_data IS NOT NULL
+            """
+        )
+        rows = cur.fetchall()
+
+    for row in rows:
+        user_id = clean_profile_text(row.get("user_id"))
+        if not user_id:
+            continue
+
+        licenses = fetch_user_profile_licenses(conn, user_id)
+        if not licenses:
+            licenses = legacy_profile_licenses_from_row(row)
+        if not licenses:
+            continue
+
+        primary_license_id = licenses[0]["id"]
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO user_profile_license_documents(user_id, license_id, filename, content_type, pdf_data, uploaded_at)
+                VALUES (%s, %s, %s, %s, %s, %s)
+                ON CONFLICT (user_id, license_id)
+                DO NOTHING
+                """,
+                (
+                    user_id,
+                    primary_license_id,
+                    row.get("license_pdf_name") or "diving-licenses.pdf",
+                    row.get("license_pdf_content_type") or "application/pdf",
+                    row.get("license_pdf_data"),
+                    row.get("license_pdf_uploaded_at"),
+                ),
+            )
+
+
+def apply_schema_migration_v3(conn: psycopg.Connection, cur: psycopg.Cursor) -> None:
+    backfill_profile_collection_tables(conn)
+    migrate_legacy_profile_license_documents(conn)
+    cur.execute("ALTER TABLE user_profile DROP COLUMN IF EXISTS licenses_json")
+    cur.execute("ALTER TABLE user_profile DROP COLUMN IF EXISTS dive_sites_json")
+    cur.execute("ALTER TABLE user_profile DROP COLUMN IF EXISTS buddies_json")
+    cur.execute("ALTER TABLE user_profile DROP COLUMN IF EXISTS guides_json")
+    cur.execute("ALTER TABLE user_profile DROP COLUMN IF EXISTS certification")
+    cur.execute("ALTER TABLE user_profile DROP COLUMN IF EXISTS registry")
+    cur.execute("ALTER TABLE user_profile DROP COLUMN IF EXISTS license_company")
+    cur.execute("ALTER TABLE user_profile DROP COLUMN IF EXISTS license_certification_name")
+    cur.execute("ALTER TABLE user_profile DROP COLUMN IF EXISTS license_student_number")
+    cur.execute("ALTER TABLE user_profile DROP COLUMN IF EXISTS license_certification_date")
+    cur.execute("ALTER TABLE user_profile DROP COLUMN IF EXISTS license_instructor_number")
+    cur.execute("ALTER TABLE user_profile DROP COLUMN IF EXISTS license_pdf_name")
+    cur.execute("ALTER TABLE user_profile DROP COLUMN IF EXISTS license_pdf_content_type")
+    cur.execute("ALTER TABLE user_profile DROP COLUMN IF EXISTS license_pdf_data")
+    cur.execute("ALTER TABLE user_profile DROP COLUMN IF EXISTS license_pdf_uploaded_at")
+
+
+def apply_schema_migration_v4(cur: psycopg.Cursor) -> None:
+    cur.execute("UPDATE user_profile SET name='' WHERE name IS NULL")
+    cur.execute("UPDATE user_profile SET email='' WHERE email IS NULL")
+    cur.execute("UPDATE user_profile SET public_slug='' WHERE public_slug IS NULL")
+    cur.execute("ALTER TABLE user_profile ALTER COLUMN name SET DEFAULT ''")
+    cur.execute("ALTER TABLE user_profile ALTER COLUMN email SET DEFAULT ''")
+    cur.execute("ALTER TABLE user_profile ALTER COLUMN public_slug SET DEFAULT ''")
+    cur.execute("ALTER TABLE user_profile ALTER COLUMN name SET NOT NULL")
+    cur.execute("ALTER TABLE user_profile ALTER COLUMN email SET NOT NULL")
+    cur.execute("ALTER TABLE user_profile ALTER COLUMN public_slug SET NOT NULL")
+    cur.execute("DROP INDEX IF EXISTS idx_user_profile_public_slug")
+    cur.execute(
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_user_profile_public_slug
+        ON user_profile (public_slug)
+        WHERE BTRIM(public_slug) <> ''
+        """
+    )
+
+
+def apply_schema_migration_v5(cur: psycopg.Cursor) -> None:
+    cur.execute("DROP INDEX IF EXISTS idx_user_profile_licenses_user_sort")
+    cur.execute("DROP INDEX IF EXISTS idx_user_profile_dive_sites_user_sort")
+    cur.execute("DROP INDEX IF EXISTS idx_user_profile_buddies_user_sort")
+    cur.execute("ALTER TABLE user_profile_licenses DROP COLUMN IF EXISTS sort_order")
+    cur.execute("ALTER TABLE user_profile_dive_sites DROP COLUMN IF EXISTS sort_order")
+    cur.execute("ALTER TABLE user_profile_buddies DROP COLUMN IF EXISTS sort_order")
+
+
 def init_db(conn: psycopg.Connection) -> None:
     with conn.cursor() as cur:
         cur.execute(SCHEMA)
-        cur.execute("ALTER TABLE device_state ADD COLUMN IF NOT EXISTS user_id TEXT")
-        cur.execute("ALTER TABLE dives ADD COLUMN IF NOT EXISTS user_id TEXT")
-        cur.execute("ALTER TABLE dives ADD COLUMN IF NOT EXISTS duration_ms BIGINT")
-        cur.execute("ALTER TABLE dives ADD COLUMN IF NOT EXISTS import_payload_json JSONB NOT NULL DEFAULT '{}'::jsonb")
-        cur.execute("ALTER TABLE dives ADD COLUMN IF NOT EXISTS fields_json JSONB NOT NULL DEFAULT '{}'::jsonb")
-        cur.execute("ALTER TABLE dives ADD COLUMN IF NOT EXISTS samples_json JSONB NOT NULL DEFAULT '[]'::jsonb")
-        cur.execute("ALTER TABLE user_profile ADD COLUMN IF NOT EXISTS name TEXT")
-        cur.execute("ALTER TABLE user_profile ADD COLUMN IF NOT EXISTS email TEXT")
-        cur.execute("ALTER TABLE user_profile ADD COLUMN IF NOT EXISTS licenses_json JSONB NOT NULL DEFAULT '[]'::jsonb")
-        cur.execute("ALTER TABLE user_profile ADD COLUMN IF NOT EXISTS dive_sites_json JSONB NOT NULL DEFAULT '[]'::jsonb")
-        cur.execute("ALTER TABLE user_profile ADD COLUMN IF NOT EXISTS buddies_json JSONB NOT NULL DEFAULT '[]'::jsonb")
-        cur.execute("ALTER TABLE user_profile ADD COLUMN IF NOT EXISTS guides_json JSONB NOT NULL DEFAULT '[]'::jsonb")
-        cur.execute("ALTER TABLE user_profile ADD COLUMN IF NOT EXISTS certification TEXT")
-        cur.execute("ALTER TABLE user_profile ADD COLUMN IF NOT EXISTS registry TEXT")
-        cur.execute("ALTER TABLE user_profile ADD COLUMN IF NOT EXISTS license_company TEXT")
-        cur.execute("ALTER TABLE user_profile ADD COLUMN IF NOT EXISTS license_certification_name TEXT")
-        cur.execute("ALTER TABLE user_profile ADD COLUMN IF NOT EXISTS license_student_number TEXT")
-        cur.execute("ALTER TABLE user_profile ADD COLUMN IF NOT EXISTS license_certification_date TEXT")
-        cur.execute("ALTER TABLE user_profile ADD COLUMN IF NOT EXISTS license_instructor_number TEXT")
-        cur.execute("ALTER TABLE user_profile ADD COLUMN IF NOT EXISTS license_pdf_name TEXT")
-        cur.execute("ALTER TABLE user_profile ADD COLUMN IF NOT EXISTS license_pdf_content_type TEXT")
-        cur.execute("ALTER TABLE user_profile ADD COLUMN IF NOT EXISTS license_pdf_data BYTEA")
-        cur.execute("ALTER TABLE user_profile ADD COLUMN IF NOT EXISTS license_pdf_uploaded_at TEXT")
-        cur.execute("ALTER TABLE user_profile ADD COLUMN IF NOT EXISTS updated_at TEXT")
-        cur.execute("ALTER TABLE user_profile_license_documents ADD COLUMN IF NOT EXISTS user_id TEXT")
-        cur.execute("ALTER TABLE user_profile_license_documents ADD COLUMN IF NOT EXISTS license_id TEXT")
-        cur.execute("ALTER TABLE user_profile_license_documents ADD COLUMN IF NOT EXISTS filename TEXT")
-        cur.execute("ALTER TABLE user_profile_license_documents ADD COLUMN IF NOT EXISTS content_type TEXT")
-        cur.execute("ALTER TABLE user_profile_license_documents ADD COLUMN IF NOT EXISTS pdf_data BYTEA")
-        cur.execute("ALTER TABLE user_profile_license_documents ADD COLUMN IF NOT EXISTS uploaded_at TEXT")
-        cur.execute("UPDATE device_state SET user_id='legacy' WHERE user_id IS NULL")
-        cur.execute("UPDATE dives SET user_id='legacy' WHERE user_id IS NULL")
-        cur.execute("UPDATE user_profile SET updated_at=%s WHERE updated_at IS NULL", (now_iso(),))
-        cur.execute(
-            """
-            UPDATE user_profile
-            SET licenses_json = jsonb_build_array(
-                jsonb_strip_nulls(
-                    jsonb_build_object(
-                        'company', NULLIF(BTRIM(COALESCE(license_company, '')), ''),
-                        'certification_name', NULLIF(BTRIM(COALESCE(license_certification_name, certification, '')), ''),
-                        'student_number', NULLIF(BTRIM(COALESCE(license_student_number, registry, '')), ''),
-                        'certification_date', NULLIF(BTRIM(COALESCE(license_certification_date, '')), ''),
-                        'instructor_number', NULLIF(BTRIM(COALESCE(license_instructor_number, '')), '')
-                    )
-                )
-            )
-            WHERE (licenses_json = '[]'::jsonb OR licenses_json IS NULL)
-              AND (
-                    NULLIF(BTRIM(COALESCE(license_company, '')), '') IS NOT NULL
-                 OR NULLIF(BTRIM(COALESCE(license_certification_name, certification, '')), '') IS NOT NULL
-                 OR NULLIF(BTRIM(COALESCE(license_student_number, registry, '')), '') IS NOT NULL
-                 OR NULLIF(BTRIM(COALESCE(license_certification_date, '')), '') IS NOT NULL
-                 OR NULLIF(BTRIM(COALESCE(license_instructor_number, '')), '') IS NOT NULL
-              )
-            """
-        )
-        cur.execute(
-            """
-            UPDATE dives
-            SET duration_ms = duration_seconds::bigint * 1000
-            WHERE duration_ms IS NULL
-              AND duration_seconds IS NOT NULL
-            """
-        )
-        cur.execute(
-            """
-            UPDATE dives
-            SET import_payload_json = jsonb_build_object(
-                'vendor', vendor,
-                'product', product,
-                'fingerprint_hex', fingerprint_hex,
-                'dive_uid', dive_uid,
-                'started_at', started_at,
-                'duration_ms', duration_ms,
-                'duration_seconds', CASE
-                    WHEN duration_ms IS NOT NULL THEN (duration_ms / 1000)::bigint
-                    ELSE duration_seconds
-                END,
-                'max_depth_m', max_depth_m,
-                'avg_depth_m', avg_depth_m,
-                'fields', COALESCE(fields_json, '{}'::jsonb),
-                'raw_sha256', raw_sha256,
-                'samples', COALESCE(samples_json, '[]'::jsonb),
-                'imported_at', imported_at
-            )
-            WHERE import_payload_json = '{}'::jsonb
-            """
-        )
-        cur.execute("UPDATE dives SET duration_seconds = NULL WHERE duration_ms IS NOT NULL")
-        cur.execute("ALTER TABLE device_state ALTER COLUMN user_id SET NOT NULL")
-        cur.execute("ALTER TABLE dives ALTER COLUMN user_id SET NOT NULL")
-        cur.execute("ALTER TABLE user_profile ALTER COLUMN updated_at SET NOT NULL")
-        cur.execute(
-            """
-            DO $$
-            BEGIN
-                IF EXISTS (
-                    SELECT 1
-                    FROM pg_constraint
-                    WHERE conrelid = 'device_state'::regclass
-                      AND conname = 'device_state_pkey'
-                ) THEN
-                    ALTER TABLE device_state DROP CONSTRAINT device_state_pkey;
-                END IF;
-            END $$;
-            """
-        )
-        cur.execute(
-            """
-            DO $$
-            BEGIN
-                IF NOT EXISTS (
-                    SELECT 1
-                    FROM pg_constraint
-                    WHERE conrelid = 'device_state'::regclass
-                      AND conname = 'device_state_pkey'
-                ) THEN
-                    ALTER TABLE device_state
-                    ADD CONSTRAINT device_state_pkey PRIMARY KEY (user_id, vendor, product);
-                END IF;
-            END $$;
-            """
-        )
-        cur.execute(
-            """
-            DO $$
-            BEGIN
-                IF EXISTS (
-                    SELECT 1
-                    FROM pg_constraint
-                    WHERE conrelid = 'dives'::regclass
-                      AND conname = 'dives_dive_uid_key'
-                ) THEN
-                    ALTER TABLE dives DROP CONSTRAINT dives_dive_uid_key;
-                END IF;
-            END $$;
-            """
-        )
-        cur.execute("DROP INDEX IF EXISTS idx_dives_started_at")
-        cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_dives_user_dive_uid ON dives (user_id, dive_uid)")
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_dives_user_started_at ON dives (user_id, started_at DESC, id DESC)")
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_user_profile_licenses_user_sort ON user_profile_licenses (user_id, sort_order ASC, license_id ASC)")
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_user_profile_dive_sites_user_sort ON user_profile_dive_sites (user_id, sort_order ASC, site_id ASC)")
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_user_profile_buddies_user_sort ON user_profile_buddies (user_id, sort_order ASC, buddy_id ASC)")
-        cur.execute("ALTER TABLE user_profile_guides DROP COLUMN IF EXISTS sort_order")
-        cur.execute("DROP INDEX IF EXISTS idx_user_profile_guides_user_sort")
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_user_profile_guides_user_name ON user_profile_guides (user_id, LOWER(name), name, guide_id)")
-        cur.execute("ALTER TABLE cli_sync_auth_requests ADD COLUMN IF NOT EXISTS status TEXT")
-        cur.execute("ALTER TABLE cli_sync_auth_requests ADD COLUMN IF NOT EXISTS created_at BIGINT")
-        cur.execute("ALTER TABLE cli_sync_auth_requests ADD COLUMN IF NOT EXISTS expires_at BIGINT")
-        cur.execute("ALTER TABLE cli_sync_auth_requests ADD COLUMN IF NOT EXISTS approved_at BIGINT")
-        cur.execute("ALTER TABLE cli_sync_auth_requests ADD COLUMN IF NOT EXISTS token TEXT")
-        cur.execute("ALTER TABLE cli_sync_auth_requests ADD COLUMN IF NOT EXISTS token_expires_at BIGINT")
-        cur.execute("ALTER TABLE cli_sync_auth_requests ADD COLUMN IF NOT EXISTS user_id TEXT")
-        cur.execute("ALTER TABLE cli_sync_auth_requests ADD COLUMN IF NOT EXISTS email TEXT")
-        cur.execute("ALTER TABLE cli_sync_auth_requests ADD COLUMN IF NOT EXISTS session_id TEXT")
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_cli_sync_auth_requests_expires_at ON cli_sync_auth_requests (expires_at)")
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_cli_sync_auth_requests_token_expires_at ON cli_sync_auth_requests (token_expires_at)")
-        cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_cli_sync_auth_requests_token ON cli_sync_auth_requests (token) WHERE token IS NOT NULL")
-    backfill_profile_collection_tables(conn)
+        ensure_schema_version_table(cur)
+        current_version = get_schema_version(cur)
+
+        if current_version < 1:
+            apply_schema_migration_v1(cur)
+            set_schema_version(cur, 1)
+            current_version = 1
+
+        if current_version < 2:
+            apply_schema_migration_v2(conn, cur)
+            set_schema_version(cur, 2)
+            current_version = 2
+
+        if current_version < 3:
+            apply_schema_migration_v3(conn, cur)
+            set_schema_version(cur, 3)
+            current_version = 3
+
+        if current_version < CURRENT_SCHEMA_VERSION:
+            apply_schema_migration_v4(cur)
+            set_schema_version(cur, 4)
+            current_version = 4
+
+        if current_version < CURRENT_SCHEMA_VERSION:
+            apply_schema_migration_v5(cur)
+            set_schema_version(cur, CURRENT_SCHEMA_VERSION)
+
     conn.commit()
 
 
@@ -480,6 +663,55 @@ def clean_profile_text(value: object) -> str:
     return value.strip() if isinstance(value, str) else ""
 
 
+def clean_profile_bool(value: object) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return bool(value)
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {"1", "true", "yes", "on"}:
+            return True
+        if normalized in {"0", "false", "no", "off", ""}:
+            return False
+    return False
+
+
+def normalize_public_slug(value: object) -> str:
+    source = clean_profile_text(value).lower()
+    if not source:
+        return ""
+    normalized = re.sub(r"[^a-z0-9]+", "-", source)
+    normalized = re.sub(r"-{2,}", "-", normalized).strip("-")
+    return normalized[:48]
+
+
+def generate_public_slug() -> str:
+    return f"diver-{secrets.token_hex(4)}"
+
+
+def ensure_unique_public_slug(cur: psycopg.Cursor, user_id: str, desired_slug: object, existing_slug: object = None) -> str:
+    existing = normalize_public_slug(existing_slug)
+    requested = normalize_public_slug(desired_slug)
+    if existing and requested == existing:
+        return existing
+
+    base = requested or existing or generate_public_slug()
+    suffix = 1
+
+    while True:
+        candidate = base if suffix == 1 else f"{base[: max(1, 48 - len(str(suffix)) - 1)]}-{suffix}"
+        cur.execute("SELECT user_id FROM user_profile WHERE public_slug=%s", (candidate,))
+        row = cur.fetchone()
+        if not row or clean_profile_text(row.get("user_id")) == user_id:
+            return candidate
+        if requested or existing:
+            suffix += 1
+            continue
+        base = generate_public_slug()
+        suffix = 1
+
+
 def clean_coordinate_value(value: object) -> float | None:
     if isinstance(value, bool):
         return None
@@ -496,6 +728,28 @@ def clean_coordinate_value(value: object) -> float | None:
             return None
         return parsed if parsed == parsed and parsed not in {float("inf"), float("-inf")} else None
     return None
+
+
+def clean_tank_volume_value(value: object) -> float | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        parsed = float(value)
+    elif isinstance(value, str):
+        stripped = value.strip()
+        if not stripped:
+            return None
+        try:
+            parsed = float(stripped)
+        except ValueError:
+            return None
+    else:
+        return None
+    if parsed != parsed or parsed in {float("inf"), float("-inf")}:
+        return None
+    if parsed not in {9.0, 12.0, 15.0}:
+        return None
+    return parsed
 
 
 def normalize_profile_license(entry: dict | None) -> dict:
@@ -727,7 +981,7 @@ def fetch_user_profile_licenses(conn: psycopg.Connection, user_id: str) -> list[
             SELECT license_id, company, certification_name, student_number, certification_date, instructor_number
             FROM user_profile_licenses
             WHERE user_id=%s
-            ORDER BY sort_order ASC, license_id ASC
+            ORDER BY LOWER(COALESCE(certification_name, '')) ASC, LOWER(COALESCE(company, '')) ASC, license_id ASC
             """,
             (user_id,),
         )
@@ -755,7 +1009,7 @@ def fetch_user_profile_dive_sites(conn: psycopg.Connection, user_id: str) -> lis
             SELECT site_id, name, location, country, latitude, longitude
             FROM user_profile_dive_sites
             WHERE user_id=%s
-            ORDER BY sort_order ASC, site_id ASC
+            ORDER BY LOWER(COALESCE(name, '')) ASC, LOWER(COALESCE(location, '')) ASC, site_id ASC
             """,
             (user_id,),
         )
@@ -783,7 +1037,7 @@ def fetch_user_profile_buddies(conn: psycopg.Connection, user_id: str) -> list[d
             SELECT buddy_id, name
             FROM user_profile_buddies
             WHERE user_id=%s
-            ORDER BY sort_order ASC, buddy_id ASC
+            ORDER BY LOWER(COALESCE(name, '')) ASC, buddy_id ASC
             """,
             (user_id,),
         )
@@ -824,38 +1078,28 @@ def fetch_user_profile_guides(conn: psycopg.Connection, user_id: str) -> list[di
     )
 
 
-def resolve_user_profile_collections(conn: psycopg.Connection, user_id: str, row: dict | None) -> tuple[list[dict], list[dict], list[dict], list[dict]]:
+def resolve_user_profile_collections(conn: psycopg.Connection, user_id: str, _row: dict | None) -> tuple[list[dict], list[dict], list[dict], list[dict]]:
     licenses = fetch_user_profile_licenses(conn, user_id)
     dive_sites = fetch_user_profile_dive_sites(conn, user_id)
     buddies = fetch_user_profile_buddies(conn, user_id)
     guides = fetch_user_profile_guides(conn, user_id)
-
-    if not licenses:
-        licenses = legacy_profile_licenses_from_row(row)
-    if not dive_sites:
-        dive_sites = legacy_profile_dive_sites_from_row(row)
-    if not buddies:
-        buddies = legacy_profile_buddies_from_row(row)
-    if not guides:
-        guides = legacy_profile_guides_from_row(row)
 
     return licenses, dive_sites, buddies, guides
 
 
 def replace_user_profile_licenses(cur: psycopg.Cursor, user_id: str, licenses: list[dict]) -> None:
     cur.execute("DELETE FROM user_profile_licenses WHERE user_id=%s", (user_id,))
-    for index, license_entry in enumerate(licenses):
+    for license_entry in licenses:
         cur.execute(
             """
             INSERT INTO user_profile_licenses(
-                user_id, license_id, sort_order, company, certification_name, student_number, certification_date, instructor_number
+                user_id, license_id, company, certification_name, student_number, certification_date, instructor_number
             )
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
             """,
             (
                 user_id,
                 license_entry["id"],
-                index,
                 clean_profile_text(license_entry.get("company")),
                 clean_profile_text(license_entry.get("certification_name")),
                 clean_profile_text(license_entry.get("student_number")),
@@ -867,18 +1111,17 @@ def replace_user_profile_licenses(cur: psycopg.Cursor, user_id: str, licenses: l
 
 def replace_user_profile_dive_sites(cur: psycopg.Cursor, user_id: str, dive_sites: list[dict]) -> None:
     cur.execute("DELETE FROM user_profile_dive_sites WHERE user_id=%s", (user_id,))
-    for index, site in enumerate(dive_sites):
+    for site in dive_sites:
         cur.execute(
             """
             INSERT INTO user_profile_dive_sites(
-                user_id, site_id, sort_order, name, location, country, latitude, longitude
+                user_id, site_id, name, location, country, latitude, longitude
             )
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
             """,
             (
                 user_id,
                 site["id"],
-                index,
                 clean_profile_text(site.get("name")),
                 clean_profile_text(site.get("location")),
                 clean_profile_text(site.get("country")),
@@ -890,16 +1133,15 @@ def replace_user_profile_dive_sites(cur: psycopg.Cursor, user_id: str, dive_site
 
 def replace_user_profile_buddies(cur: psycopg.Cursor, user_id: str, buddies: list[dict]) -> None:
     cur.execute("DELETE FROM user_profile_buddies WHERE user_id=%s", (user_id,))
-    for index, buddy in enumerate(buddies):
+    for buddy in buddies:
         cur.execute(
             """
-            INSERT INTO user_profile_buddies(user_id, buddy_id, sort_order, name)
-            VALUES (%s, %s, %s, %s)
+            INSERT INTO user_profile_buddies(user_id, buddy_id, name)
+            VALUES (%s, %s, %s)
             """,
             (
                 user_id,
                 buddy["id"],
-                index,
                 clean_profile_text(buddy.get("name")),
             ),
         )
@@ -1285,6 +1527,89 @@ def list_all_dives(conn: psycopg.Connection, user_id: str, *, include_samples: b
     return [decode_dive_row(row, include_samples, include_raw_data) for row in rows]
 
 
+def public_dive_has_coordinates(dive: dict) -> bool:
+    candidates = [
+        dive.get("location"),
+        dive.get("gps"),
+        (dive.get("fields") or {}).get("location"),
+        (dive.get("fields") or {}).get("gps"),
+        (dive.get("fields") or {}).get("position"),
+        (dive.get("fields") or {}).get("coordinates"),
+    ]
+    for candidate in candidates:
+        if not isinstance(candidate, dict):
+            continue
+        latitude = clean_coordinate_value(candidate.get("lat") if "lat" in candidate else candidate.get("latitude"))
+        longitude = clean_coordinate_value(
+            candidate.get("lon")
+            if "lon" in candidate
+            else candidate.get("lng")
+            if "lng" in candidate
+            else candidate.get("long")
+            if "long" in candidate
+            else candidate.get("longitude")
+        )
+        if latitude is not None and longitude is not None:
+            return True
+    return False
+
+
+def public_site_lookup(dive_sites: list[dict]) -> dict[str, dict]:
+    lookup: dict[str, dict] = {}
+    for site in dive_sites:
+        name = clean_profile_text((site or {}).get("name")).lower()
+        latitude = clean_coordinate_value((site or {}).get("latitude"))
+        longitude = clean_coordinate_value((site or {}).get("longitude"))
+        if not name or latitude is None or longitude is None:
+            continue
+        lookup[name] = {
+            "lat": latitude,
+            "lon": longitude,
+        }
+    return lookup
+
+
+def enrich_public_dive(dive: dict, site_lookup: dict[str, dict]) -> dict:
+    payload = dict(dive)
+    if public_dive_has_coordinates(payload):
+        return payload
+    logbook = (payload.get("fields") or {}).get("logbook")
+    site_name = clean_profile_text((logbook or {}).get("site")).lower() if isinstance(logbook, dict) else ""
+    coordinates = site_lookup.get(site_name)
+    if coordinates:
+        payload["location"] = coordinates
+    return payload
+
+
+def get_public_profile_dives(conn: psycopg.Connection, public_slug: str) -> tuple[dict | None, list[dict], dict]:
+    normalized_slug = normalize_public_slug(public_slug)
+    if not normalized_slug:
+        return None, [], {}
+
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT *
+            FROM user_profile
+            WHERE public_slug=%s AND public_dives_enabled=TRUE
+            """,
+            (normalized_slug,),
+        )
+        profile_row = cur.fetchone()
+    if not profile_row:
+        return None, [], {}
+
+    user_id = clean_profile_text(profile_row.get("user_id"))
+    _, dive_sites, _, _ = resolve_user_profile_collections(conn, user_id, profile_row)
+    site_lookup = public_site_lookup(dive_sites)
+    dives = [
+        enrich_public_dive(dive, site_lookup)
+        for dive in list_all_dives(conn, user_id, include_samples=True, include_raw_data=False)
+        if is_logbook_complete((dive.get("fields") or {}).get("logbook"))
+    ]
+    return public_profile_payload(profile_row), dives, summarize_dives(dives)
+
+
 def summarize_dives(dives: list[dict], total_count: int | None = None) -> dict:
     def pressure_range(dive: dict) -> tuple[float | None, float | None]:
         tanks = dive.get("fields", {}).get("tanks") if isinstance(dive.get("fields"), dict) else []
@@ -1349,11 +1674,21 @@ def empty_user_profile() -> dict:
     return {
         "name": "",
         "email": "",
+        "public_dives_enabled": False,
+        "public_slug": "",
         "licenses": [],
         "dive_sites": [],
         "buddies": [],
         "guides": [],
         "updated_at": None,
+    }
+
+
+def public_profile_payload(row: dict | None) -> dict:
+    source = row or {}
+    return {
+        "name": clean_profile_text(source.get("name")) or "DiveVault Diver",
+        "public_slug": clean_profile_text(source.get("public_slug")),
     }
 
 
@@ -1370,36 +1705,25 @@ def decode_user_profile_row(
         return empty_user_profile()
 
     license_documents = license_documents or {}
-    normalized_licenses = normalize_profile_licenses(licenses) if licenses is not None else legacy_profile_licenses_from_row(row)
-
-    legacy_pdf = None
-    if row.get("license_pdf_data") is not None and normalized_licenses:
-        first_license_id = normalized_licenses[0]["id"]
-        legacy_pdf = profile_license_document_summary(
-            license_id=first_license_id,
-            filename=row.get("license_pdf_name") or "diving-licenses.pdf",
-            content_type=row.get("license_pdf_content_type") or "application/pdf",
-            data=row.get("license_pdf_data"),
-            uploaded_at=row.get("license_pdf_uploaded_at"),
-        )
+    normalized_licenses = normalize_profile_licenses(licenses or [])
 
     hydrated_licenses = []
-    for index, license_entry in enumerate(normalized_licenses):
+    for license_entry in normalized_licenses:
         pdf_summary = license_documents.get(license_entry["id"])
-        if pdf_summary is None and index == 0:
-            pdf_summary = legacy_pdf
         hydrated_licenses.append({
             **license_entry,
             "pdf": pdf_summary,
         })
 
-    normalized_dive_sites = normalize_profile_dive_sites(dive_sites) if dive_sites is not None else legacy_profile_dive_sites_from_row(row)
-    normalized_buddies = normalize_profile_buddies(buddies) if buddies is not None else legacy_profile_buddies_from_row(row)
-    normalized_guides = normalize_profile_guides(guides) if guides is not None else legacy_profile_guides_from_row(row)
+    normalized_dive_sites = normalize_profile_dive_sites(dive_sites or [])
+    normalized_buddies = normalize_profile_buddies(buddies or [])
+    normalized_guides = normalize_profile_guides(guides or [])
 
     payload = {
         "name": clean_profile_text(row.get("name")),
         "email": clean_profile_text(row.get("email")),
+        "public_dives_enabled": clean_profile_bool(row.get("public_dives_enabled")),
+        "public_slug": clean_profile_text(row.get("public_slug")),
         "licenses": hydrated_licenses,
         "dive_sites": normalized_dive_sites,
         "buddies": normalized_buddies,
@@ -1459,60 +1783,37 @@ def save_user_profile(conn: psycopg.Connection, user_id: str, payload: dict | No
         updated_at = now_iso()
         existing_name = clean_profile_text(existing.get("name"))
         existing_email = clean_profile_text(existing.get("email"))
-        existing_licenses, existing_dive_sites, existing_buddies, existing_guides = resolve_user_profile_collections(conn, user_id, existing)
+        existing_public_dives_enabled = clean_profile_bool(existing.get("public_dives_enabled"))
+        existing_public_slug = clean_profile_text(existing.get("public_slug"))
+        existing_licenses, _, _, _ = resolve_user_profile_collections(conn, user_id, existing)
         licenses = normalize_profile_licenses(source.get("licenses")) if "licenses" in source else existing_licenses
         dive_sites = normalize_profile_dive_sites(source.get("dive_sites")) if "dive_sites" in source else existing_dive_sites
         buddies = normalize_profile_buddies(source.get("buddies")) if "buddies" in source else existing_buddies
         guides = normalize_profile_guides(source.get("guides")) if "guides" in source else existing_guides
-        primary_license = licenses[0] if licenses else {}
+        public_dives_enabled = clean_profile_bool(source.get("public_dives_enabled")) if "public_dives_enabled" in source else existing_public_dives_enabled
+        public_slug = existing_public_slug
+        if public_dives_enabled:
+            public_slug = ensure_unique_public_slug(cur, user_id, source.get("public_slug"), existing_public_slug)
         cur.execute(
             """
             INSERT INTO user_profile(
-                user_id, name, email, licenses_json, dive_sites_json, buddies_json, guides_json, certification, registry,
-                license_company, license_certification_name, license_student_number, license_certification_date, license_instructor_number,
-                license_pdf_name, license_pdf_content_type, license_pdf_data, license_pdf_uploaded_at, updated_at
+                user_id, name, email, public_dives_enabled, public_slug, updated_at
             )
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            VALUES (%s, %s, %s, %s, %s, %s)
             ON CONFLICT (user_id)
             DO UPDATE SET
                 name=excluded.name,
                 email=excluded.email,
-                licenses_json=excluded.licenses_json,
-                dive_sites_json=excluded.dive_sites_json,
-                buddies_json=excluded.buddies_json,
-                guides_json=excluded.guides_json,
-                certification=excluded.certification,
-                registry=excluded.registry,
-                license_company=excluded.license_company,
-                license_certification_name=excluded.license_certification_name,
-                license_student_number=excluded.license_student_number,
-                license_certification_date=excluded.license_certification_date,
-                license_instructor_number=excluded.license_instructor_number,
-                license_pdf_name=excluded.license_pdf_name,
-                license_pdf_content_type=excluded.license_pdf_content_type,
-                license_pdf_data=excluded.license_pdf_data,
-                license_pdf_uploaded_at=excluded.license_pdf_uploaded_at,
+                public_dives_enabled=excluded.public_dives_enabled,
+                public_slug=excluded.public_slug,
                 updated_at=excluded.updated_at
             """,
             (
                 user_id,
                 clean_profile_text(source.get("name")) if "name" in source else existing_name,
                 clean_profile_text(source.get("email")) if "email" in source else existing_email,
-                Jsonb(licenses),
-                Jsonb(dive_sites),
-                Jsonb(buddies),
-                Jsonb(guides),
-                clean_profile_text(primary_license.get("certification_name")),
-                clean_profile_text(primary_license.get("student_number")),
-                clean_profile_text(primary_license.get("company")),
-                clean_profile_text(primary_license.get("certification_name")),
-                clean_profile_text(primary_license.get("student_number")),
-                clean_profile_text(primary_license.get("certification_date")),
-                clean_profile_text(primary_license.get("instructor_number")),
-                existing.get("license_pdf_name"),
-                existing.get("license_pdf_content_type"),
-                existing.get("license_pdf_data"),
-                existing.get("license_pdf_uploaded_at"),
+                public_dives_enabled,
+                public_slug or None,
                 updated_at,
             ),
         )
@@ -1547,78 +1848,29 @@ def save_user_profile_license_pdf(
         existing = row or {}
         existing_licenses, existing_dive_sites, existing_buddies, existing_guides = resolve_user_profile_collections(conn, user_id, existing)
         if not any(license["id"] == license_id for license in existing_licenses):
-            legacy_license = normalize_profile_license(
-                {
-                    "id": "license-1",
-                    "company": existing.get("license_company"),
-                    "certification_name": existing.get("license_certification_name") or existing.get("certification"),
-                    "student_number": existing.get("license_student_number") or existing.get("registry"),
-                    "certification_date": existing.get("license_certification_date"),
-                    "instructor_number": existing.get("license_instructor_number"),
-                }
-            )
-            if not (profile_license_has_values(legacy_license) and legacy_license["id"] == license_id):
-                return None
+            return None
 
         uploaded_at = now_iso()
-        primary_license_id = existing_licenses[0]["id"] if existing_licenses else "license-1"
-        legacy_filename = existing.get("license_pdf_name")
-        legacy_content_type = existing.get("license_pdf_content_type")
-        legacy_pdf_data = existing.get("license_pdf_data")
-        legacy_uploaded_at = existing.get("license_pdf_uploaded_at")
-        if license_id == primary_license_id:
-            legacy_filename = filename
-            legacy_content_type = content_type
-            legacy_pdf_data = pdf_bytes
-            legacy_uploaded_at = uploaded_at
         cur.execute(
             """
             INSERT INTO user_profile(
-                user_id, name, email, licenses_json, dive_sites_json, buddies_json, guides_json, certification, registry,
-                license_company, license_certification_name, license_student_number, license_certification_date, license_instructor_number,
-                license_pdf_name, license_pdf_content_type, license_pdf_data, license_pdf_uploaded_at, updated_at
+                user_id, name, email, public_dives_enabled, public_slug, updated_at
             )
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            VALUES (%s, %s, %s, %s, %s, %s)
             ON CONFLICT (user_id)
             DO UPDATE SET
                 name=excluded.name,
                 email=excluded.email,
-                licenses_json=excluded.licenses_json,
-                dive_sites_json=excluded.dive_sites_json,
-                buddies_json=excluded.buddies_json,
-                guides_json=excluded.guides_json,
-                certification=excluded.certification,
-                registry=excluded.registry,
-                license_company=excluded.license_company,
-                license_certification_name=excluded.license_certification_name,
-                license_student_number=excluded.license_student_number,
-                license_certification_date=excluded.license_certification_date,
-                license_instructor_number=excluded.license_instructor_number,
-                license_pdf_name=excluded.license_pdf_name,
-                license_pdf_content_type=excluded.license_pdf_content_type,
-                license_pdf_data=excluded.license_pdf_data,
-                license_pdf_uploaded_at=excluded.license_pdf_uploaded_at,
+                public_dives_enabled=excluded.public_dives_enabled,
+                public_slug=excluded.public_slug,
                 updated_at=excluded.updated_at
             """,
             (
                 user_id,
                 clean_profile_text(existing.get("name")),
                 clean_profile_text(existing.get("email")),
-                Jsonb(existing_licenses),
-                Jsonb(existing_dive_sites),
-                Jsonb(existing_buddies),
-                Jsonb(existing_guides),
-                clean_profile_text(existing.get("certification")),
-                clean_profile_text(existing.get("registry")),
-                clean_profile_text(existing.get("license_company")),
-                clean_profile_text(existing.get("license_certification_name")),
-                clean_profile_text(existing.get("license_student_number")),
-                clean_profile_text(existing.get("license_certification_date")),
-                clean_profile_text(existing.get("license_instructor_number")),
-                legacy_filename,
-                legacy_content_type,
-                legacy_pdf_data,
-                legacy_uploaded_at,
+                clean_profile_bool(existing.get("public_dives_enabled")),
+                clean_profile_text(existing.get("public_slug")) or None,
                 uploaded_at,
             ),
         )
@@ -1657,22 +1909,6 @@ def get_user_profile_license_pdf(conn: psycopg.Connection, user_id: str, license
             "data": row.get("pdf_data"),
             "uploaded_at": row.get("uploaded_at"),
         }
-
-    with conn.cursor() as cur:
-        cur.execute("SELECT * FROM user_profile WHERE user_id=%s", (user_id,))
-        profile_row = cur.fetchone()
-    if not profile_row:
-        return None
-
-    licenses, _, _, _ = resolve_user_profile_collections(conn, user_id, profile_row)
-
-    if licenses and licenses[0]["id"] == license_id and profile_row.get("license_pdf_data") is not None:
-        return {
-            "filename": profile_row.get("license_pdf_name") or "diving-licenses.pdf",
-            "content_type": profile_row.get("license_pdf_content_type") or "application/pdf",
-            "data": profile_row.get("license_pdf_data"),
-            "uploaded_at": profile_row.get("license_pdf_uploaded_at"),
-        }
     return None
 
 
@@ -1708,6 +1944,29 @@ def sanitize_logbook_payload(payload: dict | None, existing_logbook: dict | None
     return logbook
 
 
+def apply_tank_volume_update(fields: dict, payload: dict | None) -> dict:
+    source = payload if isinstance(payload, dict) else {}
+    tank_volume = clean_tank_volume_value(source.get("tank_volume_l"))
+    if tank_volume is None:
+        return fields
+
+    next_fields = dict(fields)
+    existing_tanks = next_fields.get("tanks")
+    tanks = list(existing_tanks) if isinstance(existing_tanks, list) else []
+    if tanks and isinstance(tanks[0], dict):
+        primary_tank = dict(tanks[0])
+        tanks[0] = primary_tank
+    else:
+        primary_tank = {}
+        if tanks:
+            tanks[0] = primary_tank
+        else:
+            tanks = [primary_tank]
+    primary_tank["volume"] = tank_volume
+    next_fields["tanks"] = tanks
+    return next_fields
+
+
 def update_dive_logbook(conn: psycopg.Connection, user_id: str, dive_id: int, payload: dict | None) -> dict | None:
     with conn.cursor() as cur:
         cur.execute("SELECT * FROM dives WHERE user_id=%s AND id=%s", (user_id, dive_id))
@@ -1723,6 +1982,7 @@ def update_dive_logbook(conn: psycopg.Connection, user_id: str, dive_id: int, pa
             samples = json.loads(samples)
         fields = normalize_dive_fields(fields, samples=samples, duration_seconds=resolve_duration_seconds(row))
         fields["logbook"] = sanitize_logbook_payload(payload, fields.get("logbook"))
+        fields = apply_tank_volume_update(fields, payload)
 
         cur.execute(
             "UPDATE dives SET fields_json=%s WHERE user_id=%s AND id=%s",

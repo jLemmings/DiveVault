@@ -41,9 +41,11 @@ from divevault.postgres_store import (
     create_cli_sync_request,
     delete_dive,
     get_device_state,
+    get_db_schema_version,
     get_cli_sync_request_status,
     get_dive,
     get_dive_id_by_uid,
+    get_public_profile_dives,
     get_user_profile,
     get_user_profile_license_pdf,
     is_logbook_complete,
@@ -626,13 +628,15 @@ def wait_for_database(
     )
 
 
-def run_startup_database_migrations(database_url: str) -> None:
+def run_startup_database_migrations(database_url: str) -> int:
     redacted_database_url = redact_database_url(database_url)
     started_at = time.perf_counter()
     LOGGER.info("Running database migrations database_url=%s", redacted_database_url)
     conn = None
+    schema_version = 0
     try:
         conn = open_db(database_url)
+        schema_version = get_db_schema_version(conn)
     except Exception:
         LOGGER.exception("Database migrations failed database_url=%s", redacted_database_url)
         raise
@@ -641,7 +645,13 @@ def run_startup_database_migrations(database_url: str) -> None:
             conn.close()
 
     elapsed_ms = int((time.perf_counter() - started_at) * 1000)
-    LOGGER.info("Database migrations completed database_url=%s elapsed_ms=%d", redacted_database_url, elapsed_ms)
+    LOGGER.info(
+        "Database migrations completed database_url=%s elapsed_ms=%d schema_version=%d",
+        redacted_database_url,
+        elapsed_ms,
+        schema_version,
+    )
+    return schema_version
 
 
 BACKUP_EXPORT_VERSION = 1
@@ -1184,6 +1194,36 @@ class DiveBackendHandler(BaseHTTPRequestHandler):
 
         if path == "/config.js":
             self._send_config_js()
+            return
+
+        match = re.fullmatch(r"/api/public/divers/([a-z0-9-]+)", path)
+        if match:
+            public_slug = match.group(1)
+            conn = self._open_db()
+            if conn is None:
+                return
+            try:
+                public_profile, dives, stats = get_public_profile_dives(conn, public_slug)
+            finally:
+                conn.close()
+
+            if not public_profile:
+                self._send_json(404, {"error": "Public dive profile not found"})
+                return
+
+            LOGGER.info(
+                "Returned public dive profile slug=%s dives=%d",
+                public_slug,
+                len(dives),
+            )
+            self._send_json(
+                200,
+                {
+                    "diver": public_profile,
+                    "dives": dives,
+                    "stats": stats,
+                },
+            )
             return
 
         if path == "/api/device-state":
@@ -1940,12 +1980,13 @@ def main() -> None:
         retry_delay_seconds=args.db_startup_retry_delay_seconds,
         connect_timeout_seconds=args.db_connect_timeout_seconds,
     )
-    run_startup_database_migrations(args.database_url)
+    schema_version = run_startup_database_migrations(args.database_url)
 
     server = ThreadingHTTPServer((args.host, args.port), DiveBackendHandler)
     server.database_url = args.database_url
     server.database_ready = True
     server.database_ready_error = ""
+    server.database_schema_version = schema_version
     server.cli_auth_manager = CliSyncTokenManager(
         request_ttl_seconds=args.cli_auth_request_ttl,
         token_ttl_seconds=args.cli_auth_token_ttl,
@@ -1962,12 +2003,13 @@ def main() -> None:
     )
 
     LOGGER.info(
-        "Starting backend host=%s port=%d database_url=%s cors_origin=%s frontend_dir=%s",
+        "Starting backend host=%s port=%d database_url=%s cors_origin=%s frontend_dir=%s schema_version=%d",
         args.host,
         args.port,
         redact_database_url(args.database_url),
         args.cors_origin,
         server.frontend_dir,
+        schema_version,
     )
     try:
         server.serve_forever()

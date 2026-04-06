@@ -274,10 +274,12 @@ def test_run_startup_database_migrations_opens_and_closes_connection(monkeypatch
         return FakeConn()
 
     monkeypatch.setattr(dive_backend, "open_db", fake_open_db)
+    monkeypatch.setattr(dive_backend, "get_db_schema_version", lambda conn: 4)
 
-    dive_backend.run_startup_database_migrations("postgresql://user:secret@example.com:5432/dive")
+    schema_version = dive_backend.run_startup_database_migrations("postgresql://user:secret@example.com:5432/dive")
 
     assert calls == {"opened": 1, "closed": 1}
+    assert schema_version == 4
 
 
 def test_cli_sync_token_manager_tracks_requests_and_tokens(monkeypatch):

@@ -16,7 +16,7 @@ if str(BACKEND_ROOT) not in sys.path:
 
 load_dotenv(REPO_ROOT / ".env")
 
-from divevault.postgres_store import init_db
+from divevault.postgres_store import CURRENT_SCHEMA_VERSION, init_db
 
 
 def main() -> None:
@@ -32,7 +32,7 @@ def main() -> None:
         try:
             with psycopg.connect(database_url) as conn:
                 init_db(conn)
-            print("PostgreSQL schema migration completed.")
+            print(f"PostgreSQL schema migration completed at schema version {CURRENT_SCHEMA_VERSION}.")
             return
         except Exception as exc:
             last_error = exc

@@ -1,28 +1,41 @@
-import { formatDate, numberOrZero, parseDate, formatTime, formatDepth, formatTemperature, durationShort, surfaceTemperature, diveTitle, pressureUsedLabel, importDraftSeed } from "../core.js";
+import { buildDiveSequenceMap, formatDate, numberOrZero, parseDate, formatTime, formatDepth, formatTemperature, durationShort, surfaceTemperature, diveTitle, pressureUsedLabel, importDraftSeed, paddedDiveIndex } from "../core.js";
+import { diveMapPreview } from "../map-preview.js";
 
 export default {
   name: "LogsView",
-  props: ["dives", "searchText", "openDive", "openImportQueue", "setSearchText", "statusMessage", "errorMessage"],
+  props: ["dives", "diveSites", "searchText", "openDive", "openImportQueue", "setSearchText", "statusMessage", "errorMessage"],
   data() {
     return {
-      sortOption: "newest",
+      sortKey: "date",
+      sortDirection: "desc",
       deviceFilter: "all",
+      mobileControlsOpen: false,
       currentPage: 1,
-      pageSize: 8
+      pageSize: 10,
+      pageSizeOptions: [5, 10, 20, 50]
     };
   },
   watch: {
     searchText() {
       this.currentPage = 1;
     },
-    sortOption() {
+    sortKey() {
+      this.currentPage = 1;
+    },
+    sortDirection() {
       this.currentPage = 1;
     },
     deviceFilter() {
       this.currentPage = 1;
+    },
+    pageSize() {
+      this.currentPage = 1;
     }
   },
   computed: {
+    diveSequenceMap() {
+      return buildDiveSequenceMap(this.dives);
+    },
     deviceOptions() {
       return [...new Set(this.dives.map((dive) => `${dive.vendor} ${dive.product}`))];
     },
@@ -44,11 +57,10 @@ export default {
       });
       const sorted = [...filtered];
       sorted.sort((left, right) => {
-        if (this.sortOption === "deepest") return numberOrZero(right.max_depth_m) - numberOrZero(left.max_depth_m);
-        if (this.sortOption === "longest") return numberOrZero(right.duration_seconds) - numberOrZero(left.duration_seconds);
-        const leftTime = parseDate(left.started_at)?.getTime() || 0;
-        const rightTime = parseDate(right.started_at)?.getTime() || 0;
-        return this.sortOption === "oldest" ? leftTime - rightTime : rightTime - leftTime;
+        const direction = this.sortDirection === "asc" ? 1 : -1;
+        const comparison = this.compareDives(left, right);
+        if (comparison !== 0) return comparison * direction;
+        return (numberOrZero(left.id) - numberOrZero(right.id)) * direction;
       });
       return sorted;
     },
@@ -67,9 +79,73 @@ export default {
       const start = (this.currentPage - 1) * this.pageSize + 1;
       const end = Math.min(this.currentPage * this.pageSize, this.filteredDives.length);
       return `${start}-${end} of ${this.filteredDives.length} dives`;
+    },
+    pageCountLabel() {
+      return `${this.currentPage} / ${this.pageCount}`;
+    },
+    mobileSortOptions() {
+      return [
+        { key: "date", label: "Date" },
+        { key: "id", label: "Dive Number" },
+        { key: "depth", label: "Max Depth" },
+        { key: "barUsed", label: "Bar Used" }
+      ];
+    },
+    activeSortLabel() {
+      return this.mobileSortOptions.find((option) => option.key === this.sortKey)?.label || "Date";
     }
   },
   methods: {
+    compareDives(left, right) {
+      if (this.sortKey === "id") {
+        const leftSequence = this.diveSequenceMap.get(String(left.id)) ?? numberOrZero(left.id);
+        const rightSequence = this.diveSequenceMap.get(String(right.id)) ?? numberOrZero(right.id);
+        return leftSequence - rightSequence;
+      }
+      if (this.sortKey === "depth") return numberOrZero(left.max_depth_m) - numberOrZero(right.max_depth_m);
+      if (this.sortKey === "duration") return numberOrZero(left.duration_seconds) - numberOrZero(right.duration_seconds);
+      if (this.sortKey === "barUsed") return this.barUsedValue(left) - this.barUsedValue(right);
+      if (this.sortKey === "temp") return this.temperatureValue(left) - this.temperatureValue(right);
+      if (this.sortKey === "site") return this.compareText(this.diveSiteLabel(left), this.diveSiteLabel(right));
+      if (this.sortKey === "device") return this.compareText(this.diveDeviceLabel(left), this.diveDeviceLabel(right));
+      if (this.sortKey === "computer") return this.compareText(this.diveComputerLabel(left), this.diveComputerLabel(right));
+      const leftTime = parseDate(left.started_at)?.getTime() || 0;
+      const rightTime = parseDate(right.started_at)?.getTime() || 0;
+      return leftTime - rightTime;
+    },
+    compareText(left, right) {
+      return String(left || "").localeCompare(String(right || ""), undefined, { sensitivity: "base" });
+    },
+    barUsedValue(dive) {
+      const label = pressureUsedLabel(dive);
+      const match = /(\d+)/.exec(label);
+      return match ? Number(match[1]) : -1;
+    },
+    temperatureValue(dive) {
+      return numberOrZero(surfaceTemperature(dive));
+    },
+    toggleSort(key) {
+      if (this.sortKey === key) {
+        this.sortDirection = this.sortDirection === "asc" ? "desc" : "asc";
+        return;
+      }
+      this.sortKey = key;
+      this.sortDirection = ["date", "depth", "duration", "barUsed", "temp", "id"].includes(key) ? "desc" : "asc";
+    },
+    toggleMobileControls() {
+      this.mobileControlsOpen = !this.mobileControlsOpen;
+    },
+    setMobileSort(key) {
+      this.toggleSort(key);
+      this.mobileControlsOpen = false;
+    },
+    sortIndicator(key) {
+      if (this.sortKey !== key) return "unfold_more";
+      return this.sortDirection === "asc" ? "arrow_upward" : "arrow_downward";
+    },
+    sortHeaderClass(key) {
+      return this.sortKey === key ? "text-primary" : "text-secondary";
+    },
     nextPage() {
       if (this.currentPage < this.pageCount) this.currentPage += 1;
     },
@@ -84,6 +160,9 @@ export default {
     surfaceTemperature,
     diveTitle,
     pressureUsedLabel,
+    displayDiveIndex(dive) {
+      return paddedDiveIndex(dive, this.diveSequenceMap);
+    },
     diveSiteLabel(dive) {
       const site = typeof importDraftSeed(dive)?.site === "string" ? importDraftSeed(dive).site.trim() : "";
       return site || "Site pending";
@@ -95,6 +174,9 @@ export default {
     diveDeviceLabel(dive) {
       const vendor = typeof dive?.vendor === "string" ? dive.vendor.trim() : "";
       return vendor || "Unknown device";
+    },
+    diveMapPreview(dive) {
+      return diveMapPreview(dive, this.diveSites);
     }
   },
   template: `
@@ -103,41 +185,77 @@ export default {
         <div v-if="statusMessage" class="rounded-xl bg-primary/10 px-4 py-3 text-sm text-primary">{{ statusMessage }}</div>
         <div v-if="errorMessage" class="rounded-xl bg-error-container/20 px-4 py-3 text-sm text-on-error-container">{{ errorMessage }}</div>
 
-        <div class="mb-2 flex gap-3">
+        <div class="mb-2 flex gap-2">
           <div class="relative flex-1">
             <span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-lg text-on-surface-variant">search</span>
-            <input :value="searchText" @input="setSearchText($event.target.value)" type="text" class="w-full rounded-lg border-none bg-surface-container-high py-3 pl-10 pr-4 text-sm font-label tracking-[0.14em] text-on-surface placeholder:text-on-surface-variant/50 focus:ring-1 focus:ring-primary/20" placeholder="SEARCH LOGS..." />
+            <input :value="searchText" @input="setSearchText($event.target.value)" type="text" class="w-full rounded-lg border-none bg-surface-container-high py-2.5 pl-10 pr-4 text-sm font-label tracking-[0.12em] text-on-surface placeholder:text-on-surface-variant/50 focus:ring-1 focus:ring-primary/20" placeholder="Search Logs..." />
           </div>
-          <button class="flex w-12 items-center justify-center rounded-lg bg-surface-container-high active:scale-95">
-            <span class="material-symbols-outlined text-primary">filter_list</span>
+          <button @click="toggleMobileControls" class="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-lg bg-surface-container-high active:scale-95" :class="mobileControlsOpen ? 'text-primary' : 'text-on-surface-variant'">
+            <span class="material-symbols-outlined">{{ mobileControlsOpen ? 'close' : 'filter_list' }}</span>
           </button>
         </div>
 
-        <div class="flex items-end justify-between px-1">
+        <div v-if="mobileControlsOpen" class="space-y-4 rounded-xl bg-surface-container-low px-4 py-4 shadow-panel">
+          <div class="flex items-center justify-between gap-3">
+            <div>
+              <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-on-surface-variant">Order By</p>
+              <p class="mt-1 text-sm font-semibold text-on-surface">{{ activeSortLabel }} · {{ sortDirection === 'asc' ? 'Ascending' : 'Descending' }}</p>
+            </div>
+            <button
+              type="button"
+              @click="toggleSort(sortKey)"
+              class="inline-flex items-center gap-2 rounded-lg bg-surface-container-high px-3 py-2 font-label text-[10px] font-bold uppercase tracking-[0.16em] text-primary"
+            >
+              <span class="material-symbols-outlined text-sm">{{ sortDirection === 'asc' ? 'north' : 'south' }}</span>
+              {{ sortDirection === 'asc' ? 'Asc' : 'Desc' }}
+            </button>
+          </div>
+
+          <div class="grid grid-cols-2 gap-2">
+            <button
+              v-for="option in mobileSortOptions"
+              :key="'mobile-sort-' + option.key"
+              type="button"
+              @click="setMobileSort(option.key)"
+              class="rounded-lg px-3 py-2 text-left text-sm font-semibold transition-colors"
+              :class="sortKey === option.key ? 'bg-primary/12 text-primary' : 'bg-surface-container-high text-on-surface-variant'"
+            >
+              {{ option.label }}
+            </button>
+          </div>
+        </div>
+
+        <div class="px-1">
           <div class="flex flex-col">
             <span class="font-label text-[10px] font-bold uppercase tracking-[0.2em] text-on-surface-variant">Dive Records</span>
-            <span class="font-headline text-2xl font-bold tracking-tight text-primary">TOTAL_DIVES: {{ filteredDives.length }}</span>
-          </div>
-          <div class="text-right">
-            <span class="font-label text-[10px] font-bold uppercase tracking-[0.2em] text-tertiary">Critical Depth</span>
-            <div class="font-headline text-xl font-medium text-tertiary">{{ highlightedDive ? formatDepth(highlightedDive.max_depth_m) : '--' }}</div>
+            <span class="font-headline text-2xl font-bold tracking-tight text-primary">{{ filteredDives.length }} Total Dives</span>
           </div>
         </div>
 
         <div class="space-y-4">
           <article v-for="dive in pagedDives" :key="'mobile-log-' + dive.id" @click="openDive(dive.id)" @keyup.enter="openDive(dive.id)" tabindex="0" role="button" class="rounded-xl bg-surface-container-low p-4 transition-all active:scale-[0.98] focus:bg-surface-container-high focus:outline-none">
             <div class="flex gap-4">
-              <div class="relative flex h-24 w-16 flex-shrink-0 flex-col items-center justify-center overflow-hidden rounded bg-surface-container-high">
-                <div class="absolute inset-0 opacity-10" style="background-image: radial-gradient(circle at 2px 2px, #9ccaff 1px, transparent 0); background-size: 8px 8px;"></div>
-                <span class="z-10 font-label text-[10px] font-bold uppercase text-on-surface-variant/70">ID</span>
-                <span class="z-10 font-headline text-xl font-bold text-primary">{{ dive.id }}</span>
+              <div class="relative h-24 w-16 flex-shrink-0 overflow-hidden rounded bg-surface-container-high">
+                <template v-if="diveMapPreview(dive)">
+                  <img :src="diveMapPreview(dive).tileUrl" alt="" class="h-full w-full object-cover opacity-90" />
+                  <div class="absolute inset-0 bg-gradient-to-t from-background/50 via-transparent to-transparent"></div>
+                  <span class="absolute left-1/2 top-1/2 h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white bg-primary shadow-[0_0_12px_rgba(156,202,255,0.8)]" :style="{ left: diveMapPreview(dive).markerLeft, top: diveMapPreview(dive).markerTop }"></span>
+                  <span class="absolute bottom-1 left-1 right-1 rounded bg-background/72 px-1 py-0.5 text-center font-label text-[9px] font-bold text-primary">{{ displayDiveIndex(dive) }}</span>
+                </template>
+                <template v-else>
+                  <div class="absolute inset-0 opacity-10" style="background-image: radial-gradient(circle at 2px 2px, #9ccaff 1px, transparent 0); background-size: 8px 8px;"></div>
+                  <div class="flex h-full flex-col items-center justify-center">
+                    <span class="z-10 font-label text-[10px] font-bold uppercase text-on-surface-variant/70">ID</span>
+                    <span class="z-10 font-headline text-xl font-bold text-primary">{{ displayDiveIndex(dive) }}</span>
+                  </div>
+                </template>
               </div>
               <div class="flex min-w-0 flex-1 flex-col justify-between py-1">
                 <div class="flex items-start justify-between gap-3">
                   <div class="min-w-0">
-                    <h3 class="truncate font-headline text-lg font-bold tracking-tight">{{ diveTitle(dive) }}</h3>
+                    <h3 class="truncate font-headline text-lg font-bold tracking-tight">{{ diveSiteLabel(dive) }}</h3>
                     <p class="font-label text-[10px] font-bold uppercase tracking-[0.16em] text-on-surface-variant">{{ formatDate(dive.started_at) }} | {{ formatTime(dive.started_at) }}</p>
-                    <p class="mt-1 truncate text-sm text-secondary">{{ diveSiteLabel(dive) }}</p>
+                    <p class="mt-1 truncate text-sm text-secondary">{{ diveDeviceLabel(dive) }} / {{ diveComputerLabel(dive) }}</p>
                   </div>
                   <span class="material-symbols-outlined text-sm text-on-surface-variant">chevron_right</span>
                 </div>
@@ -158,6 +276,41 @@ export default {
               </div>
             </div>
           </article>
+        </div>
+
+        <div class="rounded-xl bg-surface-container-low px-4 py-3">
+          <label class="flex items-center justify-between gap-4">
+            <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-on-surface-variant">Dives Per Page</span>
+            <select v-model.number="pageSize" class="rounded-lg border-none bg-surface-container-high px-3 py-2 text-sm font-bold text-on-surface focus:ring-1 focus:ring-primary/20">
+              <option v-for="size in pageSizeOptions" :key="'mobile-page-size-' + size" :value="size">{{ size }}</option>
+            </select>
+          </label>
+        </div>
+
+        <div class="flex items-center justify-between rounded-xl bg-surface-container-low px-4 py-3">
+          <div>
+            <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-on-surface-variant">{{ paginationLabel }}</p>
+            <p class="mt-1 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-primary">Page {{ pageCountLabel }}</p>
+          </div>
+          <div class="flex items-center gap-2">
+            <button
+              type="button"
+              @click="previousPage"
+              :disabled="currentPage === 1"
+              class="flex h-10 w-10 items-center justify-center rounded-lg bg-surface-container-high text-on-surface-variant transition-colors hover:text-primary disabled:opacity-30"
+            >
+              <span class="material-symbols-outlined">chevron_left</span>
+            </button>
+            <span class="rounded-lg border border-primary/20 bg-primary/10 px-3 py-2 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-primary">{{ currentPage }}</span>
+            <button
+              type="button"
+              @click="nextPage"
+              :disabled="currentPage >= pageCount"
+              class="flex h-10 w-10 items-center justify-center rounded-lg bg-surface-container-high text-on-surface-variant transition-colors hover:text-primary disabled:opacity-30"
+            >
+              <span class="material-symbols-outlined">chevron_right</span>
+            </button>
+          </div>
         </div>
       </section>
 
@@ -212,12 +365,10 @@ export default {
           <div class="flex flex-wrap gap-4">
             <div class="flex min-w-[220px] flex-1 items-center gap-2 bg-surface-container-high px-4 py-3">
               <span class="material-symbols-outlined text-primary">sort</span>
-              <select v-model="sortOption" class="w-full border-none bg-transparent p-0 text-sm font-bold text-on-surface focus:ring-0">
-                <option value="newest">Date (Newest First)</option>
-                <option value="oldest">Date (Oldest First)</option>
-                <option value="deepest">Depth (Deepest)</option>
-                <option value="longest">Duration (Longest)</option>
-              </select>
+              <div>
+                <p class="text-sm font-bold text-on-surface">Click a table header to sort</p>
+                <p class="mt-1 text-xs text-on-surface-variant">Click the same header again to reverse the order.</p>
+              </div>
             </div>
             <div class="flex items-center gap-2 bg-surface-container-high px-4 py-3">
               <span class="material-symbols-outlined text-primary">monitoring</span>
@@ -226,12 +377,22 @@ export default {
                 <option v-for="device in deviceOptions" :key="device" :value="device">{{ device }}</option>
               </select>
             </div>
+            <div class="flex items-center gap-3 bg-surface-container-high px-4 py-3">
+              <span class="material-symbols-outlined text-primary">view_list</span>
+              <label class="flex items-center gap-3 text-sm font-bold text-on-surface">
+                <span>Dives Per Page</span>
+                <select v-model.number="pageSize" class="border-none bg-transparent p-0 pr-6 text-sm font-bold text-on-surface focus:ring-0">
+                  <option v-for="size in pageSizeOptions" :key="'desktop-page-size-' + size" :value="size">{{ size }}</option>
+                </select>
+              </label>
+            </div>
           </div>
         </div>
         <div class="border-l-2 border-primary bg-surface-container-high p-6">
           <p class="font-label text-[10px] font-bold uppercase tracking-[0.24em] text-primary">Recent Highlight</p>
           <p class="mt-3 font-headline text-xl font-bold">{{ highlightedDive ? highlightedDive.vendor + ' ' + highlightedDive.product : 'No dive loaded' }}</p>
           <p class="mt-1 text-sm text-secondary">{{ highlightedDive ? formatDepth(highlightedDive.max_depth_m) + ' max' : 'Import dives to populate this panel.' }}</p>
+          <p class="mt-4 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Page {{ pageCountLabel }}</p>
           <button v-if="highlightedDive" @click="openDive(highlightedDive.id)" class="mt-5 bg-primary px-4 py-2 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-on-primary">
             Open Detail
           </button>
@@ -239,11 +400,19 @@ export default {
       </div>
       <div class="overflow-hidden bg-surface-container-low shadow-panel">
         <div class="hidden grid-cols-12 gap-4 bg-surface-container-high/50 px-8 py-4 font-label text-[10px] font-bold uppercase tracking-[0.22em] text-secondary md:grid">
-          <div class="col-span-1">Dive ID</div><div class="col-span-2">Date</div><div class="col-span-2">Dive Site</div><div class="col-span-1">Device</div><div class="col-span-2">Dive Computer</div><div class="col-span-1 text-center">Depth</div><div class="col-span-1 text-center">Duration</div><div class="col-span-1 text-center">Bar Used</div><div class="col-span-1 text-center">Temp</div>
+          <button type="button" @click="toggleSort('id')" class="col-span-1 flex items-center gap-1 bg-transparent p-0 text-left transition-colors hover:text-primary" :class="sortHeaderClass('id')"><span>Dive ID</span><span class="material-symbols-outlined text-sm">{{ sortIndicator('id') }}</span></button>
+          <button type="button" @click="toggleSort('date')" class="col-span-2 flex items-center gap-1 bg-transparent p-0 text-left transition-colors hover:text-primary" :class="sortHeaderClass('date')"><span>Date</span><span class="material-symbols-outlined text-sm">{{ sortIndicator('date') }}</span></button>
+          <button type="button" @click="toggleSort('site')" class="col-span-2 flex items-center gap-1 bg-transparent p-0 text-left transition-colors hover:text-primary" :class="sortHeaderClass('site')"><span>Dive Site</span><span class="material-symbols-outlined text-sm">{{ sortIndicator('site') }}</span></button>
+          <button type="button" @click="toggleSort('device')" class="col-span-1 flex items-center gap-1 bg-transparent p-0 text-left transition-colors hover:text-primary" :class="sortHeaderClass('device')"><span>Device</span><span class="material-symbols-outlined text-sm">{{ sortIndicator('device') }}</span></button>
+          <button type="button" @click="toggleSort('computer')" class="col-span-2 flex items-center gap-1 bg-transparent p-0 text-left transition-colors hover:text-primary" :class="sortHeaderClass('computer')"><span>Dive Computer</span><span class="material-symbols-outlined text-sm">{{ sortIndicator('computer') }}</span></button>
+          <button type="button" @click="toggleSort('depth')" class="col-span-1 flex items-center justify-center gap-1 bg-transparent p-0 text-center transition-colors hover:text-primary" :class="sortHeaderClass('depth')"><span>Depth</span><span class="material-symbols-outlined text-sm">{{ sortIndicator('depth') }}</span></button>
+          <button type="button" @click="toggleSort('duration')" class="col-span-1 flex items-center justify-center gap-1 bg-transparent p-0 text-center transition-colors hover:text-primary" :class="sortHeaderClass('duration')"><span>Duration</span><span class="material-symbols-outlined text-sm">{{ sortIndicator('duration') }}</span></button>
+          <button type="button" @click="toggleSort('barUsed')" class="col-span-1 flex items-center justify-center gap-1 bg-transparent p-0 text-center transition-colors hover:text-primary" :class="sortHeaderClass('barUsed')"><span>Bar Used</span><span class="material-symbols-outlined text-sm">{{ sortIndicator('barUsed') }}</span></button>
+          <button type="button" @click="toggleSort('temp')" class="col-span-1 flex items-center justify-center gap-1 bg-transparent p-0 text-center transition-colors hover:text-primary" :class="sortHeaderClass('temp')"><span>Temp</span><span class="material-symbols-outlined text-sm">{{ sortIndicator('temp') }}</span></button>
         </div>
         <div class="divide-y divide-outline-variant/10">
           <article v-for="dive in pagedDives" :key="dive.id" @click="openDive(dive.id)" @keyup.enter="openDive(dive.id)" tabindex="0" role="button" class="grid cursor-pointer gap-4 px-5 py-6 text-left transition-colors hover:bg-surface-container-highest/30 focus:bg-surface-container-highest/30 focus:outline-none md:grid-cols-12 md:px-8">
-            <div class="md:col-span-1"><p class="font-headline text-sm font-bold tracking-widest text-primary">#{{ dive.id }}</p></div>
+            <div class="md:col-span-1"><p class="font-headline text-sm font-bold tracking-widest text-primary">{{ displayDiveIndex(dive) }}</p></div>
             <div class="md:col-span-2"><p class="text-sm font-bold">{{ formatDate(dive.started_at) }}</p><p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-on-surface-variant">{{ formatTime(dive.started_at) }}</p></div>
             <div class="md:col-span-2"><p class="text-sm font-extrabold">{{ diveSiteLabel(dive) }}</p></div>
             <div class="md:col-span-1"><p class="text-sm font-extrabold">{{ diveDeviceLabel(dive) }}</p></div>
@@ -262,7 +431,10 @@ export default {
           </div>
         </div>
         <div class="flex flex-col items-center justify-between gap-4 bg-surface-container-high/30 px-8 py-6 md:flex-row">
-          <p class="font-label text-[10px] font-bold uppercase tracking-[0.22em] text-on-surface-variant">Displaying {{ paginationLabel }}</p>
+          <div>
+            <p class="font-label text-[10px] font-bold uppercase tracking-[0.22em] text-on-surface-variant">Displaying {{ paginationLabel }}</p>
+            <p class="mt-1 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-primary">Page {{ pageCountLabel }}</p>
+          </div>
           <div class="flex items-center gap-2">
             <button @click="previousPage" :disabled="currentPage === 1" class="bg-surface-container-high px-3 py-2 text-on-surface-variant transition-colors hover:text-primary disabled:opacity-30"><span class="material-symbols-outlined">chevron_left</span></button>
             <span class="border border-primary/20 bg-primary/10 px-4 py-2 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-primary">{{ currentPage }}</span>

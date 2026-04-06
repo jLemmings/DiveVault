@@ -1,5 +1,6 @@
 import L from "leaflet";
-import { dayOfMonth, monthShort, formatDate, formatTime, diveTitle, diveSubtitle, formatDepth, formatDepthNumber, formatDateTime, durationShort, formatTemperature, surfaceTemperature, profileBars, diveModeLabel, pressureUsedLabel, decoStatusLabel, formatAccumulatedDuration, formatBarTotal, filledIconStyle, numberOrZero, oxygenToxicityPercent, parseDate, importDraftSeed } from "../core.js";
+import { buildDiveSequenceMap, dayOfMonth, monthShort, formatDate, formatTime, diveTitle, diveSubtitle, formatDepth, formatDepthNumber, formatDateTime, durationShort, formatTemperature, surfaceTemperature, diveModeLabel, pressureUsedLabel, decoStatusLabel, formatAccumulatedDuration, formatBarTotal, filledIconStyle, numberOrZero, parseDate, importDraftSeed, paddedDiveIndex } from "../core.js";
+import { diveMapPreview } from "../map-preview.js";
 
 function numericCoordinate(value) {
   if (typeof value === "number" && Number.isFinite(value)) return value;
@@ -143,7 +144,6 @@ export default {
     formatDurationShort: durationShort,
     formatTemperature,
     surfaceTemperature,
-    profileBars,
     diveModeLabel,
     pressureUsedLabel,
     decoStatusLabel,
@@ -151,6 +151,9 @@ export default {
     formatBarTotal,
     coordinateLabel,
     diveSiteName,
+    diveMapPreview(dive) {
+      return diveMapPreview(dive, this.diveSites);
+    },
     handleMapResize() {
       if (!this.diveMap) return;
       this.diveMap.invalidateSize(false);
@@ -424,24 +427,8 @@ export default {
     featuredDive() {
       return this.recentDives[0] || null;
     },
-    dashboardStatus() {
-      if (!this.featuredDive) return "Nominal";
-      return this.decoStatusLabel(this.featuredDive) === "Deco Active" ? "Decompression" : "Nominal";
-    },
     filledIconStyle() {
       return filledIconStyle;
-    },
-    surfaceWindowLabel() {
-      if (!this.featuredDive) return "Surface 00:00h";
-      const hours = Math.max(2, Math.round(numberOrZero(this.featuredDive.duration_seconds) / 1200));
-      return `Surface 0${hours}:45h`;
-    },
-    mobileOxygenLabel() {
-      const value = oxygenToxicityPercent(this.featuredDive);
-      return typeof value === "number" ? `${value.toFixed(0)}%` : "94%";
-    },
-    mobileBars() {
-      return profileBars(this.featuredDive || {}).slice(0, 10);
     },
     dashboardUserName() {
       return this.currentUserName || "Diver";
@@ -452,6 +439,9 @@ export default {
     importedDiveLabel() {
       const count = Number(this.importedDiveCount || 0);
       return `${count} imported ${count === 1 ? "dive" : "dives"} awaiting completion`;
+    },
+    diveSequenceMap() {
+      return buildDiveSequenceMap(this.allDives);
     },
     diveMapMarkers() {
       const markers = new Map();
@@ -532,6 +522,7 @@ export default {
 
           return {
             id: dive.id,
+            displayIndex: paddedDiveIndex(dive, this.diveSequenceMap),
             date: dive.started_at,
             siteName: siteName || "Site pending",
             title: diveTitle(dive),
@@ -569,19 +560,6 @@ export default {
   template: `
     <section class="space-y-10 text-on-surface">
       <section class="space-y-6 md:hidden">
-        <div class="space-y-4">
-          <div class="flex items-end justify-between">
-            <div>
-              <p class="font-label text-[10px] font-bold uppercase tracking-[0.22em] text-on-surface-variant">Current Status</p>
-              <h3 class="mt-1 font-headline text-3xl font-bold uppercase tracking-tight text-primary">{{ dashboardStatus }}</h3>
-            </div>
-            <span class="inline-flex items-center rounded-full bg-tertiary-container/40 px-3 py-1 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-tertiary">{{ surfaceWindowLabel }}</span>
-          </div>
-          <div class="h-1 overflow-hidden rounded-full bg-surface-container-highest">
-            <div class="h-full bg-primary shadow-[0_0_8px_rgba(156,202,255,0.5)]" :style="{ width: stats.bottomTimeProgress + '%' }"></div>
-          </div>
-        </div>
-
         <div class="grid grid-cols-2 gap-3">
           <div class="space-y-2 rounded-xl border-l-2 border-primary/30 bg-surface-container-low p-4">
             <div class="flex items-start justify-between">
@@ -613,7 +591,6 @@ export default {
                 <div class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-on-surface-variant">Accumulated Bottom Time</div>
               </div>
             </div>
-            <span class="material-symbols-outlined text-on-surface-variant/40">chevron_right</span>
           </div>
         </div>
 
@@ -647,7 +624,14 @@ export default {
               class="glass-panel flex cursor-pointer items-center gap-4 rounded-xl p-4 transition-colors hover:bg-surface-container-high focus:bg-surface-container-high focus:outline-none"
             >
               <div class="relative h-12 w-12 flex-shrink-0 overflow-hidden rounded-lg border border-outline-variant/20 bg-[radial-gradient(circle_at_30%_30%,rgba(156,202,255,0.35),transparent_35%),linear-gradient(180deg,#132c40,#000f1d)]">
-                <div class="absolute inset-0 bg-gradient-to-t from-surface-container-lowest to-transparent"></div>
+                <template v-if="diveMapPreview(dive)">
+                  <img :src="diveMapPreview(dive).tileUrl" alt="" class="h-full w-full object-cover opacity-95" />
+                  <div class="absolute inset-0 bg-gradient-to-t from-surface-container-lowest/55 to-transparent"></div>
+                  <span class="absolute left-1/2 top-1/2 h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full border border-white bg-primary shadow-[0_0_10px_rgba(156,202,255,0.8)]" :style="{ left: diveMapPreview(dive).markerLeft, top: diveMapPreview(dive).markerTop }"></span>
+                </template>
+                <template v-else>
+                  <div class="absolute inset-0 bg-gradient-to-t from-surface-container-lowest to-transparent"></div>
+                </template>
               </div>
               <div class="min-w-0 flex-1">
                 <h5 class="truncate font-headline text-sm font-bold tracking-tight">{{ diveTitle(dive) }}</h5>
@@ -661,18 +645,6 @@ export default {
           </div>
         </section>
 
-        <section class="space-y-4">
-          <h4 class="font-headline text-lg font-bold uppercase tracking-tight text-primary-fixed-dim">Oxygen Saturation</h4>
-          <div class="relative h-32 overflow-hidden rounded-xl border-l-2 border-primary/20 bg-surface-container-low p-4">
-            <div class="absolute inset-x-2 bottom-2 top-8 flex items-end gap-1">
-              <div v-for="(bar, index) in mobileBars" :key="'bar-' + index" class="w-full rounded-sm bg-primary/20" :style="{ height: Math.max(20, bar) + '%' }"></div>
-            </div>
-            <div class="relative z-10 flex justify-between">
-              <span class="font-label text-[10px] font-bold uppercase tracking-[0.16em] text-primary/70">Avg {{ mobileOxygenLabel }}</span>
-              <span class="font-label text-[10px] font-bold uppercase tracking-[0.16em] text-primary/70">{{ backendHealthy ? 'Backend Synced' : 'Backend Pending' }}</span>
-            </div>
-          </div>
-        </section>
       </section>
 
       <section class="hidden space-y-10 md:block">
@@ -823,7 +795,7 @@ export default {
             <article v-for="dive in missingCoordinateDives" :key="'missing-coordinate-' + dive.id" class="border border-outline-variant/10 bg-surface-container-high/55 p-4">
               <div class="flex items-start justify-between gap-4">
                 <div class="min-w-0">
-                  <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Dive #{{ dive.id }}</p>
+                  <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Dive {{ dive.displayIndex }}</p>
                   <h6 class="mt-2 truncate font-headline text-xl font-bold text-on-surface">{{ dive.siteName }}</h6>
                   <p class="mt-1 text-sm text-on-surface-variant">{{ dive.title }}</p>
                 </div>

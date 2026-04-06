@@ -47,6 +47,13 @@ export default {
     };
   },
   computed: {
+    tankVolumeOptions() {
+      return [
+        { label: "9L", value: "9" },
+        { label: "12L", value: "12" },
+        { label: "15L", value: "15" }
+      ];
+    },
     selectedDraft() {
       return this.draft || null;
     },
@@ -328,6 +335,13 @@ export default {
                 </p>
               </label>
               <label class="block space-y-2">
+                <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Tank Volume</span>
+                <select :value="selectedDraft.tank_volume_l || ''" @change="updateField('tank_volume_l', $event.target.value)" class="w-full rounded-lg border-none bg-surface-container-high px-4 py-3 text-sm text-on-surface focus:ring-1 focus:ring-primary">
+                  <option value="">Select tank volume</option>
+                  <option v-for="option in tankVolumeOptions" :key="'mobile-tank-' + option.value" :value="option.value">{{ option.label }}</option>
+                </select>
+              </label>
+              <label class="block space-y-2">
                 <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Dive Notes</span>
                 <textarea :value="selectedDraft.notes" @input="updateField('notes', $event.target.value)" rows="5" placeholder="Visibility, current, wildlife, entry notes..." class="w-full resize-none rounded-lg border-none bg-surface-container-high px-4 py-3 text-sm leading-6 text-on-surface placeholder:text-secondary/50 focus:ring-1 focus:ring-primary"></textarea>
               </label>
@@ -452,7 +466,7 @@ export default {
                 </div>
               </label>
 
-              <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <div class="grid grid-cols-1 gap-4 md:grid-cols-3">
                 <label class="block space-y-2">
                   <span class="font-label text-[10px] font-bold uppercase tracking-[0.2em] text-secondary">Buddy</span>
                   <metadata-autocomplete-field
@@ -478,6 +492,13 @@ export default {
                   <p class="text-xs leading-5 text-on-surface-variant">
                     {{ savedGuides.length ? 'Search saved guides from Settings or enter a custom value.' : 'No saved guides yet. Add them in Settings to reuse them here.' }}
                   </p>
+                </label>
+                <label class="block space-y-2">
+                  <span class="font-label text-[10px] font-bold uppercase tracking-[0.2em] text-secondary">Tank Volume</span>
+                  <select :value="selectedDraft.tank_volume_l || ''" @change="updateField('tank_volume_l', $event.target.value)" class="w-full border border-primary/10 bg-surface-container-high/35 px-4 py-3 text-sm text-on-surface focus:border-primary/30 focus:ring-1 focus:ring-primary">
+                    <option value="">Select tank volume</option>
+                    <option v-for="option in tankVolumeOptions" :key="'desktop-tank-' + option.value" :value="option.value">{{ option.label }}</option>
+                  </select>
                 </label>
               </div>
 
