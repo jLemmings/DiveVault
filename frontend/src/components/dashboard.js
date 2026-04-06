@@ -161,7 +161,7 @@ export default {
       const map = L.map(this.$refs.diveMapCanvas, {
         zoomControl: false,
         attributionControl: false,
-        scrollWheelZoom: false,
+        scrollWheelZoom: true,
         zoomSnap: 0.25,
         zoomDelta: 0.5,
         minZoom: 1.5,
@@ -200,7 +200,7 @@ export default {
     },
     diveMarkerBubble(marker) {
       const diveLabel = marker.count === 1 ? "1 dive" : `${marker.count} dives`;
-      const locationLabel = marker.siteCount > 1 ? `${marker.siteCount} sites in this sector` : marker.label;
+      const locationLabel = marker.siteCount > 1 ? `${marker.siteCount} sites in this area` : marker.label;
       const sitePreview = marker.siteCount > 1
         ? `${marker.siteLabels.slice(0, 3).join(" / ")}${marker.siteCount > 3 ? ` +${marker.siteCount - 3} more` : ""}`
         : "";
@@ -212,47 +212,83 @@ export default {
         </div>
       `;
     },
-    sectorSizeForZoom(zoom) {
-      if (zoom >= 9) return 0.08;
-      if (zoom >= 8) return 0.12;
-      if (zoom >= 7) return 0.18;
-      if (zoom >= 6) return 0.3;
-      if (zoom >= 5) return 0.6;
-      return 1.2;
+    clusterRadiusForZoom(zoom) {
+      if (zoom >= 9.5) return 0;
+      if (zoom >= 8.5) return 18;
+      if (zoom >= 7.5) return 24;
+      if (zoom >= 6.5) return 30;
+      if (zoom >= 5.5) return 38;
+      return 48;
     },
-    sectorBucketValue(value, sectorSize) {
-      return Math.floor(value / sectorSize) * sectorSize;
+    baseDisplayMarker(marker) {
+      return {
+        key: marker.key,
+        count: marker.count,
+        siteCount: 1,
+        label: marker.label,
+        siteLabels: [marker.label],
+        representativeId: marker.representativeId,
+        latestDiveDate: marker.latestDiveDate,
+        latitude: marker.latitude,
+        longitude: marker.longitude,
+        sourceMarkers: [marker]
+      };
     },
     displayDiveMapMarkers() {
       if (!this.diveMapMarkers.length) return [];
 
-      const sectorSize = this.sectorSizeForZoom(this.diveMap?.getZoom?.() ?? 4.25);
-      const sectors = new Map();
+      const zoom = this.diveMap?.getZoom?.() ?? 4.25;
+      const clusterRadius = this.clusterRadiusForZoom(zoom);
+
+      if (!this.diveMap || clusterRadius <= 0) {
+        return this.diveMapMarkers
+          .map((marker) => this.baseDisplayMarker(marker))
+          .sort((left, right) => {
+            if (right.count !== left.count) return right.count - left.count;
+            return (right.latestDiveDate?.getTime() || 0) - (left.latestDiveDate?.getTime() || 0);
+          });
+      }
+
+      const clusters = [];
 
       this.diveMapMarkers.forEach((marker) => {
-        const bucketLat = this.sectorBucketValue(marker.latitude, sectorSize);
-        const bucketLon = this.sectorBucketValue(marker.longitude, sectorSize);
-        const key = `${bucketLat.toFixed(3)}:${bucketLon.toFixed(3)}`;
-        const existing = sectors.get(key);
+        const point = this.diveMap.project(L.latLng(marker.latitude, marker.longitude), zoom);
+        let nearestCluster = null;
+        let nearestDistance = Number.POSITIVE_INFINITY;
 
-        if (existing) {
-          existing.count += marker.count;
-          existing.siteCount += 1;
-          existing.latitudeTotal += marker.latitude * marker.count;
-          existing.longitudeTotal += marker.longitude * marker.count;
-          existing.sourceMarkers.push(marker);
-          if (!existing.siteLabels.includes(marker.label)) {
-            existing.siteLabels.push(marker.label);
+        clusters.forEach((cluster) => {
+          const distance = point.distanceTo(cluster.projectedCenter);
+          if (distance <= clusterRadius && distance < nearestDistance) {
+            nearestCluster = cluster;
+            nearestDistance = distance;
           }
-          if (marker.latestDiveDate && (!existing.latestDiveDate || marker.latestDiveDate > existing.latestDiveDate)) {
-            existing.latestDiveDate = marker.latestDiveDate;
-            existing.representativeId = marker.representativeId;
+        });
+
+        if (nearestCluster) {
+          nearestCluster.count += marker.count;
+          nearestCluster.siteCount += 1;
+          nearestCluster.latitudeTotal += marker.latitude * marker.count;
+          nearestCluster.longitudeTotal += marker.longitude * marker.count;
+          nearestCluster.projectedXTotal += point.x * marker.count;
+          nearestCluster.projectedYTotal += point.y * marker.count;
+          nearestCluster.projectedCenter = L.point(
+            nearestCluster.projectedXTotal / nearestCluster.count,
+            nearestCluster.projectedYTotal / nearestCluster.count
+          );
+          nearestCluster.sourceMarkers.push(marker);
+          if (!nearestCluster.siteLabels.includes(marker.label)) {
+            nearestCluster.siteLabels.push(marker.label);
+          }
+          if (marker.latestDiveDate && (!nearestCluster.latestDiveDate || marker.latestDiveDate > nearestCluster.latestDiveDate)) {
+            nearestCluster.latestDiveDate = marker.latestDiveDate;
+            nearestCluster.representativeId = marker.representativeId;
+            nearestCluster.label = marker.label;
           }
           return;
         }
 
-        sectors.set(key, {
-          key,
+        clusters.push({
+          key: marker.key,
           count: marker.count,
           siteCount: 1,
           label: marker.label,
@@ -261,22 +297,25 @@ export default {
           latestDiveDate: marker.latestDiveDate,
           latitudeTotal: marker.latitude * marker.count,
           longitudeTotal: marker.longitude * marker.count,
+          projectedXTotal: point.x * marker.count,
+          projectedYTotal: point.y * marker.count,
+          projectedCenter: point,
           sourceMarkers: [marker]
         });
       });
 
-      return Array.from(sectors.values())
-        .map((sector) => ({
-          key: sector.key,
-          count: sector.count,
-          siteCount: sector.siteCount,
-          label: sector.label,
-          siteLabels: sector.siteLabels,
-          representativeId: sector.representativeId,
-          latestDiveDate: sector.latestDiveDate,
-          latitude: sector.latitudeTotal / sector.count,
-          longitude: sector.longitudeTotal / sector.count,
-          sourceMarkers: sector.sourceMarkers
+      return clusters
+        .map((cluster, index) => ({
+          key: cluster.siteCount > 1 ? `cluster-${index}-${cluster.representativeId}` : cluster.key,
+          count: cluster.count,
+          siteCount: cluster.siteCount,
+          label: cluster.label,
+          siteLabels: cluster.siteLabels,
+          representativeId: cluster.representativeId,
+          latestDiveDate: cluster.latestDiveDate,
+          latitude: cluster.latitudeTotal / cluster.count,
+          longitude: cluster.longitudeTotal / cluster.count,
+          sourceMarkers: cluster.sourceMarkers
         }))
         .sort((left, right) => {
           if (right.count !== left.count) return right.count - left.count;
@@ -301,7 +340,7 @@ export default {
 
       this.diveMap.flyToBounds(L.latLngBounds(positions), {
         padding: [72, 72],
-        maxZoom: 9,
+        maxZoom: 11.5,
         duration: 0.45
       });
     },
