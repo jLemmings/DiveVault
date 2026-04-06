@@ -862,7 +862,7 @@ def test_delete_endpoints(server_fixture):
 
 def test_route_manifest_requires_test_updates_for_new_endpoints():
     """Guardrail: when route literals change, this test fails and forces test updates."""
-    source = Path("divevault/app.py").read_text(encoding="utf-8")
+    source = (Path(__file__).resolve().parents[1] / "divevault" / "app.py").read_text(encoding="utf-8")
 
     discovered_literals = set(re.findall(r'if (?:path|self\.path) == "([^"]+)"', source))
     discovered_regex = {f"regex:{pattern}" for pattern in re.findall(r're\.fullmatch\(r"([^"]+)"', source)}

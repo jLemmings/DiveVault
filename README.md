@@ -52,7 +52,7 @@ Once imported, dives appear in the frontend as `imported` records. They remain i
 
 Backend:
 
-- Entry point: `python -m divevault.app`
+- Entry point: `cd backend && python -m divevault.app`
 - HTTP server: Python `http.server` with threaded request handling
 - Storage: PostgreSQL via `psycopg`
 - Auth: Clerk session tokens, Clerk API keys, and short-lived desktop sync tokens
@@ -71,10 +71,11 @@ Persistence:
 
 ## Repository Layout
 
-- [`divevault/app.py`](./divevault/app.py): backend server and auth flow
-- [`divevault/postgres_store.py`](./divevault/postgres_store.py): schema management and PostgreSQL access
+- [`backend/divevault/app.py`](./backend/divevault/app.py): backend server and auth flow
+- [`backend/divevault/postgres_store.py`](./backend/divevault/postgres_store.py): schema management and PostgreSQL access
+- [`backend/tests`](./backend/tests): backend-only test suite
 - [`frontend`](./frontend): Vue frontend
-- [`migrations/migrate_postgres_schema.py`](./migrations/migrate_postgres_schema.py): migration entry point
+- [`backend/migrations/migrate_postgres_schema.py`](./backend/migrations/migrate_postgres_schema.py): migration entry point
 - [`docker-compose.yml`](./docker-compose.yml): local multi-container setup
 
 ## Local Development
@@ -92,7 +93,7 @@ Install dependencies:
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
+pip install -r backend/requirements-dev.txt
 ```
 
 Set environment variables:
@@ -104,6 +105,7 @@ Copy-Item .env.example .env
 Run the backend:
 
 ```powershell
+Set-Location backend
 python -m divevault.app
 ```
 
@@ -155,7 +157,7 @@ Backend tests cover:
 Run tests with:
 
 ```powershell
-.\.venv\Scripts\python.exe -m pytest -q tests
+.\.venv\Scripts\python.exe -m pytest -q backend/tests
 ```
 
 ## Image Versioning

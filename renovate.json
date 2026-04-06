@@ -31,8 +31,8 @@
         "pip_requirements"
       ],
       "matchFileNames": [
-        "requirements.txt",
-        "requirements-dev.txt"
+        "backend/requirements.txt",
+        "backend/requirements-dev.txt"
       ],
       "groupName": "python requirements"
     },

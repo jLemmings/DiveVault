@@ -39,12 +39,12 @@ jobs:
       - name: Install backend dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements-dev.txt
+          pip install -r backend/requirements-dev.txt
 
       - name: Run backend tests
         env:
-          PYTHONPATH: ${{ github.workspace }}
-        run: python -m pytest -vv -ra tests
+          PYTHONPATH: ${{ github.workspace }}/backend
+        run: python -m pytest -vv -ra backend/tests
 
       - name: Set up Docker Buildx
         if: github.event_name != 'pull_request'
@@ -147,9 +147,8 @@ jobs:
           BUNDLE_ROOT="release/divevault-${BASE_VERSION}"
           mkdir -p "${BUNDLE_ROOT}/frontend"
 
-          cp README.md LICENSE Dockerfile docker-compose.yml requirements.txt .env.example "${BUNDLE_ROOT}/"
-          cp dive_backend.py migrate_postgres_schema.py docker-entrypoint.sh "${BUNDLE_ROOT}/"
-          cp -R divevault migrations docker "${BUNDLE_ROOT}/"
+          cp README.md LICENSE docker-compose.yml .env.example "${BUNDLE_ROOT}/"
+          cp -R backend "${BUNDLE_ROOT}/backend"
           cp frontend/package.json frontend/package-lock.json "${BUNDLE_ROOT}/frontend/"
           cp -R frontend/dist "${BUNDLE_ROOT}/frontend/dist"
 
@@ -161,6 +160,7 @@ jobs:
         if: github.event_name != 'pull_request'
         uses: docker/build-push-action@v7
         with:
+          file: backend/Dockerfile
           platforms: linux/amd64
           pull: true
           push: true
