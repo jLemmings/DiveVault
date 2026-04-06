@@ -478,3 +478,78 @@ def test_backfill_profile_collection_tables_requests_dict_rows_for_user_profile_
 
     assert conn.row_factories[0] is postgres_store.dict_row
     assert conn.select_cursor.query == "SELECT * FROM user_profile"
+
+
+def test_apply_schema_migration_v1_ignores_blank_public_slugs_in_unique_index():
+    class FakeCursor:
+        def __init__(self):
+            self.queries = []
+
+        def execute(self, query, params=None):
+            self.queries.append((query, params))
+
+    cur = FakeCursor()
+
+    postgres_store.apply_schema_migration_v1(cur)
+
+    index_query = next(
+        query for query, _ in cur.queries if "idx_user_profile_public_slug" in query and "CREATE UNIQUE INDEX" in query
+    )
+    assert "NULLIF(BTRIM(COALESCE(public_slug, '')), '') IS NOT NULL" in index_query
+
+
+def test_save_user_profile_persists_blank_slug_when_public_dives_are_disabled(monkeypatch):
+    class FakeCursor:
+        def __init__(self):
+            self.executed = []
+            self.last_query = None
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def execute(self, query, params=None):
+            self.last_query = query
+            self.executed.append((query, params))
+
+        def fetchone(self):
+            if self.last_query and "SELECT * FROM user_profile" in self.last_query:
+                return None
+            return None
+
+    class FakeConnection:
+        def __init__(self):
+            self.cursor_instance = FakeCursor()
+            self.committed = False
+
+        def cursor(self, row_factory=None):
+            return self.cursor_instance
+
+        def commit(self):
+            self.committed = True
+
+    monkeypatch.setattr(postgres_store, "now_iso", lambda: "2026-04-06T18:00:00+00:00")
+    monkeypatch.setattr(postgres_store, "resolve_user_profile_collections", lambda _conn, _user_id, _row: ([], [], [], []))
+    monkeypatch.setattr(postgres_store, "replace_user_profile_licenses", lambda _cur, _user_id, _licenses: None)
+    monkeypatch.setattr(postgres_store, "replace_user_profile_dive_sites", lambda _cur, _user_id, _dive_sites: None)
+    monkeypatch.setattr(postgres_store, "replace_user_profile_buddies", lambda _cur, _user_id, _buddies: None)
+    monkeypatch.setattr(postgres_store, "replace_user_profile_guides", lambda _cur, _user_id, _guides: None)
+    monkeypatch.setattr(postgres_store, "get_user_profile", lambda _conn, _user_id: {"user_id": _user_id, "public_slug": ""})
+
+    conn = FakeConnection()
+
+    profile = postgres_store.save_user_profile(
+        conn,
+        "user-1",
+        {
+            "name": "Diver One",
+            "public_dives_enabled": False,
+        },
+    )
+
+    insert_params = next(params for query, params in conn.cursor_instance.executed if "INSERT INTO user_profile" in query)
+    assert insert_params[4] == ""
+    assert conn.committed is True
+    assert profile == {"user_id": "user-1", "public_slug": ""}
