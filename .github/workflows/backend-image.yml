@@ -10,13 +10,24 @@ on:
 
 env:
   REGISTRY: ghcr.io
+  SOURCE_ARTIFACT_NAME: repo-source
+  IMAGE_ARTIFACT_NAME: docker-image
+  RELEASE_ARTIFACT_NAME: release-bundle
+  LOCAL_IMAGE_TAG: divevault-ci:${{ github.sha }}
 
 jobs:
-  build-backend:
+  fetch-artifacts:
     runs-on: ubuntu-latest
     permissions:
-      contents: write
-      packages: write
+      contents: read
+    outputs:
+      base_version: ${{ steps.version.outputs.base_version }}
+      create_release: ${{ steps.version.outputs.create_release }}
+      release_tag: ${{ steps.version.outputs.release_tag }}
+      release_asset_name: ${{ steps.version.outputs.release_asset_name }}
+      version_tag: ${{ steps.version.outputs.version_tag }}
+      image_repository: ${{ steps.version.outputs.image_repository }}
+      tags: ${{ steps.version.outputs.tags }}
 
     steps:
       - name: Checkout
@@ -24,43 +35,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Set up Python
-        uses: actions/setup-python@v6
-        with:
-          python-version: "3.14.3"
-
-      - name: Set up Node
-        if: github.event_name != 'pull_request'
-        uses: actions/setup-node@v6
-        with:
-          node-version: "24.14.1"
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
-
-      - name: Install backend dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r backend/requirements-dev.txt
-
-      - name: Run backend tests
-        env:
-          PYTHONPATH: ${{ github.workspace }}/backend
-        run: python -m pytest -vv -ra backend/tests
-
-      - name: Set up Docker Buildx
-        if: github.event_name != 'pull_request'
-        uses: docker/setup-buildx-action@v4
-
-      - name: Login to GitHub Container Registry
-        if: github.event_name != 'pull_request'
-        uses: docker/login-action@v4
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
       - name: Resolve release version and tags
-        if: github.event_name != 'pull_request'
         id: version
         env:
           GH_TOKEN: ${{ github.token }}
@@ -96,7 +71,7 @@ jobs:
             "${IMAGE_REPOSITORY}:${VERSION_TAG}"
           )
 
-          if [[ "${GITHUB_REF}" == "refs/heads/master" ]]; then
+          if [[ "${GITHUB_EVENT_NAME}" != "pull_request" && "${GITHUB_REF}" == "refs/heads/master" ]]; then
             if gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${RELEASE_TAG}" >/dev/null 2>&1; then
               echo "Release '${RELEASE_TAG}' already exists. Publishing snapshot image tags only."
             else
@@ -126,22 +101,140 @@ jobs:
             echo "EOF"
           } >> "${GITHUB_OUTPUT}"
 
+      - name: Package source artifact
+        run: |
+          set -euo pipefail
+          tar \
+            --exclude='.git' \
+            --exclude='.venv' \
+            --exclude='.pytest_cache' \
+            --exclude='frontend/node_modules' \
+            --exclude='frontend/dist' \
+            --exclude='frontend/playwright-report' \
+            --exclude='frontend/test-results' \
+            -czf "${RUNNER_TEMP}/repo-source.tar.gz" .
+
+      - name: Upload source artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.SOURCE_ARTIFACT_NAME }}
+          path: ${{ runner.temp }}/repo-source.tar.gz
+          if-no-files-found: error
+
+  test-frontend:
+    runs-on: ubuntu-latest
+    needs: fetch-artifacts
+
+    steps:
+      - name: Download source artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ env.SOURCE_ARTIFACT_NAME }}
+          path: ${{ runner.temp }}/artifacts
+
+      - name: Extract source artifact
+        run: |
+          set -euo pipefail
+          tar -xzf "${RUNNER_TEMP}/artifacts/repo-source.tar.gz" -C "${GITHUB_WORKSPACE}"
+
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24.14.1"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
       - name: Install frontend dependencies
-        if: github.event_name != 'pull_request'
         working-directory: frontend
         run: npm ci
 
-      - name: Build frontend
-        if: github.event_name != 'pull_request'
+      - name: Install Playwright browsers
         working-directory: frontend
-        run: npm run build
+        env:
+          PLAYWRIGHT_BROWSERS_PATH: 0
+        run: |
+          npx playwright --version
+          npx playwright install --with-deps
+
+      - name: Run frontend tests
+        working-directory: frontend
+        env:
+          PLAYWRIGHT_BROWSERS_PATH: 0
+        run: npm test
+
+  test-backend:
+    runs-on: ubuntu-latest
+    needs: fetch-artifacts
+
+    steps:
+      - name: Download source artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ env.SOURCE_ARTIFACT_NAME }}
+          path: ${{ runner.temp }}/artifacts
+
+      - name: Extract source artifact
+        run: |
+          set -euo pipefail
+          tar -xzf "${RUNNER_TEMP}/artifacts/repo-source.tar.gz" -C "${GITHUB_WORKSPACE}"
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.14.3"
+
+      - name: Install backend dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r backend/requirements-dev.txt
+
+      - name: Run backend tests
+        env:
+          PYTHONPATH: ${{ github.workspace }}/backend
+        run: python -m pytest -vv -ra backend/tests
+
+  build-image:
+    runs-on: ubuntu-latest
+    needs:
+      - fetch-artifacts
+      - test-frontend
+      - test-backend
+
+    steps:
+      - name: Download source artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ env.SOURCE_ARTIFACT_NAME }}
+          path: ${{ runner.temp }}/artifacts
+
+      - name: Extract source artifact
+        run: |
+          set -euo pipefail
+          tar -xzf "${RUNNER_TEMP}/artifacts/repo-source.tar.gz" -C "${GITHUB_WORKSPACE}"
+
+      - name: Set up Node
+        if: needs.fetch-artifacts.outputs.create_release == 'true'
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24.14.1"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        if: needs.fetch-artifacts.outputs.create_release == 'true'
+        working-directory: frontend
+        run: npm ci
+
+      - name: Build frontend release assets
+        if: needs.fetch-artifacts.outputs.create_release == 'true'
+        working-directory: frontend
+        run: npm run build:app
 
       - name: Create release bundle
-        if: steps.version.outputs.create_release == 'true'
-        id: release_bundle
+        if: needs.fetch-artifacts.outputs.create_release == 'true'
         env:
-          BASE_VERSION: ${{ steps.version.outputs.base_version }}
-          RELEASE_ASSET_NAME: ${{ steps.version.outputs.release_asset_name }}
+          BASE_VERSION: ${{ needs.fetch-artifacts.outputs.base_version }}
+          RELEASE_ASSET_NAME: ${{ needs.fetch-artifacts.outputs.release_asset_name }}
         run: |
           set -euo pipefail
 
@@ -155,31 +248,93 @@ jobs:
 
           tar -C release -czf "release/${RELEASE_ASSET_NAME}" "divevault-${BASE_VERSION}"
 
-          echo "asset_path=release/${RELEASE_ASSET_NAME}" >> "${GITHUB_OUTPUT}"
+      - name: Upload release bundle
+        if: needs.fetch-artifacts.outputs.create_release == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.RELEASE_ARTIFACT_NAME }}
+          path: release/${{ needs.fetch-artifacts.outputs.release_asset_name }}
+          if-no-files-found: error
 
-      - name: Build and push Docker image
-        if: github.event_name != 'pull_request'
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Build Docker image artifact
         uses: docker/build-push-action@v7
         with:
           file: backend/Dockerfile
           platforms: linux/amd64
           pull: true
-          push: true
-          tags: ${{ steps.version.outputs.tags }}
+          push: false
+          tags: ${{ env.LOCAL_IMAGE_TAG }}
+          outputs: type=docker,dest=${{ runner.temp }}/divevault-image.tar
           labels: |
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
             org.opencontainers.image.revision=${{ github.sha }}
-            org.opencontainers.image.version=${{ steps.version.outputs.version_tag }}
+            org.opencontainers.image.version=${{ needs.fetch-artifacts.outputs.version_tag }}
+
+      - name: Upload Docker image artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.IMAGE_ARTIFACT_NAME }}
+          path: ${{ runner.temp }}/divevault-image.tar
+          if-no-files-found: error
+
+  publish:
+    runs-on: ubuntu-latest
+    needs:
+      - fetch-artifacts
+      - build-image
+    if: github.event_name != 'pull_request'
+    permissions:
+      contents: write
+      packages: write
+
+    steps:
+      - name: Download Docker image artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ env.IMAGE_ARTIFACT_NAME }}
+          path: ${{ runner.temp }}/artifacts
+
+      - name: Load Docker image
+        run: docker load --input "${RUNNER_TEMP}/artifacts/divevault-image.tar"
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish Docker image tags
+        env:
+          TAGS: ${{ needs.fetch-artifacts.outputs.tags }}
+        run: |
+          set -euo pipefail
+          while IFS= read -r tag; do
+            if [[ -z "${tag}" ]]; then
+              continue
+            fi
+            docker tag "${LOCAL_IMAGE_TAG}" "${tag}"
+            docker push "${tag}"
+          done <<< "${TAGS}"
+
+      - name: Download release bundle
+        if: needs.fetch-artifacts.outputs.create_release == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ env.RELEASE_ARTIFACT_NAME }}
+          path: ${{ runner.temp }}/release
 
       - name: Create GitHub release
-        if: steps.version.outputs.create_release == 'true'
+        if: needs.fetch-artifacts.outputs.create_release == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ steps.version.outputs.release_tag }}
-          RELEASE_ASSET_NAME: ${{ steps.version.outputs.release_asset_name }}
-          RELEASE_ASSET_PATH: ${{ steps.release_bundle.outputs.asset_path }}
+          RELEASE_TAG: ${{ needs.fetch-artifacts.outputs.release_tag }}
+          RELEASE_ASSET_NAME: ${{ needs.fetch-artifacts.outputs.release_asset_name }}
         run: |
-          gh release create "${RELEASE_TAG}" "${RELEASE_ASSET_PATH}#${RELEASE_ASSET_NAME}" \
+          gh release create "${RELEASE_TAG}" "${RUNNER_TEMP}/release/${RELEASE_ASSET_NAME}#${RELEASE_ASSET_NAME}" \
             --target "${GITHUB_SHA}" \
             --title "${RELEASE_TAG}" \
             --generate-notes

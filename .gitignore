@@ -22,3 +22,5 @@ frontend/.env.local
 *.db-wal
 frontend/node_modules
 frontend/dist
+frontend/playwright-report
+frontend/test-results
