@@ -28,6 +28,17 @@ body {
   scrollbar-width: none;
 }
 
+.ui-number-input {
+  appearance: textfield;
+  -moz-appearance: textfield;
+}
+
+.ui-number-input::-webkit-outer-spin-button,
+.ui-number-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
 .depth-bar {
   background: linear-gradient(180deg, rgba(156, 202, 255, 0.16), rgba(156, 202, 255, 0.92));
 }

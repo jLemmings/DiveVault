@@ -3,7 +3,7 @@ import { diveMapPreview } from "../map-preview.js";
 
 export default {
   name: "LogsView",
-  props: ["dives", "diveSites", "searchText", "openDive", "openImportQueue", "setSearchText", "statusMessage", "errorMessage"],
+  props: ["dives", "diveSites", "searchText", "openDive", "openImportQueue", "openManualDive", "setSearchText", "statusMessage", "errorMessage"],
   data() {
     return {
       sortKey: "date",
@@ -184,6 +184,15 @@ export default {
           </button>
         </div>
 
+        <div class="grid grid-cols-2 gap-2">
+          <button @click="openManualDive()" class="rounded-lg bg-primary px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-on-primary">
+            New Entry
+          </button>
+          <button @click="openImportQueue()" class="rounded-lg bg-surface-container-high px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-primary">
+            Imported Queue
+          </button>
+        </div>
+
         <div v-if="mobileControlsOpen" class="space-y-4 rounded-xl bg-surface-container-low px-4 py-4 shadow-panel">
           <div class="flex items-center justify-between gap-3">
             <div>
@@ -320,7 +329,7 @@ export default {
               placeholder="Search dive logs..."
             />
           </div>
-          <button @click="openImportQueue()" class="flex items-center gap-2 bg-primary px-6 py-3 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-on-primary">
+          <button @click="openManualDive()" class="flex items-center gap-2 bg-primary px-6 py-3 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-on-primary">
             <span class="material-symbols-outlined text-sm">add</span>
             New Entry
           </button>

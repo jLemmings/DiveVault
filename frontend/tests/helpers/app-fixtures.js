@@ -185,6 +185,52 @@ function updateDiveLogbook(data, diveId, payload) {
   return clone(dive);
 }
 
+function createDiveFromPayload(data, payload) {
+  const nextId = data.dives.reduce((max, dive) => Math.max(max, Number(dive.id) || 0), 0) + 1;
+  const logbook = payload?.fields?.logbook && typeof payload.fields.logbook === "object"
+    ? payload.fields.logbook
+    : {};
+  const temperature = payload?.fields?.temperature_surface_c;
+  const tankVolume = payload?.fields?.tanks?.[0]?.volume;
+  const dive = {
+    id: nextId,
+    vendor: payload.vendor || "Manual",
+    product: payload.product || "Logbook Entry",
+    started_at: payload.started_at || "2026-04-07T09:00:00Z",
+    imported_at: "2026-04-07T12:00:00Z",
+    duration_seconds: payload.duration_seconds || 0,
+    max_depth_m: payload.max_depth_m ?? 0,
+    avg_depth_m: payload.avg_depth_m ?? null,
+    raw_sha256: payload.raw_sha256 || `sha-${nextId}`,
+    raw_data_size: payload.raw_data_b64 ? payload.raw_data_b64.length : 0,
+    sample_count: Array.isArray(payload.samples) ? payload.samples.length : 0,
+    samples: Array.isArray(payload.samples) ? payload.samples : [],
+    fields: {
+      ...(payload.fields || {}),
+      location: payload?.fields?.location || { lat: 26.508, lon: -77.089 },
+      tanks: Number.isFinite(Number(tankVolume)) ? [{ volume: Number(tankVolume) }] : (payload?.fields?.tanks || []),
+      logbook: {
+        site: logbook.site || "",
+        buddy: logbook.buddy || "",
+        guide: logbook.guide || "",
+        notes: logbook.notes || "",
+        status: logbook.status || "imported",
+        completed_at: logbook.completed_at || undefined
+      }
+    }
+  };
+
+  if (typeof temperature === "number") {
+    dive.fields.temperature_surface_c = temperature;
+    dive.fields.temperature_minimum_c = temperature;
+    dive.fields.temperature_maximum_c = temperature;
+  }
+
+  data.dives.push(dive);
+  refreshStats(data);
+  return clone(dive);
+}
+
 async function fulfillJson(route, payload, status = 200) {
   await route.fulfill({
     status,
@@ -251,13 +297,37 @@ async function installAppMocks(page, options = {}) {
       return;
     }
 
-    if (pathname === "/api/dives") {
+    if (pathname === "/api/dives" && request.method() === "GET") {
       await fulfillJson(route, { dives: clone(data.dives), stats: clone(data.stats) });
+      return;
+    }
+
+    if (pathname === "/api/dives" && request.method() === "POST") {
+      const payload = request.postDataJSON ? request.postDataJSON() : JSON.parse(request.postData() || "{}");
+      const createdDive = createDiveFromPayload(data, payload);
+      await fulfillJson(route, { inserted: true, id: createdDive.id }, 201);
       return;
     }
 
     if (pathname === "/api/profile" && request.method() === "GET") {
       await fulfillJson(route, clone(data.profile));
+      return;
+    }
+
+    if (pathname === "/api/geocode/search" && request.method() === "GET") {
+      const query = (url.searchParams.get("q") || "").trim();
+      if (!query) {
+        await fulfillJson(route, { error: "Query is required." }, 400);
+        return;
+      }
+      await fulfillJson(route, {
+        found: true,
+        result: {
+          country: "Egypt",
+          latitude: 25.3104,
+          longitude: 34.8818
+        }
+      });
       return;
     }
 

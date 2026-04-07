@@ -8,11 +8,29 @@ import EquipmentView from "./components/equipment.js";
 import LogbookEditorView from "./components/logbook-edit.js";
 import LoginView from "./components/login.js";
 import LogsView from "./components/logs.js";
+import ManualDiveEntryView from "./components/manual-dive.js";
 import PublicProfileView from "./components/public-profile.js";
 import SettingsView, { SETTINGS_SECTIONS } from "./components/settings.js";
 
 const DEFAULT_SETTINGS_SECTION = SETTINGS_SECTIONS[0]?.id || "diver-details";
 const SETTINGS_SECTION_IDS = new Set(SETTINGS_SECTIONS.map((section) => section.id));
+
+function createManualDiveDraft() {
+  const now = new Date();
+  const localDate = new Date(now.getTime() - (now.getTimezoneOffset() * 60000));
+  return {
+    date: localDate.toISOString().slice(0, 10),
+    time: localDate.toISOString().slice(11, 16),
+    durationMinutes: "45",
+    maxDepthM: "",
+    temperatureC: "",
+    tankVolumeL: "",
+    site: "",
+    buddy: "",
+    guide: "",
+    notes: ""
+  };
+}
 
 export default {
   name: "DiveVaultApp",
@@ -20,6 +38,7 @@ export default {
     LoginView,
     DashboardView,
     LogsView,
+    ManualDiveEntryView,
     DiveImportView,
     DiveImportEditorView,
     LogbookEditorView,
@@ -52,6 +71,9 @@ export default {
       selectedDiveId: null,
       selectedImportId: null,
       selectedEditDiveId: null,
+      manualDiveDraft: createManualDiveDraft(),
+      manualDiveCreating: false,
+      manualDiveError: "",
       searchText: "",
       dives: [],
       profileDiveSites: [],
@@ -140,6 +162,9 @@ export default {
       if (this.activeView === "edit" && this.selectedEditDive) {
         return { eyebrow: "Dive Archive", title: "Logbook Editor" };
       }
+      if (this.activeView === "create") {
+        return { eyebrow: "Dive Archive", title: "Manual Dive Entry" };
+      }
       if (this.activeView === "imports" && this.selectedImportDive) {
         return { eyebrow: "Synchronization Module", title: "Imported Dive Editor" };
       }
@@ -199,6 +224,7 @@ export default {
     },
     loadingViewKey() {
       if (this.activeView === "edit") return "edit";
+      if (this.activeView === "create") return "edit";
       if (this.activeView === "imports") return "imports";
       if (this.activeView === "settings") return "settings";
       if (this.activeView === "logs" && this.selectedDiveId) return "detail";
@@ -230,6 +256,9 @@ export default {
       this.selectedDiveId = null;
       this.selectedImportId = null;
       this.selectedEditDiveId = null;
+      this.manualDiveDraft = createManualDiveDraft();
+      this.manualDiveCreating = false;
+      this.manualDiveError = "";
       this.searchText = "";
       this.dives = [];
       this.profileDiveSites = [];
@@ -387,6 +416,7 @@ export default {
       if (view !== "logs") this.selectedDiveId = null;
       if (view !== "imports") this.selectedImportId = null;
       if (view !== "edit") this.selectedEditDiveId = null;
+      if (view !== "create") this.manualDiveError = "";
       if (view !== "settings") this.cliAuthCode = "";
       this.importError = "";
       this.importStatusMessage = "";
@@ -394,6 +424,32 @@ export default {
       if (this.isAuthenticated && ["dashboard", "logs", "imports", "edit"].includes(view)) {
         await this.fetchDives();
       }
+    },
+    openManualDiveCreator() {
+      this.closeMobileAccountMenu();
+      this.activeView = "create";
+      this.selectedDiveId = null;
+      this.selectedImportId = null;
+      this.selectedEditDiveId = null;
+      this.manualDiveDraft = createManualDiveDraft();
+      this.manualDiveCreating = false;
+      this.manualDiveError = "";
+      this.importError = "";
+      this.importStatusMessage = "";
+      window.location.hash = "create";
+    },
+    closeManualDiveCreator() {
+      this.closeMobileAccountMenu();
+      this.activeView = "logs";
+      this.manualDiveError = "";
+      window.location.hash = "logs";
+    },
+    updateManualDiveDraft(key, value) {
+      this.manualDiveDraft = {
+        ...this.manualDiveDraft,
+        [key]: value
+      };
+      this.manualDiveError = "";
     },
     setSettingsSection(sectionId) {
       this.closeMobileAccountMenu();
@@ -517,6 +573,143 @@ export default {
       this.importStatusMessage = "";
       this.importError = "";
     },
+    encodeBase64Utf8(value) {
+      const bytes = new TextEncoder().encode(String(value ?? ""));
+      let binary = "";
+      const chunkSize = 0x8000;
+      for (let index = 0; index < bytes.length; index += chunkSize) {
+        const chunk = bytes.subarray(index, index + chunkSize);
+        binary += String.fromCharCode(...chunk);
+      }
+      return window.btoa(binary);
+    },
+    async sha256Hex(value) {
+      const bytes = new TextEncoder().encode(String(value ?? ""));
+      const hash = await window.crypto.subtle.digest("SHA-256", bytes);
+      return Array.from(new Uint8Array(hash)).map((entry) => entry.toString(16).padStart(2, "0")).join("");
+    },
+    manualDiveStartedAt() {
+      const date = String(this.manualDiveDraft.date || "").trim();
+      const time = String(this.manualDiveDraft.time || "").trim();
+      if (!date || !time) {
+        throw new Error("Manual dives require a valid local start date and time.");
+      }
+      const startedAt = new Date(`${date}T${time}`);
+      if (Number.isNaN(startedAt.getTime())) {
+        throw new Error("Manual dives require a valid local start date and time.");
+      }
+      return startedAt.toISOString();
+    },
+    async createManualDive() {
+      const site = String(this.manualDiveDraft.site || "").trim();
+      const buddy = String(this.manualDiveDraft.buddy || "").trim();
+      const guide = String(this.manualDiveDraft.guide || "").trim();
+      const notes = String(this.manualDiveDraft.notes || "").trim();
+      const durationMinutes = Number.parseFloat(this.manualDiveDraft.durationMinutes);
+      const maxDepthM = Number.parseFloat(this.manualDiveDraft.maxDepthM);
+      const temperatureInput = String(this.manualDiveDraft.temperatureC || "").trim();
+      const tankVolumeInput = String(this.manualDiveDraft.tankVolumeL || "").trim();
+      const temperatureC = temperatureInput === "" ? null : Number.parseFloat(temperatureInput);
+      const tankVolume = tankVolumeInput === "" ? null : Number.parseFloat(tankVolumeInput);
+
+      if (!site || !buddy || !guide) {
+        this.manualDiveError = "Dive site, buddy, and guide are required for manual entries.";
+        return;
+      }
+      if (!Number.isFinite(durationMinutes) || durationMinutes <= 0) {
+        this.manualDiveError = "Duration must be greater than zero.";
+        return;
+      }
+      if (!Number.isFinite(maxDepthM) || maxDepthM < 0) {
+        this.manualDiveError = "Max depth must be zero or greater.";
+        return;
+      }
+      if (temperatureInput && !Number.isFinite(temperatureC)) {
+        this.manualDiveError = "Temperature must be a valid number.";
+        return;
+      }
+      if (tankVolumeInput && (!Number.isFinite(tankVolume) || tankVolume <= 0)) {
+        this.manualDiveError = "Tank volume must be greater than zero.";
+        return;
+      }
+
+      const startedAt = this.manualDiveStartedAt();
+      const completedAt = new Date().toISOString();
+      const rawSource = JSON.stringify({
+        source: "manual",
+        created_at: completedAt,
+        started_at: startedAt,
+        duration_seconds: Math.round(durationMinutes * 60),
+        max_depth_m: maxDepthM,
+        site,
+        buddy,
+        guide
+      });
+
+      const rawDataB64 = this.encodeBase64Utf8(rawSource);
+      const rawSha256 = await this.sha256Hex(rawSource);
+      const fields = {
+        manual_entry: true,
+        source: "manual",
+        logbook: {
+          site,
+          buddy,
+          guide,
+          notes,
+          status: "complete",
+          completed_at: completedAt
+        }
+      };
+
+      if (Number.isFinite(temperatureC)) {
+        fields.temperature_surface_c = temperatureC;
+        fields.temperature_minimum_c = temperatureC;
+        fields.temperature_maximum_c = temperatureC;
+      }
+
+      if (Number.isFinite(tankVolume)) {
+        fields.tanks = [{ volume: tankVolume }];
+      }
+
+      this.manualDiveCreating = true;
+      this.manualDiveError = "";
+      try {
+        const response = await this.authenticatedFetch("/api/dives", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            vendor: "Manual",
+            product: "Logbook Entry",
+            dive_uid: `manual-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
+            raw_sha256: rawSha256,
+            raw_data_b64: rawDataB64,
+            started_at: startedAt,
+            duration_seconds: Math.round(durationMinutes * 60),
+            max_depth_m: maxDepthM,
+            avg_depth_m: null,
+            fields,
+            samples: []
+          })
+        });
+        const payload = await response.json().catch(() => null);
+        if (!response.ok) {
+          throw new Error(payload?.error || `API returned ${response.status}`);
+        }
+
+        await this.fetchDives();
+        this.manualDiveDraft = createManualDiveDraft();
+        this.importStatusMessage = "Manual dive created.";
+        if (payload?.id) {
+          this.openDive(payload.id);
+        } else {
+          await this.setView("logs");
+        }
+      } catch (error) {
+        this.manualDiveError = error?.message || "Unable to create manual dive.";
+      } finally {
+        this.manualDiveCreating = false;
+      }
+    },
     async persistImportDraft(diveId, draft, commit = false) {
       const response = await this.authenticatedFetch(`/api/dives/${diveId}/logbook`, {
         method: "PUT",
@@ -628,6 +821,22 @@ export default {
       return this.profileDiveSites.find(
         (site) => typeof site?.name === "string" && site.name.trim().toLowerCase() === name.toLowerCase()
       ) || { name };
+    },
+    async searchDiveSiteLocation(query) {
+      const normalizedQuery = typeof query === "string" ? query.trim() : "";
+      if (!normalizedQuery) {
+        throw new Error("Enter a location before searching for GPS coordinates.");
+      }
+
+      const response = await this.authenticatedFetch(`/api/geocode/search?q=${encodeURIComponent(normalizedQuery)}`);
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(payload?.error || `API returned ${response.status}`);
+      }
+      if (!payload?.found || !payload?.result) {
+        return null;
+      }
+      return payload.result;
     },
     async deleteDive(diveId) {
       const id = String(diveId);
@@ -797,6 +1006,15 @@ export default {
         this.selectedEditDiveId = segment || null;
         return;
       }
+      if (view === "create") {
+        this.cliAuthCode = "";
+        this.activeView = "create";
+        this.selectedDiveId = null;
+        this.selectedImportId = null;
+        this.selectedEditDiveId = null;
+        this.manualDiveError = "";
+        return;
+      }
       if (view === "settings") {
         this.activeView = "settings";
         this.settingsMenuExpanded = true;
@@ -902,8 +1120,8 @@ export default {
         </div>
         <nav class="mt-8 flex-1 space-y-2">
           <div v-for="item in navItems" :key="item.id" class="space-y-2">
-            <button @click="handleNavItemClick(item.id)" :disabled="item.disabled" class="group flex w-full items-center gap-4 p-4 text-left transition-all duration-300 disabled:cursor-not-allowed disabled:opacity-100" :class="item.disabled ? 'border-l-4 border-tertiary bg-tertiary/12 text-tertiary' : (activeView === item.id ? 'border-r-4 border-primary bg-surface-container-high/70 text-primary' : 'text-secondary opacity-70 hover:bg-surface-container-high hover:text-primary hover:opacity-100')">
-              <span class="material-symbols-outlined transition-transform group-active:scale-90" :style="activeView === item.id && !item.disabled ? filledIconStyle : ''">{{ item.icon }}</span>
+            <button @click="handleNavItemClick(item.id)" :disabled="item.disabled" class="group flex w-full items-center gap-4 p-4 text-left transition-all duration-300 disabled:cursor-not-allowed disabled:opacity-100" :class="item.disabled ? 'border-l-4 border-tertiary bg-tertiary/12 text-tertiary' : ((activeView === item.id || (activeView === 'create' && item.id === 'logs')) ? 'border-r-4 border-primary bg-surface-container-high/70 text-primary' : 'text-secondary opacity-70 hover:bg-surface-container-high hover:text-primary hover:opacity-100')">
+              <span class="material-symbols-outlined transition-transform group-active:scale-90" :style="(activeView === item.id || (activeView === 'create' && item.id === 'logs')) && !item.disabled ? filledIconStyle : ''">{{ item.icon }}</span>
               <span class="hidden items-center gap-2 font-label text-[11px] font-bold md:flex">
                 <span>{{ item.label }}</span>
                 <span v-if="item.badge" class="rounded bg-tertiary px-2 py-0.5 text-[9px] font-black tracking-[0.18em] text-background">{{ item.badge }}</span>
@@ -932,7 +1150,7 @@ export default {
           </div>
         </nav>
         <div class="mt-auto p-6">
-          <button @click="openImportQueue()" class="hidden w-full items-center justify-center gap-2 bg-primary px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-on-primary transition-all hover:brightness-110 md:flex">
+          <button @click="openManualDiveCreator()" class="hidden w-full items-center justify-center gap-2 bg-primary px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-on-primary transition-all hover:brightness-110 md:flex">
             <span class="material-symbols-outlined text-sm">add</span>
             Log New Dive
           </button>
@@ -1067,7 +1285,8 @@ export default {
             <button @click="fetchDives" class="mt-5 bg-primary px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-on-primary">Retry</button>
           </section>
           <dashboard-view v-else-if="activeView === 'dashboard'" :dives="committedDives" :all-dives="dives" :dive-sites="profileDiveSites" :stats="stats" :set-view="setView" :backend-healthy="backendHealthy" :open-dive="openDive" :current-user-name="currentUserName" :imported-dive-count="importedDiveCount" :open-import-queue="openImportQueue"></dashboard-view>
-          <logs-view v-else-if="activeView === 'logs' && !selectedDive" :dives="committedDives" :dive-sites="profileDiveSites" :search-text="searchText" :open-dive="openDive" :open-import-queue="openImportQueue" :set-search-text="setSearchText" :delete-dive="deleteDive" :deleting-dive-id="deletingDiveId" :status-message="importStatusMessage" :error-message="importError"></logs-view>
+          <logs-view v-else-if="activeView === 'logs' && !selectedDive" :dives="committedDives" :dive-sites="profileDiveSites" :search-text="searchText" :open-dive="openDive" :open-import-queue="openImportQueue" :open-manual-dive="openManualDiveCreator" :set-search-text="setSearchText" :delete-dive="deleteDive" :deleting-dive-id="deletingDiveId" :status-message="importStatusMessage" :error-message="importError"></logs-view>
+          <manual-dive-entry-view v-else-if="activeView === 'create'" :draft="manualDiveDraft" :dive-sites="profileDiveSites" :buddies="profileBuddies" :guides="profileGuides" :creating="manualDiveCreating" :error-message="manualDiveError" :update-draft="updateManualDiveDraft" :create-manual-dive="createManualDive" :close-creator="closeManualDiveCreator" :create-dive-site="createDiveSite" :search-dive-site-location="searchDiveSiteLocation"></manual-dive-entry-view>
           <dive-import-editor-view v-else-if="activeView === 'imports' && selectedImportDive" :dive="selectedImportDive" :draft="selectedImportDraft" :dive-sites="profileDiveSites" :buddies="profileBuddies" :guides="profileGuides" :saving-import-id="savingImportId" :bulk-import-save-pending="bulkImportSavePending" :deleting-dive-id="deletingDiveId" :import-error="importError" :import-status-message="importStatusMessage" :update-import-draft="updateImportDraft" :save-import-draft="saveImportDraft" :delete-dive="deleteDive" :apply-buddy-guide-to-pending-imports="applyBuddyGuideToPendingImports" :create-dive-site="createDiveSite" :back-to-queue="backToImportQueue"></dive-import-editor-view>
           <dive-import-view v-else-if="activeView === 'imports'" :dives="dives" :import-drafts="importDrafts" :selected-import-id="selectedImportId" :select-import-dive="selectImportDive" :deleting-dive-id="deletingDiveId" :import-error="importError" :import-status-message="importStatusMessage" :delete-dive="deleteDive" :set-view="setView" :fetch-dives="fetchDives"></dive-import-view>
           <logbook-editor-view v-else-if="activeView === 'edit' && selectedEditDive" :dive="selectedEditDive" :all-dives="dives" :draft="selectedEditDraft" :dive-sites="profileDiveSites" :buddies="profileBuddies" :guides="profileGuides" :saving-import-id="savingImportId" :deleting-dive-id="deletingDiveId" :status-message="importStatusMessage" :error-message="importError" :update-dive-draft="updateImportDraft" :save-dive-logbook="saveExistingDiveLogbook" :delete-dive="deleteDive" :create-dive-site="createDiveSite" :close-editor="closeDiveEditor"></logbook-editor-view>
@@ -1083,9 +1302,9 @@ export default {
           @click="setView(item.id)"
           :disabled="item.disabled"
           class="flex flex-col items-center justify-center rounded-lg px-3 py-1 transition-all disabled:cursor-not-allowed disabled:opacity-100"
-          :class="item.disabled ? 'bg-tertiary/12 text-tertiary' : (activeView === item.id || ((activeView === 'imports' || activeView === 'edit') && item.id === 'logs') ? 'bg-surface-container-high text-primary' : 'text-secondary/60')"
+          :class="item.disabled ? 'bg-tertiary/12 text-tertiary' : (activeView === item.id || ((activeView === 'imports' || activeView === 'edit' || activeView === 'create') && item.id === 'logs') ? 'bg-surface-container-high text-primary' : 'text-secondary/60')"
         >
-          <span class="material-symbols-outlined mb-1" :style="!item.disabled && (activeView === item.id || ((activeView === 'imports' || activeView === 'edit') && item.id === 'logs')) ? filledIconStyle : ''">{{ item.mobileIcon || item.icon }}</span>
+          <span class="material-symbols-outlined mb-1" :style="!item.disabled && (activeView === item.id || ((activeView === 'imports' || activeView === 'edit' || activeView === 'create') && item.id === 'logs')) ? filledIconStyle : ''">{{ item.mobileIcon || item.icon }}</span>
           <span class="font-label text-[10px] font-bold">{{ item.mobileLabel }}</span>
         </button>
       </nav>

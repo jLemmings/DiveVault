@@ -62,6 +62,41 @@ test("covers the import queue and import completion flow", async ({ page }) => {
   await expect(page.locator("div:visible").filter({ hasText: "committed to the registry." }).first()).toBeVisible();
 });
 
+test("creates a manual dive entry outside the importer workflow", async ({ page }) => {
+  await installAppMocks(page);
+  await gotoAndWait(page, "/#logs");
+
+  await page.getByRole("button", { name: "New Entry" }).click();
+  await expect(page.getByRole("heading", { name: "Manual Dive Entry" })).toBeVisible();
+
+  await page.locator("input[type='date']:visible").fill("2026-04-06");
+  await page.locator("input[type='time']:visible").fill("09:15");
+  await page.getByPlaceholder("45").fill("52");
+  await page.getByPlaceholder("18.0").fill("21.4");
+  await page.getByPlaceholder("27").fill("26");
+  await page.getByLabel("Tank Volume").selectOption("12");
+  await page.getByPlaceholder("House Reef").fill("Cathedral");
+  await page.keyboard.press("Tab");
+  await page.getByRole("button", { name: "Save As Reusable Dive Site" }).click();
+  await expect(page.getByRole("heading", { name: "Add Dive Site" })).toBeVisible();
+  await page.getByPlaceholder("Blue Hole, Dahab, Egypt").fill("Blue Hole, Dahab, Egypt");
+  await page.getByRole("button", { name: "Search GPS From Location" }).click();
+  await page.getByRole("textbox", { name: "Country" }).fill("Egypt");
+  await page.getByRole("button", { name: "Save Dive Site" }).click();
+  await expect(page.getByText("Cathedral added to your saved dive sites.")).toBeVisible();
+  await page.getByPlaceholder("Diver name").fill("Sage");
+  await page.getByPlaceholder("Guide or instructor").fill("Noor");
+  await page.getByPlaceholder("Conditions, wildlife, route, entry, navigation, visibility...").fill("Manual shore dive logged without dive computer telemetry.");
+  await page.getByRole("button", { name: "Create Dive Log" }).click();
+
+  await expect(page.getByRole("heading", { name: "Cathedral" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Back To Logs" })).toBeVisible();
+
+  await page.goto("/#imports");
+  await expect(page.getByRole("heading", { name: "Imported Dives" })).toBeVisible();
+  await expect(page.locator("body")).toContainText("1 Imported");
+});
+
 test("covers settings profile loading and public sharing updates", async ({ page }) => {
   await installAppMocks(page);
   await gotoAndWait(page, "/#settings/diver-details");
