@@ -182,7 +182,7 @@ export default {
             <div class="relative grid gap-6 xl:grid-cols-[minmax(0,1.65fr)_minmax(260px,0.82fr)] xl:items-end">
               <div class="space-y-5">
                 <p class="max-w-3xl text-sm leading-7 text-on-surface-variant">
-                  Imported dives stay in the staging queue until the diver completes the required registry metadata.
+                  Imported dives from the DiveVault importer stay in the staging queue until the diver completes the required registry metadata.
                   Open a record to add the dive site, buddy, guide, and notes before it enters the permanent logbook.
                 </p>
                 <div class="flex flex-wrap items-center gap-3">
