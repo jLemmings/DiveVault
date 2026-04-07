@@ -1,4 +1,4 @@
-import { useAuth, useUser } from "@clerk/vue";
+import { useAuth, useUser } from "./auth.js";
 import { filledIconStyle, importDraftSeed, isImportComplete, effectiveImportDraft, missingImportFields, paddedDiveIndex, isCommittedDive } from "./core.js";
 import DashboardView from "./components/dashboard.js";
 import DiveDetailView from "./components/dive-detail.js";

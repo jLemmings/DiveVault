@@ -1,8 +1,8 @@
 import { createApp } from "vue";
-import { clerkPlugin } from "@clerk/vue";
 import "leaflet/dist/leaflet.css";
 
 import App from "./app.js";
+import { hasTestAuthState, installAuthPlugin } from "./auth.js";
 import "./styles.css";
 
 async function loadRuntimeConfig() {
@@ -25,13 +25,13 @@ async function loadRuntimeConfig() {
 async function bootstrap() {
   const publishableKey = (await loadRuntimeConfig())?.clerkPublishableKey;
 
-  if (!publishableKey) {
+  if (!publishableKey && !hasTestAuthState()) {
     throw new Error("Add VITE_CLERK_PUBLISHABLE_KEY to the backend environment before starting the app.");
   }
 
   const app = createApp(App);
 
-  app.use(clerkPlugin, {
+  installAuthPlugin(app, {
     publishableKey,
     afterSignOutUrl: "/",
     signInFallbackRedirectUrl: "/",
