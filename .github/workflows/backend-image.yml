@@ -115,7 +115,7 @@ jobs:
             -czf "${RUNNER_TEMP}/repo-source.tar.gz" .
 
       - name: Upload source artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ env.SOURCE_ARTIFACT_NAME }}
           path: ${{ runner.temp }}/repo-source.tar.gz
@@ -127,7 +127,7 @@ jobs:
 
     steps:
       - name: Download source artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: ${{ env.SOURCE_ARTIFACT_NAME }}
           path: ${{ runner.temp }}/artifacts
@@ -168,7 +168,7 @@ jobs:
 
     steps:
       - name: Download source artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: ${{ env.SOURCE_ARTIFACT_NAME }}
           path: ${{ runner.temp }}/artifacts
@@ -202,7 +202,7 @@ jobs:
 
     steps:
       - name: Download source artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: ${{ env.SOURCE_ARTIFACT_NAME }}
           path: ${{ runner.temp }}/artifacts
@@ -250,7 +250,7 @@ jobs:
 
       - name: Upload release bundle
         if: needs.fetch-artifacts.outputs.create_release == 'true'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ env.RELEASE_ARTIFACT_NAME }}
           path: release/${{ needs.fetch-artifacts.outputs.release_asset_name }}
@@ -274,7 +274,7 @@ jobs:
             org.opencontainers.image.version=${{ needs.fetch-artifacts.outputs.version_tag }}
 
       - name: Upload Docker image artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ env.IMAGE_ARTIFACT_NAME }}
           path: ${{ runner.temp }}/divevault-image.tar
@@ -292,7 +292,7 @@ jobs:
 
     steps:
       - name: Download Docker image artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: ${{ env.IMAGE_ARTIFACT_NAME }}
           path: ${{ runner.temp }}/artifacts
@@ -322,7 +322,7 @@ jobs:
 
       - name: Download release bundle
         if: needs.fetch-artifacts.outputs.create_release == 'true'
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: ${{ env.RELEASE_ARTIFACT_NAME }}
           path: ${{ runner.temp }}/release
