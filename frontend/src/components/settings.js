@@ -1,4 +1,4 @@
-import { useAuth, useUser } from "@clerk/vue";
+import { useAuth, useUser } from "../auth.js";
 import { getDocument, GlobalWorkerOptions } from "pdfjs-dist";
 import pdfWorkerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 

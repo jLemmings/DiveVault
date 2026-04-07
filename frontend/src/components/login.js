@@ -1,4 +1,4 @@
-import { SignIn, Waitlist, useSignIn } from "@clerk/vue";
+import { SignIn, Waitlist, useSignIn } from "../auth.js";
 
 const AUTH_VIEW_ENTRY = "entry";
 const AUTH_VIEW_SIGNIN = "signin";
