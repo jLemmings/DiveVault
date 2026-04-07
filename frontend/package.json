@@ -12,7 +12,7 @@
     "test:ui": "playwright test --ui"
   },
   "dependencies": {
-    "@clerk/vue": "^2.0.8",
+    "@clerk/vue": "^2.0.10",
     "leaflet": "^1.9.4",
     "pdfjs-dist": "^5.6.205",
     "vue": "^3.5.32"
@@ -24,6 +24,6 @@
     "autoprefixer": "^10.4.27",
     "postcss": "^8.5.8",
     "tailwindcss": "^4.2.2",
-    "vite": "^8.0.5"
+    "vite": "^8.0.7"
   }
 }
