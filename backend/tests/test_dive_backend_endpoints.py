@@ -393,6 +393,7 @@ def server_fixture(monkeypatch):
         server.clerk_publishable_key = "pk_test_123"
         server.cors_origin = "http://localhost:5173"
         server.max_json_body_bytes = 1024 * 1024
+        server.max_backup_import_bytes = 25 * 1024 * 1024
         server.max_list_limit = 200
         server.rate_limiter = dive_backend.FixedWindowRateLimiter()
         server.rate_limit_policies = {
@@ -828,6 +829,34 @@ def test_export_and_backup_endpoints(server_fixture):
     invalid_import = request(server, "POST", "/api/backup/import", token="session", payload={"version": 999})
     assert invalid_import.status == 400
 
+    server.max_json_body_bytes = 128
+    server.max_backup_import_bytes = 4096
+    backup_payload_above_global_limit = {
+        "version": 1,
+        "profile": {"name": "Elias Thorne", "email": "diver@example.com", "licenses": []},
+        "device_states": [],
+        "license_documents": [],
+        "dives": [
+            {
+                "vendor": "Mares",
+                "product": "Smart Air",
+                "dive_uid": "uid-backup-large-body",
+                "raw_sha256": "sha-large",
+                "raw_data_b64": base64.b64encode(b"x" * 256).decode("ascii"),
+            }
+        ],
+    }
+    backup_import_above_global_limit = request(
+        server,
+        "POST",
+        "/api/backup/import",
+        token="session",
+        payload=backup_payload_above_global_limit,
+    )
+    assert backup_import_above_global_limit.status == 200
+    server.max_json_body_bytes = 1024 * 1024
+    server.max_backup_import_bytes = 25 * 1024 * 1024
+
     imported_backup = request(
         server,
         "POST",
@@ -917,7 +946,7 @@ def test_export_and_backup_endpoints(server_fixture):
 
     dives_after_import = request(server, "GET", "/api/dives?include_samples=1", token="session")
     assert dives_after_import.status == 200
-    assert dives_after_import.json()["total"] == 2
+    assert dives_after_import.json()["total"] == 3
 
     device_state_after_import = request(server, "GET", "/api/device-state?vendor=Mares&product=Smart%20Air", token="session")
     assert device_state_after_import.status == 200

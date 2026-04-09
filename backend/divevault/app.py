@@ -1565,7 +1565,7 @@ class DiveBackendHandler(BaseHTTPRequestHandler):
             if user_id is None:
                 return
 
-            payload = self._read_json_body()
+            payload = self._read_json_body(max_bytes=getattr(self.server, "max_backup_import_bytes", 25 * 1024 * 1024))
             if payload is None:
                 return
 
@@ -1882,8 +1882,8 @@ class DiveBackendHandler(BaseHTTPRequestHandler):
         self._send_json(403, {"error": "Authenticated identity is missing a stable user identifier"})
         return None
 
-    def _read_json_body(self) -> dict | None:
-        max_json_body_bytes = int(getattr(self.server, "max_json_body_bytes", 1024 * 1024))
+    def _read_json_body(self, *, max_bytes: int | None = None) -> dict | None:
+        max_json_body_bytes = int(max_bytes if max_bytes is not None else getattr(self.server, "max_json_body_bytes", 1024 * 1024))
         content_length = self.headers.get("Content-Length", "0")
         try:
             length = int(content_length)
@@ -2051,6 +2051,7 @@ def main() -> None:
     parser.add_argument("--db-startup-retry-delay-seconds", type=float, default=float(os.getenv("DB_STARTUP_RETRY_DELAY_SECONDS", "2")), help="Delay between PostgreSQL startup checks")
     parser.add_argument("--db-connect-timeout-seconds", type=int, default=int(os.getenv("DB_CONNECT_TIMEOUT_SECONDS", "5")), help="Connection timeout for each PostgreSQL startup check")
     parser.add_argument("--max-json-body-bytes", type=int, default=int(os.getenv("MAX_JSON_BODY_BYTES", str(1024 * 1024))), help="Maximum JSON request body size in bytes")
+    parser.add_argument("--max-backup-import-bytes", type=int, default=int(os.getenv("MAX_BACKUP_IMPORT_BYTES", str(25 * 1024 * 1024))), help="Maximum JSON body size accepted by /api/backup/import")
     parser.add_argument("--max-list-limit", type=int, default=int(os.getenv("MAX_LIST_LIMIT", "200")), help="Maximum list endpoint page size")
     parser.add_argument("--rate-limit-window-seconds", type=int, default=int(os.getenv("RATE_LIMIT_WINDOW_SECONDS", "60")), help="Rate limit window in seconds")
     parser.add_argument("--rate-limit-cli-request-per-window", type=int, default=int(os.getenv("RATE_LIMIT_CLI_REQUEST_PER_WINDOW", "30")), help="Max CLI auth request create/status calls per IP and window")
@@ -2095,6 +2096,7 @@ def main() -> None:
     server.clerk_publishable_key = args.clerk_publishable_key
     server.cors_origin = args.cors_origin
     server.max_json_body_bytes = max(args.max_json_body_bytes, 1)
+    server.max_backup_import_bytes = max(args.max_backup_import_bytes, 1)
     server.max_list_limit = max(args.max_list_limit, 1)
     rate_limit_window_seconds = max(args.rate_limit_window_seconds, 1)
     server.rate_limiter = FixedWindowRateLimiter()

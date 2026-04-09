@@ -146,6 +146,7 @@ Common variables from [`.env.example`](./.env.example):
 - `CLERK_AUTHORIZED_PARTIES`: allowed `azp` values
 - `CLI_AUTH_REQUEST_TTL` and `CLI_AUTH_TOKEN_TTL`: desktop sync token timing
 - `MAX_JSON_BODY_BYTES`: maximum accepted JSON request payload size (defaults to `1048576`)
+- `MAX_BACKUP_IMPORT_BYTES`: maximum accepted JSON payload size for `/api/backup/import` (defaults to `26214400`)
 - `MAX_LIST_LIMIT`: upper bound for paginated list endpoints (defaults to `200`)
 - `RATE_LIMIT_WINDOW_SECONDS`: shared fixed-window size for backend request rate limits (defaults to `60`)
 - `RATE_LIMIT_CLI_REQUEST_PER_WINDOW`: max `/api/cli-auth/request` calls per IP per window (defaults to `30`)
