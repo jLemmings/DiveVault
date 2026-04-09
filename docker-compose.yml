@@ -15,6 +15,18 @@ services:
     volumes:
       - postgres-data:/var/lib/postgresql/data
 
+  migrate:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://dive:dive@postgres:5432/dive
+    command: ["python", "-m", "migrations.migrate_postgres_schema"]
+    restart: "no"
+
   backend:
     build:
       context: .
@@ -22,6 +34,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     environment:
       DATABASE_URL: postgresql://dive:dive@postgres:5432/dive
       HOST: 0.0.0.0
