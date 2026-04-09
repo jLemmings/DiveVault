@@ -392,6 +392,17 @@ def server_fixture(monkeypatch):
         server.clerk_verifier = FakeVerifier()
         server.clerk_publishable_key = "pk_test_123"
         server.cors_origin = "http://localhost:5173"
+        server.max_json_body_bytes = 1024 * 1024
+        server.max_backup_import_bytes = 25 * 1024 * 1024
+        server.max_list_limit = 200
+        server.rate_limiter = dive_backend.FixedWindowRateLimiter()
+        server.rate_limit_policies = {
+            "cli_auth_request_create": {"limit": 30, "window_seconds": 60},
+            "cli_auth_request_status": {"limit": 30, "window_seconds": 60},
+            "cli_auth_approve": {"limit": 15, "window_seconds": 60},
+            "backup_import": {"limit": 10, "window_seconds": 60},
+            "dive_upload": {"limit": 120, "window_seconds": 60},
+        }
         server.frontend_dir = frontend_dir
         server.cli_auth_manager = FakeCliAuthManager()
         server.nominatim_client = FakeNominatimClient()
@@ -451,6 +462,8 @@ def test_get_and_options_routes(server_fixture):
     preflight = request(server, "OPTIONS", "/api/dives")
     assert preflight.status == 204
     assert preflight.headers["Access-Control-Allow-Origin"] == "http://localhost:5173"
+    assert preflight.headers["X-Content-Type-Options"] == "nosniff"
+    assert preflight.headers["X-Frame-Options"] == "DENY"
 
 
 def test_authenticated_get_endpoints(server_fixture):
@@ -485,6 +498,18 @@ def test_authenticated_get_endpoints(server_fixture):
     assert dives.json()["stats"]["totalDives"] == 1
     assert dives.json()["imported_count"] == 0
     assert dives.json()["stats"]["averageDurationSeconds"] == 2700.0
+
+    capped_limit = request(server, "GET", "/api/dives?limit=9999&offset=0", token="session")
+    assert capped_limit.status == 200
+    assert capped_limit.json()["limit"] == 200
+    assert capped_limit.headers["X-Content-Type-Options"] == "nosniff"
+    assert capped_limit.headers["X-Frame-Options"] == "DENY"
+
+    server.max_list_limit = 25
+    capped_default_limit = request(server, "GET", "/api/dives?limit=not-a-number&offset=0", token="session")
+    assert capped_default_limit.status == 200
+    assert capped_default_limit.json()["limit"] == 25
+    server.max_list_limit = 200
 
     by_id = request(server, "GET", "/api/dives/1?include_raw_data=true", token="session")
     assert by_id.status == 200
@@ -556,6 +581,12 @@ def test_post_and_put_endpoints(server_fixture):
     assert create_cli_request.status == 201
     code = create_cli_request.json()["code"]
 
+    server.rate_limit_policies["cli_auth_request_create"]["limit"] = 1
+    second_cli_request = request(server, "POST", "/api/cli-auth/request")
+    assert second_cli_request.status == 429
+    assert second_cli_request.headers["Retry-After"]
+    server.rate_limit_policies["cli_auth_request_create"]["limit"] = 30
+
     cli_request_status = request(server, "GET", f"/api/cli-auth/request?code={code}")
     assert cli_request_status.status == 200
 
@@ -608,6 +639,23 @@ def test_post_and_put_endpoints(server_fixture):
         },
     )
     assert valid_insert.status == 201
+
+    server.max_json_body_bytes = 64
+    oversized_insert = request(
+        server,
+        "POST",
+        "/api/dives",
+        token="session",
+        payload={
+            "vendor": "Mares",
+            "product": "Smart Air",
+            "dive_uid": "uid-oversized",
+            "raw_sha256": "sha-oversized",
+            "raw_data_b64": base64.b64encode(b"a" * 256).decode("ascii"),
+        },
+    )
+    assert oversized_insert.status == 413
+    server.max_json_body_bytes = 1024 * 1024
 
     duplicate_insert = request(
         server,
@@ -787,6 +835,34 @@ def test_export_and_backup_endpoints(server_fixture):
     invalid_import = request(server, "POST", "/api/backup/import", token="session", payload={"version": 999})
     assert invalid_import.status == 400
 
+    server.max_json_body_bytes = 128
+    server.max_backup_import_bytes = 4096
+    backup_payload_above_global_limit = {
+        "version": 1,
+        "profile": {"name": "Elias Thorne", "email": "diver@example.com", "licenses": []},
+        "device_states": [],
+        "license_documents": [],
+        "dives": [
+            {
+                "vendor": "Mares",
+                "product": "Smart Air",
+                "dive_uid": "uid-backup-large-body",
+                "raw_sha256": "sha-large",
+                "raw_data_b64": base64.b64encode(b"x" * 256).decode("ascii"),
+            }
+        ],
+    }
+    backup_import_above_global_limit = request(
+        server,
+        "POST",
+        "/api/backup/import",
+        token="session",
+        payload=backup_payload_above_global_limit,
+    )
+    assert backup_import_above_global_limit.status == 200
+    server.max_json_body_bytes = 1024 * 1024
+    server.max_backup_import_bytes = 25 * 1024 * 1024
+
     imported_backup = request(
         server,
         "POST",
@@ -876,7 +952,7 @@ def test_export_and_backup_endpoints(server_fixture):
 
     dives_after_import = request(server, "GET", "/api/dives?include_samples=1", token="session")
     assert dives_after_import.status == 200
-    assert dives_after_import.json()["total"] == 2
+    assert dives_after_import.json()["total"] == 3
 
     device_state_after_import = request(server, "GET", "/api/device-state?vendor=Mares&product=Smart%20Air", token="session")
     assert device_state_after_import.status == 200
@@ -942,3 +1018,16 @@ def test_route_manifest_requires_test_updates_for_new_endpoints():
 
     discovered = discovered_literals | discovered_regex
     assert discovered == expected_routes
+
+
+def test_rate_limiter_prunes_stale_entries():
+    limiter = dive_backend.FixedWindowRateLimiter()
+
+    allowed_first, _retry_first = limiter.allow("scope:127.0.0.1", limit=2, window_seconds=1, now=100)
+    assert allowed_first is True
+    assert "scope:127.0.0.1" in limiter._windows
+
+    allowed_second, _retry_second = limiter.allow("scope:127.0.0.2", limit=2, window_seconds=1, now=102)
+    assert allowed_second is True
+    assert "scope:127.0.0.1" not in limiter._windows
+    assert "scope:127.0.0.2" in limiter._windows

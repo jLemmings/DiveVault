@@ -78,6 +78,38 @@ class ClerkAuthError(Exception):
         self.message = message
 
 
+class FixedWindowRateLimiter:
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._windows: dict[str, dict[str, int]] = {}
+
+    def allow(self, key: str, *, limit: int, window_seconds: int, now: int | None = None) -> tuple[bool, int]:
+        if limit <= 0:
+            return True, 0
+        now_ts = int(now if now is not None else time.time())
+        window = max(int(window_seconds), 1)
+        current_window_start = now_ts - (now_ts % window)
+        expires_at = current_window_start + window
+        with self._lock:
+            stale_keys = [
+                existing_key
+                for existing_key, existing_entry in self._windows.items()
+                if int(existing_entry.get("expires_at", 0)) <= now_ts
+            ]
+            for stale_key in stale_keys:
+                self._windows.pop(stale_key, None)
+
+            entry = self._windows.get(key)
+            if entry is None or entry["window_start"] != current_window_start:
+                entry = {"window_start": current_window_start, "expires_at": expires_at, "count": 0}
+                self._windows[key] = entry
+            if entry["count"] >= limit:
+                return False, max(expires_at - now_ts, 1)
+            entry["count"] += 1
+            entry["expires_at"] = expires_at
+            return True, max(expires_at - now_ts, 1)
+
+
 def normalize_pem_env(value: str | None) -> str | None:
     if not value:
         return None
@@ -1169,6 +1201,7 @@ class DiveBackendHandler(BaseHTTPRequestHandler):
         LOGGER.debug("OPTIONS %s", self.path)
         self.send_response(204)
         self._send_cors_headers()
+        self._send_security_headers()
         self.end_headers()
 
     def do_GET(self) -> None:
@@ -1431,6 +1464,8 @@ class DiveBackendHandler(BaseHTTPRequestHandler):
             return
 
         if path == "/api/cli-auth/request":
+            if not self._enforce_rate_limit("cli_auth_request_status"):
+                return
             code = self._single_query_arg(query, "code")
             if not code:
                 self._send_json(400, {"error": "Missing code query parameter"})
@@ -1448,7 +1483,11 @@ class DiveBackendHandler(BaseHTTPRequestHandler):
                 return
             include_samples = self._is_truthy(query.get("include_samples", ["0"])[0])
             include_raw_data = self._is_truthy(query.get("include_raw_data", ["0"])[0])
-            limit = self._parse_int(query.get("limit", ["100"])[0], default=100)
+            limit = self._parse_int(
+                query.get("limit", ["100"])[0],
+                default=100,
+                max_value=getattr(self.server, "max_list_limit", 200),
+            )
             offset = self._parse_int(query.get("offset", ["0"])[0], default=0)
 
             conn = self._open_db()
@@ -1522,16 +1561,20 @@ class DiveBackendHandler(BaseHTTPRequestHandler):
     def do_POST(self) -> None:
         LOGGER.info("POST %s", self.path)
         if self.path == "/api/cli-auth/request":
+            if not self._enforce_rate_limit("cli_auth_request_create"):
+                return
             payload = self.server.cli_auth_manager.create_request()
             self._send_json(201, payload)
             return
 
         if self.path == "/api/backup/import":
+            if not self._enforce_rate_limit("backup_import"):
+                return
             user_id = self._require_principal_id()
             if user_id is None:
                 return
 
-            payload = self._read_json_body()
+            payload = self._read_json_body(max_bytes=getattr(self.server, "max_backup_import_bytes", 25 * 1024 * 1024))
             if payload is None:
                 return
 
@@ -1558,6 +1601,8 @@ class DiveBackendHandler(BaseHTTPRequestHandler):
             return
 
         if self.path == "/api/cli-auth/approve":
+            if not self._enforce_rate_limit("cli_auth_approve"):
+                return
             claims = self._require_browser_session_auth()
             if claims is None:
                 return
@@ -1588,6 +1633,8 @@ class DiveBackendHandler(BaseHTTPRequestHandler):
 
         user_id = self._require_principal_id()
         if user_id is None:
+            return
+        if not self._enforce_rate_limit("dive_upload"):
             return
 
         payload = self._read_json_body()
@@ -1844,8 +1891,20 @@ class DiveBackendHandler(BaseHTTPRequestHandler):
         self._send_json(403, {"error": "Authenticated identity is missing a stable user identifier"})
         return None
 
-    def _read_json_body(self) -> dict | None:
-        length = int(self.headers.get("Content-Length", "0"))
+    def _read_json_body(self, *, max_bytes: int | None = None) -> dict | None:
+        max_json_body_bytes = int(max_bytes if max_bytes is not None else getattr(self.server, "max_json_body_bytes", 1024 * 1024))
+        content_length = self.headers.get("Content-Length", "0")
+        try:
+            length = int(content_length)
+        except ValueError:
+            self._send_json(400, {"error": "Invalid Content-Length header"})
+            return None
+        if length < 0:
+            self._send_json(400, {"error": "Invalid Content-Length header"})
+            return None
+        if length > max_json_body_bytes:
+            self._send_json(413, {"error": f"Request body exceeds {max_json_body_bytes} byte limit"})
+            return None
         body = self.rfile.read(length) if length > 0 else b""
         try:
             return json.loads(body.decode("utf-8")) if body else {}
@@ -1854,18 +1913,28 @@ class DiveBackendHandler(BaseHTTPRequestHandler):
             self._send_json(400, {"error": "Invalid JSON"})
             return None
 
-    def _send_json(self, status: int, payload: dict) -> None:
+    def _send_security_headers(self) -> None:
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("X-Frame-Options", "DENY")
+        self.send_header("Referrer-Policy", "strict-origin-when-cross-origin")
+        self.send_header("Permissions-Policy", "camera=(), microphone=(), geolocation=(self)")
+
+    def _send_json(self, status: int, payload: dict, *, extra_headers: dict[str, str] | None = None) -> None:
         body = json.dumps(payload, indent=2, sort_keys=True).encode("utf-8")
         self.send_response(status)
         self._send_cors_headers()
+        self._send_security_headers()
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
+        for key, value in (extra_headers or {}).items():
+            self.send_header(key, value)
         self.end_headers()
         self.wfile.write(body)
 
     def _send_bytes(self, status: int, body: bytes, content_type: str, *, extra_headers: dict[str, str] | None = None) -> None:
         self.send_response(status)
         self._send_cors_headers()
+        self._send_security_headers()
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
         for key, value in (extra_headers or {}).items():
@@ -1878,6 +1947,33 @@ class DiveBackendHandler(BaseHTTPRequestHandler):
         self.send_header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "Authorization, Content-Type")
 
+    def _enforce_rate_limit(self, scope: str) -> bool:
+        limiter = getattr(self.server, "rate_limiter", None)
+        if limiter is None:
+            return True
+        policies = getattr(self.server, "rate_limit_policies", {})
+        policy = policies.get(scope)
+        if not isinstance(policy, dict):
+            return True
+        limit = int(policy.get("limit", 0))
+        window_seconds = int(policy.get("window_seconds", 60))
+        if limit <= 0:
+            return True
+        client_ip = self.client_address[0] if self.client_address else "unknown"
+        allowed, retry_after_seconds = limiter.allow(
+            f"{scope}:{client_ip}",
+            limit=limit,
+            window_seconds=window_seconds,
+        )
+        if allowed:
+            return True
+        self._send_json(
+            429,
+            {"error": "Rate limit exceeded. Please retry later."},
+            extra_headers={"Retry-After": str(retry_after_seconds)},
+        )
+        return False
+
     def _send_config_js(self) -> None:
         body = (
             "window.__APP_CONFIG__ = "
@@ -1885,6 +1981,7 @@ class DiveBackendHandler(BaseHTTPRequestHandler):
             + ";\n"
         ).encode("utf-8")
         self.send_response(200)
+        self._send_security_headers()
         self.send_header("Content-Type", "application/javascript; charset=utf-8")
         self.send_header("Cache-Control", "no-store")
         self.send_header("Content-Length", str(len(body)))
@@ -1901,6 +1998,7 @@ class DiveBackendHandler(BaseHTTPRequestHandler):
         content_type, _ = mimetypes.guess_type(asset_path.name)
         body = asset_path.read_bytes()
         self.send_response(200)
+        self._send_security_headers()
         self.send_header("Content-Type", content_type or "application/octet-stream")
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
@@ -1917,12 +2015,15 @@ class DiveBackendHandler(BaseHTTPRequestHandler):
         return value.lower() in {"1", "true", "yes", "on"}
 
     @staticmethod
-    def _parse_int(value: str, default: int) -> int:
+    def _parse_int(value: str, default: int, *, max_value: int | None = None) -> int:
         try:
             parsed = int(value)
         except ValueError:
-            return default
-        return max(parsed, 0)
+            parsed = default
+        normalized = max(parsed, 0)
+        if max_value is None:
+            return normalized
+        return min(normalized, max(max_value, 0))
 
 
 def main() -> None:
@@ -1934,7 +2035,7 @@ def main() -> None:
     )
     parser.add_argument("--host", default=os.getenv("HOST", "127.0.0.1"), help="Host interface to bind")
     parser.add_argument("--port", type=int, default=int(os.getenv("PORT", "8000")), help="TCP port to bind")
-    parser.add_argument("--cors-origin", default=os.getenv("CORS_ORIGIN", "*"), help="Allowed CORS origin for frontend requests")
+    parser.add_argument("--cors-origin", default=os.getenv("CORS_ORIGIN", "http://localhost:5173"), help="Allowed CORS origin for frontend requests")
     parser.add_argument(
         "--frontend-dir",
         default=os.getenv("FRONTEND_DIR", "frontend/dist"),
@@ -1958,6 +2059,14 @@ def main() -> None:
     parser.add_argument("--db-startup-retries", type=int, default=int(os.getenv("DB_STARTUP_RETRIES", "5")), help="Number of startup checks to confirm PostgreSQL is reachable")
     parser.add_argument("--db-startup-retry-delay-seconds", type=float, default=float(os.getenv("DB_STARTUP_RETRY_DELAY_SECONDS", "2")), help="Delay between PostgreSQL startup checks")
     parser.add_argument("--db-connect-timeout-seconds", type=int, default=int(os.getenv("DB_CONNECT_TIMEOUT_SECONDS", "5")), help="Connection timeout for each PostgreSQL startup check")
+    parser.add_argument("--max-json-body-bytes", type=int, default=int(os.getenv("MAX_JSON_BODY_BYTES", str(1024 * 1024))), help="Maximum JSON request body size in bytes")
+    parser.add_argument("--max-backup-import-bytes", type=int, default=int(os.getenv("MAX_BACKUP_IMPORT_BYTES", str(25 * 1024 * 1024))), help="Maximum JSON body size accepted by /api/backup/import")
+    parser.add_argument("--max-list-limit", type=int, default=int(os.getenv("MAX_LIST_LIMIT", "200")), help="Maximum list endpoint page size")
+    parser.add_argument("--rate-limit-window-seconds", type=int, default=int(os.getenv("RATE_LIMIT_WINDOW_SECONDS", "60")), help="Rate limit window in seconds")
+    parser.add_argument("--rate-limit-cli-request-per-window", type=int, default=int(os.getenv("RATE_LIMIT_CLI_REQUEST_PER_WINDOW", "30")), help="Max CLI auth request create/status calls per IP and window")
+    parser.add_argument("--rate-limit-cli-approve-per-window", type=int, default=int(os.getenv("RATE_LIMIT_CLI_APPROVE_PER_WINDOW", "15")), help="Max CLI auth approve calls per IP and window")
+    parser.add_argument("--rate-limit-backup-import-per-window", type=int, default=int(os.getenv("RATE_LIMIT_BACKUP_IMPORT_PER_WINDOW", "10")), help="Max backup import calls per IP and window")
+    parser.add_argument("--rate-limit-dive-upload-per-window", type=int, default=int(os.getenv("RATE_LIMIT_DIVE_UPLOAD_PER_WINDOW", "120")), help="Max dive upload calls per IP and window")
     parser.add_argument(
         "--log-level",
         default=os.getenv("LOG_LEVEL", "INFO"),
@@ -1995,6 +2104,33 @@ def main() -> None:
     server.clerk_verifier = build_clerk_verifier(args, sync_token_manager=server.cli_auth_manager)
     server.clerk_publishable_key = args.clerk_publishable_key
     server.cors_origin = args.cors_origin
+    server.max_json_body_bytes = max(args.max_json_body_bytes, 1)
+    server.max_backup_import_bytes = max(args.max_backup_import_bytes, 1)
+    server.max_list_limit = max(args.max_list_limit, 1)
+    rate_limit_window_seconds = max(args.rate_limit_window_seconds, 1)
+    server.rate_limiter = FixedWindowRateLimiter()
+    server.rate_limit_policies = {
+        "cli_auth_request_create": {
+            "limit": max(args.rate_limit_cli_request_per_window, 0),
+            "window_seconds": rate_limit_window_seconds,
+        },
+        "cli_auth_request_status": {
+            "limit": max(args.rate_limit_cli_request_per_window, 0),
+            "window_seconds": rate_limit_window_seconds,
+        },
+        "cli_auth_approve": {
+            "limit": max(args.rate_limit_cli_approve_per_window, 0),
+            "window_seconds": rate_limit_window_seconds,
+        },
+        "backup_import": {
+            "limit": max(args.rate_limit_backup_import_per_window, 0),
+            "window_seconds": rate_limit_window_seconds,
+        },
+        "dive_upload": {
+            "limit": max(args.rate_limit_dive_upload_per_window, 0),
+            "window_seconds": rate_limit_window_seconds,
+        },
+    }
     server.frontend_dir = resolve_frontend_dir(args.frontend_dir)
     server.nominatim_client = NominatimClient(
         base_url=args.nominatim_base_url,
