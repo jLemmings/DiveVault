@@ -505,6 +505,12 @@ def test_authenticated_get_endpoints(server_fixture):
     assert capped_limit.headers["X-Content-Type-Options"] == "nosniff"
     assert capped_limit.headers["X-Frame-Options"] == "DENY"
 
+    server.max_list_limit = 25
+    capped_default_limit = request(server, "GET", "/api/dives?limit=not-a-number&offset=0", token="session")
+    assert capped_default_limit.status == 200
+    assert capped_default_limit.json()["limit"] == 25
+    server.max_list_limit = 200
+
     by_id = request(server, "GET", "/api/dives/1?include_raw_data=true", token="session")
     assert by_id.status == 200
     assert by_id.json()["id"] == 1
@@ -1012,3 +1018,16 @@ def test_route_manifest_requires_test_updates_for_new_endpoints():
 
     discovered = discovered_literals | discovered_regex
     assert discovered == expected_routes
+
+
+def test_rate_limiter_prunes_stale_entries():
+    limiter = dive_backend.FixedWindowRateLimiter()
+
+    allowed_first, _retry_first = limiter.allow("scope:127.0.0.1", limit=2, window_seconds=1, now=100)
+    assert allowed_first is True
+    assert "scope:127.0.0.1" in limiter._windows
+
+    allowed_second, _retry_second = limiter.allow("scope:127.0.0.2", limit=2, window_seconds=1, now=102)
+    assert allowed_second is True
+    assert "scope:127.0.0.1" not in limiter._windows
+    assert "scope:127.0.0.2" in limiter._windows

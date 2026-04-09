@@ -91,13 +91,22 @@ class FixedWindowRateLimiter:
         current_window_start = now_ts - (now_ts % window)
         expires_at = current_window_start + window
         with self._lock:
+            stale_keys = [
+                existing_key
+                for existing_key, existing_entry in self._windows.items()
+                if int(existing_entry.get("expires_at", 0)) <= now_ts
+            ]
+            for stale_key in stale_keys:
+                self._windows.pop(stale_key, None)
+
             entry = self._windows.get(key)
             if entry is None or entry["window_start"] != current_window_start:
-                entry = {"window_start": current_window_start, "count": 0}
+                entry = {"window_start": current_window_start, "expires_at": expires_at, "count": 0}
                 self._windows[key] = entry
             if entry["count"] >= limit:
                 return False, max(expires_at - now_ts, 1)
             entry["count"] += 1
+            entry["expires_at"] = expires_at
             return True, max(expires_at - now_ts, 1)
 
 
@@ -2010,7 +2019,7 @@ class DiveBackendHandler(BaseHTTPRequestHandler):
         try:
             parsed = int(value)
         except ValueError:
-            return default
+            parsed = default
         normalized = max(parsed, 0)
         if max_value is None:
             return normalized
