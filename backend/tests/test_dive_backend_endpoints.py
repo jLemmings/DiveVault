@@ -392,6 +392,16 @@ def server_fixture(monkeypatch):
         server.clerk_verifier = FakeVerifier()
         server.clerk_publishable_key = "pk_test_123"
         server.cors_origin = "http://localhost:5173"
+        server.max_json_body_bytes = 1024 * 1024
+        server.max_list_limit = 200
+        server.rate_limiter = dive_backend.FixedWindowRateLimiter()
+        server.rate_limit_policies = {
+            "cli_auth_request_create": {"limit": 30, "window_seconds": 60},
+            "cli_auth_request_status": {"limit": 30, "window_seconds": 60},
+            "cli_auth_approve": {"limit": 15, "window_seconds": 60},
+            "backup_import": {"limit": 10, "window_seconds": 60},
+            "dive_upload": {"limit": 120, "window_seconds": 60},
+        }
         server.frontend_dir = frontend_dir
         server.cli_auth_manager = FakeCliAuthManager()
         server.nominatim_client = FakeNominatimClient()
@@ -451,6 +461,8 @@ def test_get_and_options_routes(server_fixture):
     preflight = request(server, "OPTIONS", "/api/dives")
     assert preflight.status == 204
     assert preflight.headers["Access-Control-Allow-Origin"] == "http://localhost:5173"
+    assert preflight.headers["X-Content-Type-Options"] == "nosniff"
+    assert preflight.headers["X-Frame-Options"] == "DENY"
 
 
 def test_authenticated_get_endpoints(server_fixture):
@@ -485,6 +497,12 @@ def test_authenticated_get_endpoints(server_fixture):
     assert dives.json()["stats"]["totalDives"] == 1
     assert dives.json()["imported_count"] == 0
     assert dives.json()["stats"]["averageDurationSeconds"] == 2700.0
+
+    capped_limit = request(server, "GET", "/api/dives?limit=9999&offset=0", token="session")
+    assert capped_limit.status == 200
+    assert capped_limit.json()["limit"] == 200
+    assert capped_limit.headers["X-Content-Type-Options"] == "nosniff"
+    assert capped_limit.headers["X-Frame-Options"] == "DENY"
 
     by_id = request(server, "GET", "/api/dives/1?include_raw_data=true", token="session")
     assert by_id.status == 200
@@ -556,6 +574,12 @@ def test_post_and_put_endpoints(server_fixture):
     assert create_cli_request.status == 201
     code = create_cli_request.json()["code"]
 
+    server.rate_limit_policies["cli_auth_request_create"]["limit"] = 1
+    second_cli_request = request(server, "POST", "/api/cli-auth/request")
+    assert second_cli_request.status == 429
+    assert second_cli_request.headers["Retry-After"]
+    server.rate_limit_policies["cli_auth_request_create"]["limit"] = 30
+
     cli_request_status = request(server, "GET", f"/api/cli-auth/request?code={code}")
     assert cli_request_status.status == 200
 
@@ -608,6 +632,23 @@ def test_post_and_put_endpoints(server_fixture):
         },
     )
     assert valid_insert.status == 201
+
+    server.max_json_body_bytes = 64
+    oversized_insert = request(
+        server,
+        "POST",
+        "/api/dives",
+        token="session",
+        payload={
+            "vendor": "Mares",
+            "product": "Smart Air",
+            "dive_uid": "uid-oversized",
+            "raw_sha256": "sha-oversized",
+            "raw_data_b64": base64.b64encode(b"a" * 256).decode("ascii"),
+        },
+    )
+    assert oversized_insert.status == 413
+    server.max_json_body_bytes = 1024 * 1024
 
     duplicate_insert = request(
         server,
