@@ -76,7 +76,7 @@ Persistence:
 - [`backend/tests`](./backend/tests): backend-only test suite
 - [`frontend`](./frontend): Vue frontend
 - [`backend/migrations/migrate_postgres_schema.py`](./backend/migrations/migrate_postgres_schema.py): migration entry point
-- [`docker-compose.yml`](./docker-compose.yml): local multi-container setup
+- [`examples/docker/docker-compose.yml`](./examples/docker/docker-compose.yml): local multi-container setup
 
 ## Local Development
 
@@ -124,7 +124,7 @@ By default the frontend runs on `http://localhost:5173` and the backend on `http
 Build and start the full stack:
 
 ```powershell
-docker compose up --build
+docker compose -f examples/docker/docker-compose.yml up --build
 ```
 
 This starts:
@@ -132,7 +132,10 @@ This starts:
 - PostgreSQL on `localhost:5432`
 - DiveVault backend on `localhost:8000`
 
-The container entrypoint runs the PostgreSQL migration script before starting the backend.
+`docker compose` also runs a one-shot `migrate` service that applies PostgreSQL schema migrations before the backend starts. The backend container no longer runs migrations on each startup.
+
+For multi-pod Kubernetes workloads, run migrations as a separate Job (or Helm hook) and set `STARTUP_MIGRATIONS=disabled` on backend pods so each pod skips startup migrations.
+See [`examples/kubernetes`](./examples/kubernetes) for a ready-to-use migration Job + 3-replica backend deployment example.
 
 ## Environment Variables
 
@@ -153,6 +156,7 @@ Common variables from [`.env.example`](./.env.example):
 - `RATE_LIMIT_CLI_APPROVE_PER_WINDOW`: max `/api/cli-auth/approve` calls per IP per window (defaults to `15`)
 - `RATE_LIMIT_BACKUP_IMPORT_PER_WINDOW`: max `/api/backup/import` calls per IP per window (defaults to `10`)
 - `RATE_LIMIT_DIVE_UPLOAD_PER_WINDOW`: max `/api/dives` upload calls per IP per window (defaults to `120`)
+- `STARTUP_MIGRATIONS`: set to `enabled` (default) or `disabled`; disable when migrations run externally (for example, a Kubernetes migration Job)
 
 ## Testing
 

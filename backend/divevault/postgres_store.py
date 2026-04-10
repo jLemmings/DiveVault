@@ -5,6 +5,7 @@ import binascii
 import json
 import re
 import secrets
+from collections.abc import Callable
 from datetime import datetime, timezone
 
 import psycopg
@@ -457,42 +458,41 @@ def apply_schema_migration_v5(cur: psycopg.Cursor) -> None:
     cur.execute("ALTER TABLE user_profile_buddies DROP COLUMN IF EXISTS sort_order")
 
 
+def _run_schema_migrations(conn: psycopg.Connection, cur: psycopg.Cursor, current_version: int) -> int:
+    migrations: tuple[tuple[int, Callable[[psycopg.Connection, psycopg.Cursor], None]], ...] = (
+        (1, lambda _conn, migration_cur: apply_schema_migration_v1(migration_cur)),
+        (2, apply_schema_migration_v2),
+        (3, apply_schema_migration_v3),
+        (4, lambda _conn, migration_cur: apply_schema_migration_v4(migration_cur)),
+        (5, lambda _conn, migration_cur: apply_schema_migration_v5(migration_cur)),
+    )
+    target_schema_version = min(CURRENT_SCHEMA_VERSION, max(version for version, _ in migrations))
+
+    for version, migration in migrations:
+        if version > target_schema_version:
+            break
+        if current_version >= version:
+            continue
+        migration(conn, cur)
+        set_schema_version(cur, version)
+        current_version = version
+    return current_version
+
+
 def init_db(conn: psycopg.Connection) -> None:
     with conn.cursor() as cur:
         cur.execute(SCHEMA)
         ensure_schema_version_table(cur)
         current_version = get_schema_version(cur)
-
-        if current_version < 1:
-            apply_schema_migration_v1(cur)
-            set_schema_version(cur, 1)
-            current_version = 1
-
-        if current_version < 2:
-            apply_schema_migration_v2(conn, cur)
-            set_schema_version(cur, 2)
-            current_version = 2
-
-        if current_version < 3:
-            apply_schema_migration_v3(conn, cur)
-            set_schema_version(cur, 3)
-            current_version = 3
-
-        if current_version < CURRENT_SCHEMA_VERSION:
-            apply_schema_migration_v4(cur)
-            set_schema_version(cur, 4)
-            current_version = 4
-
-        if current_version < CURRENT_SCHEMA_VERSION:
-            apply_schema_migration_v5(cur)
-            set_schema_version(cur, CURRENT_SCHEMA_VERSION)
+        _run_schema_migrations(conn, cur, current_version)
 
     conn.commit()
 
 
-def open_db(database_url: str) -> psycopg.Connection:
+def open_db(database_url: str, *, ensure_schema: bool = False) -> psycopg.Connection:
     conn = psycopg.connect(database_url, row_factory=dict_row)
-    init_db(conn)
+    if ensure_schema:
+        init_db(conn)
     return conn
 
 

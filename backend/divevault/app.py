@@ -20,6 +20,7 @@ import mimetypes
 import os
 import re
 import secrets
+import signal
 import threading
 import time
 from datetime import datetime, timezone
@@ -37,6 +38,7 @@ from dotenv import load_dotenv
 from jwt import InvalidTokenError, PyJWKClient
 
 from divevault.postgres_store import (
+    CURRENT_SCHEMA_VERSION,
     approve_cli_sync_request,
     create_cli_sync_request,
     delete_dive,
@@ -667,7 +669,7 @@ def run_startup_database_migrations(database_url: str) -> int:
     conn = None
     schema_version = 0
     try:
-        conn = open_db(database_url)
+        conn = open_db(database_url, ensure_schema=True)
         schema_version = get_db_schema_version(conn)
     except Exception:
         LOGGER.exception("Database migrations failed database_url=%s", redacted_database_url)
@@ -684,6 +686,26 @@ def run_startup_database_migrations(database_url: str) -> int:
         schema_version,
     )
     return schema_version
+
+
+def get_current_database_schema_version(database_url: str) -> int:
+    conn = None
+    try:
+        conn = open_db(database_url)
+        return get_db_schema_version(conn)
+    finally:
+        if conn is not None:
+            conn.close()
+
+
+def require_expected_schema_version(schema_version: int, *, expected_schema_version: int = CURRENT_SCHEMA_VERSION) -> None:
+    if schema_version == expected_schema_version:
+        return
+    raise SystemExit(
+        "Database schema version mismatch. "
+        f"Expected {expected_schema_version}, found {schema_version}. "
+        "Run the schema migration job before starting backend pods."
+    )
 
 
 BACKUP_EXPORT_VERSION = 1
@@ -2059,6 +2081,12 @@ def main() -> None:
     parser.add_argument("--db-startup-retries", type=int, default=int(os.getenv("DB_STARTUP_RETRIES", "5")), help="Number of startup checks to confirm PostgreSQL is reachable")
     parser.add_argument("--db-startup-retry-delay-seconds", type=float, default=float(os.getenv("DB_STARTUP_RETRY_DELAY_SECONDS", "2")), help="Delay between PostgreSQL startup checks")
     parser.add_argument("--db-connect-timeout-seconds", type=int, default=int(os.getenv("DB_CONNECT_TIMEOUT_SECONDS", "5")), help="Connection timeout for each PostgreSQL startup check")
+    parser.add_argument(
+        "--startup-migrations",
+        default=os.getenv("STARTUP_MIGRATIONS", "enabled"),
+        choices=["enabled", "disabled"],
+        help="Whether to run schema migrations at backend startup. Use disabled when migrations run externally (for example, a Kubernetes Job).",
+    )
     parser.add_argument("--max-json-body-bytes", type=int, default=int(os.getenv("MAX_JSON_BODY_BYTES", str(1024 * 1024))), help="Maximum JSON request body size in bytes")
     parser.add_argument("--max-backup-import-bytes", type=int, default=int(os.getenv("MAX_BACKUP_IMPORT_BYTES", str(25 * 1024 * 1024))), help="Maximum JSON body size accepted by /api/backup/import")
     parser.add_argument("--max-list-limit", type=int, default=int(os.getenv("MAX_LIST_LIMIT", "200")), help="Maximum list endpoint page size")
@@ -2089,7 +2117,16 @@ def main() -> None:
         retry_delay_seconds=args.db_startup_retry_delay_seconds,
         connect_timeout_seconds=args.db_connect_timeout_seconds,
     )
-    schema_version = run_startup_database_migrations(args.database_url)
+    if args.startup_migrations == "enabled":
+        schema_version = run_startup_database_migrations(args.database_url)
+    else:
+        schema_version = get_current_database_schema_version(args.database_url)
+        LOGGER.info(
+            "Skipping startup migrations because startup_migrations=%s schema_version=%d",
+            args.startup_migrations,
+            schema_version,
+        )
+    require_expected_schema_version(schema_version)
 
     server = ThreadingHTTPServer((args.host, args.port), DiveBackendHandler)
     server.database_url = args.database_url
@@ -2147,10 +2184,21 @@ def main() -> None:
         server.frontend_dir,
         schema_version,
     )
+    shutdown_started = threading.Event()
+
+    def _handle_shutdown_signal(signum, _frame) -> None:
+        if shutdown_started.is_set():
+            return
+        shutdown_started.set()
+        signal_name = signal.Signals(signum).name if signum in (signal.SIGINT, signal.SIGTERM) else str(signum)
+        LOGGER.info("Received shutdown signal=%s", signal_name)
+        threading.Thread(target=server.shutdown, daemon=True).start()
+
+    signal.signal(signal.SIGTERM, _handle_shutdown_signal)
+    signal.signal(signal.SIGINT, _handle_shutdown_signal)
+
     try:
         server.serve_forever()
-    except KeyboardInterrupt:
-        LOGGER.info("Received shutdown signal")
     finally:
         LOGGER.info("Stopping backend")
         server.server_close()
