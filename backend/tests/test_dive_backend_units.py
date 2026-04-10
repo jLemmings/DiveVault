@@ -268,9 +268,10 @@ def test_run_startup_database_migrations_opens_and_closes_connection(monkeypatch
         def close(self):
             calls["closed"] += 1
 
-    def fake_open_db(database_url: str):
+    def fake_open_db(database_url: str, *, ensure_schema: bool = False):
         calls["opened"] += 1
         assert database_url == "postgresql://user:secret@example.com:5432/dive"
+        assert ensure_schema is True
         return FakeConn()
 
     monkeypatch.setattr(dive_backend, "open_db", fake_open_db)
@@ -280,6 +281,15 @@ def test_run_startup_database_migrations_opens_and_closes_connection(monkeypatch
 
     assert calls == {"opened": 1, "closed": 1}
     assert schema_version == 4
+
+
+def test_require_expected_schema_version_accepts_matching_version():
+    dive_backend.require_expected_schema_version(5, expected_schema_version=5)
+
+
+def test_require_expected_schema_version_raises_on_mismatch():
+    with pytest.raises(SystemExit, match="Expected 5, found 4"):
+        dive_backend.require_expected_schema_version(4, expected_schema_version=5)
 
 
 def test_cli_sync_token_manager_tracks_requests_and_tokens(monkeypatch):

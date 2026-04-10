@@ -76,7 +76,7 @@ Persistence:
 - [`backend/tests`](./backend/tests): backend-only test suite
 - [`frontend`](./frontend): Vue frontend
 - [`backend/migrations/migrate_postgres_schema.py`](./backend/migrations/migrate_postgres_schema.py): migration entry point
-- [`docker-compose.yml`](./docker-compose.yml): local multi-container setup
+- [`examples/docker/docker-compose.yml`](./examples/docker/docker-compose.yml): local multi-container setup
 
 ## Local Development
 
@@ -124,7 +124,7 @@ By default the frontend runs on `http://localhost:5173` and the backend on `http
 Build and start the full stack:
 
 ```powershell
-docker compose up --build
+docker compose -f examples/docker/docker-compose.yml up --build
 ```
 
 This starts:
@@ -132,7 +132,10 @@ This starts:
 - PostgreSQL on `localhost:5432`
 - DiveVault backend on `localhost:8000`
 
-The container entrypoint runs the PostgreSQL migration script before starting the backend.
+`docker compose` also runs a one-shot `migrate` service that applies PostgreSQL schema migrations before the backend starts. The backend container no longer runs migrations on each startup.
+
+For multi-pod Kubernetes workloads, run migrations as a separate Job (or Helm hook) and set `STARTUP_MIGRATIONS=disabled` on backend pods so each pod skips startup migrations.
+See [`examples/kubernetes`](./examples/kubernetes) for a ready-to-use migration Job + 3-replica backend deployment example.
 
 ## Environment Variables
 
@@ -153,6 +156,7 @@ Common variables from [`.env.example`](./.env.example):
 - `RATE_LIMIT_CLI_APPROVE_PER_WINDOW`: max `/api/cli-auth/approve` calls per IP per window (defaults to `15`)
 - `RATE_LIMIT_BACKUP_IMPORT_PER_WINDOW`: max `/api/backup/import` calls per IP per window (defaults to `10`)
 - `RATE_LIMIT_DIVE_UPLOAD_PER_WINDOW`: max `/api/dives` upload calls per IP per window (defaults to `120`)
+- `STARTUP_MIGRATIONS`: set to `enabled` (default) or `disabled`; disable when migrations run externally (for example, a Kubernetes migration Job)
 
 ## Testing
 
@@ -170,14 +174,12 @@ Run tests with:
 
 ## Image Versioning
 
-Container publishing and GitHub release packaging are driven by [`frontend/package.json`](./frontend/package.json).
+Container publishing is driven by [`frontend/package.json`](./frontend/package.json).
 
-- Pushes to `master` compare [`frontend/package.json`](./frontend/package.json) to the existing GitHub releases.
-- If `v<version>` has not been released yet, the workflow creates a new GitHub release with that exact version string, publishes the clean `v<version>` container tag plus `stable` and `latest`, and attaches `divevault-<version>.tar.gz`.
-- If that release already exists, the workflow falls back to a snapshot container image tag in `v<version>-<short-sha>` format, for example `v0.1.0-a1b2c3d`.
-- `workflow_dispatch` keeps the same logic, but automatic release creation is still limited to runs on `master`.
+- On pushes to `master`, workflows publish image tags: `v<version>`, `stable`, and `latest`.
+- On non-`master` branches (or non-release contexts), workflows publish snapshot image tags in the format `v<version>-<short-sha>`, for example `v0.1.0-a1b2c3d`.
 
-This keeps `frontend/package.json` as the single release version source while only creating a GitHub release when a new version is detected.
+This keeps `frontend/package.json` as the single image version source while publishing container images only.
 
 ## libdivecomputer
 
