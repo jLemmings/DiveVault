@@ -38,6 +38,7 @@ from dotenv import load_dotenv
 from jwt import InvalidTokenError, PyJWKClient
 
 from divevault.postgres_store import (
+    CURRENT_SCHEMA_VERSION,
     approve_cli_sync_request,
     create_cli_sync_request,
     delete_dive,
@@ -695,6 +696,16 @@ def get_current_database_schema_version(database_url: str) -> int:
     finally:
         if conn is not None:
             conn.close()
+
+
+def require_expected_schema_version(schema_version: int, *, expected_schema_version: int = CURRENT_SCHEMA_VERSION) -> None:
+    if schema_version == expected_schema_version:
+        return
+    raise SystemExit(
+        "Database schema version mismatch. "
+        f"Expected {expected_schema_version}, found {schema_version}. "
+        "Run the schema migration job before starting backend pods."
+    )
 
 
 BACKUP_EXPORT_VERSION = 1
@@ -2115,6 +2126,7 @@ def main() -> None:
             args.startup_migrations,
             schema_version,
         )
+    require_expected_schema_version(schema_version)
 
     server = ThreadingHTTPServer((args.host, args.port), DiveBackendHandler)
     server.database_url = args.database_url

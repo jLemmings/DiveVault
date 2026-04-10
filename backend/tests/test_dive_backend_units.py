@@ -283,6 +283,15 @@ def test_run_startup_database_migrations_opens_and_closes_connection(monkeypatch
     assert schema_version == 4
 
 
+def test_require_expected_schema_version_accepts_matching_version():
+    dive_backend.require_expected_schema_version(5, expected_schema_version=5)
+
+
+def test_require_expected_schema_version_raises_on_mismatch():
+    with pytest.raises(SystemExit, match="Expected 5, found 4"):
+        dive_backend.require_expected_schema_version(4, expected_schema_version=5)
+
+
 def test_cli_sync_token_manager_tracks_requests_and_tokens(monkeypatch):
     manager = dive_backend.CliSyncTokenManager(request_ttl_seconds=10, token_ttl_seconds=30)
     clock = iter([100.0, 105.0, 106.0, 120.0, 141.0])
