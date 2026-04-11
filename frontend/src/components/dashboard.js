@@ -132,6 +132,9 @@ export default {
     }
   },
   methods: {
+    t(key, fallback = key, params = {}) {
+      return this.$t(key, fallback, params);
+    },
     dayOfMonth,
     monthShort,
     formatDate,
@@ -430,14 +433,18 @@ export default {
       return filledIconStyle;
     },
     dashboardUserName() {
-      return this.currentUserName || "Diver";
+      return this.currentUserName || this.t("Diver", "Diver");
     },
     hasImportedDives() {
       return Number(this.importedDiveCount || 0) > 0;
     },
     importedDiveLabel() {
       const count = Number(this.importedDiveCount || 0);
-      return `${count} imported ${count === 1 ? "dive" : "dives"} awaiting completion`;
+      return this.t(
+        count === 1 ? "{count} imported dive awaiting completion" : "{count} imported dives awaiting completion",
+        count === 1 ? "{count} imported dive awaiting completion" : "{count} imported dives awaiting completion",
+        { count }
+      );
     },
     diveSequenceMap() {
       return buildDiveSequenceMap(this.allDives);
@@ -512,20 +519,20 @@ export default {
           let reason = "No usable coordinates found";
 
           if (!siteName) {
-            reason = "No dive site assigned";
+            reason = this.t("No dive site assigned", "No dive site assigned");
           } else if (!savedSite) {
-            reason = "Dive site is not linked to a saved site in Settings";
+            reason = this.t("Dive site is not linked to a saved site in Settings", "Dive site is not linked to a saved site in Settings");
           } else {
-            reason = "Saved dive site has no coordinates";
+            reason = this.t("Saved dive site has no coordinates", "Saved dive site has no coordinates");
           }
 
           return {
             id: dive.id,
             displayIndex: paddedDiveIndex(dive, this.diveSequenceMap),
             date: dive.started_at,
-            siteName: siteName || "Site pending",
+            siteName: siteName || this.t("Site pending", "Site pending"),
             title: diveTitle(dive),
-            device: `${dive.vendor || "Unknown"} ${dive.product || ""}`.trim(),
+            device: `${dive.vendor || this.t("Unknown", "Unknown")} ${dive.product || ""}`.trim(),
             depth: formatDepth(dive.max_depth_m),
             duration: durationShort(dive.duration_seconds),
             reason
@@ -534,10 +541,14 @@ export default {
         .sort((left, right) => (parseDate(right.date)?.getTime() || 0) - (parseDate(left.date)?.getTime() || 0));
     },
     mapCoverageLabel() {
-      if (!this.mapSourceDives.length) return "No dives loaded";
-      if (!this.hasDiveMapMarkers) return "No coordinates found in committed dives or saved dive sites";
-      if (!this.unmappedDiveCount) return "Geotag coverage complete";
-      return `${this.unmappedDiveCount} ${this.unmappedDiveCount === 1 ? "dive is" : "dives are"} missing coordinates`;
+      if (!this.mapSourceDives.length) return this.t("No dives loaded", "No dives loaded");
+      if (!this.hasDiveMapMarkers) return this.t("No coordinates found in committed dives or saved dive sites", "No coordinates found in committed dives or saved dive sites");
+      if (!this.unmappedDiveCount) return this.t("Geotag coverage complete", "Geotag coverage complete");
+      return this.t(
+        this.unmappedDiveCount === 1 ? "{count} dive is missing coordinates" : "{count} dives are missing coordinates",
+        this.unmappedDiveCount === 1 ? "{count} dive is missing coordinates" : "{count} dives are missing coordinates",
+        { count: this.unmappedDiveCount }
+      );
     },
     mapTopSites() {
       return this.diveMapMarkers
@@ -548,12 +559,24 @@ export default {
         }));
     },
     mapFooterNote() {
-      if (!this.hasDiveMapMarkers) return "Add coordinates to saved dive sites to place committed dives accurately on the map.";
-      return "Saved dive-site coordinates take priority over raw telemetry so the map reflects the curated logbook location for each dive.";
+      if (!this.hasDiveMapMarkers) return this.t("Add coordinates to saved dive sites to place committed dives accurately on the map.", "Add coordinates to saved dive sites to place committed dives accurately on the map.");
+      return this.t("Saved dive-site coordinates take priority over raw telemetry so the map reflects the curated logbook location for each dive.", "Saved dive-site coordinates take priority over raw telemetry so the map reflects the curated logbook location for each dive.");
     },
     mapTelemetryLabel() {
-      if (!this.hasDiveMapMarkers) return "Awaiting usable GPS telemetry";
-      return `${this.mappedDiveCount} ${this.mappedDiveCount === 1 ? "dive" : "dives"} plotted across ${this.mappedSiteCount} ${this.mappedSiteCount === 1 ? "site" : "sites"}`;
+      if (!this.hasDiveMapMarkers) return this.t("Awaiting usable GPS telemetry", "Awaiting usable GPS telemetry");
+      return this.t(
+        this.mappedDiveCount === 1
+          ? "{diveCount} dive plotted across {siteCount} {siteLabel}"
+          : "{diveCount} dives plotted across {siteCount} {siteLabel}",
+        this.mappedDiveCount === 1
+          ? "{diveCount} dive plotted across {siteCount} {siteLabel}"
+          : "{diveCount} dives plotted across {siteCount} {siteLabel}",
+        {
+          diveCount: this.mappedDiveCount,
+          siteCount: this.mappedSiteCount,
+          siteLabel: this.t(this.mappedSiteCount === 1 ? "site" : "sites", this.mappedSiteCount === 1 ? "site" : "sites")
+        }
+      );
     }
   },
   template: `

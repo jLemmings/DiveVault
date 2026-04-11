@@ -1,11 +1,18 @@
 import { useAuth, useUser } from "../auth.js";
 import { getDocument, GlobalWorkerOptions } from "pdfjs-dist";
 import pdfWorkerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
+import { MESSAGES, getTranslationCredits } from "../i18n/index.js";
 
 const MAX_LICENSE_BYTES = 10 * 1024 * 1024;
 const PDF_PREVIEW_SCALE = 1.35;
 
 GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
+
+const LANGUAGE_LABELS = {
+  en: "English",
+  de: "Deutsch",
+  fr: "Français"
+};
 
 function formatBytes(bytes) {
   if (typeof bytes !== "number" || !Number.isFinite(bytes) || bytes <= 0) return "0 B";
@@ -407,6 +414,14 @@ export default {
     refreshDives: {
       type: Function,
       default: null
+    },
+    currentLocale: {
+      type: String,
+      default: "en"
+    },
+    setLocale: {
+      type: Function,
+      default: null
     }
   },
   setup() {
@@ -425,6 +440,7 @@ export default {
         name: "",
         email: ""
       },
+      selectedLocale: this.currentLocale || "en",
       publicSharingDraft: {
         public_dives_enabled: false
       },
@@ -618,6 +634,17 @@ export default {
       }
       return stats;
     },
+    availableLanguages() {
+      const translationCredits = getTranslationCredits();
+      return Object.keys(MESSAGES).map((locale) => ({
+        value: locale,
+        label: LANGUAGE_LABELS[locale] || locale.toUpperCase(),
+        credit: translationCredits[locale] || ""
+      }));
+    },
+    selectedLanguageCredit() {
+      return this.availableLanguages.find((language) => language.value === this.selectedLocale)?.credit || "";
+    },
     settingsSections() {
       return SETTINGS_SECTIONS.filter((section) => section.id !== "manage-users" || this.canManageUsers);
     },
@@ -683,6 +710,12 @@ export default {
       },
       immediate: true
     },
+    currentLocale: {
+      handler(value) {
+        this.selectedLocale = value || "en";
+      },
+      immediate: true
+    },
     profileStatus(value) {
       this.clearProfileStatusTimer();
       if (!value) {
@@ -735,6 +768,14 @@ export default {
       if (typeof this.setActiveSection === "function") {
         this.setActiveSection(sectionId);
       }
+    },
+    changePreferredLanguage() {
+      if (typeof this.setLocale === "function") {
+        this.setLocale(this.selectedLocale);
+      }
+      const languageLabel = this.availableLanguages.find((language) => language.value === this.selectedLocale)?.label || this.selectedLocale;
+      this.profileError = "";
+      this.profileStatus = `Language set to ${languageLabel}.`;
     },
     syncAuthenticationDefaults() {
       if (!this.settingsProfile.name && this.currentUserName) {
@@ -2221,6 +2262,35 @@ export default {
 
           <template v-else>
           <div v-if="activeSettingsSection === 'diver-details'" class="settings-panel settings-card">
+            <div class="mb-8 rounded-2xl border border-primary/15 bg-surface-container-low p-6">
+              <div class="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
+                <div class="max-w-3xl">
+                  <p class="font-label text-[10px] font-bold uppercase tracking-[0.24em] text-primary">Interface Language</p>
+                  <h4 class="mt-2 font-headline text-3xl font-bold tracking-tight text-on-surface">Preferred Language</h4>
+                  <p class="mt-3 text-sm leading-7 text-secondary">Choose which translation bundle the app should use for supported interface text. Available options are loaded from <code>en.js</code>, <code>de.js</code>, and <code>fr.js</code>.</p>
+                </div>
+                <div class="settings-chip is-accent">
+                  {{ (availableLanguages.find((language) => language.value === selectedLocale)?.label || selectedLocale).toUpperCase() }}
+                </div>
+              </div>
+
+              <div class="mt-6 grid gap-4 xl:grid-cols-[minmax(0,24rem)_1fr] xl:items-start">
+                <label class="space-y-2">
+                  <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Language</span>
+                  <select v-model="selectedLocale" @change="changePreferredLanguage" class="settings-input">
+                    <option v-for="language in availableLanguages" :key="'settings-language-' + language.value" :value="language.value">
+                      {{ language.label }}
+                    </option>
+                  </select>
+                </label>
+
+                <div class="settings-side-panel">
+                  <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Translation Credit</p>
+                  <p class="mt-2 text-sm leading-6 text-on-surface">{{ selectedLanguageCredit || 'Unavailable' }}</p>
+                </div>
+              </div>
+            </div>
+
             <div class="mb-8 rounded-2xl border border-primary/15 bg-surface-container-low p-6">
               <div class="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
                 <div class="max-w-3xl">
