@@ -52,12 +52,12 @@ export default {
     const { user } = useUser();
 
     return {
-      clerkGetToken: getToken,
-      clerkLoaded: isLoaded,
-      clerkSessionId: sessionId,
-      clerkSignOut: signOut,
-      clerkSignedIn: isSignedIn,
-      clerkUser: user
+      authGetToken: getToken,
+      authLoaded: isLoaded,
+      authSessionId: sessionId,
+      authSignOut: signOut,
+      authSignedIn: isSignedIn,
+      authUser: user
     };
   },
   data() {
@@ -114,22 +114,22 @@ export default {
     };
   },
   watch: {
-    clerkLoaded: {
+    authLoaded: {
       handler() {
         this.syncAuthState();
       },
       immediate: true
     },
-    clerkSignedIn: {
+    authSignedIn: {
       handler() {
         this.syncAuthState();
       },
       immediate: true
     },
-    clerkSessionId() {
+    authSessionId() {
       this.syncAuthState();
     },
-    clerkUser: {
+    authUser: {
       handler() {
         this.sessionEmail = this.currentUserEmail;
       },
@@ -139,13 +139,13 @@ export default {
   },
   computed: {
     currentUserEmail() {
-      return this.clerkUser?.primaryEmailAddress?.emailAddress
-        || this.clerkUser?.emailAddresses?.[0]?.emailAddress
+      return this.authUser?.primaryEmailAddress?.emailAddress
+        || this.authUser?.emailAddresses?.[0]?.emailAddress
         || "";
     },
     currentUserName() {
-      const firstName = this.clerkUser?.firstName?.trim() || "";
-      const lastName = this.clerkUser?.lastName?.trim() || "";
+      const firstName = this.authUser?.firstName?.trim() || "";
+      const lastName = this.authUser?.lastName?.trim() || "";
       return [firstName, lastName].filter(Boolean).join(" ") || this.currentUserEmail || "Diver";
     },
     currentUserInitials() {
@@ -293,24 +293,24 @@ export default {
         return;
       }
 
-      if (!this.clerkLoaded) {
+      if (!this.authLoaded) {
         this.loading = true;
         return;
       }
 
-      this.isAuthenticated = Boolean(this.clerkSignedIn);
+      this.isAuthenticated = Boolean(this.authSignedIn);
       this.sessionEmail = this.currentUserEmail;
 
-      if (!this.isAuthenticated || !this.clerkSessionId) {
+      if (!this.isAuthenticated || !this.authSessionId) {
         this.resetAuthenticatedState();
         return;
       }
 
-      if (this.lastAuthenticatedSessionId === this.clerkSessionId) {
+      if (this.lastAuthenticatedSessionId === this.authSessionId) {
         return;
       }
 
-      this.lastAuthenticatedSessionId = this.clerkSessionId;
+      this.lastAuthenticatedSessionId = this.authSessionId;
       this.syncViewFromHash();
       await Promise.all([this.fetchDives(), this.fetchProfileData()]);
     },
@@ -338,11 +338,11 @@ export default {
       const requireAuth = requestOptions.requireAuth !== false;
 
       let token = null;
-      if (requireAuth && typeof this.clerkGetToken === "function") {
+      if (requireAuth && typeof this.authGetToken === "function") {
         token = await this.withTimeout(
-          this.clerkGetToken(),
+          this.authGetToken(),
           timeoutMs,
-          "Timed out while waiting for the Clerk session token."
+          "Timed out while waiting for the Authentication session token."
         );
       }
 
@@ -384,10 +384,10 @@ export default {
     },
     async signOutUser() {
       this.closeMobileAccountMenu();
-      if (typeof this.clerkSignOut !== "function") {
+      if (typeof this.authSignOut !== "function") {
         return;
       }
-      await this.clerkSignOut({ redirectUrl: "/" });
+      await this.authSignOut({ redirectUrl: "/" });
     },
     isDisabledNavItem(view) {
       return Boolean(this.navItems.find((item) => item.id === view)?.disabled);
@@ -1105,7 +1105,7 @@ export default {
   },
   template: `
     <public-profile-view v-if="isPublicRoute" :slug="publicRouteSlug"></public-profile-view>
-    <div v-else-if="!clerkLoaded" class="flex min-h-screen items-center justify-center bg-background px-6 text-on-background">
+    <div v-else-if="!authLoaded" class="flex min-h-screen items-center justify-center bg-background px-6 text-on-background">
       <section class="bg-surface-container-low p-10 shadow-panel">
         <p class="font-headline text-2xl font-bold">Loading secure access...</p>
       </section>

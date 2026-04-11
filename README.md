@@ -55,7 +55,7 @@ Backend:
 - Entry point: `cd backend && python -m divevault.app`
 - HTTP server: Python `http.server` with threaded request handling
 - Storage: PostgreSQL via `psycopg`
-- Auth: Clerk session tokens, Clerk API keys, and short-lived desktop sync tokens
+- Auth: DiveVault first-party JWT sessions and short-lived desktop sync tokens
 
 Frontend:
 
@@ -142,11 +142,10 @@ See [`examples/kubernetes`](./examples/kubernetes) for a ready-to-use migration 
 Common variables from [`.env.example`](./.env.example):
 
 - `DATABASE_URL`: PostgreSQL connection string
-- `VITE_CLERK_PUBLISHABLE_KEY`: Clerk frontend key
-- `CLERK_SECRET_KEY`: Clerk backend secret for API key verification
-- `CLERK_FRONTEND_API_URL`: used to derive the Clerk issuer and JWKS URL
-- `CLERK_JWT_KEY` or `CLERK_JWKS_URL`: required for Clerk session token verification
-- `CLERK_AUTHORIZED_PARTIES`: allowed `azp` values
+- `AUTH_JWT_SECRET`: shared secret used to sign and verify DiveVault session tokens
+- `AUTH_JWT_ISSUER`: expected token issuer (defaults to `divevault.local`)
+- `AUTH_JWT_AUDIENCE`: expected token audience (defaults to `divevault.app`)
+- `AUTH_TOKEN_TTL_SECONDS`: session token lifetime in seconds (defaults to `43200`)
 - `CLI_AUTH_REQUEST_TTL` and `CLI_AUTH_TOKEN_TTL`: desktop sync token timing
 - `MAX_JSON_BODY_BYTES`: maximum accepted JSON request payload size (defaults to `1048576`)
 - `MAX_BACKUP_IMPORT_BYTES`: maximum accepted JSON payload size for `/api/backup/import` (defaults to `26214400`)
@@ -171,6 +170,22 @@ Run tests with:
 ```powershell
 .\.venv\Scripts\python.exe -m pytest -q backend/tests
 ```
+
+## Manual Clerk User Migration
+
+If you previously used Clerk, you can manually import users so existing per-user dive/profile records continue working with the same user IDs.
+
+1. Export your Clerk users to JSON and keep each `id` (for example `user_...`) plus `email`.
+2. Run:
+
+```powershell
+python backend/migrations/migrate_clerk_users_to_auth.py `
+  --database-url "$env:DATABASE_URL" `
+  --input ".\clerk-users.json" `
+  --default-password "ChangeMe123!"
+```
+
+3. Ask users to change their password after first login (or pre-seed per-user passwords in the JSON input via `password`).
 
 ## Image Versioning
 

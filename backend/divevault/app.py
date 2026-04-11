@@ -23,6 +23,9 @@ import secrets
 import signal
 import threading
 import time
+import hashlib
+import hmac
+import uuid
 from datetime import datetime, timezone
 from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -35,16 +38,21 @@ from urllib.parse import parse_qs, urlencode, urlparse
 import jwt
 import psycopg
 from dotenv import load_dotenv
-from jwt import InvalidTokenError, PyJWKClient
+from jwt import InvalidTokenError
 
 from divevault.postgres_store import (
     CURRENT_SCHEMA_VERSION,
     approve_cli_sync_request,
     create_cli_sync_request,
+    create_auth_user,
+    create_password_reset_code,
+    delete_auth_user,
     delete_dive,
     get_device_state,
     get_db_schema_version,
     get_cli_sync_request_status,
+    get_auth_user_by_email,
+    get_auth_user_by_id,
     get_dive,
     get_dive_id_by_uid,
     get_public_profile_dives,
@@ -53,12 +61,17 @@ from divevault.postgres_store import (
     is_logbook_complete,
     insert_dive_record,
     list_all_dives,
+    list_auth_users,
     list_device_states,
     list_dives,
     open_db,
     save_user_profile,
     save_user_profile_license_pdf,
     save_device_state,
+    count_auth_users,
+    consume_password_reset_code,
+    update_auth_user,
+    update_auth_user_last_login,
     summarize_dives,
     update_dive_logbook,
     verify_cli_sync_token,
@@ -73,7 +86,7 @@ MAX_PROFILE_LICENSE_BYTES = 10 * 1024 * 1024
 load_dotenv(REPO_ROOT / ".env")
 
 
-class ClerkAuthError(Exception):
+class AuthError(Exception):
     def __init__(self, status: int, message: str) -> None:
         super().__init__(message)
         self.status = status
@@ -112,12 +125,6 @@ class FixedWindowRateLimiter:
             return True, max(expires_at - now_ts, 1)
 
 
-def normalize_pem_env(value: str | None) -> str | None:
-    if not value:
-        return None
-    return value.strip().replace("\\n", "\n")
-
-
 def normalize_bearer_token(value: str | None) -> str | None:
     if not value:
         return None
@@ -129,136 +136,58 @@ def normalize_bearer_token(value: str | None) -> str | None:
     return normalized or None
 
 
-class ClerkTokenVerifier:
+class DiveVaultAuthTokenVerifier:
     def __init__(
         self,
         *,
-        secret_key: str | None,
-        jwt_key: str | None,
-        jwks_url: str | None,
-        api_url: str | None,
-        issuer: str | None,
-        audience: str | None,
-        authorized_parties: set[str],
-        required_api_key_scopes: set[str],
+        jwt_secret: str,
+        jwt_issuer: str,
+        jwt_audience: str,
         sync_token_manager=None,
     ) -> None:
-        self.secret_key = secret_key.strip() if secret_key else None
-        self.jwt_key = normalize_pem_env(jwt_key)
-        self.jwks_url = jwks_url.strip() if jwks_url else None
-        self.api_url = (api_url or "https://api.clerk.com").rstrip("/")
-        self.issuer = issuer.rstrip("/") if issuer else None
-        self.audience = audience.strip() if audience else None
-        self.authorized_parties = authorized_parties
-        self.required_api_key_scopes = required_api_key_scopes
+        self.jwt_secret = jwt_secret
+        self.issuer = jwt_issuer
+        self.audience = jwt_audience
         self.sync_token_manager = sync_token_manager
-        self.jwks_client = PyJWKClient(self.jwks_url) if self.jwks_url and not self.jwt_key else None
 
     @property
     def configured(self) -> bool:
-        return bool(self.secret_key or self.jwt_key or self.jwks_client)
+        return bool(self.jwt_secret)
 
     def verify_request(self, headers) -> dict:
         token = normalize_bearer_token(self._extract_token(headers))
         if not token:
-            raise ClerkAuthError(401, "Missing Clerk bearer token")
+            raise AuthError(401, "Missing authentication bearer token")
 
         if token.startswith("dvsync_"):
             return self._verify_sync_token(token)
-        if token.startswith("ak_"):
-            return self._verify_api_key(token)
-        if token.startswith("sk_"):
-            raise ClerkAuthError(401, "Received CLERK_SECRET_KEY instead of a Clerk API key secret. Use a user or organization API key that starts with ak_.")
-        if token.startswith("pk_"):
-            raise ClerkAuthError(401, "Received Clerk publishable key instead of an API credential. Use a Clerk API key secret that starts with ak_.")
-
         return self._verify_session_token(token)
 
     def _verify_session_token(self, token: str) -> dict:
-        if not self.jwt_key and not self.jwks_client:
-            raise ClerkAuthError(503, "Clerk session token verification is not configured on the backend")
-
-        signing_key = self.jwt_key
-        if not signing_key and self.jwks_client:
-            try:
-                signing_key = self.jwks_client.get_signing_key_from_jwt(token).key
-            except Exception as exc:  # pragma: no cover - network/JWKS failures are runtime-dependent
-                raise ClerkAuthError(503, f"Unable to resolve Clerk signing key: {exc}") from exc
-
-        if not signing_key:
-            raise ClerkAuthError(503, "Clerk authentication is not configured on the backend")
-
-        decode_kwargs = {
-            "algorithms": ["RS256"],
-            "issuer": self.issuer,
-            "options": {
-                "verify_aud": bool(self.audience),
-                "verify_iss": bool(self.issuer),
-            },
-            "leeway": 5,
-        }
-        if self.audience:
-            decode_kwargs["audience"] = self.audience
-
         try:
-            claims = jwt.decode(token, signing_key, **decode_kwargs)
+            claims = jwt.decode(
+                token,
+                self.jwt_secret,
+                algorithms=["HS256"],
+                issuer=self.issuer,
+                audience=self.audience,
+                options={"verify_exp": True},
+                leeway=5,
+            )
         except InvalidTokenError as exc:
-            raise ClerkAuthError(401, f"Invalid Clerk session token: {exc}") from exc
-
-        if self.authorized_parties:
-            authorized_party = claims.get("azp")
-            if authorized_party not in self.authorized_parties:
-                raise ClerkAuthError(401, "Clerk session token origin is not allowed")
+            raise AuthError(401, f"Invalid session token: {exc}") from exc
 
         claims.setdefault("token_type", "session_token")
         return claims
 
     def _verify_sync_token(self, token: str) -> dict:
         if self.sync_token_manager is None:
-            raise ClerkAuthError(503, "Desktop sync login is not configured on the backend")
+            raise AuthError(503, "Desktop sync login is not configured on the backend")
 
         claims = self.sync_token_manager.verify_token(token)
         if claims is None:
-            raise ClerkAuthError(401, "Desktop sync token is invalid or expired")
+            raise AuthError(401, "Desktop sync token is invalid or expired")
         return claims
-
-    def _verify_api_key(self, token: str) -> dict:
-        if not self.secret_key:
-            raise ClerkAuthError(503, "Clerk API key verification requires CLERK_SECRET_KEY on the backend")
-
-        req = urlrequest.Request(
-            f"{self.api_url}/v1/api_keys/verify",
-            data=json.dumps({"secret": token}).encode("utf-8"),
-            headers={
-                "Authorization": f"Bearer {self.secret_key}",
-                "Content-Type": "application/json",
-                "Accept": "application/json",
-            },
-            method="POST",
-        )
-
-        try:
-            with urlrequest.urlopen(req, timeout=15) as response:
-                payload = json.loads(response.read().decode("utf-8"))
-        except urlerror.HTTPError as exc:
-            details = exc.read().decode("utf-8", errors="replace")
-            if exc.code == 403 and ("Cloudflare" in details or "Error 1010" in details or "Access denied" in details):
-                raise ClerkAuthError(
-                    503,
-                    "Clerk API key verification is blocked by Cloudflare from this network. The backend cannot validate API keys from the current IP.",
-                ) from exc
-            if exc.code >= 500:
-                raise ClerkAuthError(503, f"Clerk API key verification failed: {details}") from exc
-            raise ClerkAuthError(401, "Invalid Clerk API key") from exc
-        except (urlerror.URLError, TimeoutError, json.JSONDecodeError) as exc:
-            raise ClerkAuthError(503, f"Unable to verify Clerk API key: {exc}") from exc
-
-        api_key_scopes = set(payload.get("scopes") or [])
-        if self.required_api_key_scopes and not self.required_api_key_scopes.issubset(api_key_scopes):
-            raise ClerkAuthError(403, "Clerk API key is missing required scopes")
-
-        payload.setdefault("token_type", "api_key")
-        return payload
 
     @staticmethod
     def _extract_token(headers) -> str | None:
@@ -274,12 +203,6 @@ class ClerkTokenVerifier:
         cookie.load(cookie_header)
         session_cookie = cookie.get("__session")
         return session_cookie.value if session_cookie else None
-
-
-def parse_csv_env(value: str | None) -> set[str]:
-    if not value:
-        return set()
-    return {item.strip() for item in value.split(",") if item.strip()}
 
 
 def sanitize_profile_license_filename(value: object) -> str:
@@ -558,28 +481,47 @@ class CliSyncTokenManager:
             return dict(claims)
 
 
-def build_clerk_verifier(args: argparse.Namespace, *, sync_token_manager: CliSyncTokenManager | None) -> ClerkTokenVerifier | None:
-    frontend_api_url = args.clerk_frontend_api_url.rstrip("/") if args.clerk_frontend_api_url else None
-    jwks_url = args.clerk_jwks_url or (f"{frontend_api_url}/.well-known/jwks.json" if frontend_api_url else None)
-    issuer = args.clerk_issuer or frontend_api_url
-    verifier = ClerkTokenVerifier(
-        secret_key=args.clerk_secret_key,
-        jwt_key=args.clerk_jwt_key,
-        jwks_url=jwks_url,
-        api_url=args.clerk_api_url,
-        issuer=issuer,
-        audience=args.clerk_audience,
-        authorized_parties=parse_csv_env(args.clerk_authorized_parties),
-        required_api_key_scopes=parse_csv_env(args.clerk_api_key_scopes),
+def hash_password(password: str, *, salt_hex: str | None = None) -> str:
+    salt = bytes.fromhex(salt_hex) if salt_hex else secrets.token_bytes(16)
+    digest = hashlib.scrypt(password.encode("utf-8"), salt=salt, n=2**14, r=8, p=1, dklen=64)
+    return f"scrypt${salt.hex()}${digest.hex()}"
+
+
+def verify_password(password: str, password_hash: str) -> bool:
+    if not isinstance(password_hash, str) or not password_hash.startswith("scrypt$"):
+        return False
+    parts = password_hash.split("$")
+    if len(parts) != 3:
+        return False
+    _, salt_hex, expected_hex = parts
+    actual_hash = hash_password(password, salt_hex=salt_hex)
+    return hmac.compare_digest(actual_hash, password_hash)
+
+
+def issue_session_token(*, user_id: str, email: str, role: str, jwt_secret: str, issuer: str, audience: str, ttl_seconds: int) -> str:
+    now_timestamp = int(time.time())
+    payload = {
+        "sub": user_id,
+        "sid": f"session_{uuid.uuid4().hex}",
+        "email": email,
+        "role": role,
+        "token_type": "session_token",
+        "iat": now_timestamp,
+        "nbf": now_timestamp,
+        "exp": now_timestamp + max(ttl_seconds, 300),
+        "iss": issuer,
+        "aud": audience,
+    }
+    return jwt.encode(payload, jwt_secret, algorithm="HS256")
+
+
+def build_auth_verifier(args: argparse.Namespace, *, sync_token_manager: CliSyncTokenManager | None) -> DiveVaultAuthTokenVerifier:
+    return DiveVaultAuthTokenVerifier(
+        jwt_secret=args.auth_jwt_secret,
+        jwt_issuer=args.auth_jwt_issuer,
+        jwt_audience=args.auth_jwt_audience,
         sync_token_manager=sync_token_manager,
     )
-    if verifier.configured:
-        return verifier
-
-    LOGGER.warning(
-        "Clerk authentication is not configured. Set CLERK_SECRET_KEY for API keys and CLERK_JWT_KEY or CLERK_JWKS_URL (or CLERK_FRONTEND_API_URL) for session tokens."
-    )
-    return None
 
 
 def resolve_repo_path(path_value: str | Path) -> Path:
@@ -1473,16 +1415,43 @@ class DiveBackendHandler(BaseHTTPRequestHandler):
             claims = self._require_auth()
             if claims is None:
                 return
+            conn = self._open_db()
+            if conn is None:
+                return
+            try:
+                auth_user = get_auth_user_by_id(conn, claims.get("sub") or "")
+            finally:
+                conn.close()
             self._send_json(
                 200,
                 {
                     "token_type": claims.get("token_type", "session_token"),
                     "session_id": claims.get("sid"),
                     "user_id": claims.get("sub"),
-                    "subject": claims.get("subject"),
-                    "scopes": claims.get("scopes"),
+                    "email": (auth_user or {}).get("email") or claims.get("email"),
+                    "first_name": (auth_user or {}).get("first_name", ""),
+                    "last_name": (auth_user or {}).get("last_name", ""),
+                    "role": (auth_user or {}).get("role") or claims.get("role", "user"),
+                    "is_active": bool((auth_user or {}).get("is_active", True)),
                 },
             )
+            return
+
+        if path == "/api/users":
+            claims = self._require_auth()
+            if claims is None:
+                return
+            if not self._is_admin_claims(claims):
+                self._send_json(403, {"error": "Admin role required"})
+                return
+            conn = self._open_db()
+            if conn is None:
+                return
+            try:
+                users = list_auth_users(conn)
+            finally:
+                conn.close()
+            self._send_json(200, {"users": users})
             return
 
         if path == "/api/cli-auth/request":
@@ -1582,11 +1551,166 @@ class DiveBackendHandler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:
         LOGGER.info("POST %s", self.path)
+        if self.path == "/api/auth/register":
+            payload = self._read_json_body()
+            if payload is None:
+                return
+            email = str(payload.get("email") or "").strip().lower()
+            password = str(payload.get("password") or "")
+            if not email or "@" not in email:
+                self._send_json(400, {"error": "Valid email is required"})
+                return
+            if len(password) < 8:
+                self._send_json(400, {"error": "Password must be at least 8 characters"})
+                return
+            conn = self._open_db()
+            if conn is None:
+                return
+            try:
+                if get_auth_user_by_email(conn, email):
+                    self._send_json(409, {"error": "Email already registered"})
+                    return
+                user_count = count_auth_users(conn)
+                role = "admin" if user_count == 0 else "user"
+                user = create_auth_user(
+                    conn,
+                    user_id=f"user_{uuid.uuid4().hex}",
+                    email=email,
+                    password_hash=hash_password(password),
+                    first_name=str(payload.get("first_name") or "").strip(),
+                    last_name=str(payload.get("last_name") or "").strip(),
+                    role=role,
+                )
+            finally:
+                conn.close()
+            self._send_json(201, {"user_id": user.get("id"), "email": user.get("email"), "role": user.get("role")})
+            return
+
+        if self.path == "/api/auth/login":
+            payload = self._read_json_body()
+            if payload is None:
+                return
+            email = str(payload.get("email") or "").strip().lower()
+            password = str(payload.get("password") or "")
+            conn = self._open_db()
+            if conn is None:
+                return
+            try:
+                user = get_auth_user_by_email(conn, email)
+                if not user or not verify_password(password, user.get("password_hash") or ""):
+                    self._send_json(401, {"error": "Invalid email or password"})
+                    return
+                if not bool(user.get("is_active", True)):
+                    self._send_json(403, {"error": "User account is inactive"})
+                    return
+                update_auth_user_last_login(conn, user.get("id"))
+            finally:
+                conn.close()
+            token = issue_session_token(
+                user_id=user.get("id"),
+                email=user.get("email"),
+                role=user.get("role") or "user",
+                jwt_secret=self.server.auth_jwt_secret,
+                issuer=self.server.auth_jwt_issuer,
+                audience=self.server.auth_jwt_audience,
+                ttl_seconds=self.server.auth_token_ttl_seconds,
+            )
+            self._send_json(200, {"token": token})
+            return
+
+        if self.path == "/api/auth/recover/start":
+            payload = self._read_json_body()
+            if payload is None:
+                return
+            email = str(payload.get("email") or "").strip().lower()
+            conn = self._open_db()
+            if conn is None:
+                return
+            try:
+                user = get_auth_user_by_email(conn, email)
+                if user:
+                    code = f"{secrets.randbelow(1000000):06d}"
+                    now_timestamp = int(time.time())
+                    create_password_reset_code(
+                        conn,
+                        email=email,
+                        code=code,
+                        expires_at=now_timestamp + 15 * 60,
+                        now_timestamp=now_timestamp,
+                    )
+                else:
+                    code = "000000"
+            finally:
+                conn.close()
+            self._send_json(200, {"message": "If the account exists, a reset code was generated.", "recovery_code": code})
+            return
+
+        if self.path == "/api/auth/recover/complete":
+            payload = self._read_json_body()
+            if payload is None:
+                return
+            email = str(payload.get("email") or "").strip().lower()
+            code = str(payload.get("code") or "").strip()
+            new_password = str(payload.get("password") or "")
+            if len(new_password) < 8:
+                self._send_json(400, {"error": "Password must be at least 8 characters"})
+                return
+            conn = self._open_db()
+            if conn is None:
+                return
+            try:
+                valid_code = consume_password_reset_code(conn, email=email, code=code, now_timestamp=int(time.time()))
+                user = get_auth_user_by_email(conn, email)
+                if not valid_code or not user:
+                    self._send_json(400, {"error": "Invalid or expired recovery code"})
+                    return
+                update_auth_user(conn, user.get("id"), {"password_hash": hash_password(new_password)})
+            finally:
+                conn.close()
+            self._send_json(200, {"reset": True})
+            return
+
         if self.path == "/api/cli-auth/request":
             if not self._enforce_rate_limit("cli_auth_request_create"):
                 return
             payload = self.server.cli_auth_manager.create_request()
             self._send_json(201, payload)
+            return
+
+        if self.path == "/api/users":
+            claims = self._require_auth()
+            if claims is None:
+                return
+            if not self._is_admin_claims(claims):
+                self._send_json(403, {"error": "Admin role required"})
+                return
+            payload = self._read_json_body()
+            if payload is None:
+                return
+            email = str(payload.get("email") or "").strip().lower()
+            password = str(payload.get("password") or "")
+            if not email or not password:
+                self._send_json(400, {"error": "email and password are required"})
+                return
+            conn = self._open_db()
+            if conn is None:
+                return
+            try:
+                if get_auth_user_by_email(conn, email):
+                    self._send_json(409, {"error": "Email already registered"})
+                    return
+                created = create_auth_user(
+                    conn,
+                    user_id=f"user_{uuid.uuid4().hex}",
+                    email=email,
+                    password_hash=hash_password(password),
+                    first_name=str(payload.get("first_name") or "").strip(),
+                    last_name=str(payload.get("last_name") or "").strip(),
+                    role=str(payload.get("role") or "user").strip().lower() or "user",
+                )
+            finally:
+                conn.close()
+            self._send_json(201, {"user": created})
             return
 
         if self.path == "/api/backup/import":
@@ -1698,6 +1822,57 @@ class DiveBackendHandler(BaseHTTPRequestHandler):
 
     def do_PUT(self) -> None:
         LOGGER.info("PUT %s", self.path)
+        if self.path == "/api/auth/password":
+            claims = self._require_auth()
+            if claims is None:
+                return
+            payload = self._read_json_body()
+            if payload is None:
+                return
+            current_password = str(payload.get("current_password") or "")
+            new_password = str(payload.get("new_password") or "")
+            if len(new_password) < 8:
+                self._send_json(400, {"error": "New password must be at least 8 characters"})
+                return
+            conn = self._open_db()
+            if conn is None:
+                return
+            try:
+                user = get_auth_user_by_id(conn, claims.get("sub") or "")
+                if not user or not verify_password(current_password, user.get("password_hash") or ""):
+                    self._send_json(401, {"error": "Current password is incorrect"})
+                    return
+                update_auth_user(conn, user.get("id"), {"password_hash": hash_password(new_password)})
+            finally:
+                conn.close()
+            self._send_json(200, {"updated": True})
+            return
+
+        match = re.fullmatch(r"/api/users/(user_[A-Za-z0-9]+)", self.path)
+        if match:
+            claims = self._require_auth()
+            if claims is None:
+                return
+            if not self._is_admin_claims(claims):
+                self._send_json(403, {"error": "Admin role required"})
+                return
+            payload = self._read_json_body()
+            if payload is None:
+                return
+            user_id = match.group(1)
+            conn = self._open_db()
+            if conn is None:
+                return
+            try:
+                updated = update_auth_user(conn, user_id, payload)
+            finally:
+                conn.close()
+            if not updated:
+                self._send_json(404, {"error": "User not found"})
+                return
+            self._send_json(200, {"user": updated})
+            return
+
         if self.path == "/api/profile":
             user_id = self._require_principal_id()
             if user_id is None:
@@ -1839,6 +2014,28 @@ class DiveBackendHandler(BaseHTTPRequestHandler):
 
     def do_DELETE(self) -> None:
         LOGGER.info("DELETE %s", self.path)
+        match = re.fullmatch(r"/api/users/(user_[A-Za-z0-9]+)", self.path)
+        if match:
+            claims = self._require_auth()
+            if claims is None:
+                return
+            if not self._is_admin_claims(claims):
+                self._send_json(403, {"error": "Admin role required"})
+                return
+            target_user_id = match.group(1)
+            conn = self._open_db()
+            if conn is None:
+                return
+            try:
+                deleted = delete_auth_user(conn, target_user_id)
+            finally:
+                conn.close()
+            if not deleted:
+                self._send_json(404, {"error": "User not found"})
+                return
+            self._send_json(200, {"deleted": True, "user_id": target_user_id})
+            return
+
         match = re.fullmatch(r"/api/dives/(\d+)", self.path)
         if not match:
             self._send_json(404, {"error": "Not found"})
@@ -1877,16 +2074,20 @@ class DiveBackendHandler(BaseHTTPRequestHandler):
             return None
 
     def _require_auth(self) -> dict | None:
-        verifier = getattr(self.server, "clerk_verifier", None)
+        verifier = getattr(self.server, "auth_verifier", None)
         if verifier is None:
-            self._send_json(503, {"error": "Clerk authentication is not configured on the backend"})
+            self._send_json(503, {"error": "Authentication is not configured on the backend"})
             return None
 
         try:
             return verifier.verify_request(self.headers)
-        except ClerkAuthError as exc:
+        except AuthError as exc:
             self._send_json(exc.status, {"error": exc.message})
             return None
+
+    @staticmethod
+    def _is_admin_claims(claims: dict | None) -> bool:
+        return bool(isinstance(claims, dict) and str(claims.get("role") or "").lower() == "admin")
 
     def _require_browser_session_auth(self) -> dict | None:
         claims = self._require_auth()
@@ -1999,7 +2200,7 @@ class DiveBackendHandler(BaseHTTPRequestHandler):
     def _send_config_js(self) -> None:
         body = (
             "window.__APP_CONFIG__ = "
-            + json.dumps({"clerkPublishableKey": self.server.clerk_publishable_key})
+            + json.dumps({"authEnabled": True})
             + ";\n"
         ).encode("utf-8")
         self.send_response(200)
@@ -2063,16 +2264,10 @@ def main() -> None:
         default=os.getenv("FRONTEND_DIR", "frontend/dist"),
         help="Path to static frontend assets, resolved relative to the repository root when not absolute",
     )
-    parser.add_argument("--clerk-publishable-key", default=os.getenv("VITE_CLERK_PUBLISHABLE_KEY"), help="Clerk publishable key exposed to the frontend at runtime")
-    parser.add_argument("--clerk-secret-key", default=os.getenv("CLERK_SECRET_KEY"), help="Clerk secret key, required to verify Clerk API keys")
-    parser.add_argument("--clerk-api-url", default=os.getenv("CLERK_API_URL", "https://api.clerk.com"), help="Clerk Backend API base URL")
-    parser.add_argument("--clerk-jwt-key", default=os.getenv("CLERK_JWT_KEY"), help="Clerk JWT public key in PEM format")
-    parser.add_argument("--clerk-jwks-url", default=os.getenv("CLERK_JWKS_URL"), help="Clerk JWKS URL")
-    parser.add_argument("--clerk-frontend-api-url", default=os.getenv("CLERK_FRONTEND_API_URL"), help="Clerk frontend API URL, used to derive the JWKS URL and issuer")
-    parser.add_argument("--clerk-issuer", default=os.getenv("CLERK_ISSUER"), help="Expected Clerk token issuer")
-    parser.add_argument("--clerk-audience", default=os.getenv("CLERK_AUDIENCE"), help="Expected Clerk token audience")
-    parser.add_argument("--clerk-authorized-parties", default=os.getenv("CLERK_AUTHORIZED_PARTIES"), help="Comma-separated allowed values for the Clerk azp claim")
-    parser.add_argument("--clerk-api-key-scopes", default=os.getenv("CLERK_API_KEY_SCOPES"), help="Comma-separated Clerk API key scopes required for backend access")
+    parser.add_argument("--auth-jwt-secret", default=os.getenv("AUTH_JWT_SECRET", "dev-only-change-me"), help="Shared secret used to sign and verify first-party DiveVault session tokens")
+    parser.add_argument("--auth-jwt-issuer", default=os.getenv("AUTH_JWT_ISSUER", "divevault.local"), help="JWT issuer for first-party DiveVault tokens")
+    parser.add_argument("--auth-jwt-audience", default=os.getenv("AUTH_JWT_AUDIENCE", "divevault.app"), help="JWT audience for first-party DiveVault tokens")
+    parser.add_argument("--auth-token-ttl-seconds", type=int, default=int(os.getenv("AUTH_TOKEN_TTL_SECONDS", "43200")), help="Session token TTL in seconds")
     parser.add_argument("--cli-auth-request-ttl", type=int, default=int(os.getenv("CLI_AUTH_REQUEST_TTL", "600")), help="Seconds a desktop login request stays valid")
     parser.add_argument("--cli-auth-token-ttl", type=int, default=int(os.getenv("CLI_AUTH_TOKEN_TTL", "1800")), help="Seconds an approved desktop sync token stays valid")
     parser.add_argument("--nominatim-base-url", default=os.getenv("NOMINATIM_BASE_URL", "https://nominatim.openstreetmap.org"), help="Base URL for the Nominatim search service")
@@ -2138,8 +2333,11 @@ def main() -> None:
         token_ttl_seconds=args.cli_auth_token_ttl,
         database_url=args.database_url,
     )
-    server.clerk_verifier = build_clerk_verifier(args, sync_token_manager=server.cli_auth_manager)
-    server.clerk_publishable_key = args.clerk_publishable_key
+    server.auth_verifier = build_auth_verifier(args, sync_token_manager=server.cli_auth_manager)
+    server.auth_jwt_secret = args.auth_jwt_secret
+    server.auth_jwt_issuer = args.auth_jwt_issuer
+    server.auth_jwt_audience = args.auth_jwt_audience
+    server.auth_token_ttl_seconds = max(args.auth_token_ttl_seconds, 300)
     server.cors_origin = args.cors_origin
     server.max_json_body_bytes = max(args.max_json_body_bytes, 1)
     server.max_backup_import_bytes = max(args.max_backup_import_bytes, 1)

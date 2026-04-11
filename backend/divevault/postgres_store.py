@@ -110,12 +110,34 @@ CREATE TABLE IF NOT EXISTS cli_sync_auth_requests (
     email TEXT,
     session_id TEXT
 );
+
+CREATE TABLE IF NOT EXISTS auth_users (
+    id TEXT PRIMARY KEY,
+    email TEXT NOT NULL UNIQUE,
+    password_hash TEXT NOT NULL,
+    first_name TEXT NOT NULL DEFAULT '',
+    last_name TEXT NOT NULL DEFAULT '',
+    role TEXT NOT NULL DEFAULT 'user',
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    last_login_at TEXT
+);
+
+CREATE TABLE IF NOT EXISTS auth_password_reset_codes (
+    email TEXT NOT NULL,
+    code TEXT NOT NULL,
+    expires_at BIGINT NOT NULL,
+    used_at BIGINT,
+    created_at BIGINT NOT NULL,
+    PRIMARY KEY (email, code)
+);
 """
 
 LOGBOOK_REQUIRED_FIELDS = ("site", "buddy", "guide")
 SAMPLE_TIME_UNIT_SECONDS = "seconds"
 SAMPLE_TIME_UNIT_MILLISECONDS = "milliseconds"
-CURRENT_SCHEMA_VERSION = 5
+CURRENT_SCHEMA_VERSION = 6
 SCHEMA_VERSION_SQL = """
 CREATE TABLE IF NOT EXISTS app_schema_version (
     singleton BOOLEAN PRIMARY KEY DEFAULT TRUE CHECK (singleton),
@@ -458,6 +480,39 @@ def apply_schema_migration_v5(cur: psycopg.Cursor) -> None:
     cur.execute("ALTER TABLE user_profile_buddies DROP COLUMN IF EXISTS sort_order")
 
 
+def apply_schema_migration_v6(cur: psycopg.Cursor) -> None:
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS auth_users (
+            id TEXT PRIMARY KEY,
+            email TEXT NOT NULL UNIQUE,
+            password_hash TEXT NOT NULL,
+            first_name TEXT NOT NULL DEFAULT '',
+            last_name TEXT NOT NULL DEFAULT '',
+            role TEXT NOT NULL DEFAULT 'user',
+            is_active BOOLEAN NOT NULL DEFAULT TRUE,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            last_login_at TEXT
+        )
+        """
+    )
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS auth_password_reset_codes (
+            email TEXT NOT NULL,
+            code TEXT NOT NULL,
+            expires_at BIGINT NOT NULL,
+            used_at BIGINT,
+            created_at BIGINT NOT NULL,
+            PRIMARY KEY (email, code)
+        )
+        """
+    )
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_auth_users_email ON auth_users (LOWER(email))")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_auth_password_reset_codes_expires_at ON auth_password_reset_codes (expires_at)")
+
+
 def _run_schema_migrations(conn: psycopg.Connection, cur: psycopg.Cursor, current_version: int) -> int:
     migrations: tuple[tuple[int, Callable[[psycopg.Connection, psycopg.Cursor], None]], ...] = (
         (1, lambda _conn, migration_cur: apply_schema_migration_v1(migration_cur)),
@@ -465,6 +520,7 @@ def _run_schema_migrations(conn: psycopg.Connection, cur: psycopg.Cursor, curren
         (3, apply_schema_migration_v3),
         (4, lambda _conn, migration_cur: apply_schema_migration_v4(migration_cur)),
         (5, lambda _conn, migration_cur: apply_schema_migration_v5(migration_cur)),
+        (6, lambda _conn, migration_cur: apply_schema_migration_v6(migration_cur)),
     )
     target_schema_version = min(CURRENT_SCHEMA_VERSION, max(version for version, _ in migrations))
 
@@ -1999,3 +2055,161 @@ def decode_base64_payload(payload: dict) -> bytes:
         return base64.b64decode(payload["raw_data_b64"], validate=True)
     except (ValueError, binascii.Error) as exc:
         raise ValueError("raw_data_b64 must be valid base64") from exc
+
+
+def normalize_email(value: object) -> str:
+    return clean_profile_text(value).strip().lower()
+
+
+def count_auth_users(conn: psycopg.Connection) -> int:
+    with conn.cursor() as cur:
+        cur.execute("SELECT COUNT(*) AS count FROM auth_users")
+        row = cur.fetchone() or {}
+    return int((row or {}).get("count") or 0)
+
+
+def get_auth_user_by_email(conn: psycopg.Connection, email: str) -> dict | None:
+    with conn.cursor() as cur:
+        cur.execute("SELECT * FROM auth_users WHERE LOWER(email)=LOWER(%s)", (normalize_email(email),))
+        return cur.fetchone()
+
+
+def get_auth_user_by_id(conn: psycopg.Connection, user_id: str) -> dict | None:
+    with conn.cursor() as cur:
+        cur.execute("SELECT * FROM auth_users WHERE id=%s", (clean_profile_text(user_id),))
+        return cur.fetchone()
+
+
+def create_auth_user(conn: psycopg.Connection, *, user_id: str, email: str, password_hash: str, first_name: str, last_name: str, role: str) -> dict:
+    now_value = now_iso()
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO auth_users(id, email, password_hash, first_name, last_name, role, is_active, created_at, updated_at, last_login_at)
+            VALUES (%s, %s, %s, %s, %s, %s, TRUE, %s, %s, NULL)
+            """,
+            (
+                clean_profile_text(user_id),
+                normalize_email(email),
+                clean_profile_text(password_hash),
+                clean_profile_text(first_name),
+                clean_profile_text(last_name),
+                clean_profile_text(role) or "user",
+                now_value,
+                now_value,
+            ),
+        )
+    conn.commit()
+    return get_auth_user_by_id(conn, user_id) or {}
+
+
+def upsert_auth_user(conn: psycopg.Connection, *, user_id: str, email: str, password_hash: str, first_name: str, last_name: str, role: str, is_active: bool = True) -> dict:
+    now_value = now_iso()
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO auth_users(id, email, password_hash, first_name, last_name, role, is_active, created_at, updated_at, last_login_at)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, NULL)
+            ON CONFLICT (id) DO UPDATE SET
+                email=excluded.email,
+                password_hash=excluded.password_hash,
+                first_name=excluded.first_name,
+                last_name=excluded.last_name,
+                role=excluded.role,
+                is_active=excluded.is_active,
+                updated_at=excluded.updated_at
+            """,
+            (
+                clean_profile_text(user_id),
+                normalize_email(email),
+                clean_profile_text(password_hash),
+                clean_profile_text(first_name),
+                clean_profile_text(last_name),
+                clean_profile_text(role) or "user",
+                bool(is_active),
+                now_value,
+                now_value,
+            ),
+        )
+    conn.commit()
+    return get_auth_user_by_id(conn, user_id) or {}
+
+
+def update_auth_user_last_login(conn: psycopg.Connection, user_id: str) -> None:
+    with conn.cursor() as cur:
+        cur.execute("UPDATE auth_users SET last_login_at=%s, updated_at=%s WHERE id=%s", (now_iso(), now_iso(), clean_profile_text(user_id)))
+    conn.commit()
+
+
+def list_auth_users(conn: psycopg.Connection) -> list[dict]:
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT id, email, first_name, last_name, role, is_active, created_at, updated_at, last_login_at
+            FROM auth_users
+            ORDER BY created_at ASC, email ASC
+            """
+        )
+        rows = cur.fetchall() or []
+    return [dict(row) for row in rows]
+
+
+def update_auth_user(conn: psycopg.Connection, user_id: str, payload: dict) -> dict | None:
+    existing = get_auth_user_by_id(conn, user_id)
+    if not existing:
+        return None
+    next_email = normalize_email(payload.get("email")) if "email" in payload else existing.get("email")
+    next_first_name = clean_profile_text(payload.get("first_name")) if "first_name" in payload else clean_profile_text(existing.get("first_name"))
+    next_last_name = clean_profile_text(payload.get("last_name")) if "last_name" in payload else clean_profile_text(existing.get("last_name"))
+    next_role = clean_profile_text(payload.get("role")) if "role" in payload else clean_profile_text(existing.get("role"))
+    next_is_active = bool(payload.get("is_active")) if "is_active" in payload else bool(existing.get("is_active"))
+    next_password_hash = clean_profile_text(payload.get("password_hash")) if "password_hash" in payload else clean_profile_text(existing.get("password_hash"))
+
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            UPDATE auth_users
+            SET email=%s, first_name=%s, last_name=%s, role=%s, is_active=%s, password_hash=%s, updated_at=%s
+            WHERE id=%s
+            """,
+            (next_email, next_first_name, next_last_name, next_role or "user", next_is_active, next_password_hash, now_iso(), clean_profile_text(user_id)),
+        )
+    conn.commit()
+    return get_auth_user_by_id(conn, user_id)
+
+
+def delete_auth_user(conn: psycopg.Connection, user_id: str) -> bool:
+    with conn.cursor() as cur:
+        cur.execute("DELETE FROM auth_users WHERE id=%s", (clean_profile_text(user_id),))
+        deleted = cur.rowcount > 0
+    conn.commit()
+    return deleted
+
+
+def create_password_reset_code(conn: psycopg.Connection, *, email: str, code: str, expires_at: int, now_timestamp: int) -> None:
+    with conn.cursor() as cur:
+        cur.execute("DELETE FROM auth_password_reset_codes WHERE expires_at <= %s OR used_at IS NOT NULL", (now_timestamp,))
+        cur.execute(
+            """
+            INSERT INTO auth_password_reset_codes(email, code, expires_at, used_at, created_at)
+            VALUES (%s, %s, %s, NULL, %s)
+            """,
+            (normalize_email(email), clean_profile_text(code), int(expires_at), int(now_timestamp)),
+        )
+    conn.commit()
+
+
+def consume_password_reset_code(conn: psycopg.Connection, *, email: str, code: str, now_timestamp: int) -> bool:
+    with conn.cursor() as cur:
+        cur.execute("DELETE FROM auth_password_reset_codes WHERE expires_at <= %s", (now_timestamp,))
+        cur.execute(
+            """
+            UPDATE auth_password_reset_codes
+            SET used_at=%s
+            WHERE LOWER(email)=LOWER(%s) AND code=%s AND used_at IS NULL AND expires_at > %s
+            """,
+            (now_timestamp, normalize_email(email), clean_profile_text(code), now_timestamp),
+        )
+        matched = cur.rowcount > 0
+    conn.commit()
+    return matched

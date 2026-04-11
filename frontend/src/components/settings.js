@@ -403,8 +403,8 @@ export default {
     const { user } = useUser();
 
     return {
-      clerkGetToken: getToken,
-      clerkUser: user
+      authGetToken: getToken,
+      authUser: user
     };
   },
   data() {
@@ -477,13 +477,13 @@ export default {
       return Boolean(this.cliAuthCode);
     },
     currentUserEmail() {
-      return this.clerkUser?.primaryEmailAddress?.emailAddress
-        || this.clerkUser?.emailAddresses?.[0]?.emailAddress
+      return this.authUser?.primaryEmailAddress?.emailAddress
+        || this.authUser?.emailAddresses?.[0]?.emailAddress
         || "";
     },
     currentUserName() {
-      const firstName = this.clerkUser?.firstName?.trim() || "";
-      const lastName = this.clerkUser?.lastName?.trim() || "";
+      const firstName = this.authUser?.firstName?.trim() || "";
+      const lastName = this.authUser?.lastName?.trim() || "";
       return [firstName, lastName].filter(Boolean).join(" ") || this.currentUserEmail || "";
     },
     licenses() {
@@ -625,13 +625,13 @@ export default {
   watch: {
     currentUserName: {
       handler() {
-        this.syncClerkDefaults();
+        this.syncAuthenticationDefaults();
       },
       immediate: true
     },
     currentUserEmail: {
       handler() {
-        this.syncClerkDefaults();
+        this.syncAuthenticationDefaults();
       },
       immediate: true
     },
@@ -688,7 +688,7 @@ export default {
         this.setActiveSection(sectionId);
       }
     },
-    syncClerkDefaults() {
+    syncAuthenticationDefaults() {
       if (!this.settingsProfile.name && this.currentUserName) {
         this.settingsProfile.name = this.currentUserName;
       }
@@ -829,7 +829,7 @@ export default {
       return Array.isArray(collection) ? collection.findIndex((entry) => entry?.id === itemId) : -1;
     },
     async authenticatedFetch(resource, options = {}) {
-      const token = await this.clerkGetToken({ skipCache: true });
+      const token = await this.authGetToken({ skipCache: true });
       const headers = new Headers(options.headers || {});
       if (token) {
         headers.set("Authorization", `Bearer ${token}`);
@@ -851,7 +851,7 @@ export default {
         }
         this.settingsProfile = this.hydrateProfile(payload);
         this.notifyProfileUpdated(this.settingsProfile);
-        this.syncClerkDefaults();
+        this.syncAuthenticationDefaults();
         this.resetDraftsFromProfile();
       } catch (error) {
         this.profileError = error?.message || "Could not load the user profile.";
@@ -1621,7 +1621,7 @@ export default {
       this.desktopSyncError = "";
 
       try {
-        const token = await this.clerkGetToken({ skipCache: true });
+        const token = await this.authGetToken({ skipCache: true });
         const response = await fetch("/api/cli-auth/approve", {
           method: "POST",
           credentials: "include",
