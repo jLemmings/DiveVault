@@ -3,7 +3,6 @@ import { defineConfig, loadEnv } from "vite";
 import vue from "@vitejs/plugin-vue";
 
 const repoRoot = path.resolve(__dirname, "..");
-const frontendNodeModules = path.resolve(__dirname, "node_modules");
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, repoRoot, "");
@@ -14,8 +13,7 @@ export default defineConfig(({ mode }) => {
     plugins: [vue()],
     resolve: {
       alias: {
-        "@clerk/vue": path.resolve(frontendNodeModules, "@clerk/vue/dist/index.js"),
-        vue: path.resolve(frontendNodeModules, "vue/dist/vue.esm-bundler.js")
+        vue: path.resolve(__dirname, "node_modules/vue/dist/vue.esm-bundler.js")
       }
     },
     css: {

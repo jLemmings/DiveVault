@@ -30,7 +30,7 @@ The backend uses Python `ThreadingHTTPServer` and custom request handling.
 
 ### 2) Authentication and authorization
 
-Clerk token verification is implemented and, importantly, appears **fail-closed** when not configured (returns 503 for protected endpoints), which is good.
+First-party JWT token verification is implemented and, importantly, appears **fail-closed** when not configured (returns 503 for protected endpoints), which is good.
 
 Residual risks:
 
@@ -110,4 +110,3 @@ The compose setup uses development defaults that are unsafe if reused in staging
 - SQL access appears parameterized via psycopg placeholders (reducing SQL injection risk).
 - Public profile route limits slug format and only exposes explicitly public data paths.
 - Auth checks are centralized and generally required for non-public data endpoints.
-

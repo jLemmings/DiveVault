@@ -20,12 +20,10 @@ metadata:
 type: Opaque
 stringData:
   DATABASE_URL: "postgresql://dive:dive@postgres:5432/dive"
-  VITE_CLERK_PUBLISHABLE_KEY: "pk_live_replace_me"
-  CLERK_SECRET_KEY: "sk_live_replace_me"
-  CLERK_FRONTEND_API_URL: "https://your-instance.clerk.accounts.dev"
-  CLERK_JWKS_URL: ""
-  CLERK_JWT_KEY: ""
-  CLERK_AUTHORIZED_PARTIES: "https://app.example.com"
+  AUTH_JWT_SECRET: "replace-me"
+  AUTH_JWT_ISSUER: "divevault.local"
+  AUTH_JWT_AUDIENCE: "divevault.app"
+  AUTH_TOKEN_TTL_SECONDS: "43200"
 ---
 apiVersion: batch/v1
 kind: Job
