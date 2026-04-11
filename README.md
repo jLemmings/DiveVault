@@ -174,14 +174,12 @@ Run tests with:
 
 ## Image Versioning
 
-Container publishing and GitHub release packaging are driven by [`frontend/package.json`](./frontend/package.json).
+Container publishing is driven by [`frontend/package.json`](./frontend/package.json).
 
-- Pushes to `master` compare [`frontend/package.json`](./frontend/package.json) to the existing GitHub releases.
-- If `v<version>` has not been released yet, the workflow creates a new GitHub release with that exact version string, publishes the clean `v<version>` container tag plus `stable` and `latest`, and attaches `divevault-<version>.tar.gz`.
-- If that release already exists, the workflow falls back to a snapshot container image tag in `v<version>-<short-sha>` format, for example `v0.1.0-a1b2c3d`.
-- `workflow_dispatch` keeps the same logic, but automatic release creation is still limited to runs on `master`.
+- On pushes to `master`, workflows publish image tags: `v<version>`, `stable`, and `latest`.
+- On non-`master` branches (or non-release contexts), workflows publish snapshot image tags in the format `v<version>-<short-sha>`, for example `v0.1.0-a1b2c3d`.
 
-This keeps `frontend/package.json` as the single release version source while only creating a GitHub release when a new version is detected.
+This keeps `frontend/package.json` as the single image version source while publishing container images only.
 
 ## libdivecomputer
 
