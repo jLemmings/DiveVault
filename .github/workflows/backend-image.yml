@@ -286,3 +286,20 @@ jobs:
             docker tag "${LOCAL_IMAGE_TAG}" "${tag}"
             docker push "${tag}"
           done <<< "${TAGS}"
+
+      - name: Create GitHub release
+        if: needs.fetch-artifacts.outputs.publish_version_tags == 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ needs.fetch-artifacts.outputs.version_tag }}
+        run: |
+          set -euo pipefail
+          if gh release view "${RELEASE_TAG}" >/dev/null 2>&1; then
+            echo "Release ${RELEASE_TAG} already exists; skipping."
+            exit 0
+          fi
+
+          gh release create "${RELEASE_TAG}" \
+            --target "${GITHUB_SHA}" \
+            --title "${RELEASE_TAG}" \
+            --generate-notes
