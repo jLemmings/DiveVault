@@ -39,36 +39,6 @@ The result is a system that keeps raw telemetry, review state, and curated logbo
 
 ## Quick Start
 
-### Requirements
-
-- Python 3.12+
-- Node.js 24+
-- PostgreSQL
-
-### Backend
-
-```powershell
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-pip install -r backend/requirements-dev.txt
-Copy-Item .env.example .env
-Set-Location backend
-python -m divevault.app
-```
-
-### Frontend
-
-```powershell
-Set-Location frontend
-npm ci
-npm run dev
-```
-
-Default local URLs:
-
-- Frontend: `http://localhost:5173`
-- Backend: `http://localhost:8000`
-
 ## Docker
 
 Run the full local stack with:
@@ -84,6 +54,55 @@ This starts:
 - DiveVault backend on `localhost:8000`
 
 For multi-pod deployments, run migrations as a separate job and set `STARTUP_MIGRATIONS=disabled` on backend pods.
+
+## Kubernetes
+
+There are two starting points for Kubernetes deployments:
+
+- Raw manifests in [`examples/kubernetes/divevault.yaml`](./examples/kubernetes/divevault.yaml)
+- Helm chart in the external [`jLemmings/helm-charts` repository](https://github.com/jLemmings/helm-charts/tree/master/charts/divevault)
+
+### Raw manifests from this repo
+
+The manifest in [`examples/kubernetes/divevault.yaml`](./examples/kubernetes/divevault.yaml) includes:
+
+- A `ConfigMap` and `Secret`
+- A one-shot `Job` to run `migrations.migrate_postgres_schema`
+- A `Deployment` with `STARTUP_MIGRATIONS=disabled`
+- A `Service` and `PodDisruptionBudget`
+
+Update the image reference and secret values first, then apply it:
+
+```bash
+kubectl apply -f examples/kubernetes/divevault.yaml
+kubectl wait --for=condition=complete job/divevault-db-migrate --timeout=180s
+kubectl rollout status deployment/divevault-backend
+```
+
+If you want local access after rollout:
+
+```bash
+kubectl port-forward service/divevault-backend 8000:8000
+```
+
+The example assumes PostgreSQL is already reachable at the hostname used in `DATABASE_URL`.
+
+### Helm chart
+
+The Helm chart currently lives in GitHub as a chart directory, not a published Helm repository, so install it from a local checkout:
+
+```bash
+git clone https://github.com/jLemmings/helm-charts.git
+helm upgrade --install divevault ./helm-charts/charts/divevault -f your-values.yaml
+```
+
+At minimum, review and override:
+
+- `image.repository` and `image.tag`
+- `database.url` or `database.existingSecret`
+- ingress settings if you want external access
+
+Before using that chart, compare its values with this repo's current environment contract in [`.env.example`](./.env.example) and the Kubernetes manifest above. In particular, this repo's current backend expects values such as `AUTH_JWT_SECRET`, `AUTH_JWT_ISSUER`, `AUTH_JWT_AUDIENCE`, and `STARTUP_MIGRATIONS`, so keep migrations external for multi-replica deployments and run the schema job before rolling out backend pods.
 
 ## Screenshots
 
@@ -151,7 +170,7 @@ Screenshots above were generated from the local mocked development environment s
 - Manual dive entry
 - Profile, data management, and backup settings
 
-## Testing
+## Contribution
 
 ### Backend
 
@@ -165,38 +184,6 @@ Screenshots above were generated from the local mocked development environment s
 Set-Location frontend
 npm test
 ```
-
-## Environment
-
-Core variables from [`.env.example`](./.env.example):
-
-- `DATABASE_URL`
-- `AUTH_JWT_SECRET`
-- `AUTH_JWT_ISSUER`
-- `AUTH_JWT_AUDIENCE`
-- `AUTH_TOKEN_TTL_SECONDS`
-- `CLI_AUTH_REQUEST_TTL`
-- `CLI_AUTH_TOKEN_TTL`
-- `STARTUP_MIGRATIONS`
-- `BACKEND_URL`
-- `BACKEND_AUTH_TOKEN`
-
-Optional service variables:
-
-- `NOMINATIM_BASE_URL`
-- `NOMINATIM_USER_AGENT`
-- `NOMINATIM_EMAIL`
-- `TRANSLATION_BASE_URL`
-- `TRANSLATION_USER_AGENT`
-
-Rate-limiting variables:
-
-- `RATE_LIMIT_WINDOW_SECONDS`
-- `RATE_LIMIT_CLI_REQUEST_PER_WINDOW`
-- `RATE_LIMIT_CLI_APPROVE_PER_WINDOW`
-- `RATE_LIMIT_BACKUP_IMPORT_PER_WINDOW`
-- `RATE_LIMIT_DIVE_UPLOAD_PER_WINDOW`
-
 ## Contributing
 
 If you want to work on DiveVault itself:
@@ -204,6 +191,36 @@ If you want to work on DiveVault itself:
 - Start with the run-it-yourself steps above so you can use the app end to end before changing code.
 - Run backend and frontend tests before opening changes.
 - Regenerate README screenshots with `frontend/scripts/capture-readme-screenshots.mjs` when UI changes affect the screenshots.
+
+### Requirements
+
+- Python 3.12+
+- Node.js 24+
+- PostgreSQL
+
+### Backend
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r backend/requirements-dev.txt
+Copy-Item .env.example .env
+Set-Location backend
+python -m divevault.app
+```
+
+### Frontend
+
+```powershell
+Set-Location frontend
+npm ci
+npm run dev
+```
+
+Default local URLs:
+
+- Frontend: `http://localhost:5173`
+- Backend: `http://localhost:8000`
 
 ## Related Upstream
 
