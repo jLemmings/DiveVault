@@ -6,8 +6,11 @@ function clone(value) {
 
 function baseUser() {
   return {
+    id: "user_avery",
     firstName: "Avery",
     lastName: "Marlow",
+    role: "admin",
+    isOwner: false,
     primaryEmailAddress: {
       emailAddress: "avery@example.com"
     },
@@ -16,6 +19,34 @@ function baseUser() {
         emailAddress: "avery@example.com"
       }
     ]
+  };
+}
+
+function baseAuthStatus(overrides = {}) {
+  return {
+    initialized: true,
+    bootstrap_registration_open: false,
+    public_registration_enabled: false,
+    public_registration_open: false,
+    invite: null,
+    user_count: 1,
+    ...overrides
+  };
+}
+
+function authMePayload(user = baseUser(), overrides = {}) {
+  const email = user?.primaryEmailAddress?.emailAddress
+    || user?.emailAddresses?.[0]?.emailAddress
+    || "";
+  return {
+    user_id: user?.id || "user_avery",
+    session_id: "session_playwright",
+    email,
+    first_name: user?.firstName || "",
+    last_name: user?.lastName || "",
+    role: user?.role || "user",
+    is_owner: Boolean(user?.isOwner),
+    ...overrides
   };
 }
 
@@ -241,9 +272,14 @@ async function fulfillJson(route, payload, status = 200) {
 
 async function setupTestState(page, { signedIn = true, user = baseUser() } = {}) {
   await page.addInitScript((state) => {
-    window.__DIVEVAULT_TEST_STATE__ = state;
     window.scrollTo = () => {};
     window.HTMLElement.prototype.scrollIntoView = function scrollIntoView() {};
+    const storageKey = "divevault_auth_token";
+    if (state.signedIn && state.token) {
+      window.localStorage.setItem(storageKey, state.token);
+    } else {
+      window.localStorage.removeItem(storageKey);
+    }
     const clipboardState = { value: "" };
     Object.defineProperty(window.navigator, "clipboard", {
       configurable: true,
@@ -269,21 +305,43 @@ async function installAppMocks(page, options = {}) {
     ...baseData(),
     ...(options.data ? clone(options.data) : {})
   };
+  const signedIn = options.signedIn ?? true;
+  const user = options.user || baseUser();
+  const authStatus = baseAuthStatus(options.authStatus);
+  const authUsers = clone(options.authUsers || [
+    {
+      id: user.id || "user_avery",
+      email: user.primaryEmailAddress?.emailAddress || user.emailAddresses?.[0]?.emailAddress || "avery@example.com",
+      first_name: user.firstName || "",
+      last_name: user.lastName || "",
+      role: user.role || "user",
+      is_active: true,
+      created_at: "2026-04-01T09:00:00Z",
+      updated_at: "2026-04-01T09:00:00Z",
+      last_login_at: "2026-04-07T10:00:00Z"
+    }
+  ]);
+  const session = {
+    signedIn,
+    token: options.token || "playwright-token",
+    user
+  };
   data.dives = clone(options.data?.dives || data.dives);
   data.profile = clone(options.data?.profile || data.profile);
   data.stats = clone(options.data?.stats || data.stats);
   refreshStats(data);
 
   await setupTestState(page, {
-    signedIn: options.signedIn ?? true,
-    user: options.user || baseUser()
+    signedIn,
+    user,
+    token: session.token
   });
 
   await page.route("**/config.js", async (route) => {
     await route.fulfill({
       status: 200,
       contentType: "application/javascript",
-      body: "window.__APP_CONFIG__ = { clerkPublishableKey: 'pk_test_local' };"
+      body: "window.__APP_CONFIG__ = { authEnabled: true };"
     });
   });
 
@@ -294,6 +352,104 @@ async function installAppMocks(page, options = {}) {
 
     if (pathname === "/api/health") {
       await fulfillJson(route, { ok: data.health }, data.health ? 200 : 503);
+      return;
+    }
+
+    if (pathname === "/api/auth/status" && request.method() === "GET") {
+      await fulfillJson(route, clone(authStatus));
+      return;
+    }
+
+    if (pathname === "/api/auth/login" && request.method() === "POST") {
+      const payload = request.postDataJSON ? request.postDataJSON() : JSON.parse(request.postData() || "{}");
+      if (!payload?.email || !payload?.password) {
+        await fulfillJson(route, { error: "Email and password are required." }, 400);
+        return;
+      }
+      await fulfillJson(route, { token: session.token });
+      return;
+    }
+
+    if (pathname === "/api/auth/register" && request.method() === "POST") {
+      const payload = request.postDataJSON ? request.postDataJSON() : JSON.parse(request.postData() || "{}");
+      if (!payload?.email || !payload?.password) {
+        await fulfillJson(route, { error: "Email and password are required." }, 400);
+        return;
+      }
+      await fulfillJson(route, {
+        created: true,
+        email: payload.email,
+        first_name: payload.first_name || "",
+        last_name: payload.last_name || ""
+      }, 201);
+      return;
+    }
+
+    if (pathname === "/api/auth/me" && request.method() === "GET") {
+      const authorization = request.headers()["authorization"] || "";
+      const token = authorization.toLowerCase().startsWith("bearer ")
+        ? authorization.split(" ", 2)[1]
+        : "";
+      if (!signedIn && token !== session.token) {
+        await fulfillJson(route, { error: "Session expired" }, 401);
+        return;
+      }
+      if (token !== session.token) {
+        await fulfillJson(route, { error: "Session expired" }, 401);
+        return;
+      }
+      await fulfillJson(route, authMePayload(user));
+      return;
+    }
+
+    if (pathname === "/api/auth/password" && request.method() === "PUT") {
+      await fulfillJson(route, { updated: true });
+      return;
+    }
+
+    if (pathname === "/api/users" && request.method() === "GET") {
+      await fulfillJson(route, {
+        settings: {
+          initialized: authStatus.initialized,
+          public_registration_enabled: authStatus.public_registration_enabled,
+          owner_user_id: authUsers[0]?.id || "",
+          user_count: authUsers.length
+        },
+        users: clone(authUsers)
+      });
+      return;
+    }
+
+    if (pathname === "/api/auth/invitations" && request.method() === "POST") {
+      const payload = request.postDataJSON ? request.postDataJSON() : JSON.parse(request.postData() || "{}");
+      await fulfillJson(route, {
+        invite_url: `http://localhost:4173/?invite_token=test-invite-token&email=${encodeURIComponent(payload?.email || "")}`,
+        token: "test-invite-token"
+      }, 201);
+      return;
+    }
+
+    const userMatch = pathname.match(/^\/api\/users\/([^/]+)$/);
+    if (userMatch && request.method() === "PUT") {
+      const payload = request.postDataJSON ? request.postDataJSON() : JSON.parse(request.postData() || "{}");
+      const index = authUsers.findIndex((entry) => entry.id === userMatch[1]);
+      if (index === -1) {
+        await fulfillJson(route, { error: "User not found" }, 404);
+        return;
+      }
+      authUsers[index] = { ...authUsers[index], ...payload };
+      await fulfillJson(route, clone(authUsers[index]));
+      return;
+    }
+
+    if (userMatch && request.method() === "DELETE") {
+      const index = authUsers.findIndex((entry) => entry.id === userMatch[1]);
+      if (index === -1) {
+        await fulfillJson(route, { error: "User not found" }, 404);
+        return;
+      }
+      authUsers.splice(index, 1);
+      await fulfillJson(route, { deleted: true, user_id: userMatch[1] });
       return;
     }
 

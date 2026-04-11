@@ -287,19 +287,27 @@ jobs:
             docker push "${tag}"
           done <<< "${TAGS}"
 
-      - name: Create GitHub release
-        if: needs.fetch-artifacts.outputs.publish_version_tags == 'true'
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          RELEASE_TAG: ${{ needs.fetch-artifacts.outputs.version_tag }}
-        run: |
-          set -euo pipefail
-          if gh release view "${RELEASE_TAG}" >/dev/null 2>&1; then
-            echo "Release ${RELEASE_TAG} already exists; skipping."
-            exit 0
-          fi
+  release:
+    runs-on: ubuntu-latest
+    needs:
+      - fetch-artifacts
+      - publish
+    if: needs.fetch-artifacts.outputs.publish_version_tags == 'true'
+    permissions:
+      contents: write
 
-          gh release create "${RELEASE_TAG}" \
-            --target "${GITHUB_SHA}" \
-            --title "${RELEASE_TAG}" \
-            --generate-notes
+    steps:
+      - name: Download source artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: ${{ env.SOURCE_ARTIFACT_NAME }}
+          path: ${{ runner.temp }}/artifacts
+
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.fetch-artifacts.outputs.version_tag }}
+          name: ${{ needs.fetch-artifacts.outputs.version_tag }}
+          generate_release_notes: true
+          make_latest: true
+          files: ${{ runner.temp }}/artifacts/repo-source.tar.gz

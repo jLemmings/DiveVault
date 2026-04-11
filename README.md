@@ -55,7 +55,7 @@ Backend:
 - Entry point: `cd backend && python -m divevault.app`
 - HTTP server: Python `http.server` with threaded request handling
 - Storage: PostgreSQL via `psycopg`
-- Auth: Clerk session tokens, Clerk API keys, and short-lived desktop sync tokens
+- Auth: DiveVault first-party JWT sessions and short-lived desktop sync tokens
 
 Frontend:
 
@@ -142,11 +142,10 @@ See [`examples/kubernetes`](./examples/kubernetes) for a ready-to-use migration 
 Common variables from [`.env.example`](./.env.example):
 
 - `DATABASE_URL`: PostgreSQL connection string
-- `VITE_CLERK_PUBLISHABLE_KEY`: Clerk frontend key
-- `CLERK_SECRET_KEY`: Clerk backend secret for API key verification
-- `CLERK_FRONTEND_API_URL`: used to derive the Clerk issuer and JWKS URL
-- `CLERK_JWT_KEY` or `CLERK_JWKS_URL`: required for Clerk session token verification
-- `CLERK_AUTHORIZED_PARTIES`: allowed `azp` values
+- `AUTH_JWT_SECRET`: shared secret used to sign and verify DiveVault session tokens
+- `AUTH_JWT_ISSUER`: expected token issuer (defaults to `divevault.local`)
+- `AUTH_JWT_AUDIENCE`: expected token audience (defaults to `divevault.app`)
+- `AUTH_TOKEN_TTL_SECONDS`: session token lifetime in seconds (defaults to `43200`)
 - `CLI_AUTH_REQUEST_TTL` and `CLI_AUTH_TOKEN_TTL`: desktop sync token timing
 - `MAX_JSON_BODY_BYTES`: maximum accepted JSON request payload size (defaults to `1048576`)
 - `MAX_BACKUP_IMPORT_BYTES`: maximum accepted JSON payload size for `/api/backup/import` (defaults to `26214400`)
@@ -172,14 +171,84 @@ Run tests with:
 .\.venv\Scripts\python.exe -m pytest -q backend/tests
 ```
 
+## Manual Clerk User Migration
+
+If you previously used Clerk, there are two migration paths.
+
+Option 1 keeps each original Clerk `user_...` id and imports those same ids into `auth_users`. That is the safer path because existing dives, profiles, and device state continue to point at the same user ids.
+
+```powershell
+python backend/migrations/migrate_clerk_users_to_auth.py `
+  --database-url "$env:DATABASE_URL" `
+  --input ".\clerk-users.json" `
+  --default-password "ChangeMe123!"
+```
+
+Option 2 is for cases where you already created replacement internal users with different ids and now need to move all existing app-owned data from the old ids to those new ids.
+
+1. Create a JSON remap file, for example `user-id-remap.json`:
+
+```json
+[
+  {
+    "old_user_id": "user_old_clerk_id",
+    "new_user_id": "user_new_internal_id",
+    "email": "diver@example.com"
+  }
+]
+```
+
+2. Run a dry-run first. This validates that each target `new_user_id` already exists in `auth_users` and that it does not already own rows in the main per-user tables:
+
+```powershell
+python backend/migrations/remap_legacy_user_ids.py `
+  --database-url "$env:DATABASE_URL" `
+  --input ".\user-id-remap.json" `
+  --dry-run
+```
+
+3. Run the real remap once the preflight report is clean:
+
+```powershell
+python backend/migrations/remap_legacy_user_ids.py `
+  --database-url "$env:DATABASE_URL" `
+  --input ".\user-id-remap.json"
+```
+
+4. If you also want to remove any stale legacy auth rows after the data remap, rerun with:
+
+```powershell
+python backend/migrations/remap_legacy_user_ids.py `
+  --database-url "$env:DATABASE_URL" `
+  --input ".\user-id-remap.json" `
+  --delete-old-auth-users
+```
+
+The remap script updates user ownership in these tables:
+
+- `dives`
+- `device_state`
+- `user_profile`
+- `user_profile_license_documents`
+- `user_profile_licenses`
+- `user_profile_dive_sites`
+- `user_profile_buddies`
+- `user_profile_guides`
+- `cli_sync_auth_requests.user_id`
+- `auth_instance_settings.owner_user_id`
+- `auth_user_invites.invited_by_user_id`
+
+Do not use option 2 if the replacement `new_user_id` already has real dive/profile/device rows. The script intentionally aborts in that case to avoid merging two users into one by accident.
+
 ## Image Versioning
 
 Container publishing is driven by [`frontend/package.json`](./frontend/package.json).
 
 - On pushes to `master`, workflows publish image tags: `v<version>`, `stable`, and `latest`.
+- On pushes to `master`, workflows also create or update a GitHub release named `v<version>` and attach a packaged source tarball. GitHub's standard source archives remain available on the release page as well.
 - On non-`master` branches (or non-release contexts), workflows publish snapshot image tags in the format `v<version>-<short-sha>`, for example `v0.1.0-a1b2c3d`.
 
-This keeps `frontend/package.json` as the single image version source while publishing container images only.
+This keeps `frontend/package.json` as the single image version source while publishing both container images and the matching GitHub release from the same version value.
 
 ## libdivecomputer
 
