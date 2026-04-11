@@ -572,14 +572,32 @@ def test_authenticated_get_endpoints(server_fixture):
     geocode_upstream_error = request(server, "GET", "/api/geocode/search?q=service%20down", token="session")
     assert geocode_upstream_error.status == 503
 
-    translation = request(server, "GET", "/api/translation/translate?q=Hola%20buceo&source=auto&target=en", token="session")
+    translation = request(
+        server,
+        "POST",
+        "/api/translation/translate",
+        token="session",
+        payload={"q": "Hola buceo", "source": "auto", "target": "en"},
+    )
     assert translation.status == 200
     assert translation.json()["translated_text"] == "Hola buceo (en)"
 
-    translation_missing_target = request(server, "GET", "/api/translation/translate?q=Hola%20buceo", token="session")
+    translation_missing_target = request(
+        server,
+        "POST",
+        "/api/translation/translate",
+        token="session",
+        payload={"q": "Hola buceo"},
+    )
     assert translation_missing_target.status == 400
 
-    translation_upstream_error = request(server, "GET", "/api/translation/translate?q=Hola&target=xx", token="session")
+    translation_upstream_error = request(
+        server,
+        "POST",
+        "/api/translation/translate",
+        token="session",
+        payload={"q": "Hola", "target": "xx"},
+    )
     assert translation_upstream_error.status == 503
 
     unknown_cli_request = request(server, "GET", "/api/cli-auth/request?code=NOPE")

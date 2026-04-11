@@ -859,9 +859,15 @@ export default {
       }
       const normalizedSource = typeof source === "string" && source.trim() ? source.trim().toLowerCase() : "auto";
 
-      const response = await this.authenticatedFetch(
-        `/api/translation/translate?q=${encodeURIComponent(normalizedText)}&source=${encodeURIComponent(normalizedSource)}&target=${encodeURIComponent(normalizedTarget)}`
-      );
+      const response = await this.authenticatedFetch("/api/translation/translate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          q: normalizedText,
+          source: normalizedSource,
+          target: normalizedTarget
+        })
+      });
       const payload = await response.json().catch(() => null);
       if (!response.ok) {
         throw new Error(payload?.error || `API returned ${response.status}`);

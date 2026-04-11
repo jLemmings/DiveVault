@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import json
 from pathlib import Path
 
 import pytest
@@ -145,6 +146,36 @@ def test_translation_client_translate_requires_text_and_target():
         client.translate(" ", target_language="en")
     with pytest.raises(ValueError, match="Missing target language"):
         client.translate("Hola", target_language=" ")
+
+
+def test_translation_client_cache_is_case_sensitive(monkeypatch):
+    calls = {"count": 0}
+
+    class FakeResponse:
+        def __init__(self, text: str) -> None:
+            self._text = text
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def read(self):
+            return json.dumps({"translatedText": self._text}).encode("utf-8")
+
+    def fake_urlopen(_req, timeout=15):
+        calls["count"] += 1
+        return FakeResponse(f"translation-{calls['count']}")
+
+    monkeypatch.setattr(dive_backend.urlrequest, "urlopen", fake_urlopen)
+
+    client = dive_backend.TranslationClient(base_url="https://translate.example", user_agent="DiveVault/Tests")
+    upper = client.translate("US Navy", target_language="de")
+    lower = client.translate("us navy", target_language="de")
+
+    assert upper["translated_text"] == "translation-1"
+    assert lower["translated_text"] == "translation-2"
 
 
 def test_build_clerk_verifier_derives_jwks_url_and_issuer():

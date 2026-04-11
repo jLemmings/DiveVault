@@ -429,7 +429,7 @@ class TranslationClient:
         if not normalized_target:
             raise ValueError("Missing target language")
 
-        cache_key = f"{normalized_source}|{normalized_target}|{normalized_text.casefold()}"
+        cache_key = f"{normalized_source}|{normalized_target}|{normalized_text}"
         with self._lock:
             cached = self._cache.get(cache_key)
             if cached is not None:
@@ -1521,44 +1521,6 @@ class DiveBackendHandler(BaseHTTPRequestHandler):
             self._send_json(200, result)
             return
 
-        if path == "/api/translation/translate":
-            user_id = self._require_principal_id()
-            if user_id is None:
-                return
-
-            query_text = self._single_query_arg(query, "q")
-            target_language = self._single_query_arg(query, "target")
-            source_language = self._single_query_arg(query, "source") or "auto"
-            if not query_text or not query_text.strip():
-                self._send_json(400, {"error": "Missing q query parameter"})
-                return
-            if not target_language or not target_language.strip():
-                self._send_json(400, {"error": "Missing target query parameter"})
-                return
-
-            try:
-                translation = self.server.translation_client.translate(
-                    query_text,
-                    target_language=target_language,
-                    source_language=source_language,
-                )
-            except ValueError as exc:
-                self._send_json(400, {"error": str(exc)})
-                return
-            except RuntimeError as exc:
-                self._send_json(503, {"error": str(exc)})
-                return
-
-            LOGGER.info(
-                "Completed translation user_id=%s source=%s target=%s chars=%d",
-                user_id,
-                source_language,
-                target_language,
-                len(query_text),
-            )
-            self._send_json(200, translation)
-            return
-
         match = re.fullmatch(r"/api/profile/licenses/([A-Za-z0-9_-]+)/pdf", path)
         if match:
             user_id = self._require_principal_id()
@@ -1768,6 +1730,47 @@ class DiveBackendHandler(BaseHTTPRequestHandler):
                     "token_expires_at": approval.get("token_expires_at"),
                 },
             )
+            return
+
+        if self.path == "/api/translation/translate":
+            user_id = self._require_principal_id()
+            if user_id is None:
+                return
+
+            payload = self._read_json_body()
+            if payload is None:
+                return
+            query_text = (payload.get("q") or "").strip()
+            target_language = (payload.get("target") or "").strip()
+            source_language = (payload.get("source") or "auto").strip() or "auto"
+            if not query_text:
+                self._send_json(400, {"error": "Missing q field"})
+                return
+            if not target_language:
+                self._send_json(400, {"error": "Missing target field"})
+                return
+
+            try:
+                translation = self.server.translation_client.translate(
+                    query_text,
+                    target_language=target_language,
+                    source_language=source_language,
+                )
+            except ValueError as exc:
+                self._send_json(400, {"error": str(exc)})
+                return
+            except RuntimeError as exc:
+                self._send_json(503, {"error": str(exc)})
+                return
+
+            LOGGER.info(
+                "Completed translation user_id=%s source=%s target=%s chars=%d",
+                user_id,
+                source_language,
+                target_language,
+                len(query_text),
+            )
+            self._send_json(200, translation)
             return
 
         if self.path != "/api/dives":
