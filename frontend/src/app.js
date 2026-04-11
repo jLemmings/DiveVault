@@ -104,6 +104,16 @@ export default {
       activeSettingsSection: DEFAULT_SETTINGS_SECTION,
       settingsMenuExpanded: false,
       mobileAccountMenuOpen: false,
+      desktopAccountMenuOpen: false,
+      passwordDialogOpen: false,
+      passwordForm: {
+        currentPassword: "",
+        newPassword: "",
+        confirmPassword: ""
+      },
+      passwordSubmitting: false,
+      passwordError: "",
+      passwordStatus: "",
       filledIconStyle,
       navItems: [
         { id: "dashboard", label: "Dashboard", mobileLabel: "Dashboard", icon: "dashboard", mobileIcon: "dashboard", eyebrow: "Dive Overview", title: "Logbook" },
@@ -219,8 +229,11 @@ export default {
     isPublicRoute() {
       return Boolean(this.publicRouteSlug);
     },
+    canManageUsers() {
+      return Boolean(this.authUser?.isOwner);
+    },
     settingsSubnavItems() {
-      return SETTINGS_SECTIONS;
+      return SETTINGS_SECTIONS.filter((section) => section.id !== "manage-users" || this.canManageUsers);
     },
     loadingViewKey() {
       if (this.activeView === "edit") return "edit";
@@ -245,7 +258,13 @@ export default {
       }
     },
     normalizeSettingsSection(sectionId) {
-      return SETTINGS_SECTION_IDS.has(sectionId) ? sectionId : DEFAULT_SETTINGS_SECTION;
+      if (!SETTINGS_SECTION_IDS.has(sectionId)) {
+        return DEFAULT_SETTINGS_SECTION;
+      }
+      if (sectionId === "manage-users" && !this.canManageUsers) {
+        return DEFAULT_SETTINGS_SECTION;
+      }
+      return sectionId;
     },
     settingsHash(sectionId = this.activeSettingsSection) {
       return `settings/${this.normalizeSettingsSection(sectionId)}`;
@@ -273,6 +292,15 @@ export default {
       this.loading = false;
       this.error = "";
       this.backendHealthy = false;
+      this.passwordDialogOpen = false;
+      this.passwordForm = {
+        currentPassword: "",
+        newPassword: "",
+        confirmPassword: ""
+      };
+      this.passwordSubmitting = false;
+      this.passwordError = "";
+      this.passwordStatus = "";
       this.dashboardStats = {
         totalDives: 0,
         totalSeconds: 0,
@@ -285,6 +313,7 @@ export default {
       };
       this.activeSettingsSection = DEFAULT_SETTINGS_SECTION;
       this.settingsMenuExpanded = false;
+      this.desktopAccountMenuOpen = false;
       this.lastAuthenticatedSessionId = null;
     },
     async syncAuthState() {
@@ -377,17 +406,96 @@ export default {
     },
     closeMobileAccountMenu() {
       this.mobileAccountMenuOpen = false;
+      this.desktopAccountMenuOpen = false;
+    },
+    toggleDesktopAccountMenu() {
+      this.desktopAccountMenuOpen = !this.desktopAccountMenuOpen;
+    },
+    closeDesktopAccountMenu() {
+      this.desktopAccountMenuOpen = false;
     },
     async openMobileSettings() {
       this.closeMobileAccountMenu();
+      this.closeDesktopAccountMenu();
       await this.setView("settings");
     },
     async signOutUser() {
       this.closeMobileAccountMenu();
+      this.closeDesktopAccountMenu();
       if (typeof this.authSignOut !== "function") {
         return;
       }
       await this.authSignOut({ redirectUrl: "/" });
+    },
+    openPasswordDialog() {
+      this.closeMobileAccountMenu();
+      this.closeDesktopAccountMenu();
+      this.passwordDialogOpen = true;
+      this.passwordError = "";
+      this.passwordStatus = "";
+      this.passwordForm = {
+        currentPassword: "",
+        newPassword: "",
+        confirmPassword: ""
+      };
+    },
+    closePasswordDialog() {
+      this.passwordDialogOpen = false;
+      this.passwordSubmitting = false;
+      this.passwordError = "";
+      this.passwordStatus = "";
+      this.passwordForm = {
+        currentPassword: "",
+        newPassword: "",
+        confirmPassword: ""
+      };
+    },
+    async submitPasswordChange() {
+      this.passwordSubmitting = true;
+      this.passwordError = "";
+      this.passwordStatus = "";
+      const currentPassword = this.passwordForm.currentPassword;
+      const newPassword = this.passwordForm.newPassword;
+      const confirmPassword = this.passwordForm.confirmPassword;
+      if (!currentPassword || !newPassword) {
+        this.passwordError = "Current password and new password are required.";
+        this.passwordSubmitting = false;
+        return;
+      }
+      if (newPassword.length < 8) {
+        this.passwordError = "New password must be at least 8 characters.";
+        this.passwordSubmitting = false;
+        return;
+      }
+      if (newPassword !== confirmPassword) {
+        this.passwordError = "New password confirmation does not match.";
+        this.passwordSubmitting = false;
+        return;
+      }
+      try {
+        const response = await this.authenticatedFetch("/api/auth/password", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            current_password: currentPassword,
+            new_password: newPassword
+          })
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(payload?.error || `API returned ${response.status}`);
+        }
+        this.passwordStatus = "Password updated.";
+        window.setTimeout(() => {
+          if (this.passwordDialogOpen) {
+            this.closePasswordDialog();
+          }
+        }, 900);
+      } catch (error) {
+        this.passwordError = error?.message || "Could not update the password.";
+      } finally {
+        this.passwordSubmitting = false;
+      }
     },
     isDisabledNavItem(view) {
       return Boolean(this.navItems.find((item) => item.id === view)?.disabled);
@@ -1177,6 +1285,9 @@ export default {
                 <button @click="openMobileSettings()" class="inline-flex items-center justify-center rounded-xl bg-surface-container-high px-3 py-2 font-label text-[10px] font-bold uppercase tracking-[0.16em] text-primary transition-colors hover:bg-surface-container-highest">
                   Open Settings
                 </button>
+                <button @click="openPasswordDialog" class="inline-flex items-center justify-center rounded-xl bg-surface-container-high px-3 py-2 font-label text-[10px] font-bold uppercase tracking-[0.16em] text-primary transition-colors hover:bg-surface-container-highest">
+                  Change Password
+                </button>
                 <button @click="signOutUser" class="inline-flex items-center justify-center rounded-xl border border-primary/15 px-3 py-2 font-label text-[10px] font-bold uppercase tracking-[0.16em] text-primary transition-colors hover:bg-surface-container-high">
                   Sign Out
                 </button>
@@ -1186,17 +1297,28 @@ export default {
         </div>
         <div class="hidden h-full items-center justify-between px-8 md:flex">
           <h2 class="font-headline text-2xl font-bold tracking-[0.08em] text-primary">DiveVault</h2>
-          <div class="flex items-center gap-3 rounded-2xl border border-primary/10 bg-surface-container-high/70 px-3 py-2 text-on-surface">
-            <div class="flex h-10 w-10 items-center justify-center rounded-2xl bg-primary/12 text-[11px] font-bold uppercase tracking-[0.14em] text-primary">
+          <div class="relative flex items-center gap-3 rounded-2xl border border-primary/10 bg-surface-container-high/70 px-3 py-2 text-on-surface">
+            <button @click="toggleDesktopAccountMenu" class="flex h-10 w-10 items-center justify-center rounded-2xl bg-primary/12 text-[11px] font-bold uppercase tracking-[0.14em] text-primary transition-colors hover:bg-primary/18">
               {{ currentUserInitials }}
-            </div>
+            </button>
             <div class="min-w-0">
               <p class="max-w-[12rem] truncate text-sm font-semibold text-on-surface">{{ currentUserName }}</p>
               <p class="max-w-[12rem] truncate text-xs text-secondary">{{ currentUserEmail }}</p>
             </div>
-            <button @click="signOutUser" class="inline-flex items-center justify-center rounded-xl border border-primary/15 px-3 py-2 font-label text-[10px] font-bold uppercase tracking-[0.16em] text-primary transition-colors hover:bg-surface-container-high">
-              Sign Out
-            </button>
+            <div v-if="desktopAccountMenuOpen" class="absolute right-0 top-[calc(100%+0.75rem)] z-40 w-56 rounded-2xl border border-primary/10 bg-surface-container-low p-3 shadow-panel">
+              <div class="border-b border-primary/10 pb-3">
+                <p class="truncate text-sm font-semibold text-on-surface">{{ currentUserName }}</p>
+                <p class="mt-1 truncate text-xs text-secondary">{{ currentUserEmail }}</p>
+              </div>
+              <div class="mt-3 flex flex-col gap-2">
+                <button @click="openPasswordDialog" class="inline-flex items-center justify-center rounded-xl bg-surface-container-high px-3 py-2 font-label text-[10px] font-bold uppercase tracking-[0.16em] text-primary transition-colors hover:bg-surface-container-highest">
+                  Change Password
+                </button>
+                <button @click="signOutUser" class="inline-flex items-center justify-center rounded-xl border border-primary/15 px-3 py-2 font-label text-[10px] font-bold uppercase tracking-[0.16em] text-primary transition-colors hover:bg-surface-container-high">
+                  Sign Out
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       </header>
@@ -1308,6 +1430,51 @@ export default {
           <span class="font-label text-[10px] font-bold">{{ item.mobileLabel }}</span>
         </button>
       </nav>
+      <div
+        v-if="passwordDialogOpen"
+        @click.self="closePasswordDialog"
+        class="fixed inset-0 z-[60] flex items-center justify-center bg-background/88 px-6 py-8 backdrop-blur-sm"
+      >
+        <div class="w-full max-w-md rounded-3xl border border-primary/10 bg-surface-container-low p-6 shadow-panel">
+          <div class="flex items-start justify-between gap-4">
+            <div>
+              <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-primary">Account Security</p>
+              <h3 class="mt-3 font-headline text-2xl font-bold tracking-tight text-on-surface">Change Password</h3>
+              <p class="mt-3 text-sm leading-6 text-secondary">Update the password for your current DiveVault account.</p>
+            </div>
+            <button @click="closePasswordDialog" :disabled="passwordSubmitting" class="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-primary/10 text-secondary transition-colors hover:bg-surface-container-high">
+              <span class="material-symbols-outlined text-lg">close</span>
+            </button>
+          </div>
+
+          <p v-if="passwordStatus" class="mt-5 text-sm text-primary">{{ passwordStatus }}</p>
+          <p v-if="passwordError" class="mt-5 text-sm text-error">{{ passwordError }}</p>
+
+          <div class="mt-5 space-y-4">
+            <label class="space-y-2">
+              <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Current Password</span>
+              <input v-model="passwordForm.currentPassword" type="password" class="w-full rounded-2xl border border-primary/15 bg-background/20 px-4 py-3 text-sm text-on-surface outline-none transition-colors focus:border-primary/40" />
+            </label>
+            <label class="space-y-2">
+              <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">New Password</span>
+              <input v-model="passwordForm.newPassword" type="password" class="w-full rounded-2xl border border-primary/15 bg-background/20 px-4 py-3 text-sm text-on-surface outline-none transition-colors focus:border-primary/40" />
+            </label>
+            <label class="space-y-2">
+              <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Confirm New Password</span>
+              <input v-model="passwordForm.confirmPassword" type="password" class="w-full rounded-2xl border border-primary/15 bg-background/20 px-4 py-3 text-sm text-on-surface outline-none transition-colors focus:border-primary/40" />
+            </label>
+          </div>
+
+          <div class="mt-6 flex flex-wrap gap-3">
+            <button @click="submitPasswordChange" :disabled="passwordSubmitting" class="inline-flex items-center justify-center rounded-xl bg-primary px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.16em] text-on-primary transition-all hover:brightness-110">
+              {{ passwordSubmitting ? 'Updating Password' : 'Update Password' }}
+            </button>
+            <button @click="closePasswordDialog" :disabled="passwordSubmitting" class="inline-flex items-center justify-center rounded-xl border border-primary/15 px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.16em] text-primary transition-colors hover:bg-surface-container-high">
+              Cancel
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   `
 };

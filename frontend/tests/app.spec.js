@@ -8,19 +8,6 @@ test("renders login flows with the local Clerk test stub", async ({ page }) => {
 
   await expect(page.getByRole("heading", { name: "Login" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Sign In Test Diver" })).toBeVisible();
-
-  await page.getByRole("button", { name: "Recover Access" }).click();
-  await expect(page.getByRole("heading", { name: "Recover Access" })).toBeVisible();
-  await page.getByPlaceholder("diver@example.com").fill("diver@example.com");
-  await page.getByRole("button", { name: "Send Recovery Code" }).click();
-  await expect(page.getByText("Recovery code sent to diver@example.com.")).toBeVisible();
-
-  await page.getByPlaceholder("Enter The Clerk Code").fill("123456");
-  await page.getByPlaceholder("Create A New Password").fill("DiverPass123!");
-  await page.getByPlaceholder("Repeat The New Password").fill("DiverPass123!");
-  await page.getByRole("button", { name: "Reset Password" }).click();
-
-  await expect(page.getByText("Dive Overview")).toBeVisible();
 });
 
 test("covers dashboard, logs, dive detail, and logbook editing", async ({ page }) => {

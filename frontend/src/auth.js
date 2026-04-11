@@ -16,6 +16,7 @@ function applySession(token, mePayload) {
       firstName: mePayload.first_name || "",
       lastName: mePayload.last_name || "",
       role: mePayload.role || "user",
+      isOwner: Boolean(mePayload.is_owner),
       primaryEmailAddress: { emailAddress: mePayload.email || "" },
       emailAddresses: [{ emailAddress: mePayload.email || "" }]
     }

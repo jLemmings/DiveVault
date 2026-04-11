@@ -43,11 +43,15 @@ from jwt import InvalidTokenError
 from divevault.postgres_store import (
     CURRENT_SCHEMA_VERSION,
     approve_cli_sync_request,
+    create_auth_invite,
     create_cli_sync_request,
     create_auth_user,
-    create_password_reset_code,
+    create_auth_user_from_invite,
+    create_bootstrap_auth_user,
     delete_auth_user,
     delete_dive,
+    get_auth_instance_settings,
+    get_auth_invite_by_token,
     get_device_state,
     get_db_schema_version,
     get_cli_sync_request_status,
@@ -69,7 +73,7 @@ from divevault.postgres_store import (
     save_user_profile_license_pdf,
     save_device_state,
     count_auth_users,
-    consume_password_reset_code,
+    update_auth_instance_settings,
     update_auth_user,
     update_auth_user_last_login,
     summarize_dives,
@@ -1411,6 +1415,31 @@ class DiveBackendHandler(BaseHTTPRequestHandler):
             )
             return
 
+        if path == "/api/auth/status":
+            invite_token = (self._single_query_arg(query, "invite_token") or "").strip()
+            conn = self._open_db()
+            if conn is None:
+                return
+            try:
+                settings = get_auth_instance_settings(conn)
+                invite = None
+                if invite_token:
+                    invite = get_auth_invite_by_token(conn, invite_token, now_timestamp=int(time.time()))
+            finally:
+                conn.close()
+            self._send_json(
+                200,
+                {
+                    "initialized": settings.get("initialized", False),
+                    "user_count": settings.get("user_count", 0),
+                    "bootstrap_registration_open": settings.get("bootstrap_registration_open", False),
+                    "public_registration_enabled": settings.get("public_registration_enabled", False),
+                    "public_registration_open": settings.get("public_registration_open", False),
+                    "invite": invite,
+                },
+            )
+            return
+
         if path == "/api/auth/me":
             claims = self._require_auth()
             if claims is None:
@@ -1420,6 +1449,7 @@ class DiveBackendHandler(BaseHTTPRequestHandler):
                 return
             try:
                 auth_user = get_auth_user_by_id(conn, claims.get("sub") or "")
+                auth_settings = get_auth_instance_settings(conn)
             finally:
                 conn.close()
             self._send_json(
@@ -1433,16 +1463,28 @@ class DiveBackendHandler(BaseHTTPRequestHandler):
                     "last_name": (auth_user or {}).get("last_name", ""),
                     "role": (auth_user or {}).get("role") or claims.get("role", "user"),
                     "is_active": bool((auth_user or {}).get("is_active", True)),
+                    "is_owner": self._principal_id_from_claims(claims) == auth_settings.get("owner_user_id"),
                 },
             )
             return
 
-        if path == "/api/users":
-            claims = self._require_auth()
+        if path == "/api/auth/settings":
+            claims = self._require_owner_auth()
             if claims is None:
                 return
-            if not self._is_admin_claims(claims):
-                self._send_json(403, {"error": "Admin role required"})
+            conn = self._open_db()
+            if conn is None:
+                return
+            try:
+                settings = get_auth_instance_settings(conn)
+            finally:
+                conn.close()
+            self._send_json(200, settings)
+            return
+
+        if path == "/api/users":
+            claims = self._require_owner_auth()
+            if claims is None:
                 return
             conn = self._open_db()
             if conn is None:
@@ -1557,7 +1599,8 @@ class DiveBackendHandler(BaseHTTPRequestHandler):
                 return
             email = str(payload.get("email") or "").strip().lower()
             password = str(payload.get("password") or "")
-            if not email or "@" not in email:
+            invite_token = str(payload.get("invite_token") or "").strip()
+            if not invite_token and (not email or "@" not in email):
                 self._send_json(400, {"error": "Valid email is required"})
                 return
             if len(password) < 8:
@@ -1567,23 +1610,75 @@ class DiveBackendHandler(BaseHTTPRequestHandler):
             if conn is None:
                 return
             try:
-                if get_auth_user_by_email(conn, email):
-                    self._send_json(409, {"error": "Email already registered"})
-                    return
-                user_count = count_auth_users(conn)
-                role = "admin" if user_count == 0 else "user"
-                user = create_auth_user(
-                    conn,
-                    user_id=f"user_{uuid.uuid4().hex}",
-                    email=email,
-                    password_hash=hash_password(password),
-                    first_name=str(payload.get("first_name") or "").strip(),
-                    last_name=str(payload.get("last_name") or "").strip(),
-                    role=role,
-                )
+                if invite_token:
+                    invite = get_auth_invite_by_token(conn, invite_token, now_timestamp=int(time.time()))
+                    if not invite:
+                        self._send_json(400, {"error": "Invitation is invalid or expired"})
+                        return
+                    invite_email = str(invite.get("email") or "").strip().lower()
+                    if email and email != invite_email:
+                        self._send_json(400, {"error": "Invitation email does not match the submitted email"})
+                        return
+                    try:
+                        user = create_auth_user_from_invite(
+                            conn,
+                            invite_token=invite_token,
+                            user_id=f"user_{uuid.uuid4().hex}",
+                            password_hash=hash_password(password),
+                        )
+                    except ValueError as exc:
+                        message = str(exc)
+                        if message == "Email already registered":
+                            self._send_json(409, {"error": message})
+                            return
+                        self._send_json(400, {"error": message})
+                        return
+                else:
+                    settings = get_auth_instance_settings(conn)
+                    if get_auth_user_by_email(conn, email):
+                        self._send_json(409, {"error": "Email already registered"})
+                        return
+                    if settings.get("bootstrap_registration_open"):
+                        try:
+                            user = create_bootstrap_auth_user(
+                                conn,
+                                user_id=f"user_{uuid.uuid4().hex}",
+                                email=email,
+                                password_hash=hash_password(password),
+                                first_name=str(payload.get("first_name") or "").strip(),
+                                last_name=str(payload.get("last_name") or "").strip(),
+                            )
+                        except ValueError as exc:
+                            message = str(exc)
+                            if message == "Email already registered":
+                                self._send_json(409, {"error": message})
+                                return
+                            self._send_json(403, {"error": message})
+                            return
+                    elif settings.get("public_registration_enabled"):
+                        user = create_auth_user(
+                            conn,
+                            user_id=f"user_{uuid.uuid4().hex}",
+                            email=email,
+                            password_hash=hash_password(password),
+                            first_name=str(payload.get("first_name") or "").strip(),
+                            last_name=str(payload.get("last_name") or "").strip(),
+                            role="user",
+                        )
+                    else:
+                        self._send_json(403, {"error": "Public registration is closed"})
+                        return
             finally:
                 conn.close()
-            self._send_json(201, {"user_id": user.get("id"), "email": user.get("email"), "role": user.get("role")})
+            self._send_json(
+                201,
+                {
+                    "user_id": user.get("id"),
+                    "email": user.get("email"),
+                    "role": user.get("role"),
+                    "is_owner": bool(invite_token) is False and user.get("role") == "admin",
+                },
+            )
             return
 
         if self.path == "/api/auth/login":
@@ -1618,58 +1713,6 @@ class DiveBackendHandler(BaseHTTPRequestHandler):
             self._send_json(200, {"token": token})
             return
 
-        if self.path == "/api/auth/recover/start":
-            payload = self._read_json_body()
-            if payload is None:
-                return
-            email = str(payload.get("email") or "").strip().lower()
-            conn = self._open_db()
-            if conn is None:
-                return
-            try:
-                user = get_auth_user_by_email(conn, email)
-                if user:
-                    code = f"{secrets.randbelow(1000000):06d}"
-                    now_timestamp = int(time.time())
-                    create_password_reset_code(
-                        conn,
-                        email=email,
-                        code=code,
-                        expires_at=now_timestamp + 15 * 60,
-                        now_timestamp=now_timestamp,
-                    )
-                else:
-                    code = "000000"
-            finally:
-                conn.close()
-            self._send_json(200, {"message": "If the account exists, a reset code was generated.", "recovery_code": code})
-            return
-
-        if self.path == "/api/auth/recover/complete":
-            payload = self._read_json_body()
-            if payload is None:
-                return
-            email = str(payload.get("email") or "").strip().lower()
-            code = str(payload.get("code") or "").strip()
-            new_password = str(payload.get("password") or "")
-            if len(new_password) < 8:
-                self._send_json(400, {"error": "Password must be at least 8 characters"})
-                return
-            conn = self._open_db()
-            if conn is None:
-                return
-            try:
-                valid_code = consume_password_reset_code(conn, email=email, code=code, now_timestamp=int(time.time()))
-                user = get_auth_user_by_email(conn, email)
-                if not valid_code or not user:
-                    self._send_json(400, {"error": "Invalid or expired recovery code"})
-                    return
-                update_auth_user(conn, user.get("id"), {"password_hash": hash_password(new_password)})
-            finally:
-                conn.close()
-            self._send_json(200, {"reset": True})
-            return
-
         if self.path == "/api/cli-auth/request":
             if not self._enforce_rate_limit("cli_auth_request_create"):
                 return
@@ -1677,12 +1720,58 @@ class DiveBackendHandler(BaseHTTPRequestHandler):
             self._send_json(201, payload)
             return
 
-        if self.path == "/api/users":
-            claims = self._require_auth()
+        if self.path == "/api/auth/invitations":
+            claims = self._require_owner_auth()
             if claims is None:
                 return
-            if not self._is_admin_claims(claims):
-                self._send_json(403, {"error": "Admin role required"})
+            payload = self._read_json_body()
+            if payload is None:
+                return
+            email = str(payload.get("email") or "").strip().lower()
+            if not email or "@" not in email:
+                self._send_json(400, {"error": "Valid email is required"})
+                return
+            role = self._normalize_user_role(payload.get("role"))
+            if role is None:
+                self._send_json(400, {"error": "Role must be either 'user' or 'admin'"})
+                return
+            expires_in_days = self._parse_int(str(payload.get("expires_in_days") or "7"), default=7, max_value=30)
+            now_timestamp = int(time.time())
+            expires_at = now_timestamp + max(expires_in_days, 1) * 24 * 60 * 60
+            invite_token = secrets.token_urlsafe(24)
+            conn = self._open_db()
+            if conn is None:
+                return
+            try:
+                if get_auth_user_by_email(conn, email):
+                    self._send_json(409, {"error": "Email already registered"})
+                    return
+                invite = create_auth_invite(
+                    conn,
+                    token=invite_token,
+                    email=email,
+                    first_name=str(payload.get("first_name") or "").strip(),
+                    last_name=str(payload.get("last_name") or "").strip(),
+                    role=role,
+                    invited_by_user_id=self._principal_id_from_claims(claims) or "",
+                    expires_at=expires_at,
+                    now_timestamp=now_timestamp,
+                )
+            finally:
+                conn.close()
+            invite_query = urlencode({"invite_token": invite_token})
+            self._send_json(
+                201,
+                {
+                    "invite": invite,
+                    "invite_url": f"/?{invite_query}",
+                },
+            )
+            return
+
+        if self.path == "/api/users":
+            claims = self._require_owner_auth()
+            if claims is None:
                 return
             payload = self._read_json_body()
             if payload is None:
@@ -1691,6 +1780,10 @@ class DiveBackendHandler(BaseHTTPRequestHandler):
             password = str(payload.get("password") or "")
             if not email or not password:
                 self._send_json(400, {"error": "email and password are required"})
+                return
+            role = self._normalize_user_role(payload.get("role"))
+            if role is None:
+                self._send_json(400, {"error": "Role must be either 'user' or 'admin'"})
                 return
             conn = self._open_db()
             if conn is None:
@@ -1706,7 +1799,7 @@ class DiveBackendHandler(BaseHTTPRequestHandler):
                     password_hash=hash_password(password),
                     first_name=str(payload.get("first_name") or "").strip(),
                     last_name=str(payload.get("last_name") or "").strip(),
-                    role=str(payload.get("role") or "user").strip().lower() or "user",
+                    role=role,
                 )
             finally:
                 conn.close()
@@ -1822,6 +1915,29 @@ class DiveBackendHandler(BaseHTTPRequestHandler):
 
     def do_PUT(self) -> None:
         LOGGER.info("PUT %s", self.path)
+        if self.path == "/api/auth/settings":
+            claims = self._require_owner_auth()
+            if claims is None:
+                return
+            payload = self._read_json_body()
+            if payload is None:
+                return
+            if "public_registration_enabled" not in payload:
+                self._send_json(400, {"error": "public_registration_enabled is required"})
+                return
+            conn = self._open_db()
+            if conn is None:
+                return
+            try:
+                settings = update_auth_instance_settings(
+                    conn,
+                    public_registration_enabled=bool(payload.get("public_registration_enabled")),
+                )
+            finally:
+                conn.close()
+            self._send_json(200, settings)
+            return
+
         if self.path == "/api/auth/password":
             claims = self._require_auth()
             if claims is None:
@@ -1850,20 +1966,32 @@ class DiveBackendHandler(BaseHTTPRequestHandler):
 
         match = re.fullmatch(r"/api/users/(user_[A-Za-z0-9]+)", self.path)
         if match:
-            claims = self._require_auth()
+            claims = self._require_owner_auth()
             if claims is None:
-                return
-            if not self._is_admin_claims(claims):
-                self._send_json(403, {"error": "Admin role required"})
                 return
             payload = self._read_json_body()
             if payload is None:
                 return
             user_id = match.group(1)
+            if "role" in payload:
+                role = self._normalize_user_role(payload.get("role"))
+                if role is None:
+                    self._send_json(400, {"error": "Role must be either 'user' or 'admin'"})
+                    return
+                payload = dict(payload)
+                payload["role"] = role
             conn = self._open_db()
             if conn is None:
                 return
             try:
+                settings = get_auth_instance_settings(conn)
+                if user_id == settings.get("owner_user_id"):
+                    if "is_active" in payload and not bool(payload.get("is_active")):
+                        self._send_json(400, {"error": "The instance owner cannot be deactivated"})
+                        return
+                    if payload.get("role") == "user":
+                        self._send_json(400, {"error": "The instance owner must retain the admin role"})
+                        return
                 updated = update_auth_user(conn, user_id, payload)
             finally:
                 conn.close()
@@ -2016,17 +2144,18 @@ class DiveBackendHandler(BaseHTTPRequestHandler):
         LOGGER.info("DELETE %s", self.path)
         match = re.fullmatch(r"/api/users/(user_[A-Za-z0-9]+)", self.path)
         if match:
-            claims = self._require_auth()
+            claims = self._require_owner_auth()
             if claims is None:
-                return
-            if not self._is_admin_claims(claims):
-                self._send_json(403, {"error": "Admin role required"})
                 return
             target_user_id = match.group(1)
             conn = self._open_db()
             if conn is None:
                 return
             try:
+                settings = get_auth_instance_settings(conn)
+                if target_user_id == settings.get("owner_user_id"):
+                    self._send_json(400, {"error": "The instance owner cannot be deleted"})
+                    return
                 deleted = delete_auth_user(conn, target_user_id)
             finally:
                 conn.close()
@@ -2088,6 +2217,33 @@ class DiveBackendHandler(BaseHTTPRequestHandler):
     @staticmethod
     def _is_admin_claims(claims: dict | None) -> bool:
         return bool(isinstance(claims, dict) and str(claims.get("role") or "").lower() == "admin")
+
+    def _require_owner_auth(self) -> dict | None:
+        claims = self._require_auth()
+        if claims is None:
+            return None
+        principal_id = self._principal_id_from_claims(claims)
+        if not principal_id:
+            self._send_json(403, {"error": "Authenticated identity is missing a stable user identifier"})
+            return None
+        conn = self._open_db()
+        if conn is None:
+            return None
+        try:
+            settings = get_auth_instance_settings(conn)
+        finally:
+            conn.close()
+        if principal_id != settings.get("owner_user_id"):
+            self._send_json(403, {"error": "Instance owner required"})
+            return None
+        return claims
+
+    @staticmethod
+    def _normalize_user_role(value: object) -> str | None:
+        normalized = str(value or "user").strip().lower()
+        if normalized not in {"user", "admin"}:
+            return None
+        return normalized
 
     def _require_browser_session_auth(self) -> dict | None:
         claims = self._require_auth()

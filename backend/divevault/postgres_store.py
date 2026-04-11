@@ -5,6 +5,7 @@ import binascii
 import json
 import re
 import secrets
+import time
 from collections.abc import Callable
 from datetime import datetime, timezone
 
@@ -124,20 +125,31 @@ CREATE TABLE IF NOT EXISTS auth_users (
     last_login_at TEXT
 );
 
-CREATE TABLE IF NOT EXISTS auth_password_reset_codes (
+CREATE TABLE IF NOT EXISTS auth_instance_settings (
+    singleton BOOLEAN PRIMARY KEY DEFAULT TRUE CHECK (singleton),
+    initialized BOOLEAN NOT NULL DEFAULT FALSE,
+    public_registration_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+    owner_user_id TEXT,
+    updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS auth_user_invites (
+    token TEXT PRIMARY KEY,
     email TEXT NOT NULL,
-    code TEXT NOT NULL,
-    expires_at BIGINT NOT NULL,
-    used_at BIGINT,
+    first_name TEXT NOT NULL DEFAULT '',
+    last_name TEXT NOT NULL DEFAULT '',
+    role TEXT NOT NULL DEFAULT 'user',
+    invited_by_user_id TEXT NOT NULL,
     created_at BIGINT NOT NULL,
-    PRIMARY KEY (email, code)
+    expires_at BIGINT NOT NULL,
+    accepted_at BIGINT
 );
 """
 
 LOGBOOK_REQUIRED_FIELDS = ("site", "buddy", "guide")
 SAMPLE_TIME_UNIT_SECONDS = "seconds"
 SAMPLE_TIME_UNIT_MILLISECONDS = "milliseconds"
-CURRENT_SCHEMA_VERSION = 6
+CURRENT_SCHEMA_VERSION = 7
 SCHEMA_VERSION_SQL = """
 CREATE TABLE IF NOT EXISTS app_schema_version (
     singleton BOOLEAN PRIMARY KEY DEFAULT TRUE CHECK (singleton),
@@ -497,20 +509,60 @@ def apply_schema_migration_v6(cur: psycopg.Cursor) -> None:
         )
         """
     )
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_auth_users_email ON auth_users (LOWER(email))")
+
+
+def apply_schema_migration_v7(cur: psycopg.Cursor) -> None:
     cur.execute(
         """
-        CREATE TABLE IF NOT EXISTS auth_password_reset_codes (
-            email TEXT NOT NULL,
-            code TEXT NOT NULL,
-            expires_at BIGINT NOT NULL,
-            used_at BIGINT,
-            created_at BIGINT NOT NULL,
-            PRIMARY KEY (email, code)
+        CREATE TABLE IF NOT EXISTS auth_instance_settings (
+            singleton BOOLEAN PRIMARY KEY DEFAULT TRUE CHECK (singleton),
+            initialized BOOLEAN NOT NULL DEFAULT FALSE,
+            public_registration_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+            owner_user_id TEXT,
+            updated_at TEXT NOT NULL
         )
         """
     )
-    cur.execute("CREATE INDEX IF NOT EXISTS idx_auth_users_email ON auth_users (LOWER(email))")
-    cur.execute("CREATE INDEX IF NOT EXISTS idx_auth_password_reset_codes_expires_at ON auth_password_reset_codes (expires_at)")
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS auth_user_invites (
+            token TEXT PRIMARY KEY,
+            email TEXT NOT NULL,
+            first_name TEXT NOT NULL DEFAULT '',
+            last_name TEXT NOT NULL DEFAULT '',
+            role TEXT NOT NULL DEFAULT 'user',
+            invited_by_user_id TEXT NOT NULL,
+            created_at BIGINT NOT NULL,
+            expires_at BIGINT NOT NULL,
+            accepted_at BIGINT
+        )
+        """
+    )
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_auth_user_invites_expires_at ON auth_user_invites (expires_at)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_auth_user_invites_email ON auth_user_invites (LOWER(email))")
+    cur.execute(
+        """
+        INSERT INTO auth_instance_settings(singleton, initialized, public_registration_enabled, owner_user_id, updated_at)
+        VALUES (TRUE, FALSE, FALSE, NULL, %s)
+        ON CONFLICT (singleton) DO NOTHING
+        """,
+        (now_iso(),),
+    )
+    cur.execute("SELECT id FROM auth_users ORDER BY created_at ASC, email ASC LIMIT 1")
+    owner_row = cur.fetchone() or {}
+    owner_user_id = owner_row.get("id") if isinstance(owner_row, dict) else None
+    if owner_user_id:
+        cur.execute(
+            """
+            UPDATE auth_instance_settings
+            SET initialized=TRUE,
+                owner_user_id=COALESCE(owner_user_id, %s),
+                updated_at=%s
+            WHERE singleton=TRUE
+            """,
+            (clean_profile_text(owner_user_id), now_iso()),
+        )
 
 
 def _run_schema_migrations(conn: psycopg.Connection, cur: psycopg.Cursor, current_version: int) -> int:
@@ -521,6 +573,7 @@ def _run_schema_migrations(conn: psycopg.Connection, cur: psycopg.Cursor, curren
         (4, lambda _conn, migration_cur: apply_schema_migration_v4(migration_cur)),
         (5, lambda _conn, migration_cur: apply_schema_migration_v5(migration_cur)),
         (6, lambda _conn, migration_cur: apply_schema_migration_v6(migration_cur)),
+        (7, lambda _conn, migration_cur: apply_schema_migration_v7(migration_cur)),
     )
     target_schema_version = min(CURRENT_SCHEMA_VERSION, max(version for version, _ in migrations))
 
@@ -2061,6 +2114,272 @@ def normalize_email(value: object) -> str:
     return clean_profile_text(value).strip().lower()
 
 
+def _ensure_auth_instance_settings_row(cur: psycopg.Cursor) -> None:
+    cur.execute(
+        """
+        INSERT INTO auth_instance_settings(singleton, initialized, public_registration_enabled, owner_user_id, updated_at)
+        VALUES (TRUE, FALSE, FALSE, NULL, %s)
+        ON CONFLICT (singleton) DO NOTHING
+        """,
+        (now_iso(),),
+    )
+
+
+def get_auth_instance_settings(conn: psycopg.Connection) -> dict:
+    with conn.cursor() as cur:
+        _ensure_auth_instance_settings_row(cur)
+        cur.execute(
+            """
+            SELECT initialized, public_registration_enabled, owner_user_id, updated_at
+            FROM auth_instance_settings
+            WHERE singleton=TRUE
+            """
+        )
+        row = cur.fetchone() or {}
+        cur.execute("SELECT COUNT(*) AS count FROM auth_users")
+        count_row = cur.fetchone() or {}
+    conn.commit()
+    user_count = int((count_row or {}).get("count") or 0)
+    initialized = bool((row or {}).get("initialized"))
+    public_registration_enabled = bool((row or {}).get("public_registration_enabled"))
+    bootstrap_registration_open = (not initialized) and user_count == 0
+    return {
+        "initialized": initialized,
+        "public_registration_enabled": public_registration_enabled,
+        "owner_user_id": clean_profile_text((row or {}).get("owner_user_id")),
+        "updated_at": (row or {}).get("updated_at"),
+        "user_count": user_count,
+        "bootstrap_registration_open": bootstrap_registration_open,
+        "public_registration_open": bootstrap_registration_open or public_registration_enabled,
+    }
+
+
+def update_auth_instance_settings(
+    conn: psycopg.Connection,
+    *,
+    public_registration_enabled: bool | None = None,
+    initialized: bool | None = None,
+    owner_user_id: str | None = None,
+) -> dict:
+    with conn.cursor() as cur:
+        _ensure_auth_instance_settings_row(cur)
+        cur.execute(
+            """
+            SELECT initialized, public_registration_enabled, owner_user_id
+            FROM auth_instance_settings
+            WHERE singleton=TRUE
+            FOR UPDATE
+            """
+        )
+        existing = cur.fetchone() or {}
+        next_initialized = bool(existing.get("initialized")) if initialized is None else bool(initialized)
+        next_public_registration_enabled = (
+            bool(existing.get("public_registration_enabled"))
+            if public_registration_enabled is None
+            else bool(public_registration_enabled)
+        )
+        next_owner_user_id = clean_profile_text(existing.get("owner_user_id")) if owner_user_id is None else clean_profile_text(owner_user_id)
+        cur.execute(
+            """
+            UPDATE auth_instance_settings
+            SET initialized=%s,
+                public_registration_enabled=%s,
+                owner_user_id=%s,
+                updated_at=%s
+            WHERE singleton=TRUE
+            """,
+            (next_initialized, next_public_registration_enabled, next_owner_user_id or None, now_iso()),
+        )
+    conn.commit()
+    return get_auth_instance_settings(conn)
+
+
+def create_bootstrap_auth_user(
+    conn: psycopg.Connection,
+    *,
+    user_id: str,
+    email: str,
+    password_hash: str,
+    first_name: str,
+    last_name: str,
+) -> dict:
+    normalized_email = normalize_email(email)
+    now_value = now_iso()
+    with conn.cursor() as cur:
+        _ensure_auth_instance_settings_row(cur)
+        cur.execute(
+            """
+            SELECT initialized, owner_user_id
+            FROM auth_instance_settings
+            WHERE singleton=TRUE
+            FOR UPDATE
+            """
+        )
+        settings = cur.fetchone() or {}
+        cur.execute("SELECT COUNT(*) AS count FROM auth_users")
+        count_row = cur.fetchone() or {}
+        user_count = int((count_row or {}).get("count") or 0)
+        if bool(settings.get("initialized")) or user_count > 0:
+            raise ValueError("Public registration is closed")
+        cur.execute("SELECT 1 FROM auth_users WHERE LOWER(email)=LOWER(%s)", (normalized_email,))
+        if cur.fetchone():
+            raise ValueError("Email already registered")
+        cur.execute(
+            """
+            INSERT INTO auth_users(id, email, password_hash, first_name, last_name, role, is_active, created_at, updated_at, last_login_at)
+            VALUES (%s, %s, %s, %s, %s, 'admin', TRUE, %s, %s, NULL)
+            """,
+            (
+                clean_profile_text(user_id),
+                normalized_email,
+                clean_profile_text(password_hash),
+                clean_profile_text(first_name),
+                clean_profile_text(last_name),
+                now_value,
+                now_value,
+            ),
+        )
+        cur.execute(
+            """
+            UPDATE auth_instance_settings
+            SET initialized=TRUE,
+                owner_user_id=%s,
+                updated_at=%s
+            WHERE singleton=TRUE
+            """,
+            (clean_profile_text(user_id), now_iso()),
+        )
+    conn.commit()
+    return get_auth_user_by_id(conn, user_id) or {}
+
+
+def cleanup_auth_invites_with_cursor(cur: psycopg.Cursor, now_timestamp: int) -> None:
+    cur.execute(
+        """
+        DELETE FROM auth_user_invites
+        WHERE accepted_at IS NOT NULL OR expires_at <= %s
+        """,
+        (int(now_timestamp),),
+    )
+
+
+def create_auth_invite(
+    conn: psycopg.Connection,
+    *,
+    token: str,
+    email: str,
+    first_name: str,
+    last_name: str,
+    role: str,
+    invited_by_user_id: str,
+    expires_at: int,
+    now_timestamp: int,
+) -> dict:
+    with conn.cursor() as cur:
+        cleanup_auth_invites_with_cursor(cur, now_timestamp)
+        cur.execute("DELETE FROM auth_user_invites WHERE LOWER(email)=LOWER(%s)", (normalize_email(email),))
+        cur.execute(
+            """
+            INSERT INTO auth_user_invites(
+                token, email, first_name, last_name, role, invited_by_user_id, created_at, expires_at, accepted_at
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, NULL)
+            """,
+            (
+                clean_profile_text(token),
+                normalize_email(email),
+                clean_profile_text(first_name),
+                clean_profile_text(last_name),
+                clean_profile_text(role) or "user",
+                clean_profile_text(invited_by_user_id),
+                int(now_timestamp),
+                int(expires_at),
+            ),
+        )
+        cur.execute(
+            """
+            SELECT token, email, first_name, last_name, role, invited_by_user_id, created_at, expires_at
+            FROM auth_user_invites
+            WHERE token=%s
+            """,
+            (clean_profile_text(token),),
+        )
+        row = cur.fetchone() or {}
+    conn.commit()
+    return dict(row)
+
+
+def get_auth_invite_by_token(conn: psycopg.Connection, token: str, *, now_timestamp: int) -> dict | None:
+    with conn.cursor() as cur:
+        cleanup_auth_invites_with_cursor(cur, now_timestamp)
+        cur.execute(
+            """
+            SELECT token, email, first_name, last_name, role, invited_by_user_id, created_at, expires_at
+            FROM auth_user_invites
+            WHERE token=%s AND accepted_at IS NULL AND expires_at > %s
+            """,
+            (clean_profile_text(token), int(now_timestamp)),
+        )
+        row = cur.fetchone()
+    conn.commit()
+    return dict(row) if row else None
+
+
+def create_auth_user_from_invite(
+    conn: psycopg.Connection,
+    *,
+    invite_token: str,
+    user_id: str,
+    password_hash: str,
+) -> dict:
+    now_value = now_iso()
+    now_timestamp = int(time.time())
+    with conn.cursor() as cur:
+        cleanup_auth_invites_with_cursor(cur, now_timestamp)
+        cur.execute(
+            """
+            SELECT token, email, first_name, last_name, role
+            FROM auth_user_invites
+            WHERE token=%s AND accepted_at IS NULL AND expires_at > %s
+            FOR UPDATE
+            """,
+            (clean_profile_text(invite_token), now_timestamp),
+        )
+        invite = cur.fetchone()
+        if not invite:
+            raise ValueError("Invitation is invalid or expired")
+        invite_email = normalize_email(invite.get("email"))
+        cur.execute("SELECT 1 FROM auth_users WHERE LOWER(email)=LOWER(%s)", (invite_email,))
+        if cur.fetchone():
+            raise ValueError("Email already registered")
+        cur.execute(
+            """
+            INSERT INTO auth_users(id, email, password_hash, first_name, last_name, role, is_active, created_at, updated_at, last_login_at)
+            VALUES (%s, %s, %s, %s, %s, %s, TRUE, %s, %s, NULL)
+            """,
+            (
+                clean_profile_text(user_id),
+                invite_email,
+                clean_profile_text(password_hash),
+                clean_profile_text(invite.get("first_name")),
+                clean_profile_text(invite.get("last_name")),
+                clean_profile_text(invite.get("role")) or "user",
+                now_value,
+                now_value,
+            ),
+        )
+        cur.execute(
+            """
+            UPDATE auth_user_invites
+            SET accepted_at=%s
+            WHERE token=%s
+            """,
+            (now_timestamp, clean_profile_text(invite_token)),
+        )
+    conn.commit()
+    return get_auth_user_by_id(conn, user_id) or {}
+
+
 def count_auth_users(conn: psycopg.Connection) -> int:
     with conn.cursor() as cur:
         cur.execute("SELECT COUNT(*) AS count FROM auth_users")
@@ -2184,32 +2503,3 @@ def delete_auth_user(conn: psycopg.Connection, user_id: str) -> bool:
         deleted = cur.rowcount > 0
     conn.commit()
     return deleted
-
-
-def create_password_reset_code(conn: psycopg.Connection, *, email: str, code: str, expires_at: int, now_timestamp: int) -> None:
-    with conn.cursor() as cur:
-        cur.execute("DELETE FROM auth_password_reset_codes WHERE expires_at <= %s OR used_at IS NOT NULL", (now_timestamp,))
-        cur.execute(
-            """
-            INSERT INTO auth_password_reset_codes(email, code, expires_at, used_at, created_at)
-            VALUES (%s, %s, %s, NULL, %s)
-            """,
-            (normalize_email(email), clean_profile_text(code), int(expires_at), int(now_timestamp)),
-        )
-    conn.commit()
-
-
-def consume_password_reset_code(conn: psycopg.Connection, *, email: str, code: str, now_timestamp: int) -> bool:
-    with conn.cursor() as cur:
-        cur.execute("DELETE FROM auth_password_reset_codes WHERE expires_at <= %s", (now_timestamp,))
-        cur.execute(
-            """
-            UPDATE auth_password_reset_codes
-            SET used_at=%s
-            WHERE LOWER(email)=LOWER(%s) AND code=%s AND used_at IS NULL AND expires_at > %s
-            """,
-            (now_timestamp, normalize_email(email), clean_profile_text(code), now_timestamp),
-        )
-        matched = cur.rowcount > 0
-    conn.commit()
-    return matched
