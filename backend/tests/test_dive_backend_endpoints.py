@@ -29,13 +29,14 @@ class FakeVerifier:
         authorization = headers.get("Authorization", "")
         token = authorization.split(" ", 1)[1].strip() if authorization.lower().startswith("bearer ") else ""
         if not token:
-            raise dive_backend.ClerkAuthError(401, "Missing Clerk bearer token")
+            raise dive_backend.AuthError(401, "Missing authentication bearer token")
         if token == "session":
             return {
                 "token_type": "session_token",
                 "sid": "sid_123",
                 "sub": "user-1",
                 "email": "diver@example.com",
+                "role": "admin",
             }
         if token == "api":
             return {
@@ -45,7 +46,7 @@ class FakeVerifier:
             }
         if token == "nouser":
             return {"token_type": "session_token"}
-        raise dive_backend.ClerkAuthError(401, "Invalid token")
+        raise dive_backend.AuthError(401, "Invalid token")
 
 
 class FakeCliAuthManager:
@@ -101,6 +102,27 @@ class FakeNominatimClient:
 @pytest.fixture()
 def server_fixture(monkeypatch):
     store = {
+        "auth_users": [
+            {
+                "id": "user-1",
+                "email": "diver@example.com",
+                "password_hash": dive_backend.hash_password("password123"),
+                "first_name": "Elias",
+                "last_name": "Thorne",
+                "role": "admin",
+                "is_active": True,
+                "created_at": "2026-03-20T08:00:00+00:00",
+                "updated_at": "2026-03-20T08:00:00+00:00",
+                "last_login_at": None,
+            }
+        ],
+        "auth_settings": {
+            "initialized": True,
+            "public_registration_enabled": False,
+            "owner_user_id": "user-1",
+            "updated_at": "2026-03-20T08:00:00+00:00",
+        },
+        "auth_invites": {},
         "dives": [
             {
                 "id": 1,
@@ -363,7 +385,168 @@ def server_fixture(monkeypatch):
             {"totalDives": len(public_dives)},
         )
 
+    def compute_auth_settings():
+        user_count = len(store["auth_users"])
+        initialized = bool(store["auth_settings"].get("initialized"))
+        public_registration_enabled = bool(store["auth_settings"].get("public_registration_enabled"))
+        bootstrap_registration_open = (not initialized) and user_count == 0
+        return {
+            "initialized": initialized,
+            "public_registration_enabled": public_registration_enabled,
+            "owner_user_id": store["auth_settings"].get("owner_user_id"),
+            "updated_at": store["auth_settings"].get("updated_at"),
+            "user_count": user_count,
+            "bootstrap_registration_open": bootstrap_registration_open,
+            "public_registration_open": bootstrap_registration_open or public_registration_enabled,
+        }
+
+    def fake_count_auth_users(_conn):
+        return len(store["auth_users"])
+
+    def fake_get_auth_user_by_email(_conn, email: str):
+        normalized = str(email or "").strip().lower()
+        return next((dict(user) for user in store["auth_users"] if user["email"].lower() == normalized), None)
+
+    def fake_get_auth_user_by_id(_conn, user_id: str):
+        return next((dict(user) for user in store["auth_users"] if user["id"] == user_id), None)
+
+    def fake_create_auth_user(_conn, *, user_id: str, email: str, password_hash: str, first_name: str, last_name: str, role: str):
+        user = {
+            "id": user_id,
+            "email": email.strip().lower(),
+            "password_hash": password_hash,
+            "first_name": first_name.strip(),
+            "last_name": last_name.strip(),
+            "role": role,
+            "is_active": True,
+            "created_at": "2026-03-21T08:00:00+00:00",
+            "updated_at": "2026-03-21T08:00:00+00:00",
+            "last_login_at": None,
+        }
+        store["auth_users"].append(user)
+        return dict(user)
+
+    def fake_create_bootstrap_auth_user(_conn, *, user_id: str, email: str, password_hash: str, first_name: str, last_name: str):
+        settings = compute_auth_settings()
+        if not settings["bootstrap_registration_open"]:
+            raise ValueError("Public registration is closed")
+        user = fake_create_auth_user(
+            _conn,
+            user_id=user_id,
+            email=email,
+            password_hash=password_hash,
+            first_name=first_name,
+            last_name=last_name,
+            role="admin",
+        )
+        store["auth_settings"]["initialized"] = True
+        store["auth_settings"]["owner_user_id"] = user_id
+        return user
+
+    def fake_get_auth_instance_settings(_conn):
+        return compute_auth_settings()
+
+    def fake_update_auth_instance_settings(_conn, *, public_registration_enabled=None, initialized=None, owner_user_id=None):
+        if public_registration_enabled is not None:
+            store["auth_settings"]["public_registration_enabled"] = bool(public_registration_enabled)
+        if initialized is not None:
+            store["auth_settings"]["initialized"] = bool(initialized)
+        if owner_user_id is not None:
+            store["auth_settings"]["owner_user_id"] = owner_user_id
+        store["auth_settings"]["updated_at"] = "2026-03-21T08:05:00+00:00"
+        return compute_auth_settings()
+
+    def fake_create_auth_invite(_conn, *, token: str, email: str, first_name: str, last_name: str, role: str, invited_by_user_id: str, expires_at: int, now_timestamp: int):
+        invite = {
+            "token": token,
+            "email": email.strip().lower(),
+            "first_name": first_name.strip(),
+            "last_name": last_name.strip(),
+            "role": role,
+            "invited_by_user_id": invited_by_user_id,
+            "created_at": now_timestamp,
+            "expires_at": expires_at,
+            "accepted_at": None,
+        }
+        store["auth_invites"][token] = invite
+        return {key: invite[key] for key in ("token", "email", "first_name", "last_name", "role", "invited_by_user_id", "created_at", "expires_at")}
+
+    def fake_get_auth_invite_by_token(_conn, token: str, *, now_timestamp: int):
+        invite = store["auth_invites"].get(token)
+        if not invite or invite.get("accepted_at") is not None or int(invite.get("expires_at") or 0) <= now_timestamp:
+            return None
+        return {key: invite[key] for key in ("token", "email", "first_name", "last_name", "role", "invited_by_user_id", "created_at", "expires_at")}
+
+    def fake_create_auth_user_from_invite(_conn, *, invite_token: str, user_id: str, password_hash: str):
+        invite = store["auth_invites"].get(invite_token)
+        if not invite or invite.get("accepted_at") is not None:
+            raise ValueError("Invitation is invalid or expired")
+        if fake_get_auth_user_by_email(_conn, invite["email"]):
+            raise ValueError("Email already registered")
+        user = fake_create_auth_user(
+            _conn,
+            user_id=user_id,
+            email=invite["email"],
+            password_hash=password_hash,
+            first_name=invite.get("first_name") or "",
+            last_name=invite.get("last_name") or "",
+            role=invite.get("role") or "user",
+        )
+        invite["accepted_at"] = invite.get("created_at", 0) + 60
+        return user
+
+    def fake_update_auth_user_last_login(_conn, user_id: str):
+        for user in store["auth_users"]:
+            if user["id"] == user_id:
+                user["last_login_at"] = "2026-03-21T08:06:00+00:00"
+                user["updated_at"] = "2026-03-21T08:06:00+00:00"
+                return None
+        return None
+
+    def fake_list_auth_users(_conn):
+        return [
+            {
+                key: user[key]
+                for key in ("id", "email", "first_name", "last_name", "role", "is_active", "created_at", "updated_at", "last_login_at")
+            }
+            for user in store["auth_users"]
+        ]
+
+    def fake_update_auth_user(_conn, user_id: str, payload: dict):
+        for user in store["auth_users"]:
+            if user["id"] != user_id:
+                continue
+            for key in ("email", "first_name", "last_name", "role", "password_hash"):
+                if key in payload:
+                    user[key] = payload[key]
+            if "is_active" in payload:
+                user["is_active"] = bool(payload["is_active"])
+            user["updated_at"] = "2026-03-21T08:07:00+00:00"
+            return dict(user)
+        return None
+
+    def fake_delete_auth_user(_conn, user_id: str):
+        for index, user in enumerate(store["auth_users"]):
+            if user["id"] == user_id:
+                store["auth_users"].pop(index)
+                return True
+        return False
+
     monkeypatch.setattr(dive_backend, "open_db", fake_open_db)
+    monkeypatch.setattr(dive_backend, "count_auth_users", fake_count_auth_users)
+    monkeypatch.setattr(dive_backend, "get_auth_user_by_email", fake_get_auth_user_by_email)
+    monkeypatch.setattr(dive_backend, "get_auth_user_by_id", fake_get_auth_user_by_id)
+    monkeypatch.setattr(dive_backend, "create_auth_user", fake_create_auth_user)
+    monkeypatch.setattr(dive_backend, "create_bootstrap_auth_user", fake_create_bootstrap_auth_user)
+    monkeypatch.setattr(dive_backend, "get_auth_instance_settings", fake_get_auth_instance_settings)
+    monkeypatch.setattr(dive_backend, "update_auth_instance_settings", fake_update_auth_instance_settings)
+    monkeypatch.setattr(dive_backend, "create_auth_invite", fake_create_auth_invite)
+    monkeypatch.setattr(dive_backend, "get_auth_invite_by_token", fake_get_auth_invite_by_token)
+    monkeypatch.setattr(dive_backend, "create_auth_user_from_invite", fake_create_auth_user_from_invite)
+    monkeypatch.setattr(dive_backend, "update_auth_user_last_login", fake_update_auth_user_last_login)
+    monkeypatch.setattr(dive_backend, "list_auth_users", fake_list_auth_users)
+    monkeypatch.setattr(dive_backend, "update_auth_user", fake_update_auth_user)
+    monkeypatch.setattr(dive_backend, "delete_auth_user", fake_delete_auth_user)
     monkeypatch.setattr(dive_backend, "get_device_state", fake_get_device_state)
     monkeypatch.setattr(dive_backend, "save_device_state", fake_save_device_state)
     monkeypatch.setattr(dive_backend, "list_device_states", fake_list_device_states)
@@ -389,7 +572,8 @@ def server_fixture(monkeypatch):
         server.database_url = "postgresql://unused"
         server.database_ready = True
         server.database_ready_error = ""
-        server.clerk_verifier = FakeVerifier()
+        server.auth_verifier = FakeVerifier()
+        server.clerk_verifier = server.auth_verifier
         server.clerk_publishable_key = "pk_test_123"
         server.cors_origin = "http://localhost:5173"
         server.max_json_body_bytes = 1024 * 1024
@@ -406,6 +590,7 @@ def server_fixture(monkeypatch):
         server.frontend_dir = frontend_dir
         server.cli_auth_manager = FakeCliAuthManager()
         server.nominatim_client = FakeNominatimClient()
+        server.test_store = store
 
         thread = threading.Thread(target=server.serve_forever, daemon=True)
         thread.start()
@@ -447,7 +632,7 @@ def test_get_and_options_routes(server_fixture):
 
     config = request(server, "GET", "/config.js")
     assert config.status == 200
-    assert "pk_test_123" in config.body.decode("utf-8")
+    assert '"authEnabled": true' in config.body.decode("utf-8")
 
     static_asset = request(server, "GET", "/asset.js")
     assert static_asset.status == 200
@@ -572,6 +757,141 @@ def test_health_reports_starting_until_database_ready(server_fixture):
         "database": "migrating",
         "error": "startup migrations still running",
     }
+
+
+def test_auth_status_and_owner_registration_controls(server_fixture):
+    server = server_fixture
+
+    status = request(server, "GET", "/api/auth/status")
+    assert status.status == 200
+    assert status.json() == {
+        "initialized": True,
+        "user_count": 1,
+        "bootstrap_registration_open": False,
+        "public_registration_enabled": False,
+        "public_registration_open": False,
+        "invite": None,
+    }
+
+    closed_registration = request(
+        server,
+        "POST",
+        "/api/auth/register",
+        payload={"email": "new@example.com", "password": "Password123!"},
+    )
+    assert closed_registration.status == 403
+    assert closed_registration.json()["error"] == "Public registration is closed"
+
+    get_settings = request(server, "GET", "/api/auth/settings", token="session")
+    assert get_settings.status == 200
+    assert get_settings.json()["owner_user_id"] == "user-1"
+
+    enable_registration = request(
+        server,
+        "PUT",
+        "/api/auth/settings",
+        token="session",
+        payload={"public_registration_enabled": True},
+    )
+    assert enable_registration.status == 200
+    assert enable_registration.json()["public_registration_enabled"] is True
+
+    open_registration = request(
+        server,
+        "POST",
+        "/api/auth/register",
+        payload={"email": "new@example.com", "password": "Password123!", "first_name": "New", "last_name": "Diver"},
+    )
+    assert open_registration.status == 201
+    assert open_registration.json()["email"] == "new@example.com"
+    assert open_registration.json()["role"] == "user"
+    assert open_registration.json()["is_owner"] is False
+
+
+def test_owner_can_invite_and_invited_user_can_register(server_fixture):
+    server = server_fixture
+
+    invite = request(
+        server,
+        "POST",
+        "/api/auth/invitations",
+        token="session",
+        payload={
+            "email": "invitee@example.com",
+            "first_name": "Ivy",
+            "last_name": "Guest",
+            "role": "user",
+            "expires_in_days": 3,
+        },
+    )
+    assert invite.status == 201
+    invite_payload = invite.json()
+    assert invite_payload["invite"]["email"] == "invitee@example.com"
+    assert "invite_token=" in invite_payload["invite_url"]
+
+    invite_token = invite_payload["invite"]["token"]
+    status = request(server, "GET", f"/api/auth/status?invite_token={invite_token}")
+    assert status.status == 200
+    assert status.json()["invite"]["email"] == "invitee@example.com"
+
+    accepted = request(
+        server,
+        "POST",
+        "/api/auth/register",
+        payload={
+            "email": "invitee@example.com",
+            "password": "Password123!",
+            "invite_token": invite_token,
+        },
+    )
+    assert accepted.status == 201
+    assert accepted.json()["email"] == "invitee@example.com"
+    assert accepted.json()["role"] == "user"
+
+    duplicate = request(
+        server,
+        "POST",
+        "/api/auth/register",
+        payload={
+            "email": "invitee@example.com",
+            "password": "Password123!",
+            "invite_token": invite_token,
+        },
+    )
+    assert duplicate.status == 400
+    assert duplicate.json()["error"] == "Invitation is invalid or expired"
+
+
+def test_bootstrap_registration_only_when_uninitialized(server_fixture):
+    server = server_fixture
+    server.test_store["auth_users"] = []
+    server.test_store["auth_settings"] = {
+        "initialized": False,
+        "public_registration_enabled": False,
+        "owner_user_id": None,
+        "updated_at": "2026-03-21T09:00:00+00:00",
+    }
+
+    register = request(
+        server,
+        "POST",
+        "/api/auth/register",
+        payload={
+            "email": "owner@example.com",
+            "password": "Password123!",
+            "first_name": "Olive",
+            "last_name": "Owner",
+        },
+    )
+    assert register.status == 201
+    assert register.json()["role"] == "admin"
+    assert register.json()["is_owner"] is True
+
+    status = request(server, "GET", "/api/auth/status")
+    assert status.status == 200
+    assert status.json()["initialized"] is True
+    assert status.json()["bootstrap_registration_open"] is False
+    assert status.json()["user_count"] == 1
 
 
 def test_post_and_put_endpoints(server_fixture):
@@ -998,22 +1318,30 @@ def test_route_manifest_requires_test_updates_for_new_endpoints():
         "/health",
         "/api/health",
         "/config.js",
+        "/api/auth/invitations",
+        "/api/auth/login",
+        "/api/auth/me",
+        "/api/auth/password",
+        "/api/auth/register",
+        "/api/auth/settings",
+        "/api/auth/status",
+        "/api/backup/export",
+        "/api/backup/import",
+        "/api/cli-auth/approve",
+        "/api/cli-auth/request",
         "/api/device-state",
-        "/api/profile",
         "/api/exports/dives.csv",
-            "/api/exports/dives.pdf",
-            "/api/backup/export",
-            "/api/geocode/search",
-            "/api/auth/me",
-            "/api/cli-auth/request",
-            "/api/dives",
-            "/api/backup/import",
-            "/api/cli-auth/approve",
-            "regex:/api/public/divers/([a-z0-9-]+)",
-            "regex:/api/dives/(\\d+)",
-            "regex:/api/dives/(\\d+)/logbook",
-            "regex:/api/profile/licenses/([A-Za-z0-9_-]+)/pdf",
+        "/api/exports/dives.pdf",
+        "/api/geocode/search",
+        "/api/profile",
+        "/api/users",
+        "/api/dives",
         "prefix:/api/*",
+        "regex:/api/dives/(\\d+)",
+        "regex:/api/dives/(\\d+)/logbook",
+        "regex:/api/profile/licenses/([A-Za-z0-9_-]+)/pdf",
+        "regex:/api/public/divers/([a-z0-9-]+)",
+        "regex:/api/users/(user_[A-Za-z0-9]+)",
     }
 
     discovered = discovered_literals | discovered_regex

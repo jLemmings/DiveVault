@@ -7,13 +7,6 @@ from pathlib import Path
 import pytest
 
 from divevault import app as dive_backend
-
-
-def test_normalize_pem_env_handles_blank_and_escaped_newlines():
-    assert dive_backend.normalize_pem_env(None) is None
-    assert dive_backend.normalize_pem_env("  line1\\nline2  ") == "line1\nline2"
-
-
 @pytest.mark.parametrize(
     ("value", "expected"),
     [
@@ -27,13 +20,6 @@ def test_normalize_pem_env_handles_blank_and_escaped_newlines():
 )
 def test_normalize_bearer_token(value, expected):
     assert dive_backend.normalize_bearer_token(value) == expected
-
-
-def test_parse_csv_env_discards_empty_entries():
-    assert dive_backend.parse_csv_env(None) == set()
-    assert dive_backend.parse_csv_env(" one, two ,, three , ") == {"one", "two", "three"}
-
-
 def test_sanitize_profile_license_filename_keeps_pdf_name():
     assert dive_backend.sanitize_profile_license_filename(r"C:\Users\joshu\licenses\advanced-open-water") == "advanced-open-water.pdf"
     assert dive_backend.sanitize_profile_license_filename(" rescue-diver.pdf ") == "rescue-diver.pdf"
@@ -108,45 +94,33 @@ def test_nominatim_client_search_requires_query():
         client.search("   ")
 
 
-def test_build_clerk_verifier_derives_jwks_url_and_issuer():
+def test_build_auth_verifier_uses_first_party_jwt_settings():
     args = argparse.Namespace(
-        clerk_secret_key=None,
-        clerk_jwt_key="public-key",
-        clerk_jwks_url=None,
-        clerk_api_url="https://api.clerk.com",
-        clerk_frontend_api_url="https://clerk.example.com/",
-        clerk_issuer=None,
-        clerk_audience="aud",
-        clerk_authorized_parties="https://app.example.com, https://admin.example.com",
-        clerk_api_key_scopes="sync:write, dives:read",
+        auth_jwt_secret="test-secret",
+        auth_jwt_issuer="divevault.example",
+        auth_jwt_audience="divevault.app",
     )
 
-    verifier = dive_backend.build_clerk_verifier(args, sync_token_manager=None)
+    verifier = dive_backend.build_auth_verifier(args, sync_token_manager=None)
 
     assert verifier is not None
-    assert verifier.jwks_url == "https://clerk.example.com/.well-known/jwks.json"
-    assert verifier.issuer == "https://clerk.example.com"
-    assert verifier.authorized_parties == {"https://app.example.com", "https://admin.example.com"}
-    assert verifier.required_api_key_scopes == {"sync:write", "dives:read"}
+    assert verifier.jwt_secret == "test-secret"
+    assert verifier.issuer == "divevault.example"
+    assert verifier.audience == "divevault.app"
+    assert verifier.configured is True
 
 
-def test_build_clerk_verifier_returns_none_when_unconfigured(caplog):
+def test_build_auth_verifier_reports_unconfigured_when_secret_missing():
     args = argparse.Namespace(
-        clerk_secret_key=None,
-        clerk_jwt_key=None,
-        clerk_jwks_url=None,
-        clerk_api_url="https://api.clerk.com",
-        clerk_frontend_api_url=None,
-        clerk_issuer=None,
-        clerk_audience=None,
-        clerk_authorized_parties=None,
-        clerk_api_key_scopes=None,
+        auth_jwt_secret="",
+        auth_jwt_issuer="divevault.example",
+        auth_jwt_audience="divevault.app",
     )
 
-    verifier = dive_backend.build_clerk_verifier(args, sync_token_manager=None)
+    verifier = dive_backend.build_auth_verifier(args, sync_token_manager=None)
 
-    assert verifier is None
-    assert "Clerk authentication is not configured" in caplog.text
+    assert verifier is not None
+    assert verifier.configured is False
 
 
 def test_resolve_frontend_dir_uses_existing_directory(tmp_path: Path):
@@ -193,13 +167,13 @@ def test_extract_token_prefers_authorization_header():
         "Cookie": "__session=cookie-token",
     }
 
-    assert dive_backend.ClerkTokenVerifier._extract_token(headers) == "auth-token"
+    assert dive_backend.DiveVaultAuthTokenVerifier._extract_token(headers) == "auth-token"
 
 
 def test_extract_token_uses_session_cookie_when_authorization_missing():
     headers = {"Cookie": "theme=dark; __session=cookie-token; csrftoken=abc"}
 
-    assert dive_backend.ClerkTokenVerifier._extract_token(headers) == "cookie-token"
+    assert dive_backend.DiveVaultAuthTokenVerifier._extract_token(headers) == "cookie-token"
 
 
 def test_principal_id_from_claims_accepts_multiple_claim_names():

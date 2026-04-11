@@ -1,7 +1,7 @@
 {
   "name": "divevault-frontend",
   "private": true,
-  "version": "0.1.4",
+  "version": "0.1.5",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -12,7 +12,6 @@
     "test:ui": "playwright test --ui"
   },
   "dependencies": {
-    "@clerk/vue": "^2.0.11",
     "leaflet": "^1.9.4",
     "pdfjs-dist": "^5.6.205",
     "vue": "^3.5.32"
