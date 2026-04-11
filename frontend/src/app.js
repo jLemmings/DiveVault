@@ -11,9 +11,11 @@ import LogsView from "./components/logs.js";
 import ManualDiveEntryView from "./components/manual-dive.js";
 import PublicProfileView from "./components/public-profile.js";
 import SettingsView, { SETTINGS_SECTIONS } from "./components/settings.js";
+import { createTranslator } from "./i18n/index.js";
 
 const DEFAULT_SETTINGS_SECTION = SETTINGS_SECTIONS[0]?.id || "diver-details";
 const SETTINGS_SECTION_IDS = new Set(SETTINGS_SECTIONS.map((section) => section.id));
+const i18n = createTranslator("en");
 
 function createManualDiveDraft() {
   const now = new Date();
@@ -110,7 +112,8 @@ export default {
         { id: "logs", label: "Dive Logs", mobileLabel: "Logs", icon: "waves", mobileIcon: "sailing", eyebrow: "Dive Logs", title: "Dive Log Database" },
         { id: "equipment", label: "Equipment", mobileLabel: "WIP", icon: "construction", mobileIcon: "construction", eyebrow: "Work In Progress", title: "Equipment Coming Soon", disabled: true, badge: "WIP" },
         { id: "settings", label: "Settings", mobileLabel: "Settings", icon: "settings", mobileIcon: "settings", eyebrow: "System Configuration", title: "System Config" }
-      ]
+      ],
+      i18nLocale: "en"
     };
   },
   watch: {
@@ -233,6 +236,13 @@ export default {
     }
   },
   methods: {
+    t(key, fallback = key) {
+      return i18n.t(key, fallback);
+    },
+    setLocale(locale) {
+      i18n.setLocale(locale);
+      this.i18nLocale = i18n.locale;
+    },
     syncRouteMode() {
       this.publicRouteSlug = typeof window !== "undefined"
         ? (window.location.pathname.match(/^\/public\/([^/]+)\/?$/)?.[1] || "")
@@ -838,6 +848,29 @@ export default {
       }
       return payload.result;
     },
+    async translateText(text, { source = "auto", target = "en" } = {}) {
+      const normalizedText = typeof text === "string" ? text.trim() : "";
+      if (!normalizedText) {
+        throw new Error("Enter text before translating.");
+      }
+      const normalizedTarget = typeof target === "string" ? target.trim().toLowerCase() : "";
+      if (!normalizedTarget) {
+        throw new Error("Choose a target language.");
+      }
+      const normalizedSource = typeof source === "string" && source.trim() ? source.trim().toLowerCase() : "auto";
+
+      const response = await this.authenticatedFetch(
+        `/api/translation/translate?q=${encodeURIComponent(normalizedText)}&source=${encodeURIComponent(normalizedSource)}&target=${encodeURIComponent(normalizedTarget)}`
+      );
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(payload?.error || `API returned ${response.status}`);
+      }
+      if (!payload?.translated_text) {
+        throw new Error("Translation service returned an empty response.");
+      }
+      return payload.translated_text;
+    },
     async deleteDive(diveId) {
       const id = String(diveId);
       const dive = this.dives.find((entry) => String(entry.id) === id);
@@ -1096,6 +1129,8 @@ export default {
   mounted() {
     window.addEventListener("hashchange", this.handleBrowserNavigation);
     window.addEventListener("popstate", this.handleBrowserNavigation);
+    const browserLocale = (typeof navigator !== "undefined" ? navigator.language : "en").slice(0, 2).toLowerCase();
+    this.setLocale(browserLocale);
     this.syncRouteMode();
     this.syncAuthState();
   },
@@ -1286,7 +1321,7 @@ export default {
           </section>
           <dashboard-view v-else-if="activeView === 'dashboard'" :dives="committedDives" :all-dives="dives" :dive-sites="profileDiveSites" :stats="stats" :set-view="setView" :backend-healthy="backendHealthy" :open-dive="openDive" :current-user-name="currentUserName" :imported-dive-count="importedDiveCount" :open-import-queue="openImportQueue"></dashboard-view>
           <logs-view v-else-if="activeView === 'logs' && !selectedDive" :dives="committedDives" :dive-sites="profileDiveSites" :search-text="searchText" :open-dive="openDive" :open-import-queue="openImportQueue" :open-manual-dive="openManualDiveCreator" :set-search-text="setSearchText" :delete-dive="deleteDive" :deleting-dive-id="deletingDiveId" :status-message="importStatusMessage" :error-message="importError"></logs-view>
-          <manual-dive-entry-view v-else-if="activeView === 'create'" :draft="manualDiveDraft" :dive-sites="profileDiveSites" :buddies="profileBuddies" :guides="profileGuides" :creating="manualDiveCreating" :error-message="manualDiveError" :update-draft="updateManualDiveDraft" :create-manual-dive="createManualDive" :close-creator="closeManualDiveCreator" :create-dive-site="createDiveSite" :search-dive-site-location="searchDiveSiteLocation"></manual-dive-entry-view>
+          <manual-dive-entry-view v-else-if="activeView === 'create'" :draft="manualDiveDraft" :dive-sites="profileDiveSites" :buddies="profileBuddies" :guides="profileGuides" :creating="manualDiveCreating" :error-message="manualDiveError" :update-draft="updateManualDiveDraft" :create-manual-dive="createManualDive" :close-creator="closeManualDiveCreator" :create-dive-site="createDiveSite" :search-dive-site-location="searchDiveSiteLocation" :translate-text="translateText" :t="t"></manual-dive-entry-view>
           <dive-import-editor-view v-else-if="activeView === 'imports' && selectedImportDive" :dive="selectedImportDive" :draft="selectedImportDraft" :dive-sites="profileDiveSites" :buddies="profileBuddies" :guides="profileGuides" :saving-import-id="savingImportId" :bulk-import-save-pending="bulkImportSavePending" :deleting-dive-id="deletingDiveId" :import-error="importError" :import-status-message="importStatusMessage" :update-import-draft="updateImportDraft" :save-import-draft="saveImportDraft" :delete-dive="deleteDive" :apply-buddy-guide-to-pending-imports="applyBuddyGuideToPendingImports" :create-dive-site="createDiveSite" :back-to-queue="backToImportQueue"></dive-import-editor-view>
           <dive-import-view v-else-if="activeView === 'imports'" :dives="dives" :import-drafts="importDrafts" :selected-import-id="selectedImportId" :select-import-dive="selectImportDive" :deleting-dive-id="deletingDiveId" :import-error="importError" :import-status-message="importStatusMessage" :delete-dive="deleteDive" :set-view="setView" :fetch-dives="fetchDives"></dive-import-view>
           <logbook-editor-view v-else-if="activeView === 'edit' && selectedEditDive" :dive="selectedEditDive" :all-dives="dives" :draft="selectedEditDraft" :dive-sites="profileDiveSites" :buddies="profileBuddies" :guides="profileGuides" :saving-import-id="savingImportId" :deleting-dive-id="deletingDiveId" :status-message="importStatusMessage" :error-message="importError" :update-dive-draft="updateImportDraft" :save-dive-logbook="saveExistingDiveLogbook" :delete-dive="deleteDive" :create-dive-site="createDiveSite" :close-editor="closeDiveEditor"></logbook-editor-view>

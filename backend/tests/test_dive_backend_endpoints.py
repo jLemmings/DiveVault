@@ -98,6 +98,21 @@ class FakeNominatimClient:
         }
 
 
+class FakeTranslationClient:
+    def translate(self, text: str, *, target_language: str, source_language: str = "auto") -> dict:
+        normalized = text.strip()
+        if not normalized:
+            raise ValueError("Missing text to translate")
+        if target_language == "xx":
+            raise RuntimeError("Translation request failed: upstream unavailable")
+        return {
+            "text": normalized,
+            "source_language": source_language,
+            "target_language": target_language,
+            "translated_text": f"{normalized} ({target_language})",
+        }
+
+
 @pytest.fixture()
 def server_fixture(monkeypatch):
     store = {
@@ -406,6 +421,7 @@ def server_fixture(monkeypatch):
         server.frontend_dir = frontend_dir
         server.cli_auth_manager = FakeCliAuthManager()
         server.nominatim_client = FakeNominatimClient()
+        server.translation_client = FakeTranslationClient()
 
         thread = threading.Thread(target=server.serve_forever, daemon=True)
         thread.start()
@@ -555,6 +571,16 @@ def test_authenticated_get_endpoints(server_fixture):
 
     geocode_upstream_error = request(server, "GET", "/api/geocode/search?q=service%20down", token="session")
     assert geocode_upstream_error.status == 503
+
+    translation = request(server, "GET", "/api/translation/translate?q=Hola%20buceo&source=auto&target=en", token="session")
+    assert translation.status == 200
+    assert translation.json()["translated_text"] == "Hola buceo (en)"
+
+    translation_missing_target = request(server, "GET", "/api/translation/translate?q=Hola%20buceo", token="session")
+    assert translation_missing_target.status == 400
+
+    translation_upstream_error = request(server, "GET", "/api/translation/translate?q=Hola&target=xx", token="session")
+    assert translation_upstream_error.status == 503
 
     unknown_cli_request = request(server, "GET", "/api/cli-auth/request?code=NOPE")
     assert unknown_cli_request.status == 404
@@ -1004,6 +1030,7 @@ def test_route_manifest_requires_test_updates_for_new_endpoints():
             "/api/exports/dives.pdf",
             "/api/backup/export",
             "/api/geocode/search",
+            "/api/translation/translate",
             "/api/auth/me",
             "/api/cli-auth/request",
             "/api/dives",

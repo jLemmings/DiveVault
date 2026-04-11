@@ -1,82 +1,111 @@
-# DiveVault
+<div align="center">
+  <img src="frontend/public/logo.png" alt="DiveVault logo" width="120" />
+  <h1>DiveVault</h1>
+  <p><strong>Private dive log + importer workflow + web dashboard for recreational and technical divers.</strong></p>
 
-This project is heavily developed with AI. Use at your own risk!
+  <p>
+    <a href="#features">Features</a> •
+    <a href="#screenshots">Screenshots</a> •
+    <a href="#architecture">Architecture</a> •
+    <a href="#local-development">Local Development</a> •
+    <a href="#docker">Docker</a>
+  </p>
+</div>
 
-DiveVault is a dive log backend and web UI for storing, reviewing, and completing dive computer imports.
+> ⚠️ This project is heavily developed with AI. Use at your own risk.
 
-This repository contains:
+DiveVault is a full-stack dive log platform with a **Python backend** and a **Vue frontend**. It is designed around a two-stage flow:
 
-- A Python backend that accepts authenticated dive uploads and serves dive data from PostgreSQL
-- A Vue frontend for reviewing imported dives, completing logbook metadata, and browsing committed dives
-- Docker packaging for running PostgreSQL, the backend, and the built frontend together
+1. A desktop importer uploads parsed dives and telemetry.
+2. DiveVault stages those records until required logbook metadata is completed.
 
-The project is structured around a two-stage workflow:
+---
 
-1. A companion desktop importer reads raw telemetry from a dive computer and uploads it here.
-2. DiveVault keeps the imported record in a staging queue until the diver fills in logbook fields such as site, buddy, and guide.
+## Features
 
-## What This Project Does
+- 🔐 **Authenticated dive ingestion** with per-user data isolation.
+- 🗃️ **PostgreSQL-backed storage** for dives, profile metadata, and device sync checkpoints.
+- 🧾 **Imported vs committed workflow** to keep logs complete before finalizing.
+- 🌍 **Geocode search** for dive sites via Nominatim (`/api/geocode/search`).
+- 🌐 **Translation service** for dive notes (LibreTranslate-compatible backend endpoint at `/api/translation/translate` + UI action in manual entry notes).
+- 🧩 **Lightweight i18n layer** in `frontend/src/i18n/` with one file per language for easy extension.
+- 📤 **Backup/export support** (JSON + PDF exports).
+- 🐳 **Docker-first deployment** with migration support.
 
-DiveVault stores both the original imported telemetry and the diver-completed logbook record.
+---
 
-Key capabilities:
+## Screenshots
 
-- Authenticated dive ingestion with per-user isolation
-- PostgreSQL-backed storage for dives and device sync state
-- Imported-vs-committed workflow for logbook completion
-- Desktop sync approval flow using short-lived backend-issued tokens
-- Static frontend served directly by the Python backend in production
-- Docker-based local deployment
+The repository now includes a dedicated screenshots section for application visuals. In this execution environment, browser binaries could not be downloaded (Playwright CDN returned HTTP 403), so fresh captures could not be generated automatically.
 
-## Companion Importer Project
+If you run locally, use Playwright to capture and place images under `docs/screenshots/`, then update this section:
 
-This repo is the server-side and browser-side half of a larger setup. The matching importer project is the desktop sync client that talks to dive computers and sends payloads into DiveVault.
+```bash
+cd frontend
+npm ci
+npx playwright install
+npx playwright test
+```
 
-The companion importer is expected to:
+Suggested files for this section:
 
-- Read dive data from a supported dive computer
-- Keep track of device fingerprint state so it only imports new dives
-- Request a one-time browser approval from DiveVault
-- Upload parsed dive records, raw binary payloads, and sample data to the backend
+- `docs/screenshots/dashboard.png`
+- `docs/screenshots/import-queue.png`
+- `docs/screenshots/manual-entry.png`
 
-The integration points in this repository are:
-
-- `POST /api/cli-auth/request` to create a desktop login request
-- `POST /api/cli-auth/approve` for the signed-in browser user to approve that request
-- `GET /api/device-state` and `PUT /api/device-state` for per-device sync checkpoints
-- `POST /api/dives` for dive uploads
-
-Once imported, dives appear in the frontend as `imported` records. They remain in the import queue until required metadata is completed, at which point they are marked `complete` and move into the main logbook flow.
+---
 
 ## Architecture
 
-Backend:
+### Backend (Python)
 
-- Entry point: `cd backend && python -m divevault.app`
-- HTTP server: Python `http.server` with threaded request handling
+- Entry point: `backend/divevault/app.py`
+- HTTP runtime: `http.server` with threaded handler
 - Storage: PostgreSQL via `psycopg`
-- Auth: Clerk session tokens, Clerk API keys, and short-lived desktop sync tokens
+- Auth: Clerk session tokens and API key support
+- Translation provider: LibreTranslate-compatible API
 
-Frontend:
+### Frontend (Vue 3 + Vite)
 
-- Vue 3 app in [`frontend`](./frontend)
-- Built with Vite
-- Served from `frontend/dist` by the backend in production
+- App root: `frontend/src/app.js`
+- Componentized dashboard, logs, imports, settings, manual entry
+- Served from `frontend/dist` in production
+- Key-based i18n helper (`frontend/src/i18n/index.js`) with language-specific files
 
-Persistence:
+### Internationalization (i18n)
 
-- `dives` table stores telemetry, archived import payloads, samples, raw bytes, and logbook fields
-- `device_state` table stores per-user device fingerprint checkpoints
-- Schema initialization and migrations are handled by `divevault.postgres_store.init_db()`
+To add a new UI locale, add a new file in `frontend/src/i18n/` and register it in `frontend/src/i18n/index.js`.
+
+Example shape:
+
+```js
+// frontend/src/i18n/it.js
+export default {
+  "manualDive.notes.translateCta": "Traduci le note in inglese",
+  ...
+}
+```
+
+The app auto-selects language from `navigator.language` and falls back to English.
+
+### Persistence
+
+- `dives` table: telemetry, samples, import metadata, logbook data
+- `device_state` table: importer sync checkpoints
+- Schema lifecycle: `divevault.postgres_store.init_db()` + migration script
+
+---
 
 ## Repository Layout
 
-- [`backend/divevault/app.py`](./backend/divevault/app.py): backend server and auth flow
-- [`backend/divevault/postgres_store.py`](./backend/divevault/postgres_store.py): schema management and PostgreSQL access
-- [`backend/tests`](./backend/tests): backend-only test suite
-- [`frontend`](./frontend): Vue frontend
-- [`backend/migrations/migrate_postgres_schema.py`](./backend/migrations/migrate_postgres_schema.py): migration entry point
-- [`examples/docker/docker-compose.yml`](./examples/docker/docker-compose.yml): local multi-container setup
+- `backend/divevault/app.py` — API server, auth, geocode + translation integration
+- `backend/divevault/postgres_store.py` — schema + PostgreSQL access helpers
+- `backend/tests` — backend unit and endpoint tests
+- `frontend` — Vue app, styling, and Playwright tests
+- `backend/migrations/migrate_postgres_schema.py` — migration entrypoint
+- `examples/docker/docker-compose.yml` — local stack orchestration
+
+---
 
 ## Local Development
 
@@ -88,23 +117,11 @@ Persistence:
 
 ### Backend
 
-Install dependencies:
-
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -r backend/requirements-dev.txt
-```
-
-Set environment variables:
-
-```powershell
 Copy-Item .env.example .env
-```
-
-Run the backend:
-
-```powershell
 Set-Location backend
 python -m divevault.app
 ```
@@ -117,77 +134,83 @@ npm ci
 npm run dev
 ```
 
-By default the frontend runs on `http://localhost:5173` and the backend on `http://localhost:8000`.
+Default local URLs:
+
+- Frontend: `http://localhost:5173`
+- Backend: `http://localhost:8000`
+
+---
 
 ## Docker
-
-Build and start the full stack:
 
 ```powershell
 docker compose -f examples/docker/docker-compose.yml up --build
 ```
 
-This starts:
+Services started:
 
-- PostgreSQL on `localhost:5432`
-- DiveVault backend on `localhost:8000`
+- PostgreSQL (`localhost:5432`)
+- Backend (`localhost:8000`)
+- One-shot migration job before backend starts
 
-`docker compose` also runs a one-shot `migrate` service that applies PostgreSQL schema migrations before the backend starts. The backend container no longer runs migrations on each startup.
+For Kubernetes/multi-pod setups, run migrations as a separate Job and set `STARTUP_MIGRATIONS=disabled` on backend pods.
 
-For multi-pod Kubernetes workloads, run migrations as a separate Job (or Helm hook) and set `STARTUP_MIGRATIONS=disabled` on backend pods so each pod skips startup migrations.
-See [`examples/kubernetes`](./examples/kubernetes) for a ready-to-use migration Job + 3-replica backend deployment example.
+---
 
 ## Environment Variables
 
-Common variables from [`.env.example`](./.env.example):
+Core runtime variables:
 
-- `DATABASE_URL`: PostgreSQL connection string
-- `VITE_CLERK_PUBLISHABLE_KEY`: Clerk frontend key
-- `CLERK_SECRET_KEY`: Clerk backend secret for API key verification
-- `CLERK_FRONTEND_API_URL`: used to derive the Clerk issuer and JWKS URL
-- `CLERK_JWT_KEY` or `CLERK_JWKS_URL`: required for Clerk session token verification
-- `CLERK_AUTHORIZED_PARTIES`: allowed `azp` values
-- `CLI_AUTH_REQUEST_TTL` and `CLI_AUTH_TOKEN_TTL`: desktop sync token timing
-- `MAX_JSON_BODY_BYTES`: maximum accepted JSON request payload size (defaults to `1048576`)
-- `MAX_BACKUP_IMPORT_BYTES`: maximum accepted JSON payload size for `/api/backup/import` (defaults to `26214400`)
-- `MAX_LIST_LIMIT`: upper bound for paginated list endpoints (defaults to `200`)
-- `RATE_LIMIT_WINDOW_SECONDS`: shared fixed-window size for backend request rate limits (defaults to `60`)
-- `RATE_LIMIT_CLI_REQUEST_PER_WINDOW`: max `/api/cli-auth/request` calls per IP per window (defaults to `30`)
-- `RATE_LIMIT_CLI_APPROVE_PER_WINDOW`: max `/api/cli-auth/approve` calls per IP per window (defaults to `15`)
-- `RATE_LIMIT_BACKUP_IMPORT_PER_WINDOW`: max `/api/backup/import` calls per IP per window (defaults to `10`)
-- `RATE_LIMIT_DIVE_UPLOAD_PER_WINDOW`: max `/api/dives` upload calls per IP per window (defaults to `120`)
-- `STARTUP_MIGRATIONS`: set to `enabled` (default) or `disabled`; disable when migrations run externally (for example, a Kubernetes migration Job)
+- `DATABASE_URL`
+- `VITE_CLERK_PUBLISHABLE_KEY`
+- `CLERK_SECRET_KEY`
+- `CLERK_FRONTEND_API_URL`
+- `CLERK_JWT_KEY` or `CLERK_JWKS_URL`
+- `CLERK_AUTHORIZED_PARTIES`
+- `CLI_AUTH_REQUEST_TTL`, `CLI_AUTH_TOKEN_TTL`
+- `MAX_JSON_BODY_BYTES`
+- `MAX_BACKUP_IMPORT_BYTES`
+- `MAX_LIST_LIMIT`
+- `STARTUP_MIGRATIONS`
+
+Geocode and translation services:
+
+- `NOMINATIM_BASE_URL`
+- `NOMINATIM_USER_AGENT`
+- `NOMINATIM_EMAIL`
+- `TRANSLATION_BASE_URL`
+- `TRANSLATION_USER_AGENT`
+
+Rate limiting:
+
+- `RATE_LIMIT_WINDOW_SECONDS`
+- `RATE_LIMIT_CLI_REQUEST_PER_WINDOW`
+- `RATE_LIMIT_CLI_APPROVE_PER_WINDOW`
+- `RATE_LIMIT_BACKUP_IMPORT_PER_WINDOW`
+- `RATE_LIMIT_DIVE_UPLOAD_PER_WINDOW`
+
+---
 
 ## Testing
 
-Backend tests cover:
-
-- HTTP routes and auth behavior
-- PostgreSQL storage helpers and payload normalization
-- Desktop sync token lifecycle
-
-Run tests with:
+### Backend
 
 ```powershell
 .\.venv\Scripts\python.exe -m pytest -q backend/tests
 ```
 
-## Image Versioning
+### Frontend
 
-Container publishing is driven by [`frontend/package.json`](./frontend/package.json).
+```powershell
+cd frontend
+npm test
+```
 
-- On pushes to `master`, workflows publish image tags: `v<version>`, `stable`, and `latest`.
-- On non-`master` branches (or non-release contexts), workflows publish snapshot image tags in the format `v<version>-<short-sha>`, for example `v0.1.0-a1b2c3d`.
+---
 
-This keeps `frontend/package.json` as the single image version source while publishing container images only.
+## Companion Importer and libdivecomputer
 
-## libdivecomputer
+DiveVault is the server/browser side of a larger system. The importer side can use `libdivecomputer` to communicate with supported devices.
 
-The companion importer side of this system is a natural place to use `libdivecomputer`, the open source cross-platform library for communicating with many dive computers.
-
-Relevant upstream links:
-
-- Project site: <https://libdivecomputer.org/>
-- Source repository: <https://github.com/libdivecomputer/libdivecomputer>
-
-According to the official project pages, libdivecomputer is an open source cross-platform library for communication with dive computers from multiple manufacturers. DiveVault itself does not embed libdivecomputer directly in this repository, but it is the most relevant upstream project to reference when building or documenting the desktop importer.
+- <https://libdivecomputer.org/>
+- <https://github.com/libdivecomputer/libdivecomputer>

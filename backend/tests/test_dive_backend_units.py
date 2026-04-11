@@ -108,6 +108,45 @@ def test_nominatim_client_search_requires_query():
         client.search("   ")
 
 
+def test_translation_client_translate_parses_result_and_caches(monkeypatch):
+    calls = {"count": 0, "data": None}
+
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def read(self):
+            calls["count"] += 1
+            return b'{"translatedText":"Hello diving"}'
+
+    def fake_urlopen(req, timeout=15):
+        calls["data"] = req.data.decode("utf-8")
+        return FakeResponse()
+
+    monkeypatch.setattr(dive_backend.urlrequest, "urlopen", fake_urlopen)
+
+    client = dive_backend.TranslationClient(base_url="https://translate.example", user_agent="DiveVault/Tests")
+    first = client.translate("Hola buceo", target_language="en")
+    second = client.translate("Hola buceo", target_language="en")
+
+    assert '"target": "en"' in calls["data"]
+    assert first["translated_text"] == "Hello diving"
+    assert second == first
+    assert calls["count"] == 1
+
+
+def test_translation_client_translate_requires_text_and_target():
+    client = dive_backend.TranslationClient(base_url="https://translate.example", user_agent="DiveVault/Tests")
+
+    with pytest.raises(ValueError, match="Missing text to translate"):
+        client.translate(" ", target_language="en")
+    with pytest.raises(ValueError, match="Missing target language"):
+        client.translate("Hola", target_language=" ")
+
+
 def test_build_clerk_verifier_derives_jwks_url_and_issuer():
     args = argparse.Namespace(
         clerk_secret_key=None,

@@ -405,6 +405,89 @@ class NominatimClient:
         }
 
 
+class TranslationClient:
+    def __init__(
+        self,
+        *,
+        base_url: str,
+        user_agent: str,
+        min_interval_seconds: float = 0.25,
+    ) -> None:
+        self.base_url = (base_url or "https://libretranslate.com").rstrip("/")
+        self.user_agent = (user_agent or "DiveVault/1.0").strip()
+        self.min_interval_seconds = max(min_interval_seconds, 0)
+        self._lock = threading.Lock()
+        self._cache: dict[str, dict] = {}
+        self._last_request_at = 0.0
+
+    def translate(self, text: str, *, target_language: str, source_language: str = "auto") -> dict:
+        normalized_text = text.strip()
+        normalized_target = target_language.strip().lower()
+        normalized_source = source_language.strip().lower() or "auto"
+        if not normalized_text:
+            raise ValueError("Missing text to translate")
+        if not normalized_target:
+            raise ValueError("Missing target language")
+
+        cache_key = f"{normalized_source}|{normalized_target}|{normalized_text.casefold()}"
+        with self._lock:
+            cached = self._cache.get(cache_key)
+            if cached is not None:
+                return dict(cached)
+
+            delay_seconds = self.min_interval_seconds - max(0.0, time.time() - self._last_request_at)
+            if delay_seconds > 0:
+                time.sleep(delay_seconds)
+
+            payload = self._perform_translate(
+                normalized_text,
+                target_language=normalized_target,
+                source_language=normalized_source,
+            )
+            self._cache[cache_key] = payload
+            self._last_request_at = time.time()
+            return dict(payload)
+
+    def _perform_translate(self, text: str, *, target_language: str, source_language: str) -> dict:
+        request_url = f"{self.base_url}/translate"
+        request_payload = {
+            "q": text,
+            "source": source_language,
+            "target": target_language,
+            "format": "text",
+        }
+        req = urlrequest.Request(
+            request_url,
+            data=json.dumps(request_payload).encode("utf-8"),
+            headers={
+                "User-Agent": self.user_agent,
+                "Accept": "application/json",
+                "Content-Type": "application/json",
+            },
+            method="POST",
+        )
+
+        try:
+            with urlrequest.urlopen(req, timeout=15) as response:
+                payload = json.loads(response.read().decode("utf-8"))
+        except urlerror.HTTPError as exc:
+            details = exc.read().decode("utf-8", errors="replace")
+            raise RuntimeError(f"Translation request failed with HTTP {exc.code}: {details}") from exc
+        except (urlerror.URLError, TimeoutError, json.JSONDecodeError) as exc:
+            raise RuntimeError(f"Translation request failed: {exc}") from exc
+
+        translated_text = payload.get("translatedText") if isinstance(payload, dict) else None
+        if not isinstance(translated_text, str) or not translated_text.strip():
+            raise RuntimeError("Translation request failed: upstream returned an invalid payload")
+
+        return {
+            "text": text,
+            "source_language": source_language,
+            "target_language": target_language,
+            "translated_text": translated_text,
+        }
+
+
 class CliSyncTokenManager:
     def __init__(
         self,
@@ -1438,6 +1521,44 @@ class DiveBackendHandler(BaseHTTPRequestHandler):
             self._send_json(200, result)
             return
 
+        if path == "/api/translation/translate":
+            user_id = self._require_principal_id()
+            if user_id is None:
+                return
+
+            query_text = self._single_query_arg(query, "q")
+            target_language = self._single_query_arg(query, "target")
+            source_language = self._single_query_arg(query, "source") or "auto"
+            if not query_text or not query_text.strip():
+                self._send_json(400, {"error": "Missing q query parameter"})
+                return
+            if not target_language or not target_language.strip():
+                self._send_json(400, {"error": "Missing target query parameter"})
+                return
+
+            try:
+                translation = self.server.translation_client.translate(
+                    query_text,
+                    target_language=target_language,
+                    source_language=source_language,
+                )
+            except ValueError as exc:
+                self._send_json(400, {"error": str(exc)})
+                return
+            except RuntimeError as exc:
+                self._send_json(503, {"error": str(exc)})
+                return
+
+            LOGGER.info(
+                "Completed translation user_id=%s source=%s target=%s chars=%d",
+                user_id,
+                source_language,
+                target_language,
+                len(query_text),
+            )
+            self._send_json(200, translation)
+            return
+
         match = re.fullmatch(r"/api/profile/licenses/([A-Za-z0-9_-]+)/pdf", path)
         if match:
             user_id = self._require_principal_id()
@@ -2078,6 +2199,8 @@ def main() -> None:
     parser.add_argument("--nominatim-base-url", default=os.getenv("NOMINATIM_BASE_URL", "https://nominatim.openstreetmap.org"), help="Base URL for the Nominatim search service")
     parser.add_argument("--nominatim-user-agent", default=os.getenv("NOMINATIM_USER_AGENT", "DiveVault/1.0"), help="User-Agent sent to the Nominatim search service")
     parser.add_argument("--nominatim-email", default=os.getenv("NOMINATIM_EMAIL"), help="Optional email sent to the Nominatim search service")
+    parser.add_argument("--translation-base-url", default=os.getenv("TRANSLATION_BASE_URL", "https://libretranslate.com"), help="Base URL for the translation service (LibreTranslate compatible)")
+    parser.add_argument("--translation-user-agent", default=os.getenv("TRANSLATION_USER_AGENT", "DiveVault/1.0"), help="User-Agent sent to the translation service")
     parser.add_argument("--db-startup-retries", type=int, default=int(os.getenv("DB_STARTUP_RETRIES", "5")), help="Number of startup checks to confirm PostgreSQL is reachable")
     parser.add_argument("--db-startup-retry-delay-seconds", type=float, default=float(os.getenv("DB_STARTUP_RETRY_DELAY_SECONDS", "2")), help="Delay between PostgreSQL startup checks")
     parser.add_argument("--db-connect-timeout-seconds", type=int, default=int(os.getenv("DB_CONNECT_TIMEOUT_SECONDS", "5")), help="Connection timeout for each PostgreSQL startup check")
@@ -2173,6 +2296,10 @@ def main() -> None:
         base_url=args.nominatim_base_url,
         user_agent=args.nominatim_user_agent,
         email=args.nominatim_email,
+    )
+    server.translation_client = TranslationClient(
+        base_url=args.translation_base_url,
+        user_agent=args.translation_user_agent,
     )
 
     LOGGER.info(

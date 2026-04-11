@@ -37,7 +37,9 @@ export default {
     "createManualDive",
     "closeCreator",
     "createDiveSite",
-    "searchDiveSiteLocation"
+    "searchDiveSiteLocation",
+    "translateText",
+    "t"
   ],
   data() {
     return {
@@ -50,7 +52,10 @@ export default {
       pendingDiveSiteLookupLoading: false,
       pendingDiveSiteSubmitting: false,
       diveSiteCreateError: "",
-      diveSiteCreateStatus: ""
+      diveSiteCreateStatus: "",
+      translateNotesPending: false,
+      translateNotesError: "",
+      translateNotesStatus: ""
     };
   },
   computed: {
@@ -99,6 +104,9 @@ export default {
     }
   },
   methods: {
+    i18n(key, fallback = key) {
+      return typeof this.t === "function" ? this.t(key, fallback) : fallback;
+    },
     updateField(key, value) {
       if (typeof this.updateDraft !== "function") return;
       this.updateDraft(key, value);
@@ -219,6 +227,32 @@ export default {
         this.pendingDiveSiteSubmitting = false;
       }
     },
+    async translateNotesToEnglish() {
+      const notes = typeof this.draft?.notes === "string" ? this.draft.notes.trim() : "";
+      if (!notes) {
+        this.translateNotesError = this.i18n("manualDive.notes.missing", "Enter notes before translating.");
+        this.translateNotesStatus = "";
+        return;
+      }
+      if (typeof this.translateText !== "function") {
+        this.translateNotesError = this.i18n("manualDive.notes.serviceMissing", "Translation service is not available.");
+        this.translateNotesStatus = "";
+        return;
+      }
+
+      this.translateNotesPending = true;
+      this.translateNotesError = "";
+      this.translateNotesStatus = "";
+      try {
+        const translated = await this.translateText(notes, { target: "en", source: "auto" });
+        this.updateField("notes", translated);
+        this.translateNotesStatus = this.i18n("manualDive.notes.translated", "Notes translated to English.");
+      } catch (error) {
+        this.translateNotesError = error?.message || this.i18n("manualDive.notes.failed", "Could not translate notes.");
+      } finally {
+        this.translateNotesPending = false;
+      }
+    },
     submitForm() {
       if (!this.canSubmit || this.creating || typeof this.createManualDive !== "function") {
         return;
@@ -333,6 +367,19 @@ export default {
             <label class="space-y-2">
               <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Notes</span>
               <textarea :value="draft.notes" @input="updateField('notes', $event.target.value)" rows="12" placeholder="Conditions, wildlife, route, entry, navigation, visibility..." class="min-h-[18rem] w-full resize-y border border-primary/10 bg-[linear-gradient(180deg,rgba(9,23,36,0.9),rgba(9,23,36,0.84))] px-5 py-4 text-sm leading-7 text-on-surface placeholder:text-secondary/50 focus:border-primary/30 focus:ring-1 focus:ring-primary"></textarea>
+              <div class="flex flex-wrap items-center gap-3">
+                <button
+                  type="button"
+                  class="inline-flex items-center gap-2 border border-primary/30 px-4 py-2 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-primary transition-colors hover:bg-primary/10 disabled:cursor-not-allowed disabled:opacity-70"
+                  :disabled="translateNotesPending"
+                  @click="translateNotesToEnglish"
+                >
+                  <span class="material-symbols-outlined text-sm">translate</span>
+                  {{ translateNotesPending ? i18n('manualDive.notes.translating', 'Translating...') : i18n('manualDive.notes.translateCta', 'Translate Notes To English') }}
+                </button>
+                <p v-if="translateNotesStatus" class="text-xs text-primary">{{ translateNotesStatus }}</p>
+                <p v-if="translateNotesError" class="text-xs text-on-error-container">{{ translateNotesError }}</p>
+              </div>
             </label>
 
             <div class="space-y-4">
