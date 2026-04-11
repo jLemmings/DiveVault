@@ -316,7 +316,6 @@ export default {
             <span class="font-label text-[10px] font-bold uppercase tracking-[0.3em] text-primary">Dive Logs</span>
           </div>
           <h3 class="font-headline text-5xl font-bold tracking-tight">Dive Log Database</h3>
-          <p class="mt-2 max-w-2xl text-sm text-on-surface-variant">Comprehensive telemetry records for all sub-surface excursions and operational deployments.</p>
         </div>
         <div class="flex flex-col gap-3 sm:flex-row sm:items-center">
           <div class="relative min-w-[18rem] flex-1 sm:w-[24rem] sm:flex-none">

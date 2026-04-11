@@ -11,9 +11,32 @@ import LogsView from "./components/logs.js";
 import ManualDiveEntryView from "./components/manual-dive.js";
 import PublicProfileView from "./components/public-profile.js";
 import SettingsView, { SETTINGS_SECTIONS } from "./components/settings.js";
+import { i18n, MESSAGES } from "./i18n/index.js";
 
 const DEFAULT_SETTINGS_SECTION = SETTINGS_SECTIONS[0]?.id || "diver-details";
 const SETTINGS_SECTION_IDS = new Set(SETTINGS_SECTIONS.map((section) => section.id));
+const LOCALE_STORAGE_KEY = "divevault.preferredLocale";
+const SUPPORTED_LOCALES = new Set(Object.keys(MESSAGES));
+
+function normalizeLocale(locale) {
+  const normalized = typeof locale === "string" ? locale.trim().slice(0, 2).toLowerCase() : "";
+  return SUPPORTED_LOCALES.has(normalized) ? normalized : "en";
+}
+
+function getStoredLocale() {
+  if (typeof window === "undefined") return "";
+  try {
+    const storedLocale = window.localStorage.getItem(LOCALE_STORAGE_KEY) || "";
+    return SUPPORTED_LOCALES.has(storedLocale) ? storedLocale : "";
+  } catch (_error) {
+    return "";
+  }
+}
+
+function getBrowserLocale() {
+  if (typeof navigator === "undefined") return "en";
+  return normalizeLocale(navigator.language);
+}
 
 function createManualDiveDraft() {
   const now = new Date();
@@ -120,7 +143,8 @@ export default {
         { id: "logs", label: "Dive Logs", mobileLabel: "Logs", icon: "waves", mobileIcon: "sailing", eyebrow: "Dive Logs", title: "Dive Log Database" },
         { id: "equipment", label: "Equipment", mobileLabel: "WIP", icon: "construction", mobileIcon: "construction", eyebrow: "Work In Progress", title: "Equipment Coming Soon", disabled: true, badge: "WIP" },
         { id: "settings", label: "Settings", mobileLabel: "Settings", icon: "settings", mobileIcon: "settings", eyebrow: "System Configuration", title: "System Config" }
-      ]
+      ],
+      i18nLocale: getStoredLocale() || "en"
     };
   },
   watch: {
@@ -246,6 +270,21 @@ export default {
     }
   },
   methods: {
+    t(key, fallback = key, params = {}) {
+      return i18n.t(key, fallback, params);
+    },
+    setLocale(locale) {
+      const normalizedLocale = normalizeLocale(locale);
+      i18n.setLocale(normalizedLocale);
+      this.i18nLocale = i18n.locale;
+      if (typeof window !== "undefined") {
+        try {
+          window.localStorage.setItem(LOCALE_STORAGE_KEY, this.i18nLocale);
+        } catch (_error) {
+          // Ignore storage failures and keep the active locale in memory.
+        }
+      }
+    },
     syncRouteMode() {
       this.publicRouteSlug = typeof window !== "undefined"
         ? (window.location.pathname.match(/^\/public\/([^/]+)\/?$/)?.[1] || "")
@@ -1204,6 +1243,7 @@ export default {
   mounted() {
     window.addEventListener("hashchange", this.handleBrowserNavigation);
     window.addEventListener("popstate", this.handleBrowserNavigation);
+    this.setLocale(getStoredLocale() || getBrowserLocale());
     this.syncRouteMode();
     this.syncAuthState();
   },
@@ -1414,7 +1454,7 @@ export default {
           <logbook-editor-view v-else-if="activeView === 'edit' && selectedEditDive" :dive="selectedEditDive" :all-dives="dives" :draft="selectedEditDraft" :dive-sites="profileDiveSites" :buddies="profileBuddies" :guides="profileGuides" :saving-import-id="savingImportId" :deleting-dive-id="deletingDiveId" :status-message="importStatusMessage" :error-message="importError" :update-dive-draft="updateImportDraft" :save-dive-logbook="saveExistingDiveLogbook" :delete-dive="deleteDive" :create-dive-site="createDiveSite" :close-editor="closeDiveEditor"></logbook-editor-view>
           <dive-detail-view v-else-if="activeView === 'logs' && selectedDive" :dive="selectedDive" :all-dives="dives" :deleting-dive-id="deletingDiveId" :close-detail="closeDiveDetail" :open-dive-editor="openDiveEditor" :delete-dive="deleteDive"></dive-detail-view>
           <equipment-view v-else-if="activeView === 'equipment'" :search-text="searchText"></equipment-view>
-          <settings-view v-else-if="activeView === 'settings'" :cli-auth-code="cliAuthCode" :active-section="activeSettingsSection" :set-active-section="setSettingsSection" :profile-updated="handleProfileUpdated" :refresh-dives="fetchDives"></settings-view>
+          <settings-view v-else-if="activeView === 'settings'" :cli-auth-code="cliAuthCode" :active-section="activeSettingsSection" :set-active-section="setSettingsSection" :profile-updated="handleProfileUpdated" :refresh-dives="fetchDives" :current-locale="i18nLocale" :set-locale="setLocale"></settings-view>
         </div>
       </main>
       <nav class="fixed bottom-0 left-0 right-0 z-40 flex items-center justify-around border-t border-primary/10 bg-surface-container-low/80 px-4 pb-6 pt-3 backdrop-blur-xl md:hidden">
