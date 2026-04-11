@@ -573,8 +573,6 @@ def server_fixture(monkeypatch):
         server.database_ready = True
         server.database_ready_error = ""
         server.auth_verifier = FakeVerifier()
-        server.clerk_verifier = server.auth_verifier
-        server.clerk_publishable_key = "pk_test_123"
         server.cors_origin = "http://localhost:5173"
         server.max_json_body_bytes = 1024 * 1024
         server.max_backup_import_bytes = 25 * 1024 * 1024

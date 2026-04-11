@@ -7,7 +7,7 @@ to move all application-owned rows from the old ids to the new ids.
 Input JSON format:
 [
   {
-    "old_user_id": "user_old_clerk_id",
+    "old_user_id": "user_old_external_id",
     "new_user_id": "user_new_internal_id",
     "email": "optional@example.com"
   }

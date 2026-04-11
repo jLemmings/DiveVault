@@ -17,12 +17,13 @@
 </p>
 
 <p align="center">
+  <a href="#quick-start">Quick Start</a> ·
+  <a href="#docker">Docker</a> ·
   <a href="#screenshots">Screenshots</a> ·
   <a href="#what-divevault-does">What It Does</a> ·
   <a href="#features">Features</a> ·
-  <a href="#quick-start">Quick Start</a> ·
-  <a href="#docker">Docker</a> ·
-  <a href="#repository-layout">Repository Layout</a>
+  <a href="#testing">Testing</a> ·
+  <a href="#contributing">Contributing</a>
 </p>
 
 ---
@@ -35,6 +36,54 @@ DiveVault is a dive log backend and web UI built around a staged workflow:
 4. Completed dives move into the permanent logbook and analytics views.
 
 The result is a system that keeps raw telemetry, review state, and curated logbook records in one place.
+
+## Quick Start
+
+### Requirements
+
+- Python 3.12+
+- Node.js 24+
+- PostgreSQL
+
+### Backend
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r backend/requirements-dev.txt
+Copy-Item .env.example .env
+Set-Location backend
+python -m divevault.app
+```
+
+### Frontend
+
+```powershell
+Set-Location frontend
+npm ci
+npm run dev
+```
+
+Default local URLs:
+
+- Frontend: `http://localhost:5173`
+- Backend: `http://localhost:8000`
+
+## Docker
+
+Run the full local stack with:
+
+```powershell
+docker compose -f examples/docker/docker-compose.yml up --build
+```
+
+This starts:
+
+- PostgreSQL on `localhost:5432`
+- A one-shot migration service
+- DiveVault backend on `localhost:8000`
+
+For multi-pod deployments, run migrations as a separate job and set `STARTUP_MIGRATIONS=disabled` on backend pods.
 
 ## Screenshots
 
@@ -102,54 +151,6 @@ Screenshots above were generated from the local mocked development environment s
 - Manual dive entry
 - Profile, data management, and backup settings
 
-## Quick Start
-
-### Requirements
-
-- Python 3.12+
-- Node.js 24+
-- PostgreSQL
-
-### Backend
-
-```powershell
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-pip install -r backend/requirements-dev.txt
-Copy-Item .env.example .env
-Set-Location backend
-python -m divevault.app
-```
-
-### Frontend
-
-```powershell
-Set-Location frontend
-npm ci
-npm run dev
-```
-
-Default local URLs:
-
-- Frontend: `http://localhost:5173`
-- Backend: `http://localhost:8000`
-
-## Docker
-
-Run the full local stack with:
-
-```powershell
-docker compose -f examples/docker/docker-compose.yml up --build
-```
-
-This starts:
-
-- PostgreSQL on `localhost:5432`
-- A one-shot migration service
-- DiveVault backend on `localhost:8000`
-
-For multi-pod deployments, run migrations as a separate job and set `STARTUP_MIGRATIONS=disabled` on backend pods.
-
 ## Testing
 
 ### Backend
@@ -170,13 +171,10 @@ npm test
 Core variables from [`.env.example`](./.env.example):
 
 - `DATABASE_URL`
-- `VITE_CLERK_PUBLISHABLE_KEY`
-- `CLERK_SECRET_KEY`
-- `CLERK_API_URL`
-- `CLERK_FRONTEND_API_URL`
-- `CLERK_JWKS_URL` or `CLERK_JWT_KEY`
-- `CLERK_AUTHORIZED_PARTIES`
-- `CLERK_API_KEY_SCOPES`
+- `AUTH_JWT_SECRET`
+- `AUTH_JWT_ISSUER`
+- `AUTH_JWT_AUDIENCE`
+- `AUTH_TOKEN_TTL_SECONDS`
 - `CLI_AUTH_REQUEST_TTL`
 - `CLI_AUTH_TOKEN_TTL`
 - `STARTUP_MIGRATIONS`
@@ -199,85 +197,13 @@ Rate-limiting variables:
 - `RATE_LIMIT_BACKUP_IMPORT_PER_WINDOW`
 - `RATE_LIMIT_DIVE_UPLOAD_PER_WINDOW`
 
-## Repository Layout
+## Contributing
 
-- [`backend/divevault/app.py`](./backend/divevault/app.py): backend server and API routes
-- [`backend/divevault/postgres_store.py`](./backend/divevault/postgres_store.py): schema and PostgreSQL helpers
-- [`backend/migrations/migrate_postgres_schema.py`](./backend/migrations/migrate_postgres_schema.py): migration entrypoint
-- [`backend/tests`](./backend/tests): backend tests
-- [`frontend`](./frontend): Vue frontend
-- [`frontend/src/components`](./frontend/src/components): app screens and major UI modules
-- [`examples/docker/docker-compose.yml`](./examples/docker/docker-compose.yml): local Docker stack
-- [`examples/kubernetes`](./examples/kubernetes): example migration job and backend deployment
+If you want to work on DiveVault itself:
 
-## Advanced Notes
-
-<details>
-<summary>Manual Clerk User Migration</summary>
-
-If you previously used Clerk, there are two migration paths.
-
-Option 1 keeps each original Clerk `user_...` id and imports those same ids into `auth_users`.
-
-```powershell
-python backend/migrations/migrate_clerk_users_to_auth.py `
-  --database-url "$env:DATABASE_URL" `
-  --input ".\clerk-users.json" `
-  --default-password "ChangeMe123!"
-```
-
-Option 2 remaps legacy external ids to already-created internal users.
-
-1. Create a remap file:
-
-```json
-[
-  {
-    "old_user_id": "user_old_clerk_id",
-    "new_user_id": "user_new_internal_id",
-    "email": "diver@example.com"
-  }
-]
-```
-
-2. Dry run:
-
-```powershell
-python backend/migrations/remap_legacy_user_ids.py `
-  --database-url "$env:DATABASE_URL" `
-  --input ".\user-id-remap.json" `
-  --dry-run
-```
-
-3. Apply:
-
-```powershell
-python backend/migrations/remap_legacy_user_ids.py `
-  --database-url "$env:DATABASE_URL" `
-  --input ".\user-id-remap.json"
-```
-
-4. Optionally remove old auth rows:
-
-```powershell
-python backend/migrations/remap_legacy_user_ids.py `
-  --database-url "$env:DATABASE_URL" `
-  --input ".\user-id-remap.json" `
-  --delete-old-auth-users
-```
-
-</details>
-
-<details>
-<summary>Image Versioning</summary>
-
-Container publishing is driven by [`frontend/package.json`](./frontend/package.json).
-
-- On pushes to `master`, workflows publish `v&lt;version&gt;`, `stable`, and `latest`
-- On `master`, workflows also create or update a matching GitHub release
-- On non-`master` branches, workflows publish snapshot tags in the format `v&lt;version&gt;-&lt;short-sha&gt;`
-
-</details>
+- Start with the run-it-yourself steps above so you can use the app end to end before changing code.
+- Run backend and frontend tests before opening changes.
+- Regenerate README screenshots with `frontend/scripts/capture-readme-screenshots.mjs` when UI changes affect the screenshots.
 
 ## Related Upstream
 

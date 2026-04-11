@@ -20,11 +20,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY backend/divevault ./divevault
 COPY backend/migrations ./migrations
-COPY backend/docker ./docker
-RUN chmod +x /app/backend/docker/docker-entrypoint.sh
 COPY --from=frontend-build /frontend/dist /app/frontend/dist
 
 EXPOSE 8000
 
-ENTRYPOINT ["/app/backend/docker/docker-entrypoint.sh"]
 CMD ["python", "-m", "divevault.app"]
