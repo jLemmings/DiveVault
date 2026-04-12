@@ -565,9 +565,13 @@ def frontend_asset_path(frontend_dir: Path, request_path: str) -> Path:
 
 def redact_database_url(database_url: str) -> str:
     parsed = urlparse(database_url)
-    if not parsed.password:
+    if "@" not in parsed.netloc:
         return database_url
-    netloc = parsed.netloc.replace(f":{parsed.password}@", ":***@")
+    auth_part, host_part = parsed.netloc.rsplit("@", 1)
+    if ":" not in auth_part:
+        return database_url
+    username, _password = auth_part.split(":", 1)
+    netloc = f"{username}:***@{host_part}"
     return parsed._replace(netloc=netloc).geturl()
 
 
