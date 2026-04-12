@@ -137,33 +137,36 @@ export default {
       <div class="auth-stage-orb auth-stage-orb-left"></div>
       <div class="auth-stage-orb auth-stage-orb-right"></div>
       <div class="auth-stage-orb auth-stage-orb-bottom"></div>
+      <div class="auth-stage-wave auth-stage-wave-back"></div>
+      <div class="auth-stage-wave auth-stage-wave-front"></div>
+      <div class="auth-stage-caustics"></div>
 
-      <div class="relative z-10 mx-auto flex min-h-screen w-full max-w-7xl items-center justify-center px-5 py-8 md:px-8 lg:px-10">
+      <div class="relative z-10 mx-auto flex min-h-screen w-full max-w-7xl items-center justify-center px-4 py-4 sm:px-5 sm:py-8 md:px-8 lg:px-10">
         <div class="w-full max-w-[34rem]">
-          <div class="mx-auto mb-6 flex max-w-[28rem] flex-col items-center px-2 text-center sm:mb-7">
-            <div class="flex h-32 w-32 items-center justify-center overflow-hidden rounded-[2rem] shadow-panel ring-1 ring-white/8 sm:h-36 sm:w-36">
+          <div class="mx-auto mb-4 flex max-w-[28rem] flex-col items-center px-2 text-center sm:mb-7">
+            <div class="flex h-24 w-24 items-center justify-center overflow-hidden rounded-[1.5rem] shadow-panel sm:h-36 sm:w-36 sm:rounded-[2rem]">
               <img src="/logo.png" alt="DiveVault" class="h-full w-full object-cover" />
             </div>
-            <p class="mt-5 font-headline text-4xl font-bold tracking-[0.08em] text-white sm:text-5xl">DiveVault</p>
+            <p class="mt-3 font-headline text-[1.9rem] font-bold tracking-[0.06em] text-white sm:mt-5 sm:text-5xl sm:tracking-[0.08em]">DiveVault</p>
           </div>
 
-          <section class="auth-panel auth-panel-centered relative overflow-hidden rounded-[2rem] border border-primary/14 px-5 py-6 sm:px-8 sm:py-8 lg:px-10 lg:py-10">
+          <section class="auth-panel auth-panel-centered relative overflow-hidden rounded-[1.75rem] border border-primary/14 px-4 py-5 sm:rounded-[2rem] sm:px-8 sm:py-8 lg:px-10 lg:py-10">
             <div class="technical-grid absolute inset-0"></div>
             <div class="auth-panel-sheen"></div>
 
             <div class="relative">
-              <h2 class="font-headline text-3xl font-bold tracking-tight text-white sm:text-[2.6rem] sm:leading-[1.02]">{{ authHeading }}</h2>
-              <p class="mt-4 max-w-[30rem] text-sm leading-7 text-secondary">{{ authSummary }}</p>
+              <h2 class="font-headline text-[2rem] font-bold tracking-tight text-white sm:text-[2.6rem] sm:leading-[1.02]">{{ authHeading }}</h2>
+              <p class="mt-3 max-w-[30rem] text-sm leading-6 text-secondary sm:mt-4 sm:leading-7">{{ authSummary }}</p>
             </div>
 
-            <div v-if="message" class="relative mt-6 rounded-2xl border border-primary/16 bg-primary/10 px-4 py-3 text-sm text-primary">
+            <div v-if="message" class="relative mt-5 rounded-2xl border border-primary/16 bg-primary/10 px-4 py-3 text-sm text-primary sm:mt-6">
               {{ message }}
             </div>
             <div v-if="error" class="relative mt-4 rounded-2xl border border-error/25 bg-error-container/20 px-4 py-3 text-sm text-error">
               {{ error }}
             </div>
 
-            <div class="relative mt-8 space-y-5">
+            <div class="relative mt-6 space-y-4 sm:mt-8 sm:space-y-5">
               <label class="block space-y-2">
                 <span class="font-label text-[0.65rem] font-bold uppercase tracking-[0.18em] text-secondary">Email</span>
                 <input
@@ -171,7 +174,7 @@ export default {
                   type="email"
                   autocomplete="email"
                   placeholder="Email"
-                  class="auth-input w-full rounded-2xl border border-primary/12 px-4 py-3.5 text-sm text-on-surface outline-none transition-all placeholder:text-secondary/45"
+                  class="auth-input w-full rounded-2xl border border-primary/12 px-4 py-3 text-sm text-on-surface outline-none transition-all placeholder:text-secondary/45 sm:py-3.5"
                 />
               </label>
 
@@ -187,7 +190,7 @@ export default {
                   :type="showPassword ? 'text' : 'password'"
                   autocomplete="current-password"
                   placeholder="Password"
-                  class="auth-input w-full rounded-2xl border border-primary/12 px-4 py-3.5 text-sm text-on-surface outline-none transition-all placeholder:text-secondary/45"
+                  class="auth-input w-full rounded-2xl border border-primary/12 px-4 py-3 text-sm text-on-surface outline-none transition-all placeholder:text-secondary/45 sm:py-3.5"
                 />
               </div>
 
@@ -200,7 +203,7 @@ export default {
                       type="text"
                       autocomplete="given-name"
                       placeholder="First name"
-                      class="auth-input w-full rounded-2xl border border-primary/12 px-4 py-3.5 text-sm text-on-surface outline-none transition-all placeholder:text-secondary/45"
+                      class="auth-input w-full rounded-2xl border border-primary/12 px-4 py-3 text-sm text-on-surface outline-none transition-all placeholder:text-secondary/45 sm:py-3.5"
                     />
                   </label>
                   <label class="block space-y-2">
@@ -210,19 +213,19 @@ export default {
                       type="text"
                       autocomplete="family-name"
                       placeholder="Last name"
-                      class="auth-input w-full rounded-2xl border border-primary/12 px-4 py-3.5 text-sm text-on-surface outline-none transition-all placeholder:text-secondary/45"
+                      class="auth-input w-full rounded-2xl border border-primary/12 px-4 py-3 text-sm text-on-surface outline-none transition-all placeholder:text-secondary/45 sm:py-3.5"
                     />
                   </label>
                 </div>
               </template>
             </div>
 
-            <div class="relative mt-8 flex flex-col gap-3 sm:flex-row">
+            <div class="relative mt-6 flex flex-col gap-3 sm:mt-8 sm:flex-row">
               <button
                 v-if="authView === 'signin'"
                 @click="submitSignIn"
                 :disabled="loading"
-                class="auth-button-glow auth-primary-button inline-flex min-h-13 flex-1 items-center justify-center rounded-2xl px-5 py-3.5 font-label text-[0.7rem] font-bold uppercase tracking-[0.2em] text-on-primary transition-all hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-70"
+                class="auth-button-glow auth-primary-button inline-flex min-h-12 flex-1 items-center justify-center rounded-2xl px-5 py-3 font-label text-[0.68rem] font-bold uppercase tracking-[0.18em] text-on-primary transition-all hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-70 sm:min-h-13 sm:py-3.5 sm:text-[0.7rem] sm:tracking-[0.2em]"
               >
                 {{ submitLabel }}
               </button>
@@ -230,7 +233,7 @@ export default {
                 v-if="authView === 'register'"
                 @click="submitRegister"
                 :disabled="loading"
-                class="auth-button-glow auth-primary-button inline-flex min-h-13 flex-1 items-center justify-center rounded-2xl px-5 py-3.5 font-label text-[0.7rem] font-bold uppercase tracking-[0.2em] text-on-primary transition-all hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-70"
+                class="auth-button-glow auth-primary-button inline-flex min-h-12 flex-1 items-center justify-center rounded-2xl px-5 py-3 font-label text-[0.68rem] font-bold uppercase tracking-[0.18em] text-on-primary transition-all hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-70 sm:min-h-13 sm:py-3.5 sm:text-[0.7rem] sm:tracking-[0.2em]"
               >
                 {{ submitLabel }}
               </button>
@@ -238,13 +241,13 @@ export default {
                 v-if="canRegister"
                 @click="authView = authView === 'signin' ? 'register' : 'signin'"
                 type="button"
-                class="inline-flex min-h-13 items-center justify-center rounded-2xl border border-primary/14 bg-surface-container-high/40 px-5 py-3.5 font-label text-[0.7rem] font-bold uppercase tracking-[0.18em] text-primary transition-colors hover:bg-surface-container-high/70 hover:text-white"
+                class="inline-flex min-h-12 items-center justify-center rounded-2xl border border-primary/14 bg-surface-container-high/40 px-5 py-3 font-label text-[0.68rem] font-bold uppercase tracking-[0.16em] text-primary transition-colors hover:bg-surface-container-high/70 hover:text-white sm:min-h-13 sm:py-3.5 sm:text-[0.7rem] sm:tracking-[0.18em]"
               >
                 {{ alternateActionLabel }}
               </button>
             </div>
 
-            <div class="relative mt-5 flex flex-wrap items-center gap-2 text-xs text-secondary">
+            <div class="relative mt-4 flex flex-wrap items-center gap-2 text-xs text-secondary sm:mt-5">
               <span>{{ alternateActionCopy }}</span>
               <span v-if="canRegister" class="font-semibold uppercase tracking-[0.14em] text-primary/80">
                 {{ alternateActionLabel }}

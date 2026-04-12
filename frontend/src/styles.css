@@ -126,6 +126,97 @@ body {
     linear-gradient(180deg, #031322 0%, #051726 45%, #041524 100%);
 }
 
+.auth-stage-wave,
+.auth-stage-caustics {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.auth-stage-wave {
+  inset: auto 0 0 0;
+  height: 62%;
+  overflow: hidden;
+  mix-blend-mode: screen;
+}
+
+.auth-stage-wave::before,
+.auth-stage-wave::after {
+  content: "";
+  position: absolute;
+  left: -8%;
+  width: 116%;
+  background-repeat: repeat-x;
+  background-position: center bottom;
+  background-size: 100% 100%;
+}
+
+.auth-stage-wave-back::before {
+  bottom: -1rem;
+  height: 24rem;
+  background:
+    linear-gradient(180deg, rgba(30, 66, 98, 0.12), rgba(30, 66, 98, 0.3));
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1440 320' preserveAspectRatio='none'%3E%3Cpath fill='white' d='M0,192L48,181.3C96,171,192,149,288,144C384,139,480,149,576,176C672,203,768,245,864,250.7C960,256,1056,224,1152,197.3C1248,171,1344,149,1392,138.7L1440,128L1440,320L1392,320C1344,320,1248,320,1152,320C1056,320,960,320,864,320C768,320,672,320,576,320C480,320,384,320,288,320C192,320,96,320,48,320L0,320Z'/%3E%3C/svg%3E");
+  mask-repeat: repeat-x;
+  mask-size: 110% 100%;
+  mask-position: center bottom;
+  filter: blur(1px);
+  animation: auth-wave-swell-back 22s ease-in-out infinite alternate;
+  opacity: 0.55;
+}
+
+.auth-stage-wave-back::after {
+  bottom: 7rem;
+  height: 18rem;
+  background:
+    linear-gradient(180deg, rgba(78, 130, 176, 0.08), rgba(120, 178, 227, 0.2));
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1440 320' preserveAspectRatio='none'%3E%3Cpath fill='white' d='M0,224L60,202.7C120,181,240,139,360,128C480,117,600,139,720,170.7C840,203,960,245,1080,240C1200,235,1320,181,1380,154.7L1440,128L1440,320L1380,320C1320,320,1200,320,1080,320C960,320,840,320,720,320C600,320,480,320,360,320C240,320,120,320,60,320L0,320Z'/%3E%3C/svg%3E");
+  mask-repeat: repeat-x;
+  mask-size: 112% 100%;
+  mask-position: center bottom;
+  filter: blur(1px);
+  animation: auth-wave-swell-mid 16s ease-in-out infinite alternate;
+  opacity: 0.68;
+}
+
+.auth-stage-wave-front::before {
+  bottom: 3.5rem;
+  height: 16rem;
+  background:
+    linear-gradient(180deg, rgba(108, 170, 221, 0.1), rgba(176, 222, 255, 0.24));
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1440 320' preserveAspectRatio='none'%3E%3Cpath fill='white' d='M0,256L34.3,224C68.6,192,137,128,206,122.7C274.3,117,343,171,411,186.7C480,203,549,181,617,154.7C685.7,128,754,96,823,112C891.4,128,960,192,1029,202.7C1097.1,213,1166,171,1234,165.3C1302.9,160,1371,192,1406,208L1440,224L1440,320L1405.7,320C1371.4,320,1303,320,1234,320C1165.7,320,1097,320,1029,320C960,320,891,320,823,320C754.3,320,686,320,617,320C548.6,320,480,320,411,320C342.9,320,274,320,206,320C137.1,320,69,320,34,320L0,320Z'/%3E%3C/svg%3E");
+  mask-repeat: repeat-x;
+  mask-size: 114% 100%;
+  mask-position: center bottom;
+  filter: blur(0.5px);
+  animation: auth-wave-swell-front 11s ease-in-out infinite alternate;
+  opacity: 0.78;
+}
+
+.auth-stage-wave-front::after {
+  bottom: 7rem;
+  height: 8rem;
+  background:
+    linear-gradient(180deg, rgba(204, 236, 255, 0.02), rgba(235, 247, 255, 0.18));
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1440 320' preserveAspectRatio='none'%3E%3Cpath fill='white' d='M0,256L40,229.3C80,203,160,149,240,149.3C320,149,400,203,480,208C560,213,640,171,720,144C800,117,880,107,960,128C1040,149,1120,203,1200,224C1280,245,1360,235,1400,229.3L1440,224L1440,320L1400,320C1360,320,1280,320,1200,320C1120,320,1040,320,960,320C880,320,800,320,720,320C640,320,560,320,480,320C400,320,320,320,240,320C160,320,80,320,40,320L0,320Z'/%3E%3C/svg%3E");
+  mask-repeat: repeat-x;
+  mask-size: 108% 100%;
+  mask-position: center bottom;
+  filter: blur(0.4px);
+  animation: auth-wave-crest 8s ease-in-out infinite alternate;
+  opacity: 0.34;
+}
+
+.auth-stage-caustics {
+  background:
+    linear-gradient(115deg, rgba(168, 218, 255, 0.03) 0, rgba(168, 218, 255, 0.03) 1px, transparent 1px, transparent 32px),
+    linear-gradient(65deg, rgba(168, 218, 255, 0.02) 0, rgba(168, 218, 255, 0.02) 1px, transparent 1px, transparent 26px);
+  background-size: 200px 200px, 160px 160px;
+  opacity: 0.16;
+  mask-image: linear-gradient(180deg, transparent, rgba(0, 0, 0, 0.9) 18%, rgba(0, 0, 0, 0.9) 82%, transparent);
+  animation: auth-caustics-shift 26s linear infinite;
+}
+
 .auth-stage-orb {
   position: absolute;
   border-radius: 9999px;
@@ -159,7 +250,7 @@ body {
 }
 
 .auth-panel-centered {
-  min-height: 42rem;
+  min-height: auto;
   background:
     linear-gradient(180deg, rgba(18, 42, 61, 0.94), rgba(8, 26, 40, 0.97)),
     radial-gradient(circle at top center, rgba(156, 202, 255, 0.08), transparent 16rem);
@@ -167,6 +258,12 @@ body {
     0 35px 90px rgba(0, 7, 16, 0.5),
     0 0 0 1px rgba(156, 202, 255, 0.06),
     inset 0 1px 0 rgba(205, 229, 255, 0.05);
+}
+
+@media (min-width: 640px) {
+  .auth-panel-centered {
+    min-height: 42rem;
+  }
 }
 
 .auth-panel-sheen {
@@ -194,6 +291,58 @@ body {
 .auth-primary-button {
   background: linear-gradient(180deg, #a9d2ff 0%, #8dbcf2 100%);
   color: #082847;
+}
+
+@keyframes auth-wave-swell-back {
+  0% {
+    transform: translate3d(-4%, 0.6rem, 0) scaleX(1.04);
+  }
+
+  100% {
+    transform: translate3d(4%, -1rem, 0) scaleX(0.96);
+  }
+}
+
+@keyframes auth-wave-swell-mid {
+  0% {
+    transform: translate3d(3%, 0.75rem, 0) scaleX(1.03);
+  }
+
+  100% {
+    transform: translate3d(-3%, -0.85rem, 0) scaleX(0.97);
+  }
+}
+
+@keyframes auth-wave-swell-front {
+  0% {
+    transform: translate3d(-5%, 0.9rem, 0) scaleX(1.05);
+  }
+
+  100% {
+    transform: translate3d(5%, -1.15rem, 0) scaleX(0.95);
+  }
+}
+
+@keyframes auth-wave-crest {
+  0% {
+    transform: translate3d(-4%, 0.4rem, 0) scaleX(1.03);
+    opacity: 0.24;
+  }
+
+  100% {
+    transform: translate3d(4%, -0.65rem, 0) scaleX(0.97);
+    opacity: 0.46;
+  }
+}
+
+@keyframes auth-caustics-shift {
+  0% {
+    background-position: 0 0, 0 0;
+  }
+
+  100% {
+    background-position: 200px 60px, -160px 80px;
+  }
 }
 
 @keyframes auth-panel-rise {
