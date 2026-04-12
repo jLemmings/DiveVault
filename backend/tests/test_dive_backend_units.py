@@ -161,6 +161,20 @@ def test_redact_database_url_masks_password_only():
     assert dive_backend.redact_database_url("postgresql://user@example.com:5432/dive") == "postgresql://user@example.com:5432/dive"
 
 
+def test_redact_database_url_masks_postgres_dsn_with_special_characters():
+    assert (
+        dive_backend.redact_database_url("postgres://divevault:asdfg$$$lkhjp@example.com:5432/dive")
+        == "postgres://divevault:***@example.com:5432/dive"
+    )
+
+
+def test_redact_database_url_preserves_query_string():
+    assert (
+        dive_backend.redact_database_url("postgresql://user:secret@example.com:5432/dive?sslmode=require")
+        == "postgresql://user:***@example.com:5432/dive?sslmode=require"
+    )
+
+
 def test_extract_token_prefers_authorization_header():
     headers = {
         "Authorization": "Bearer auth-token",
