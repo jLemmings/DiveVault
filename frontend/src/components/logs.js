@@ -3,7 +3,7 @@ import { diveMapPreview } from "../map-preview.js";
 
 export default {
   name: "LogsView",
-  props: ["dives", "diveSites", "searchText", "openDive", "openImportQueue", "openManualDive", "setSearchText", "statusMessage", "errorMessage"],
+  props: ["dives", "diveSites", "logbookDisplayFields", "searchText", "openDive", "openImportQueue", "openManualDive", "setSearchText", "statusMessage", "errorMessage"],
   data() {
     return {
       sortKey: "date",
@@ -85,6 +85,16 @@ export default {
     }
   },
   methods: {
+    t(key, fallback = key, params = {}) {
+      return typeof this.$t === "function" ? this.$t(key, fallback, params) : fallback;
+    },
+    optionalFieldConfig() {
+      return [
+        { key: "weather_description", label: this.t("Weather", "Weather") },
+        { key: "visibility", label: this.t("Visibility", "Visibility") },
+        { key: "wetsuit_description", label: this.t("Wetsuit", "Wetsuit") }
+      ];
+    },
     compareDives(left, right) {
       if (this.sortKey === "id") {
         const leftSequence = this.diveSequenceMap.get(String(left.id)) ?? numberOrZero(left.id);
@@ -163,6 +173,14 @@ export default {
     diveDeviceLabel(dive) {
       const vendor = typeof dive?.vendor === "string" ? dive.vendor.trim() : "";
       return vendor || "Unknown device";
+    },
+    configuredLogbookMeta(dive) {
+      const draft = importDraftSeed(dive);
+      const enabled = Array.isArray(this.logbookDisplayFields) ? this.logbookDisplayFields : [];
+      return this.optionalFieldConfig()
+        .filter((item) => enabled.includes(item.key))
+        .map((item) => ({ ...item, value: typeof draft?.[item.key] === "string" ? draft[item.key].trim() : "" }))
+        .filter((item) => item.value);
     },
     diveMapPreview(dive) {
       return diveMapPreview(dive, this.diveSites);
@@ -247,6 +265,9 @@ export default {
                     <h3 class="truncate font-headline text-lg font-bold tracking-tight">{{ diveSiteLabel(dive) }}</h3>
                     <p class="font-label text-[10px] font-bold uppercase tracking-[0.16em] text-on-surface-variant">{{ formatDate(dive.started_at) }} | {{ formatTime(dive.started_at) }}</p>
                     <p class="mt-1 truncate text-sm text-secondary">{{ diveDeviceLabel(dive) }} / {{ diveComputerLabel(dive) }}</p>
+                    <div v-if="configuredLogbookMeta(dive).length" class="mt-2 flex flex-wrap gap-2">
+                      <span v-for="item in configuredLogbookMeta(dive)" :key="'mobile-meta-' + dive.id + '-' + item.key" class="rounded-full bg-surface-container-high px-2.5 py-1 font-label text-[9px] font-bold uppercase tracking-[0.12em] text-primary">{{ item.label }}: {{ item.value }}</span>
+                    </div>
                   </div>
                   <span class="material-symbols-outlined text-sm text-on-surface-variant">chevron_right</span>
                 </div>
@@ -350,7 +371,12 @@ export default {
           <article v-for="dive in pagedDives" :key="dive.id" @click="openDive(dive.id)" @keyup.enter="openDive(dive.id)" tabindex="0" role="button" class="grid cursor-pointer gap-4 px-5 py-6 text-left transition-colors hover:bg-surface-container-highest/30 focus:bg-surface-container-highest/30 focus:outline-none md:grid-cols-12 md:px-8">
             <div class="md:col-span-1"><p class="font-headline text-sm font-bold tracking-widest text-primary">{{ displayDiveIndex(dive) }}</p></div>
             <div class="md:col-span-2"><p class="text-sm font-bold">{{ formatDate(dive.started_at) }}</p><p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-on-surface-variant">{{ formatTime(dive.started_at) }}</p></div>
-            <div class="md:col-span-2"><p class="text-sm font-extrabold">{{ diveSiteLabel(dive) }}</p></div>
+            <div class="md:col-span-2">
+              <p class="text-sm font-extrabold">{{ diveSiteLabel(dive) }}</p>
+              <div v-if="configuredLogbookMeta(dive).length" class="mt-2 space-y-1">
+                <p v-for="item in configuredLogbookMeta(dive)" :key="'desktop-meta-' + dive.id + '-' + item.key" class="text-xs text-on-surface-variant"><span class="font-semibold text-secondary">{{ item.label }}:</span> {{ item.value }}</p>
+              </div>
+            </div>
             <div class="md:col-span-1"><p class="text-sm font-extrabold">{{ diveDeviceLabel(dive) }}</p></div>
             <div class="md:col-span-2"><p class="text-sm font-extrabold">{{ diveComputerLabel(dive) }}</p><p class="text-xs text-on-surface-variant">{{ diveTitle(dive) }}</p></div>
             <div class="md:col-span-1 md:text-center"><p class="font-headline text-lg font-bold" :class="dive.max_depth_m > 40 ? 'text-tertiary' : 'text-on-surface'">{{ formatDepth(dive.max_depth_m) }}</p></div>

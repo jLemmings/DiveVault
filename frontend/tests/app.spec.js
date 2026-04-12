@@ -113,7 +113,7 @@ test("covers settings profile loading and public sharing updates", async ({ page
   await expect(page.getByText("System Configuration")).toBeVisible();
   await expect(page.getByText("Public Dive Profile")).toBeVisible();
 
-  await page.getByRole("checkbox").check();
+  await page.getByRole("checkbox", { name: "Make My Completed Dives Public" }).check();
   await page.getByRole("button", { name: "Save Sharing" }).click();
   await expect(page.getByText("Public dive profile enabled.")).toBeVisible();
 

@@ -50,6 +50,7 @@ CREATE TABLE IF NOT EXISTS user_profile (
     email TEXT NOT NULL DEFAULT '',
     public_dives_enabled BOOLEAN NOT NULL DEFAULT FALSE,
     public_slug TEXT NOT NULL DEFAULT '',
+    logbook_display_fields_json JSONB NOT NULL DEFAULT '[]'::jsonb,
     updated_at TEXT NOT NULL
 );
 
@@ -147,9 +148,11 @@ CREATE TABLE IF NOT EXISTS auth_user_invites (
 """
 
 LOGBOOK_REQUIRED_FIELDS = ("site", "buddy", "guide")
+LOGBOOK_OPTIONAL_FIELDS = ("weather_description", "visibility", "wetsuit_description")
+LOGBOOK_DISPLAY_FIELD_OPTIONS = set(LOGBOOK_OPTIONAL_FIELDS)
 SAMPLE_TIME_UNIT_SECONDS = "seconds"
 SAMPLE_TIME_UNIT_MILLISECONDS = "milliseconds"
-CURRENT_SCHEMA_VERSION = 7
+CURRENT_SCHEMA_VERSION = 8
 SCHEMA_VERSION_SQL = """
 CREATE TABLE IF NOT EXISTS app_schema_version (
     singleton BOOLEAN PRIMARY KEY DEFAULT TRUE CHECK (singleton),
@@ -565,6 +568,11 @@ def apply_schema_migration_v7(cur: psycopg.Cursor) -> None:
         )
 
 
+def apply_schema_migration_v8(cur: psycopg.Cursor) -> None:
+    cur.execute("ALTER TABLE user_profile ADD COLUMN IF NOT EXISTS logbook_display_fields_json JSONB NOT NULL DEFAULT '[]'::jsonb")
+    cur.execute("UPDATE user_profile SET logbook_display_fields_json='[]'::jsonb WHERE logbook_display_fields_json IS NULL")
+
+
 def _run_schema_migrations(conn: psycopg.Connection, cur: psycopg.Cursor, current_version: int) -> int:
     migrations: tuple[tuple[int, Callable[[psycopg.Connection, psycopg.Cursor], None]], ...] = (
         (1, lambda _conn, migration_cur: apply_schema_migration_v1(migration_cur)),
@@ -574,6 +582,7 @@ def _run_schema_migrations(conn: psycopg.Connection, cur: psycopg.Cursor, curren
         (5, lambda _conn, migration_cur: apply_schema_migration_v5(migration_cur)),
         (6, lambda _conn, migration_cur: apply_schema_migration_v6(migration_cur)),
         (7, lambda _conn, migration_cur: apply_schema_migration_v7(migration_cur)),
+        (8, lambda _conn, migration_cur: apply_schema_migration_v8(migration_cur)),
     )
     target_schema_version = min(CURRENT_SCHEMA_VERSION, max(version for version, _ in migrations))
 
@@ -1043,6 +1052,26 @@ def normalize_profile_guides(entries: object) -> list[dict]:
     return normalized
 
 
+def normalize_logbook_display_fields(entries: object) -> list[str]:
+    if isinstance(entries, str):
+        try:
+            entries = json.loads(entries)
+        except json.JSONDecodeError:
+            return []
+    if not isinstance(entries, list):
+        return []
+
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for entry in entries:
+        value = clean_profile_text(entry)
+        if value not in LOGBOOK_DISPLAY_FIELD_OPTIONS or value in seen:
+            continue
+        seen.add(value)
+        normalized.append(value)
+    return normalized
+
+
 def decode_profile_collection(value: object) -> list[dict]:
     if isinstance(value, str):
         try:
@@ -1345,6 +1374,9 @@ def normalize_logbook(logbook: dict | None) -> dict:
         "site": clean_logbook_text(source.get("site")),
         "buddy": clean_logbook_text(source.get("buddy")),
         "guide": clean_logbook_text(source.get("guide")),
+        "weather_description": clean_logbook_text(source.get("weather_description")),
+        "visibility": clean_logbook_text(source.get("visibility")),
+        "wetsuit_description": clean_logbook_text(source.get("wetsuit_description")),
         "notes": clean_logbook_text(source.get("notes")),
         "status": status,
     }
@@ -1785,6 +1817,7 @@ def empty_user_profile() -> dict:
         "email": "",
         "public_dives_enabled": False,
         "public_slug": "",
+        "logbook_display_fields": [],
         "licenses": [],
         "dive_sites": [],
         "buddies": [],
@@ -1833,6 +1866,7 @@ def decode_user_profile_row(
         "email": clean_profile_text(row.get("email")),
         "public_dives_enabled": clean_profile_bool(row.get("public_dives_enabled")),
         "public_slug": clean_profile_text(row.get("public_slug")),
+        "logbook_display_fields": normalize_logbook_display_fields(row.get("logbook_display_fields_json")),
         "licenses": hydrated_licenses,
         "dive_sites": normalized_dive_sites,
         "buddies": normalized_buddies,
@@ -1894,8 +1928,14 @@ def save_user_profile(conn: psycopg.Connection, user_id: str, payload: dict | No
         existing_email = clean_profile_text(existing.get("email"))
         existing_public_dives_enabled = clean_profile_bool(existing.get("public_dives_enabled"))
         existing_public_slug = clean_profile_text(existing.get("public_slug"))
+        existing_logbook_display_fields = normalize_logbook_display_fields(existing.get("logbook_display_fields_json"))
         existing_licenses, existing_dive_sites, existing_buddies, existing_guides = resolve_user_profile_collections(
             conn, user_id, existing
+        )
+        logbook_display_fields = (
+            normalize_logbook_display_fields(source.get("logbook_display_fields"))
+            if "logbook_display_fields" in source
+            else existing_logbook_display_fields
         )
         licenses = normalize_profile_licenses(source.get("licenses")) if "licenses" in source else existing_licenses
         dive_sites = normalize_profile_dive_sites(source.get("dive_sites")) if "dive_sites" in source else existing_dive_sites
@@ -1908,15 +1948,16 @@ def save_user_profile(conn: psycopg.Connection, user_id: str, payload: dict | No
         cur.execute(
             """
             INSERT INTO user_profile(
-                user_id, name, email, public_dives_enabled, public_slug, updated_at
+                user_id, name, email, public_dives_enabled, public_slug, logbook_display_fields_json, updated_at
             )
-            VALUES (%s, %s, %s, %s, %s, %s)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT (user_id)
             DO UPDATE SET
                 name=excluded.name,
                 email=excluded.email,
                 public_dives_enabled=excluded.public_dives_enabled,
                 public_slug=excluded.public_slug,
+                logbook_display_fields_json=excluded.logbook_display_fields_json,
                 updated_at=excluded.updated_at
             """,
             (
@@ -1925,6 +1966,7 @@ def save_user_profile(conn: psycopg.Connection, user_id: str, payload: dict | No
                 clean_profile_text(source.get("email")) if "email" in source else existing_email,
                 public_dives_enabled,
                 public_slug,
+                Jsonb(logbook_display_fields),
                 updated_at,
             ),
         )
@@ -2042,6 +2084,9 @@ def sanitize_logbook_payload(payload: dict | None, existing_logbook: dict | None
         "site": clean_logbook_text(source.get("site")),
         "buddy": clean_logbook_text(source.get("buddy")),
         "guide": clean_logbook_text(source.get("guide")),
+        "weather_description": clean_logbook_text(source.get("weather_description")),
+        "visibility": clean_logbook_text(source.get("visibility")),
+        "wetsuit_description": clean_logbook_text(source.get("wetsuit_description")),
         "notes": clean_logbook_text(source.get("notes")),
         "updated_at": now_iso(),
         "status": "imported",
