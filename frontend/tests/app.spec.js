@@ -14,12 +14,14 @@ test("renders login flows with the local auth screen", async ({ page }) => {
   });
   await gotoAndWait(page);
 
-  await expect(page.getByRole("heading", { name: "DiveVault Authentication" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Welcome back" })).toBeVisible();
+  await expect(page.getByText("DiveVault").first()).toBeVisible();
   await expect(page.getByPlaceholder("Email")).toBeVisible();
   await expect(page.getByRole("button", { name: "Sign In" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Create Account" })).toBeVisible();
 
   await page.getByRole("button", { name: "Create Account" }).last().click();
+  await expect(page.getByRole("heading", { name: "Create your DiveVault account" })).toBeVisible();
   await expect(page.getByPlaceholder("First name")).toBeVisible();
   await expect(page.getByPlaceholder("Last name")).toBeVisible();
 
