@@ -163,6 +163,9 @@ def test_sanitize_logbook_payload_marks_complete_when_required_fields_present(mo
             "site": " Blue Hole ",
             "buddy": " Sam ",
             "guide": " Kai ",
+            "weather_description": " Sunny, low chop ",
+            "visibility": " 18m ",
+            "wetsuit_description": " 5mm full suit ",
             "notes": " Calm water ",
         }
     )
@@ -171,6 +174,9 @@ def test_sanitize_logbook_payload_marks_complete_when_required_fields_present(mo
         "site": "Blue Hole",
         "buddy": "Sam",
         "guide": "Kai",
+        "weather_description": "Sunny, low chop",
+        "visibility": "18m",
+        "wetsuit_description": "5mm full suit",
         "notes": "Calm water",
         "updated_at": "2026-03-24T12:00:00+00:00",
         "status": "complete",
@@ -240,6 +246,7 @@ def test_decode_user_profile_row_includes_license_metadata():
             "email": " diver@example.com ",
             "public_dives_enabled": True,
             "public_slug": " elias-thorne ",
+            "logbook_display_fields_json": ["weather_description", "visibility", "visibility", "invalid"],
             "updated_at": "2026-03-29T10:00:00+00:00",
         },
         {
@@ -288,6 +295,7 @@ def test_decode_user_profile_row_includes_license_metadata():
 
     assert profile["name"] == "Elias Thorne"
     assert profile["email"] == "diver@example.com"
+    assert profile["logbook_display_fields"] == ["weather_description", "visibility"]
     assert profile["public_dives_enabled"] is True
     assert profile["public_slug"] == "elias-thorne"
     assert profile["dive_sites"][0]["name"] == "Blue Hole"

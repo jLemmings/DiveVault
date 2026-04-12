@@ -99,6 +99,9 @@ export default {
     }
   },
   methods: {
+    t(key, fallback = key, params = {}) {
+      return typeof this.$t === "function" ? this.$t(key, fallback, params) : fallback;
+    },
     updateField(key, value) {
       if (typeof this.updateDraft !== "function") return;
       this.updateDraft(key, value);
@@ -326,6 +329,21 @@ export default {
                 placeholder="Guide or instructor"
                 input-class="w-full border border-primary/10 bg-background/35 px-4 py-3 pr-12 text-sm text-on-surface placeholder:text-secondary/50 focus:border-primary/30 focus:ring-1 focus:ring-primary"
               />
+            </label>
+          </div>
+
+          <div class="grid gap-4 md:grid-cols-3">
+            <label class="space-y-2">
+              <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">{{ t('Weather', 'Weather') }}</span>
+              <input :value="draft.weatherDescription" @input="updateField('weatherDescription', $event.target.value)" type="text" :placeholder="t('manualDive.weather.placeholder', 'Sunny, overcast, current building')" class="w-full border border-primary/10 bg-background/35 px-4 py-3 text-sm text-on-surface placeholder:text-secondary/50 focus:border-primary/30 focus:ring-1 focus:ring-primary" />
+            </label>
+            <label class="space-y-2">
+              <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">{{ t('Visibility', 'Visibility') }}</span>
+              <input :value="draft.visibility" @input="updateField('visibility', $event.target.value)" type="text" :placeholder="t('manualDive.visibility.placeholder', '18 m / excellent')" class="w-full border border-primary/10 bg-background/35 px-4 py-3 text-sm text-on-surface placeholder:text-secondary/50 focus:border-primary/30 focus:ring-1 focus:ring-primary" />
+            </label>
+            <label class="space-y-2">
+              <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">{{ t('Wetsuit', 'Wetsuit') }}</span>
+              <input :value="draft.wetsuitDescription" @input="updateField('wetsuitDescription', $event.target.value)" type="text" :placeholder="t('manualDive.wetsuit.placeholder', '5mm full suit')" class="w-full border border-primary/10 bg-background/35 px-4 py-3 text-sm text-on-surface placeholder:text-secondary/50 focus:border-primary/30 focus:ring-1 focus:ring-primary" />
             </label>
           </div>
 

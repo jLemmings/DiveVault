@@ -105,6 +105,9 @@ export default {
     }
   },
   methods: {
+    t(key, fallback = key, params = {}) {
+      return typeof this.$t === "function" ? this.$t(key, fallback, params) : fallback;
+    },
     formatDateTime,
     displayDiveIndex(dive) {
       return paddedDiveIndex(dive, this.diveSequenceMap);
@@ -192,7 +195,7 @@ export default {
           <span class="material-symbols-outlined text-sm">arrow_back</span>
           Back To Dive Detail
         </button>
-        <div class="grid gap-4 xl:grid-cols-[minmax(0,1.45fr)_320px]">
+        <div>
           <section class="border border-primary/10 bg-surface-container-low p-8 shadow-panel">
             <div class="flex flex-wrap items-center gap-3">
               <span class="bg-primary/10 px-3 py-1 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-primary">Logbook Entry</span>
@@ -210,182 +213,135 @@ export default {
               </div>
             </div>
           </section>
-          <section class="border border-primary/10 bg-surface-container-low p-6 shadow-panel">
-            <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-primary">Validation</p>
-            <p class="mt-3 font-headline text-3xl font-bold" :class="missingFields.length ? 'text-tertiary' : 'text-primary'">
-              {{ missingFields.length ? missingFields.length + ' Missing' : 'Ready To Save' }}
-            </p>
-            <p class="mt-3 text-sm leading-6 text-on-surface-variant">
-              Existing dives must keep dive site, buddy, and guide populated when you save changes.
-            </p>
-            <div class="mt-5 space-y-3">
-              <div
-                v-for="field in missingFields"
-                :key="field.key"
-                class="flex items-center gap-3 border border-error/20 bg-error-container/10 px-4 py-3"
-              >
-                <span class="material-symbols-outlined text-sm text-tertiary">{{ field.icon }}</span>
-                <span class="text-sm text-on-surface">{{ field.label }} is still required</span>
-              </div>
-              <div v-if="!missingFields.length" class="flex items-center gap-3 border border-primary/20 bg-primary/10 px-4 py-3">
-                <span class="material-symbols-outlined text-sm text-primary">task_alt</span>
-                <span class="text-sm text-on-surface">All required logbook fields are present.</span>
-              </div>
-            </div>
-          </section>
         </div>
         <div v-if="statusMessage" class="border border-primary/20 bg-primary/10 px-5 py-4 text-sm text-primary shadow-panel">{{ statusMessage }}</div>
         <div v-if="errorMessage" class="border border-error/20 bg-error-container/20 px-5 py-4 text-sm text-on-error-container shadow-panel">{{ errorMessage }}</div>
       </header>
 
-      <div class="grid gap-6 xl:grid-cols-[minmax(0,1.25fr)_360px]">
-        <section class="space-y-6 border border-primary/10 bg-surface-container-low p-8 shadow-panel">
-          <div>
-            <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-primary">Logbook Metadata</p>
-            <h4 class="mt-2 font-headline text-3xl font-bold tracking-tight">Dive Registry Fields</h4>
-          </div>
+      <section class="space-y-8 border border-primary/10 bg-surface-container-low p-8 shadow-panel">
+        <div>
+          <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-primary">{{ t('Logbook Metadata', 'Logbook Metadata') }}</p>
+          <h4 class="mt-2 font-headline text-3xl font-bold tracking-tight">{{ t('Dive Registry Fields', 'Dive Registry Fields') }}</h4>
+        </div>
 
-          <div class="grid gap-4 md:grid-cols-4">
-            <label class="space-y-2">
-              <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Dive Site</span>
-              <metadata-autocomplete-field
-                :model-value="selectedDraft.site"
-                @update:model-value="updateSite"
-                :options="savedDiveSites"
-                placeholder="House Reef"
-                input-class="w-full border border-primary/10 bg-background/35 px-4 py-3 pr-12 text-sm text-on-surface placeholder:text-secondary/50 focus:border-primary/30 focus:ring-1 focus:ring-primary"
-                :option-detail="formatDiveSiteSuggestionDetail"
-              />
-              <p class="text-xs leading-5 text-on-surface-variant">
-                {{ savedDiveSites.length ? 'Search saved dive sites from Settings or enter a custom value.' : 'No saved dive sites yet. Add them in Settings to reuse them here.' }}
-              </p>
-              <p v-if="selectedDiveSite" class="text-xs leading-5 text-primary">{{ siteCoordinateLabel(selectedDiveSite) }}</p>
-              <div v-if="canCreateDiveSite || diveSiteCreateStatus || diveSiteCreateError" class="space-y-2">
-                <button
-                  v-if="canCreateDiveSite"
-                  @click="saveCurrentDiveSite()"
-                  :disabled="diveSiteCreatePending"
-                  class="inline-flex items-center gap-2 bg-surface-container-high px-3 py-2 font-label text-[10px] font-bold uppercase tracking-[0.16em] text-primary disabled:opacity-50"
-                >
-                  <span class="material-symbols-outlined text-sm">add_location_alt</span>
-                  {{ diveSiteCreatePending ? 'Saving Dive Site...' : 'Save As Reusable Dive Site' }}
-                </button>
-                <p v-if="diveSiteCreateStatus" class="text-xs leading-5 text-primary">{{ diveSiteCreateStatus }}</p>
-                <p v-if="diveSiteCreateError" class="text-xs leading-5 text-on-error-container">{{ diveSiteCreateError }}</p>
-              </div>
-            </label>
-            <label class="space-y-2">
-              <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Buddy</span>
-              <metadata-autocomplete-field
-                :model-value="selectedDraft.buddy"
-                @update:model-value="updateBuddy"
-                :options="savedBuddies"
-                placeholder="Buddy name"
-                input-class="w-full border border-primary/10 bg-background/35 px-4 py-3 pr-12 text-sm text-on-surface placeholder:text-secondary/50 focus:border-primary/30 focus:ring-1 focus:ring-primary"
-              />
-              <p class="text-xs leading-5 text-on-surface-variant">
-                {{ savedBuddies.length ? 'Search saved buddies from Settings or enter a custom value.' : 'No saved buddies yet. Add them in Settings to reuse them here.' }}
-              </p>
-            </label>
-            <label class="space-y-2">
-              <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Guide</span>
-              <metadata-autocomplete-field
-                :model-value="selectedDraft.guide"
-                @update:model-value="updateField('guide', $event)"
-                :options="savedGuides"
-                placeholder="Guide or instructor"
-                input-class="w-full border border-primary/10 bg-background/35 px-4 py-3 pr-12 text-sm text-on-surface placeholder:text-secondary/50 focus:border-primary/30 focus:ring-1 focus:ring-primary"
-              />
-              <p class="text-xs leading-5 text-on-surface-variant">
-                {{ savedGuides.length ? 'Search saved guides from Settings or enter a custom value.' : 'No saved guides yet. Add them in Settings to reuse them here.' }}
-              </p>
-            </label>
-            <label class="space-y-2">
-              <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Tank Volume</span>
-              <select :value="selectedDraft.tank_volume_l || ''" @change="updateField('tank_volume_l', $event.target.value)" class="w-full border border-primary/10 bg-background/35 px-4 py-3 text-sm text-on-surface focus:border-primary/30 focus:ring-1 focus:ring-primary">
-                <option value="">Select tank volume</option>
-                <option v-for="option in tankVolumeOptions" :key="'logbook-tank-' + option.value" :value="option.value">{{ option.label }}</option>
-              </select>
-            </label>
-          </div>
+        <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          <label class="space-y-2">
+            <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Dive Site</span>
+            <metadata-autocomplete-field
+              :model-value="selectedDraft.site"
+              @update:model-value="updateSite"
+              :options="savedDiveSites"
+              placeholder="House Reef"
+              input-class="w-full border border-primary/10 bg-background/35 px-4 py-3 pr-12 text-sm text-on-surface placeholder:text-secondary/50 focus:border-primary/30 focus:ring-1 focus:ring-primary"
+              :option-detail="formatDiveSiteSuggestionDetail"
+            />
+            <p class="text-xs leading-5 text-on-surface-variant">
+              {{ savedDiveSites.length ? 'Search saved dive sites from Settings or enter a custom value.' : 'No saved dive sites yet. Add them in Settings to reuse them here.' }}
+            </p>
+            <p v-if="selectedDiveSite" class="text-xs leading-5 text-primary">{{ siteCoordinateLabel(selectedDiveSite) }}</p>
+            <div v-if="canCreateDiveSite || diveSiteCreateStatus || diveSiteCreateError" class="space-y-2">
+              <button
+                v-if="canCreateDiveSite"
+                @click="saveCurrentDiveSite()"
+                :disabled="diveSiteCreatePending"
+                class="inline-flex items-center gap-2 bg-surface-container-high px-3 py-2 font-label text-[10px] font-bold uppercase tracking-[0.16em] text-primary disabled:opacity-50"
+              >
+                <span class="material-symbols-outlined text-sm">add_location_alt</span>
+                {{ diveSiteCreatePending ? 'Saving Dive Site...' : 'Save As Reusable Dive Site' }}
+              </button>
+              <p v-if="diveSiteCreateStatus" class="text-xs leading-5 text-primary">{{ diveSiteCreateStatus }}</p>
+              <p v-if="diveSiteCreateError" class="text-xs leading-5 text-on-error-container">{{ diveSiteCreateError }}</p>
+            </div>
+          </label>
 
-          <div class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_280px]">
-            <label class="space-y-2">
-              <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Dive Notes</span>
-              <textarea :value="selectedDraft.notes" @input="updateField('notes', $event.target.value)" rows="14" placeholder="Conditions, wildlife, route, incidents, visibility, buoyancy notes..." class="min-h-[22rem] w-full resize-y border border-primary/10 bg-[linear-gradient(180deg,rgba(9,23,36,0.9),rgba(9,23,36,0.84))] px-5 py-4 text-sm leading-7 text-on-surface placeholder:text-secondary/50 focus:border-primary/30 focus:ring-1 focus:ring-primary"></textarea>
-            </label>
+          <label class="space-y-2">
+            <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Buddy</span>
+            <metadata-autocomplete-field
+              :model-value="selectedDraft.buddy"
+              @update:model-value="updateBuddy"
+              :options="savedBuddies"
+              placeholder="Buddy name"
+              input-class="w-full border border-primary/10 bg-background/35 px-4 py-3 pr-12 text-sm text-on-surface placeholder:text-secondary/50 focus:border-primary/30 focus:ring-1 focus:ring-primary"
+            />
+            <p class="text-xs leading-5 text-on-surface-variant">
+              {{ savedBuddies.length ? 'Search saved buddies from Settings or enter a custom value.' : 'No saved buddies yet. Add them in Settings to reuse them here.' }}
+            </p>
+          </label>
 
-            <aside class="space-y-4">
-              <section class="border border-primary/10 bg-surface-container-high/30 p-5">
-                <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Record Summary</p>
-                <div class="mt-4 space-y-3 text-sm text-on-surface-variant">
-                  <div class="flex items-start justify-between gap-3">
-                    <span>Dive ID</span>
-                    <span class="text-on-surface">{{ displayDiveIndex(dive) }}</span>
-                  </div>
-                  <div class="flex items-start justify-between gap-3">
-                    <span>Started</span>
-                    <span class="max-w-[12rem] text-right text-on-surface">{{ formatDateTime(dive.started_at) }}</span>
-                  </div>
-                  <div class="flex items-start justify-between gap-3">
-                    <span>Imported</span>
-                    <span class="max-w-[12rem] text-right text-on-surface">{{ formatDateTime(dive.imported_at) }}</span>
-                  </div>
-                  <div class="flex items-start justify-between gap-3">
-                    <span>Device</span>
-                    <span class="max-w-[12rem] text-right text-on-surface">{{ dive.vendor }} {{ dive.product }}</span>
-                  </div>
-                </div>
-              </section>
+          <label class="space-y-2">
+            <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Guide</span>
+            <metadata-autocomplete-field
+              :model-value="selectedDraft.guide"
+              @update:model-value="updateField('guide', $event)"
+              :options="savedGuides"
+              placeholder="Guide or instructor"
+              input-class="w-full border border-primary/10 bg-background/35 px-4 py-3 pr-12 text-sm text-on-surface placeholder:text-secondary/50 focus:border-primary/30 focus:ring-1 focus:ring-primary"
+            />
+          </label>
 
-              <section class="border border-primary/10 bg-surface-container-high/30 p-5">
-                <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Save Rules</p>
-                <ul class="mt-4 space-y-3 text-sm leading-6 text-on-surface-variant">
-                  <li>Dive site, buddy, and guide must remain filled in.</li>
-                  <li>Notes can be changed freely without touching telemetry.</li>
-                  <li>Saving here updates only this one logbook record.</li>
-                </ul>
-              </section>
-            </aside>
+          <label class="space-y-2">
+            <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Tank Volume</span>
+            <select :value="selectedDraft.tank_volume_l || ''" @change="updateField('tank_volume_l', $event.target.value)" class="w-full border border-primary/10 bg-background/35 px-4 py-3 text-sm text-on-surface focus:border-primary/30 focus:ring-1 focus:ring-primary">
+              <option value="">Select tank volume</option>
+              <option v-for="option in tankVolumeOptions" :key="'logbook-tank-' + option.value" :value="option.value">{{ option.label }}</option>
+            </select>
+          </label>
+
+          <label class="space-y-2">
+            <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">{{ t('Weather', 'Weather') }}</span>
+            <input :value="selectedDraft.weather_description" @input="updateField('weather_description', $event.target.value)" type="text" :placeholder="t('logbookEdit.weather.placeholder', 'Sunny, overcast, surge on entry')" class="w-full border border-primary/10 bg-background/35 px-4 py-3 text-sm text-on-surface placeholder:text-secondary/50 focus:border-primary/30 focus:ring-1 focus:ring-primary" />
+          </label>
+
+          <label class="space-y-2">
+            <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">{{ t('Visibility', 'Visibility') }}</span>
+            <input :value="selectedDraft.visibility" @input="updateField('visibility', $event.target.value)" type="text" :placeholder="t('logbookEdit.visibility.placeholder', '15 m / moderate')" class="w-full border border-primary/10 bg-background/35 px-4 py-3 text-sm text-on-surface placeholder:text-secondary/50 focus:border-primary/30 focus:ring-1 focus:ring-primary" />
+          </label>
+
+          <label class="space-y-2">
+            <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">{{ t('Wetsuit', 'Wetsuit') }}</span>
+            <input :value="selectedDraft.wetsuit_description" @input="updateField('wetsuit_description', $event.target.value)" type="text" :placeholder="t('logbookEdit.wetsuit.placeholder', '7mm semi-dry')" class="w-full border border-primary/10 bg-background/35 px-4 py-3 text-sm text-on-surface placeholder:text-secondary/50 focus:border-primary/30 focus:ring-1 focus:ring-primary" />
+          </label>
+        </div>
+
+        <label class="space-y-2">
+          <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Dive Notes</span>
+          <textarea :value="selectedDraft.notes" @input="updateField('notes', $event.target.value)" rows="14" placeholder="Conditions, wildlife, route, incidents, visibility, buoyancy notes..." class="min-h-[24rem] w-full resize-y border border-primary/10 bg-[linear-gradient(180deg,rgba(9,23,36,0.9),rgba(9,23,36,0.84))] px-5 py-4 text-sm leading-7 text-on-surface placeholder:text-secondary/50 focus:border-primary/30 focus:ring-1 focus:ring-primary"></textarea>
+        </label>
+
+        <section class="border border-primary/10 bg-surface-container-high/30 p-5">
+          <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">{{ t('Record Summary', 'Record Summary') }}</p>
+          <div class="mt-4 grid gap-4 text-sm text-on-surface-variant md:grid-cols-2 xl:grid-cols-4">
+            <div class="space-y-1">
+              <p>{{ t('Dive ID', 'Dive ID') }}</p>
+              <p class="text-on-surface">{{ displayDiveIndex(dive) }}</p>
+            </div>
+            <div class="space-y-1">
+              <p>{{ t('Started', 'Started') }}</p>
+              <p class="text-on-surface">{{ formatDateTime(dive.started_at) }}</p>
+            </div>
+            <div class="space-y-1">
+              <p>Imported</p>
+              <p class="text-on-surface">{{ formatDateTime(dive.imported_at) }}</p>
+            </div>
+            <div class="space-y-1">
+              <p>{{ t('Device', 'Device') }}</p>
+              <p class="text-on-surface">{{ dive.vendor }} {{ dive.product }}</p>
+            </div>
           </div>
         </section>
 
-        <aside class="space-y-6">
-          <section class="border border-primary/10 bg-surface-container-low p-6 shadow-panel">
-            <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-primary">Actions</p>
-            <div class="mt-5 space-y-3">
-              <button @click="saveChanges()" :disabled="isSaving || isDeleting || !canSaveRecord" class="w-full bg-primary px-5 py-3 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-on-primary transition-all hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50">
-                {{ isSaving ? 'Saving...' : 'Save Logbook Changes' }}
-              </button>
-              <button @click="removeDive()" :disabled="isSaving || isDeleting" class="w-full bg-error-container/20 px-5 py-3 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-on-error-container transition-colors hover:bg-error-container/30 disabled:opacity-50">
-                {{ isDeleting ? 'Removing...' : 'Remove Dive' }}
-              </button>
-              <button @click="closeEditor()" class="w-full bg-surface-container-high px-5 py-3 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-on-surface transition-colors hover:text-primary">
-                Cancel
-              </button>
-            </div>
-          </section>
-
-          <section class="border border-primary/10 bg-surface-container-low p-6 shadow-panel">
-            <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Current Values</p>
-            <div class="mt-4 space-y-4">
-              <div>
-                <p class="font-label text-[10px] font-bold uppercase tracking-[0.14em] text-secondary/70">Dive Site</p>
-                <p class="mt-1 text-sm text-on-surface">{{ selectedDraft.site || 'Missing' }}</p>
-                <p v-if="selectedDiveSite" class="mt-1 text-xs text-primary">{{ siteCoordinateLabel(selectedDiveSite) }}</p>
-              </div>
-              <div>
-                <p class="font-label text-[10px] font-bold uppercase tracking-[0.14em] text-secondary/70">Buddy</p>
-                <p class="mt-1 text-sm text-on-surface">{{ selectedDraft.buddy || 'Missing' }}</p>
-              </div>
-              <div>
-                <p class="font-label text-[10px] font-bold uppercase tracking-[0.14em] text-secondary/70">Guide</p>
-                <p class="mt-1 text-sm text-on-surface">{{ selectedDraft.guide || 'Missing' }}</p>
-              </div>
-            </div>
-          </section>
-        </aside>
-      </div>
+        <div class="flex flex-col gap-3 border-t border-primary/10 pt-6 sm:flex-row sm:justify-end">
+          <button @click="closeEditor()" class="bg-surface-container-high px-5 py-3 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-on-surface transition-colors hover:text-primary">
+            Cancel
+          </button>
+          <button @click="removeDive()" :disabled="isSaving || isDeleting" class="bg-error-container/20 px-5 py-3 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-on-error-container transition-colors hover:bg-error-container/30 disabled:opacity-50">
+            {{ isDeleting ? 'Removing...' : 'Remove Dive' }}
+          </button>
+          <button @click="saveChanges()" :disabled="isSaving || isDeleting || !canSaveRecord" class="bg-primary px-5 py-3 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-on-primary transition-all hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50">
+            {{ isSaving ? 'Saving...' : 'Save Logbook Changes' }}
+          </button>
+        </div>
+      </section>
     </section>
   `
 };

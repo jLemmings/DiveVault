@@ -106,6 +106,9 @@ export default {
     }
   },
   methods: {
+    t(key, fallback = key, params = {}) {
+      return typeof this.$t === "function" ? this.$t(key, fallback, params) : fallback;
+    },
     paddedDiveIndex,
     formatDate,
     formatDateTime,
@@ -166,9 +169,9 @@ export default {
       const draft = logbook || {};
       const missingKeys = new Set(missingImportFields(draft).map((field) => field.key));
       return [
-        { key: "site", label: "Dive Site", value: draft.site || "Required before logbook entry", complete: !missingKeys.has("site"), icon: missingKeys.has("site") ? "location_off" : "task_alt" },
-        { key: "buddy", label: "Buddy", value: draft.buddy || "Buddy name required", complete: !missingKeys.has("buddy"), icon: missingKeys.has("buddy") ? "person_off" : "task_alt" },
-        { key: "guide", label: "Guide", value: draft.guide || "Guide or instructor required", complete: !missingKeys.has("guide"), icon: missingKeys.has("guide") ? "badge" : "task_alt" }
+        { key: "site", label: this.t("Dive Site", "Dive Site"), value: draft.site || this.t("importEdit.required.site", "Required before logbook entry"), complete: !missingKeys.has("site"), icon: missingKeys.has("site") ? "location_off" : "task_alt" },
+        { key: "buddy", label: this.t("Buddy", "Buddy"), value: draft.buddy || this.t("importEdit.required.buddy", "Buddy name required"), complete: !missingKeys.has("buddy"), icon: missingKeys.has("buddy") ? "person_off" : "task_alt" },
+        { key: "guide", label: this.t("Guide", "Guide"), value: draft.guide || this.t("importEdit.required.guide", "Guide or instructor required"), complete: !missingKeys.has("guide"), icon: missingKeys.has("guide") ? "badge" : "task_alt" }
       ];
     },
     summaryCards(dive) {
@@ -342,6 +345,18 @@ export default {
                 </select>
               </label>
               <label class="block space-y-2">
+                <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">{{ t('Weather', 'Weather') }}</span>
+                <input :value="selectedDraft.weather_description" @input="updateField('weather_description', $event.target.value)" type="text" :placeholder="t('importEdit.weather.placeholder', 'Sunny, current building')" class="w-full rounded-lg border-none bg-surface-container-high px-4 py-3 text-sm text-on-surface placeholder:text-secondary/50 focus:ring-1 focus:ring-primary" />
+              </label>
+              <label class="block space-y-2">
+                <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">{{ t('Visibility', 'Visibility') }}</span>
+                <input :value="selectedDraft.visibility" @input="updateField('visibility', $event.target.value)" type="text" :placeholder="t('importEdit.visibility.placeholder', '20 m / good')" class="w-full rounded-lg border-none bg-surface-container-high px-4 py-3 text-sm text-on-surface placeholder:text-secondary/50 focus:ring-1 focus:ring-primary" />
+              </label>
+              <label class="block space-y-2">
+                <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">{{ t('Wetsuit', 'Wetsuit') }}</span>
+                <input :value="selectedDraft.wetsuit_description" @input="updateField('wetsuit_description', $event.target.value)" type="text" :placeholder="t('importEdit.wetsuit.placeholder', '3mm shorty / drysuit')" class="w-full rounded-lg border-none bg-surface-container-high px-4 py-3 text-sm text-on-surface placeholder:text-secondary/50 focus:ring-1 focus:ring-primary" />
+              </label>
+              <label class="block space-y-2">
                 <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Dive Notes</span>
                 <textarea :value="selectedDraft.notes" @input="updateField('notes', $event.target.value)" rows="5" placeholder="Visibility, current, wildlife, entry notes..." class="w-full resize-none rounded-lg border-none bg-surface-container-high px-4 py-3 text-sm leading-6 text-on-surface placeholder:text-secondary/50 focus:ring-1 focus:ring-primary"></textarea>
               </label>
@@ -499,6 +514,21 @@ export default {
                     <option value="">Select tank volume</option>
                     <option v-for="option in tankVolumeOptions" :key="'desktop-tank-' + option.value" :value="option.value">{{ option.label }}</option>
                   </select>
+                </label>
+              </div>
+
+              <div class="grid grid-cols-1 gap-4 md:grid-cols-3">
+                <label class="block space-y-2">
+                  <span class="font-label text-[10px] font-bold uppercase tracking-[0.2em] text-secondary">{{ t('Weather', 'Weather') }}</span>
+                  <input :value="selectedDraft.weather_description" @input="updateField('weather_description', $event.target.value)" type="text" :placeholder="t('importEdit.weather.placeholder', 'Sunny, current building')" class="w-full border border-primary/10 bg-surface-container-high/35 px-4 py-3 text-sm text-on-surface placeholder:text-secondary/50 focus:border-primary/30 focus:ring-1 focus:ring-primary" />
+                </label>
+                <label class="block space-y-2">
+                  <span class="font-label text-[10px] font-bold uppercase tracking-[0.2em] text-secondary">{{ t('Visibility', 'Visibility') }}</span>
+                  <input :value="selectedDraft.visibility" @input="updateField('visibility', $event.target.value)" type="text" :placeholder="t('importEdit.visibility.placeholder', '20 m / good')" class="w-full border border-primary/10 bg-surface-container-high/35 px-4 py-3 text-sm text-on-surface placeholder:text-secondary/50 focus:border-primary/30 focus:ring-1 focus:ring-primary" />
+                </label>
+                <label class="block space-y-2">
+                  <span class="font-label text-[10px] font-bold uppercase tracking-[0.2em] text-secondary">{{ t('Wetsuit', 'Wetsuit') }}</span>
+                  <input :value="selectedDraft.wetsuit_description" @input="updateField('wetsuit_description', $event.target.value)" type="text" :placeholder="t('importEdit.wetsuit.placeholder', '3mm shorty / drysuit')" class="w-full border border-primary/10 bg-surface-container-high/35 px-4 py-3 text-sm text-on-surface placeholder:text-secondary/50 focus:border-primary/30 focus:ring-1 focus:ring-primary" />
                 </label>
               </div>
 

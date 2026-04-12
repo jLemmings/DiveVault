@@ -169,6 +169,7 @@ function emptyProfile() {
     email: "",
     public_dives_enabled: false,
     public_slug: "",
+    logbook_display_fields: [],
     licenses: [],
     dive_sites: [],
     buddies: [],
@@ -182,6 +183,7 @@ function cloneProfile(profile = {}) {
     email: profile?.email || "",
     public_dives_enabled: Boolean(profile?.public_dives_enabled),
     public_slug: profile?.public_slug || "",
+    logbook_display_fields: Array.isArray(profile?.logbook_display_fields) ? [...profile.logbook_display_fields] : [],
     licenses: cloneLicenses(profile?.licenses),
     dive_sites: cloneDiveSites(profile?.dive_sites),
     buddies: cloneBuddies(profile?.buddies),
@@ -800,6 +802,7 @@ export default {
         email: payload?.email || "",
         public_dives_enabled: Boolean(payload?.public_dives_enabled),
         public_slug: payload?.public_slug || "",
+        logbook_display_fields: Array.isArray(payload?.logbook_display_fields) ? payload.logbook_display_fields : [],
         licenses: normalizeLicenses(payload?.licenses),
         dive_sites: normalizeDiveSites(payload?.dive_sites),
         buddies: normalizeBuddies(payload?.buddies),
@@ -833,12 +836,36 @@ export default {
         this.profileUpdated(profile);
       }
     },
+    t(key, fallback = key, params = {}) {
+      return typeof this.$t === "function" ? this.$t(key, fallback, params) : fallback;
+    },
     resetDataManagementFeedback() {
       this.dataManagementStatus = "";
       this.dataManagementError = "";
     },
     displayValue(value, fallback = "Not provided") {
       return value ? value : fallback;
+    },
+    optionalLogbookFieldOptions() {
+      return [
+        { key: "weather_description", label: this.t("settings.logLayout.weather", "Weather description"), detail: this.t("settings.logLayout.weather.detail", "Show sea state and weather conditions in log rows.") },
+        { key: "visibility", label: this.t("Visibility", "Visibility"), detail: this.t("settings.logLayout.visibility.detail", "Show underwater visibility notes in log rows.") },
+        { key: "wetsuit_description", label: this.t("settings.logLayout.wetsuit", "Wetsuit description"), detail: this.t("settings.logLayout.wetsuit.detail", "Show exposure protection details in log rows.") }
+      ];
+    },
+    logbookFieldEnabled(fieldKey) {
+      return Array.isArray(this.settingsProfile.logbook_display_fields)
+        && this.settingsProfile.logbook_display_fields.includes(fieldKey);
+    },
+    toggleLogbookDisplayField(fieldKey) {
+      const active = new Set(Array.isArray(this.settingsProfile.logbook_display_fields) ? this.settingsProfile.logbook_display_fields : []);
+      if (active.has(fieldKey)) active.delete(fieldKey);
+      else active.add(fieldKey);
+      const ordered = this.optionalLogbookFieldOptions().map((option) => option.key).filter((key) => active.has(key));
+      this.settingsProfile = this.hydrateProfile({
+        ...this.settingsProfile,
+        logbook_display_fields: ordered
+      });
     },
     licenseTitle(license, index) {
       return license.certification_name || license.company || `License ${index + 1}`;
@@ -1295,6 +1322,7 @@ export default {
           body: JSON.stringify({
             name: this.profileDraft.name,
             email: this.profileDraft.email,
+            logbook_display_fields: this.settingsProfile.logbook_display_fields,
             licenses: this.settingsProfile.licenses.map(editableLicensePayload),
             dive_sites: this.settingsProfile.dive_sites.map(editableDiveSitePayload),
             buddies: this.settingsProfile.buddies.map(editableBuddyPayload),
@@ -2323,6 +2351,35 @@ export default {
               <div v-if="settingsProfile.public_dives_enabled && publicProfileUrl" class="mt-5 rounded-2xl border border-primary/10 bg-background/20 px-4 py-4">
                 <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Public URL</p>
                 <a :href="publicProfileUrl" target="_blank" rel="noreferrer" class="mt-2 block break-all text-sm font-semibold text-primary hover:text-primary/80">{{ publicProfileUrl }}</a>
+              </div>
+            </div>
+
+            <div class="mb-8 rounded-2xl border border-primary/15 bg-surface-container-low p-6">
+              <div class="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
+                <div class="max-w-3xl">
+                  <p class="font-label text-[10px] font-bold uppercase tracking-[0.24em] text-primary">{{ t('settings.logLayout.title', 'Dive Log Layout') }}</p>
+                  <h4 class="mt-2 font-headline text-3xl font-bold tracking-tight text-on-surface">{{ t('settings.logLayout.heading', 'Optional Metadata In Log Rows') }}</h4>
+                  <p class="mt-3 text-sm leading-7 text-secondary">{{ t('settings.logLayout.copy', 'Choose which optional details appear directly in the dive log list. Core dive information stays visible; these settings control only the extra descriptive metadata.') }}</p>
+                </div>
+                <div class="settings-chip is-accent">
+                  {{ settingsProfile.logbook_display_fields.length }} {{ t('Enabled', 'Enabled') }}
+                </div>
+              </div>
+
+              <div class="mt-6 grid gap-4 lg:grid-cols-3">
+                <label v-for="option in optionalLogbookFieldOptions()" :key="'logbook-field-' + option.key" class="flex items-start gap-4 rounded-2xl border border-primary/10 bg-background/20 px-4 py-4">
+                  <input :checked="logbookFieldEnabled(option.key)" @change="toggleLogbookDisplayField(option.key)" type="checkbox" class="mt-1 h-5 w-5 rounded border-primary/20 bg-surface-container-high text-primary focus:ring-primary/30" />
+                  <div>
+                    <p class="text-sm font-semibold text-on-surface">{{ option.label }}</p>
+                    <p class="mt-1 text-sm leading-6 text-secondary">{{ option.detail }}</p>
+                  </div>
+                </label>
+              </div>
+
+              <div class="mt-5 flex justify-end">
+                <button @click="saveProfile" :disabled="profileSaving" class="settings-button settings-button-primary">
+                  {{ profileSaving ? t('Saving Profile', 'Saving Profile') : t('settings.logLayout.save', 'Save Log Layout') }}
+                </button>
               </div>
             </div>
 
