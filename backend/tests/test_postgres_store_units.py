@@ -34,7 +34,16 @@ def test_decode_dive_row_includes_requested_fields_and_decodes_json_strings():
     assert payload["fields"] == {
         "visibility": "good",
         "sample_time_unit": "seconds",
-        "logbook": {"site": "", "buddy": "", "guide": "", "notes": "", "status": "imported"},
+        "logbook": {
+            "site": "",
+            "buddy": "",
+            "guide": "",
+            "weather_description": "",
+            "visibility": "",
+            "wetsuit_description": "",
+            "notes": "",
+            "status": "imported",
+        },
     }
     assert payload["sample_count"] == 2
     assert payload["samples"][1]["depth_m"] == 8.1
