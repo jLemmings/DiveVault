@@ -128,7 +128,7 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@v6
         with:
-          node-version: "24.14.1"
+          node-version: "24.15.0"
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
@@ -204,7 +204,7 @@ jobs:
         if: needs.fetch-artifacts.outputs.publish_version_tags == 'true'
         uses: actions/setup-node@v6
         with:
-          node-version: "24.14.1"
+          node-version: "24.15.0"
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
