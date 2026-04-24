@@ -14,7 +14,7 @@
   "dependencies": {
     "leaflet": "^1.9.4",
     "pdfjs-dist": "^5.6.205",
-    "vue": "^3.5.32"
+    "vue": "^3.5.33"
   },
   "devDependencies": {
     "@playwright/test": "1.59.1",
@@ -23,6 +23,6 @@
     "autoprefixer": "^10.5.0",
     "postcss": "^8.5.10",
     "tailwindcss": "^4.2.4",
-    "vite": "^8.0.9"
+    "vite": "^8.0.10"
   }
 }
