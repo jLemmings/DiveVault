@@ -13,7 +13,7 @@
   },
   "dependencies": {
     "leaflet": "^1.9.4",
-    "pdfjs-dist": "^5.6.205",
+    "pdfjs-dist": "^5.7.284",
     "vue": "^3.5.33"
   },
   "devDependencies": {
@@ -21,7 +21,7 @@
     "@tailwindcss/postcss": "^4.2.4",
     "@vitejs/plugin-vue": "^6.0.6",
     "autoprefixer": "^10.5.0",
-    "postcss": "^8.5.10",
+    "postcss": "^8.5.12",
     "tailwindcss": "^4.2.4",
     "vite": "^8.0.10"
   }
