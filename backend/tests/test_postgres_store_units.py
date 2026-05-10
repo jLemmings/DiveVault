@@ -570,3 +570,58 @@ def test_save_user_profile_persists_blank_slug_when_public_dives_are_disabled(mo
     assert insert_params[4] == ""
     assert conn.committed is True
     assert profile == {"user_id": "user-1", "public_slug": ""}
+
+
+def test_normalize_equipment_items_accepts_optional_fields_and_dedupes_ids():
+    equipment = postgres_store.normalize_equipment_items(
+        [
+            {
+                "id": "gear-1",
+                "type": " Regulator ",
+                "year_bought": "2024",
+                "vendor": " Blue Shop ",
+                "brand": " Aqualung ",
+                "waranty": " 2 years ",
+                "next_service_due": "2026-05-01",
+                "max_dives_before_service": "100",
+                "is_standard": "true",
+            },
+            {"id": "gear-1", "brand": "Backup"},
+            {"type": ""},
+        ]
+    )
+
+    assert len(equipment) == 2
+    assert equipment[0] == {
+        "id": "gear-1",
+        "type": "Regulator",
+        "year_bought": 2024,
+        "vendor": "Blue Shop",
+        "brand": "Aqualung",
+        "warranty": "2 years",
+        "next_service_due": "2026-05-01",
+        "max_dives_before_service": 100,
+        "is_standard": True,
+        "last_serviced_at": None,
+        "last_service_dive_count": 0,
+    }
+    assert equipment[1]["id"] == "gear-1-2"
+
+
+def test_equipment_service_summary_marks_standard_gear_due_by_dives():
+    summary = postgres_store.equipment_service_summary(
+        {
+            "is_standard": True,
+            "max_dives_before_service": 10,
+            "last_service_dive_count": 4,
+            "next_service_due": "",
+        },
+        committed_dive_count=14,
+    )
+
+    assert summary == {
+        "dives_since_service": 10,
+        "dives_remaining_before_service": 0,
+        "service_due": True,
+        "service_due_reason": "dives",
+    }

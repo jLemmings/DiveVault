@@ -106,6 +106,11 @@ export default {
       profileBuddies: [],
       profileGuides: [],
       profileLogbookDisplayFields: [],
+      equipment: [],
+      equipmentSaving: false,
+      equipmentServicingId: null,
+      equipmentStatusMessage: "",
+      equipmentError: "",
       importDrafts: {},
       savingImportId: null,
       bulkImportSavePending: false,
@@ -145,7 +150,7 @@ export default {
       navItems: [
         { id: "dashboard", label: "Dashboard", mobileLabel: "Dashboard", icon: "dashboard", mobileIcon: "dashboard", eyebrow: "Dive Overview", title: "Logbook" },
         { id: "logs", label: "Dive Logs", mobileLabel: "Logs", icon: "waves", mobileIcon: "sailing", eyebrow: "Dive Logs", title: "Dive Log Database" },
-        { id: "equipment", label: "Equipment", mobileLabel: "WIP", icon: "construction", mobileIcon: "construction", eyebrow: "Work In Progress", title: "Equipment Coming Soon", disabled: true, badge: "WIP" },
+        { id: "equipment", label: "Equipment", mobileLabel: "Gear", icon: "scuba_diving", mobileIcon: "scuba_diving", eyebrow: "Gear Locker", title: "Equipment" },
         { id: "settings", label: "Settings", mobileLabel: "Settings", icon: "settings", mobileIcon: "settings", eyebrow: "System Configuration", title: "System Config" }
       ],
       i18nLocale: getStoredLocale() || "en"
@@ -384,7 +389,7 @@ export default {
 
       this.lastAuthenticatedSessionId = this.authSessionId;
       this.syncViewFromHash();
-      await Promise.all([this.fetchDives(), this.fetchProfileData()]);
+      await Promise.all([this.fetchDives(), this.fetchProfileData(), this.fetchEquipment()]);
     },
     withTimeout(promise, timeoutMs, errorMessage) {
       return new Promise((resolve, reject) => {
@@ -1248,6 +1253,70 @@ export default {
         this.profileLogbookDisplayFields = [];
       }
     },
+    async fetchEquipment() {
+      try {
+        const response = await this.authenticatedFetch("/api/equipment");
+        const payload = await response.json().catch(() => null);
+        if (!response.ok) {
+          throw new Error(payload?.error || `API returned ${response.status}`);
+        }
+        this.equipment = Array.isArray(payload?.equipment) ? payload.equipment : [];
+      } catch (error) {
+        this.equipment = [];
+        this.equipmentError = error?.message || "Unable to load equipment.";
+      }
+    },
+    async saveEquipment(equipment) {
+      this.equipmentSaving = true;
+      this.equipmentError = "";
+      this.equipmentStatusMessage = "";
+      try {
+        const response = await this.authenticatedFetch("/api/equipment", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ equipment })
+        });
+        const payload = await response.json().catch(() => null);
+        if (!response.ok) {
+          throw new Error(payload?.error || `API returned ${response.status}`);
+        }
+        this.equipment = Array.isArray(payload?.equipment) ? payload.equipment : [];
+        this.equipmentStatusMessage = "Equipment inventory saved.";
+        return true;
+      } catch (error) {
+        this.equipmentError = error?.message || "Unable to save equipment.";
+        return false;
+      } finally {
+        this.equipmentSaving = false;
+      }
+    },
+    async markEquipmentServiced(equipmentId) {
+      this.equipmentServicingId = String(equipmentId);
+      this.equipmentError = "";
+      this.equipmentStatusMessage = "";
+      try {
+        const response = await this.authenticatedFetch(`/api/equipment/${encodeURIComponent(equipmentId)}/service`, {
+          method: "POST"
+        });
+        const payload = await response.json().catch(() => null);
+        if (!response.ok) {
+          throw new Error(payload?.error || `API returned ${response.status}`);
+        }
+        const updated = payload?.equipment;
+        if (updated?.id) {
+          this.equipment = this.equipment.map((item) => String(item.id) === String(updated.id) ? updated : item);
+        } else {
+          await this.fetchEquipment();
+        }
+        this.equipmentStatusMessage = "Equipment marked as serviced.";
+        return true;
+      } catch (error) {
+        this.equipmentError = error?.message || "Unable to mark equipment as serviced.";
+        return false;
+      } finally {
+        this.equipmentServicingId = null;
+      }
+    },
     handleProfileUpdated(payload) {
       this.profileDiveSites = Array.isArray(payload?.dive_sites) ? payload.dive_sites : [];
       this.profileBuddies = Array.isArray(payload?.buddies) ? payload.buddies : [];
@@ -1468,7 +1537,7 @@ export default {
           <dive-import-view v-else-if="activeView === 'imports'" :dives="dives" :import-drafts="importDrafts" :selected-import-id="selectedImportId" :select-import-dive="selectImportDive" :deleting-dive-id="deletingDiveId" :import-error="importError" :import-status-message="importStatusMessage" :delete-dive="deleteDive" :set-view="setView" :fetch-dives="fetchDives"></dive-import-view>
           <logbook-editor-view v-else-if="activeView === 'edit' && selectedEditDive" :dive="selectedEditDive" :all-dives="dives" :draft="selectedEditDraft" :dive-sites="profileDiveSites" :buddies="profileBuddies" :guides="profileGuides" :saving-import-id="savingImportId" :deleting-dive-id="deletingDiveId" :status-message="importStatusMessage" :error-message="importError" :update-dive-draft="updateImportDraft" :save-dive-logbook="saveExistingDiveLogbook" :delete-dive="deleteDive" :create-dive-site="createDiveSite" :close-editor="closeDiveEditor"></logbook-editor-view>
           <dive-detail-view v-else-if="activeView === 'logs' && selectedDive" :dive="selectedDive" :all-dives="dives" :deleting-dive-id="deletingDiveId" :close-detail="closeDiveDetail" :open-dive-editor="openDiveEditor" :delete-dive="deleteDive"></dive-detail-view>
-          <equipment-view v-else-if="activeView === 'equipment'" :search-text="searchText"></equipment-view>
+          <equipment-view v-else-if="activeView === 'equipment'" :equipment="equipment" :search-text="searchText" :saving="equipmentSaving" :servicing-id="equipmentServicingId" :status-message="equipmentStatusMessage" :error-message="equipmentError" :save-equipment="saveEquipment" :mark-serviced="markEquipmentServiced"></equipment-view>
           <settings-view v-else-if="activeView === 'settings'" :cli-auth-code="cliAuthCode" :active-section="activeSettingsSection" :set-active-section="setSettingsSection" :profile-updated="handleProfileUpdated" :refresh-dives="fetchDives" :current-locale="i18nLocale" :set-locale="setLocale"></settings-view>
         </div>
       </main>
