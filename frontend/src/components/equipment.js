@@ -42,15 +42,16 @@ function cloneEquipment(equipment) {
   return Array.isArray(equipment) ? equipment.map(normalizeEquipmentItem) : [];
 }
 
-function dateLabel(value) {
-  if (!value) return "Not scheduled";
+function dateLabel(value, translate = (key) => key) {
+  if (!value) return translate("Not scheduled", "Not scheduled");
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
   return date.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "2-digit" });
 }
 
-function equipmentName(item) {
-  return [item.brand, item.vendor, item.type].filter(Boolean).join(" ") || "Unnamed Equipment";
+function equipmentName(item, translate = (key) => key) {
+  const type = item.type ? translate(item.type, item.type) : "";
+  return [item.brand, item.vendor, type].filter(Boolean).join(" ") || translate("Unnamed Equipment", "Unnamed Equipment");
 }
 
 export default {
@@ -95,8 +96,15 @@ export default {
     }
   },
   methods: {
-    equipmentName,
-    dateLabel,
+    equipmentName(item) {
+      return equipmentName(item, (...args) => this.t(...args));
+    },
+    dateLabel(value) {
+      return dateLabel(value, (...args) => this.t(...args));
+    },
+    t(key, fallback = key, params = {}) {
+      return typeof this.$t === "function" ? this.$t(key, fallback, params) : fallback;
+    },
     addEquipment() {
       this.draftEquipment = [emptyEquipment(), ...this.draftEquipment];
     },
@@ -126,12 +134,18 @@ export default {
     },
     serviceStatusLabel(item) {
       if (item.service_due) {
-        return item.service_due_reason === "dives" ? "Service due by dive count" : "Service due by date";
+        return item.service_due_reason === "dives"
+          ? this.t("Service due by dive count", "Service due by dive count")
+          : this.t("Service due by date", "Service due by date");
       }
       if (item.max_dives_before_service) {
-        return `${item.dives_remaining_before_service ?? item.max_dives_before_service} dives remaining`;
+        return this.t(
+          "{count} dives remaining",
+          "{count} dives remaining",
+          { count: item.dives_remaining_before_service ?? item.max_dives_before_service }
+        );
       }
-      return "No dive-count interval";
+      return this.t("No dive-count interval", "No dive-count interval");
     }
   },
   template: `
