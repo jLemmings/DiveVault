@@ -1,13 +1,89 @@
 @import "tailwindcss";
 @config "../tailwind.config.js";
 
+:root {
+  color-scheme: dark;
+  --color-background: 0 21 37;
+  --color-surface: 0 21 37;
+  --color-surface-bright: 35 59 80;
+  --color-surface-dim: 0 21 37;
+  --color-surface-variant: 31 55 75;
+  --color-surface-container: 6 33 53;
+  --color-surface-container-low: 2 29 48;
+  --color-surface-container-lowest: 0 15 29;
+  --color-surface-container-high: 19 44 64;
+  --color-surface-container-highest: 31 55 75;
+  --color-primary: 156 202 255;
+  --color-primary-container: 0 26 49;
+  --color-secondary: 179 202 214;
+  --color-secondary-container: 55 76 86;
+  --color-tertiary: 255 183 125;
+  --color-tertiary-container: 43 19 0;
+  --color-tertiary-fixed: 255 220 195;
+  --color-tertiary-fixed-dim: 255 183 125;
+  --color-outline: 141 145 151;
+  --color-outline-variant: 67 71 76;
+  --color-on-background: 205 229 255;
+  --color-on-surface: 205 229 255;
+  --color-on-surface-variant: 195 199 205;
+  --color-on-primary: 0 50 87;
+  --color-on-secondary: 30 51 61;
+  --color-on-secondary-container: 165 188 200;
+  --color-on-tertiary: 77 38 0;
+  --color-error: 255 180 171;
+  --color-error-container: 147 0 10;
+  --color-on-error-container: 255 218 214;
+  --page-glow-primary: rgba(156, 202, 255, 0.12);
+  --page-glow-tertiary: rgba(255, 183, 125, 0.08);
+  --page-gradient: linear-gradient(180deg, #001525 0%, #001827 38%, #021d30 100%);
+  --shadow-panel: 0 20px 40px rgba(0, 15, 29, 0.32);
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+  --color-background: 242 248 252;
+  --color-surface: 250 253 255;
+  --color-surface-bright: 255 255 255;
+  --color-surface-dim: 219 232 240;
+  --color-surface-variant: 220 232 240;
+  --color-surface-container: 236 246 252;
+  --color-surface-container-low: 247 252 255;
+  --color-surface-container-lowest: 255 255 255;
+  --color-surface-container-high: 226 239 247;
+  --color-surface-container-highest: 211 228 238;
+  --color-primary: 0 83 139;
+  --color-primary-container: 205 229 255;
+  --color-secondary: 72 98 112;
+  --color-secondary-container: 219 232 240;
+  --color-tertiary: 146 82 19;
+  --color-tertiary-container: 255 220 195;
+  --color-tertiary-fixed: 104 55 8;
+  --color-tertiary-fixed-dim: 146 82 19;
+  --color-outline: 112 122 130;
+  --color-outline-variant: 190 205 215;
+  --color-on-background: 12 35 51;
+  --color-on-surface: 12 35 51;
+  --color-on-surface-variant: 73 85 95;
+  --color-on-primary: 255 255 255;
+  --color-on-secondary: 255 255 255;
+  --color-on-secondary-container: 42 62 73;
+  --color-on-tertiary: 255 255 255;
+  --color-error: 179 38 30;
+  --color-error-container: 249 222 220;
+  --color-on-error-container: 65 14 11;
+  --page-glow-primary: rgba(0, 83, 139, 0.12);
+  --page-glow-tertiary: rgba(146, 82, 19, 0.08);
+  --page-gradient: linear-gradient(180deg, #f2f8fc 0%, #eaf4fa 42%, #f9fdff 100%);
+  --shadow-panel: 0 18px 38px rgba(44, 73, 92, 0.16);
+}
+
 body {
   font-family: "Manrope", sans-serif;
   background:
-    radial-gradient(circle at top right, rgba(156, 202, 255, 0.12), transparent 24rem),
-    radial-gradient(circle at 20% 0%, rgba(255, 183, 125, 0.08), transparent 18rem),
-    linear-gradient(180deg, #001525 0%, #001827 38%, #021d30 100%);
-  color: #cde5ff;
+    radial-gradient(circle at top right, var(--page-glow-primary), transparent 24rem),
+    radial-gradient(circle at 20% 0%, var(--page-glow-tertiary), transparent 18rem),
+    var(--page-gradient);
+  color: rgb(var(--color-on-background));
 }
 
 .font-headline {
@@ -26,6 +102,40 @@ body {
 .hide-scrollbar {
   -ms-overflow-style: none;
   scrollbar-width: none;
+}
+
+.data-table-view {
+  font-variant-numeric: tabular-nums;
+}
+
+.data-table-view :where(p, span, div).font-label {
+  font-family: "Manrope", sans-serif;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.025em;
+  line-height: 1.35;
+  text-transform: none;
+}
+
+.data-table-view :where(p, span).text-\[9px\],
+.data-table-view :where(p, span).text-\[10px\],
+.data-table-view :where(p, span).text-\[11px\] {
+  font-size: 0.75rem;
+}
+
+.data-table-view :where(p, span).text-xs {
+  font-size: 0.8125rem;
+  line-height: 1.45;
+}
+
+.data-table-view article :where(p, span).text-sm {
+  font-size: 0.9375rem;
+  line-height: 1.5;
+}
+
+.data-table-view article h4,
+.data-table-view article h3 {
+  letter-spacing: 0;
 }
 
 .ui-number-input {
@@ -1029,6 +1139,110 @@ body {
 .settings-action-card:disabled {
   cursor: not-allowed;
   opacity: 0.6;
+}
+
+:root[data-theme="light"] .glass-panel {
+  background: rgba(255, 255, 255, 0.76);
+}
+
+:root[data-theme="light"] .settings-panel,
+:root[data-theme="light"] .settings-confirm-dialog,
+:root[data-theme="light"] .settings-modal-card {
+  border-color: rgba(0, 83, 139, 0.12);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(236, 246, 252, 0.94)),
+    linear-gradient(135deg, rgba(0, 83, 139, 0.05), transparent 42%);
+  box-shadow: var(--shadow-panel);
+}
+
+:root[data-theme="light"] .settings-stat-card,
+:root[data-theme="light"] .settings-info-card,
+:root[data-theme="light"] .settings-empty-state,
+:root[data-theme="light"] .settings-side-panel,
+:root[data-theme="light"] .settings-item-card,
+:root[data-theme="light"] .settings-compact-card,
+:root[data-theme="light"] .settings-action-card,
+:root[data-theme="light"] .settings-loading-card,
+:root[data-theme="light"] .settings-chip,
+:root[data-theme="light"] .settings-file-meta {
+  border-color: rgba(0, 83, 139, 0.12);
+  background: rgba(255, 255, 255, 0.64);
+}
+
+:root[data-theme="light"] .settings-chip {
+  color: rgb(var(--color-secondary));
+}
+
+:root[data-theme="light"] .settings-chip.is-accent {
+  border-color: rgba(146, 82, 19, 0.22);
+  background: rgba(255, 220, 195, 0.72);
+  color: rgb(var(--color-tertiary));
+}
+
+:root[data-theme="light"] .settings-button-secondary {
+  background: rgba(226, 239, 247, 0.96);
+  color: rgb(var(--color-primary));
+}
+
+:root[data-theme="light"] .settings-button-secondary:hover:not(:disabled) {
+  background: rgba(211, 228, 238, 0.98);
+}
+
+:root[data-theme="light"] .settings-button-ghost {
+  border-color: rgba(0, 83, 139, 0.16);
+  color: rgb(var(--color-secondary));
+}
+
+:root[data-theme="light"] .settings-button-ghost:hover:not(:disabled) {
+  border-color: rgba(0, 83, 139, 0.28);
+  color: rgb(var(--color-primary));
+}
+
+:root[data-theme="light"] .settings-button-danger {
+  background: rgba(249, 222, 220, 0.9);
+  color: rgb(var(--color-error));
+}
+
+:root[data-theme="light"] .settings-filter-field,
+:root[data-theme="light"] .settings-input {
+  border-color: rgba(0, 83, 139, 0.14);
+  background: rgba(255, 255, 255, 0.72);
+  color: rgb(var(--color-on-surface));
+}
+
+:root[data-theme="light"] .settings-input::placeholder {
+  color: rgba(73, 85, 95, 0.56);
+}
+
+:root[data-theme="light"] .settings-action-card:hover:not(:disabled) {
+  border-color: rgba(0, 83, 139, 0.22);
+  background: rgba(236, 246, 252, 0.92);
+}
+
+:root[data-theme="light"] .shadow-\[40px_0_40px_-20px_rgba\(0\2c 15\2c 29\2c 0\.4\)\] {
+  box-shadow: 28px 0 42px -24px rgba(44, 73, 92, 0.28);
+}
+
+:root[data-theme="light"] .metadata-autocomplete-menu {
+  border-color: rgba(0, 83, 139, 0.16);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(236, 246, 252, 0.98)),
+    linear-gradient(135deg, rgba(0, 83, 139, 0.05), transparent 42%);
+  box-shadow: var(--shadow-panel);
+}
+
+:root[data-theme="light"] .metadata-autocomplete-option-label {
+  color: rgb(var(--color-on-surface));
+}
+
+:root[data-theme="light"] .metadata-autocomplete-option-detail,
+:root[data-theme="light"] .metadata-autocomplete-empty {
+  color: rgb(var(--color-secondary));
+}
+
+:root[data-theme="light"] .metadata-autocomplete-option:hover,
+:root[data-theme="light"] .metadata-autocomplete-option.is-active {
+  background: rgba(0, 83, 139, 0.08);
 }
 
 @media (min-width: 768px) {

@@ -305,7 +305,7 @@ export default {
 
         <label class="space-y-2">
           <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Dive Notes</span>
-          <textarea :value="selectedDraft.notes" @input="updateField('notes', $event.target.value)" rows="14" placeholder="Conditions, wildlife, route, incidents, visibility, buoyancy notes..." class="min-h-[24rem] w-full resize-y border border-primary/10 bg-[linear-gradient(180deg,rgba(9,23,36,0.9),rgba(9,23,36,0.84))] px-5 py-4 text-sm leading-7 text-on-surface placeholder:text-secondary/50 focus:border-primary/30 focus:ring-1 focus:ring-primary"></textarea>
+          <textarea :value="selectedDraft.notes" @input="updateField('notes', $event.target.value)" rows="14" placeholder="Conditions, wildlife, route, incidents, visibility, buoyancy notes..." class="min-h-[24rem] w-full resize-y border border-primary/10 bg-surface-container-high/35 px-5 py-4 text-sm leading-7 text-on-surface placeholder:text-secondary/50 focus:border-primary/30 focus:ring-1 focus:ring-primary"></textarea>
         </label>
 
         <section class="border border-primary/10 bg-surface-container-high/30 p-5">

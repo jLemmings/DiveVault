@@ -205,7 +205,15 @@ const messages = {
   "settings.logLayout.visibility.detail": "Zeigt Hinweise zur Unterwassersicht in den Logzeilen an.",
   "settings.logLayout.wetsuit": "Neoprenbeschreibung",
   "settings.logLayout.wetsuit.detail": "Zeigt Angaben zum Kälteschutz in den Logzeilen an.",
-  "settings.logLayout.save": "Loglayout speichern"
+  "settings.logLayout.save": "Loglayout speichern",
+  "Interface Theme": "Oberflächendesign",
+  "Appearance": "Darstellung",
+  "Use the system theme by default, or keep DiveVault fixed in light or dark mode on this device.": "Verwenden Sie standardmäßig das Systemdesign oder halten Sie DiveVault auf diesem Gerät dauerhaft im hellen oder dunklen Modus.",
+  "System Default": "Systemstandard",
+  "Light": "Hell",
+  "Dark": "Dunkel",
+  "Currently": "Aktuell",
+  "Theme set to {theme}.": "Design auf {theme} gesetzt."
 };
 
 export const translationCredit = "AI-assisted translation, reviewed by DiveVault contributors";

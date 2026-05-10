@@ -73,7 +73,7 @@ export default {
         <div v-if="importStatusMessage" class="rounded-xl bg-primary/10 px-4 py-3 text-sm text-primary">{{ importStatusMessage }}</div>
         <div v-if="importError" class="rounded-xl bg-error-container/20 px-4 py-3 text-sm text-on-error-container">{{ importError }}</div>
 
-        <section v-if="pendingDives.length" class="space-y-4">
+        <section v-if="pendingDives.length" class="data-table-view space-y-4">
           <article
             v-for="dive in pendingDives"
             :key="'mobile-import-' + dive.id"
@@ -176,7 +176,7 @@ export default {
             </div>
           </div>
 
-          <div class="relative overflow-hidden border border-primary/10 bg-[linear-gradient(120deg,rgba(19,44,64,0.96),rgba(8,30,46,0.92))] p-6 shadow-panel md:p-8">
+          <div class="relative overflow-hidden border border-primary/10 bg-surface-container-low p-6 shadow-panel md:p-8">
             <div class="absolute right-0 top-0 h-40 w-40 bg-[radial-gradient(circle,rgba(156,202,255,0.16),transparent_68%)]"></div>
             <div class="absolute bottom-0 left-0 h-32 w-32 bg-[radial-gradient(circle,rgba(255,183,125,0.10),transparent_68%)]"></div>
             <div class="relative grid gap-6 xl:grid-cols-[minmax(0,1.65fr)_minmax(260px,0.82fr)] xl:items-end">

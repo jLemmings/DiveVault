@@ -205,7 +205,15 @@ const messages = {
   "settings.logLayout.visibility.detail": "Affiche les notes de visibilité sous-marine dans les lignes du journal.",
   "settings.logLayout.wetsuit": "Description de la combinaison",
   "settings.logLayout.wetsuit.detail": "Affiche les détails de protection thermique dans les lignes du journal.",
-  "settings.logLayout.save": "Enregistrer la mise en page"
+  "settings.logLayout.save": "Enregistrer la mise en page",
+  "Interface Theme": "Thème de l'interface",
+  "Appearance": "Apparence",
+  "Use the system theme by default, or keep DiveVault fixed in light or dark mode on this device.": "Utilisez le thème du système par défaut, ou gardez DiveVault en mode clair ou sombre sur cet appareil.",
+  "System Default": "Système par défaut",
+  "Light": "Clair",
+  "Dark": "Sombre",
+  "Currently": "Actuellement",
+  "Theme set to {theme}.": "Thème défini sur {theme}."
 };
 
 export const translationCredit = "AI-assisted translation, reviewed by DiveVault contributors";

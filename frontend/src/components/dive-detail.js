@@ -330,7 +330,7 @@ export default {
               <span class="font-label text-[10px] font-bold uppercase tracking-[0.16em] text-primary">{{ checkpoints.length }} events</span>
             </div>
             <div class="grid grid-cols-2 gap-3">
-              <article v-for="card in checkpoints" :key="'mobile-' + card.title" class="rounded-xl bg-[linear-gradient(160deg,rgba(19,44,64,0.9),rgba(31,55,75,0.7))] p-4">
+              <article v-for="card in checkpoints" :key="'mobile-' + card.title" class="rounded-xl bg-surface-container-high/70 p-4">
                 <p class="font-label text-[10px] font-bold uppercase tracking-[0.16em] text-secondary">{{ card.title }}</p>
                 <div class="mt-4 space-y-2">
                   <div>
@@ -528,7 +528,7 @@ export default {
               <span class="text-[10px] font-black uppercase tracking-[0.22em] text-secondary">{{ checkpoints.length }} telemetry moments</span>
             </div>
             <div class="grid grid-cols-2 gap-3">
-              <article v-for="card in checkpoints" :key="card.title" class="aspect-square rounded-[1rem] bg-[linear-gradient(160deg,rgba(19,44,64,0.9),rgba(31,55,75,0.7))] p-4">
+              <article v-for="card in checkpoints" :key="card.title" class="aspect-square rounded-[1rem] bg-surface-container-high/70 p-4">
                 <p class="text-[10px] font-black uppercase tracking-[0.22em] text-secondary">{{ card.title }}</p>
                 <div class="mt-6 space-y-3">
                   <div><p class="text-[10px] font-bold uppercase tracking-[0.2em] text-secondary">Time</p><p class="mt-1 font-headline text-2xl font-bold">{{ card.time }}</p></div>

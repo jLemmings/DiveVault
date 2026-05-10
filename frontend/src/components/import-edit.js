@@ -235,7 +235,7 @@ export default {
           <div v-if="importStatusMessage" class="rounded-xl bg-primary/10 px-4 py-3 text-sm text-primary">{{ importStatusMessage }}</div>
           <div v-if="importError" class="rounded-xl bg-error-container/20 px-4 py-3 text-sm text-on-error-container">{{ importError }}</div>
 
-          <section class="overflow-hidden rounded-2xl bg-[linear-gradient(135deg,rgba(19,44,64,0.98),rgba(8,30,46,0.92))] p-5 shadow-panel">
+          <section class="overflow-hidden rounded-2xl bg-surface-container-low p-5 shadow-panel">
             <div class="flex items-start justify-between gap-4">
               <div>
                 <p class="font-label text-[10px] font-bold uppercase tracking-[0.2em] text-primary/70">Metadata Editor</p>
@@ -418,7 +418,7 @@ export default {
               </div>
             </div>
 
-            <div class="relative overflow-hidden border border-primary/10 bg-[linear-gradient(120deg,rgba(19,44,64,0.96),rgba(8,30,46,0.92))] p-8 shadow-panel">
+            <div class="relative overflow-hidden border border-primary/10 bg-surface-container-low p-8 shadow-panel">
               <div class="absolute right-0 top-0 h-48 w-48 bg-[radial-gradient(circle,rgba(156,202,255,0.14),transparent_68%)]"></div>
               <div class="absolute bottom-0 left-0 h-36 w-36 bg-[radial-gradient(circle,rgba(255,183,125,0.10),transparent_68%)]"></div>
               <div class="relative grid gap-6 xl:grid-cols-[minmax(0,1.5fr)_minmax(340px,0.9fr)] xl:items-end">
