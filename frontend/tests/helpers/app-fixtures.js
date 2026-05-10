@@ -151,7 +151,26 @@ function baseData() {
       guides: [
         { id: "guide-1", name: "Mina" }
       ]
-    }
+    },
+    equipment: [
+      {
+        id: "equipment-1",
+        type: "Regulator",
+        year_bought: 2024,
+        vendor: "Blue Shop",
+        brand: "Aqualung",
+        warranty: "2 years",
+        next_service_due: "2026-01-01",
+        max_dives_before_service: 1,
+        is_standard: true,
+        last_serviced_at: null,
+        last_service_dive_count: 0,
+        dives_since_service: 1,
+        dives_remaining_before_service: 0,
+        service_due: true,
+        service_due_reason: "dives"
+      }
+    ]
   };
 }
 
@@ -262,6 +281,22 @@ function createDiveFromPayload(data, payload) {
   return clone(dive);
 }
 
+function refreshEquipmentService(data) {
+  const committedDives = data.dives.filter(isCommittedDive).length;
+  data.equipment = (data.equipment || []).map((item) => {
+    const maxDives = Number.isFinite(Number(item.max_dives_before_service)) ? Number(item.max_dives_before_service) : null;
+    const divesSinceService = item.is_standard ? Math.max(committedDives - Number(item.last_service_dive_count || 0), 0) : 0;
+    const diveDue = maxDives !== null && divesSinceService >= maxDives;
+    return {
+      ...item,
+      dives_since_service: divesSinceService,
+      dives_remaining_before_service: maxDives === null ? null : Math.max(maxDives - divesSinceService, 0),
+      service_due: diveDue,
+      service_due_reason: diveDue ? "dives" : ""
+    };
+  });
+}
+
 async function fulfillJson(route, payload, status = 200) {
   await route.fulfill({
     status,
@@ -328,8 +363,10 @@ async function installAppMocks(page, options = {}) {
   };
   data.dives = clone(options.data?.dives || data.dives);
   data.profile = clone(options.data?.profile || data.profile);
+  data.equipment = clone(options.data?.equipment || data.equipment || []);
   data.stats = clone(options.data?.stats || data.stats);
   refreshStats(data);
+  refreshEquipmentService(data);
 
   await setupTestState(page, {
     signedIn,
@@ -470,6 +507,20 @@ async function installAppMocks(page, options = {}) {
       return;
     }
 
+    if (pathname === "/api/equipment" && request.method() === "GET") {
+      refreshEquipmentService(data);
+      await fulfillJson(route, { equipment: clone(data.equipment) });
+      return;
+    }
+
+    if (pathname === "/api/equipment" && request.method() === "PUT") {
+      const payload = request.postDataJSON ? request.postDataJSON() : JSON.parse(request.postData() || "{}");
+      data.equipment = Array.isArray(payload.equipment) ? clone(payload.equipment) : [];
+      refreshEquipmentService(data);
+      await fulfillJson(route, { equipment: clone(data.equipment) });
+      return;
+    }
+
     if (pathname === "/api/geocode/search" && request.method() === "GET") {
       const query = (url.searchParams.get("q") || "").trim();
       if (!query) {
@@ -510,6 +561,24 @@ async function installAppMocks(page, options = {}) {
         return;
       }
       await fulfillJson(route, updatedDive);
+      return;
+    }
+
+    const serviceMatch = pathname.match(/^\/api\/equipment\/([^/]+)\/service$/);
+    if (serviceMatch && request.method() === "POST") {
+      const index = data.equipment.findIndex((item) => String(item.id) === serviceMatch[1]);
+      if (index === -1) {
+        await fulfillJson(route, { error: "Equipment item not found" }, 404);
+        return;
+      }
+      const committedDives = data.dives.filter(isCommittedDive).length;
+      data.equipment[index] = {
+        ...data.equipment[index],
+        last_serviced_at: "2026-04-07T12:00:00Z",
+        last_service_dive_count: committedDives
+      };
+      refreshEquipmentService(data);
+      await fulfillJson(route, { equipment: clone(data.equipment[index]) });
       return;
     }
 

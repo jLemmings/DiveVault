@@ -125,6 +125,35 @@ test("covers settings profile loading and public sharing updates", async ({ page
   await expect(page.getByRole("heading", { name: "Backup And Restore" })).toBeVisible();
 });
 
+test("manages equipment inventory and service schedule", async ({ page }) => {
+  await installAppMocks(page);
+  await gotoAndWait(page, "/#equipment");
+
+  await expect(page.getByRole("heading", { name: "Equipment Management" })).toBeVisible();
+  await expect(page.getByText("Aqualung Blue Shop Regulator")).toBeVisible();
+
+  await page.getByRole("button", { name: "Add Equipment" }).click();
+  const newCard = page.locator("article").first();
+  await expect(newCard.getByText("Unnamed Equipment")).toBeVisible();
+  await newCard.getByPlaceholder("Regulator").fill("BCD");
+  await newCard.getByPlaceholder("2024").fill("2025");
+  await newCard.getByPlaceholder("Dive Shop").fill("Reef Shop");
+  await newCard.getByPlaceholder("Aqualung").fill("Scubapro");
+  await newCard.getByPlaceholder("2 years, shop receipt, serial number...").fill("3 years");
+  await newCard.locator("input[type='date']").fill("2027-05-01");
+  await newCard.getByPlaceholder("100").fill("50");
+  await newCard.getByLabel("Use by default on each dive").check();
+  await page.getByRole("button", { name: "Save Gear" }).click();
+  await expect(page.getByText("Equipment inventory saved.")).toBeVisible();
+
+  await page.getByRole("button", { name: "Service Schedule" }).click();
+  await expect(page.getByText("Service due by dive count")).toBeVisible();
+  await expect(page.getByText("Scubapro Reef Shop BCD")).toBeVisible();
+  await page.locator("article").filter({ hasText: "Aqualung Blue Shop Regulator" }).getByRole("button", { name: "Mark Serviced" }).click();
+  await expect(page.getByText("Equipment marked as serviced.")).toBeVisible();
+  await expect(page.locator("article").filter({ hasText: "Aqualung Blue Shop Regulator" }).getByText("1 dives remaining")).toBeVisible();
+});
+
 test("covers the public profile route", async ({ page }) => {
   await installAppMocks(page);
   await gotoAndWait(page, "/public/avery-marlow");

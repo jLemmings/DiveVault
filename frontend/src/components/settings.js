@@ -2333,7 +2333,7 @@ export default {
                 <div class="max-w-3xl">
                   <p class="font-label text-[10px] font-bold uppercase tracking-[0.24em] text-primary">Interface Language</p>
                   <h4 class="mt-2 font-headline text-3xl font-bold tracking-tight text-on-surface">Preferred Language</h4>
-                  <p class="mt-3 text-sm leading-7 text-secondary">Choose which translation bundle the app should use for supported interface text. Available options are loaded from <code>en.js</code>, <code>de.js</code>, and <code>fr.js</code>.</p>
+                  <p class="mt-3 text-sm leading-7 text-secondary">Choose which translation bundle the app should use for supported interface text. Available options are loaded from <code>en.json</code>, <code>de.json</code>, and <code>fr.json</code>.</p>
                 </div>
                 <div class="settings-chip is-accent">
                   {{ (availableLanguages.find((language) => language.value === selectedLocale)?.label || selectedLocale).toUpperCase() }}
