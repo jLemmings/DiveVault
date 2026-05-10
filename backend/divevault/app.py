@@ -67,11 +67,14 @@ from divevault.postgres_store import (
     list_all_dives,
     list_auth_users,
     list_device_states,
+    list_user_equipment,
+    mark_equipment_serviced,
     list_dives,
     open_db,
     save_user_profile,
     save_user_profile_license_pdf,
     save_device_state,
+    save_user_equipment,
     count_auth_users,
     update_auth_instance_settings,
     update_auth_user,
@@ -1280,6 +1283,20 @@ class DiveBackendHandler(BaseHTTPRequestHandler):
             self._send_json(200, profile)
             return
 
+        if path == "/api/equipment":
+            user_id = self._require_principal_id()
+            if user_id is None:
+                return
+            conn = self._open_db()
+            if conn is None:
+                return
+            try:
+                equipment = list_user_equipment(conn, user_id)
+            finally:
+                conn.close()
+            self._send_json(200, {"equipment": equipment})
+            return
+
         if path == "/api/exports/dives.csv":
             user_id = self._require_principal_id()
             if user_id is None:
@@ -1597,6 +1614,25 @@ class DiveBackendHandler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:
         LOGGER.info("POST %s", self.path)
+        match = re.fullmatch(r"/api/equipment/([A-Za-z0-9_-]+)/service", self.path)
+        if match:
+            user_id = self._require_principal_id()
+            if user_id is None:
+                return
+            equipment_id = match.group(1)
+            conn = self._open_db()
+            if conn is None:
+                return
+            try:
+                equipment = mark_equipment_serviced(conn, user_id, equipment_id)
+            finally:
+                conn.close()
+            if equipment is None:
+                self._send_json(404, {"error": "Equipment item not found"})
+                return
+            self._send_json(200, {"equipment": equipment})
+            return
+
         if self.path == "/api/auth/register":
             payload = self._read_json_body()
             if payload is None:
@@ -2028,6 +2064,24 @@ class DiveBackendHandler(BaseHTTPRequestHandler):
                 sum(1 for license_entry in profile.get("licenses") or [] if license_entry.get("pdf")),
             )
             self._send_json(200, profile)
+            return
+
+        if self.path == "/api/equipment":
+            user_id = self._require_principal_id()
+            if user_id is None:
+                return
+            payload = self._read_json_body()
+            if payload is None:
+                return
+            equipment_entries = payload.get("equipment") if isinstance(payload, dict) else None
+            conn = self._open_db()
+            if conn is None:
+                return
+            try:
+                equipment = save_user_equipment(conn, user_id, equipment_entries)
+            finally:
+                conn.close()
+            self._send_json(200, {"equipment": equipment})
             return
 
         match = re.fullmatch(r"/api/profile/licenses/([A-Za-z0-9_-]+)/pdf", self.path)

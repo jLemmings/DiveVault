@@ -1,16 +1,18 @@
-import { reactive, watch } from "vue";
-import en, { translationCredit as enCredit } from "./en.js";
-import de, { translationCredit as deCredit } from "./de.js";
-import fr, { translationCredit as frCredit } from "./fr.js";
+import { watch } from "vue";
+import { createI18n } from "vue-i18n";
+import en from "./en.json";
+import de from "./de.json";
+import fr from "./fr.json";
 
-const MESSAGES = { en, de, fr };
+export const MESSAGES = { en, de, fr };
+
 const DEFAULT_LOCALE = "en";
 const ORIGINAL_TEXT_NODES = new WeakMap();
 const ORIGINAL_ATTRIBUTES = new WeakMap();
 const TRANSLATION_CREDITS = {
-  en: enCredit,
-  de: deCredit,
-  fr: frCredit
+  en: "DiveVault core team (English source)",
+  de: "AI-assisted translation, reviewed by DiveVault contributors",
+  fr: "AI-assisted translation, reviewed by DiveVault contributors"
 };
 
 function normalizeLocale(locale) {
@@ -26,6 +28,21 @@ function interpolate(message, params = {}) {
     const value = params[key];
     return value === undefined || value === null ? `{${key}}` : String(value);
   });
+}
+
+function hasMessage(key, locale = vueI18n.global.locale.value) {
+  return vueI18n.global.te(key, locale) || vueI18n.global.te(key, DEFAULT_LOCALE);
+}
+
+function translateMessage(key, fallback = key, params = {}) {
+  const normalizedKey = normalizeLookupKey(key);
+  const normalizedFallback = normalizeLookupKey(fallback);
+  const candidates = [key, normalizedKey].filter(Boolean);
+  const messageKey = candidates.find((candidate) => hasMessage(candidate));
+  if (messageKey) {
+    return vueI18n.global.t(messageKey, params);
+  }
+  return interpolate(fallback || normalizedFallback, params);
 }
 
 function translateTextValue(value, translate) {
@@ -74,37 +91,29 @@ function translateRenderedElement(root, translate) {
   }
 }
 
-export function createTranslator(defaultLocale = "en") {
-  const state = reactive({
-    locale: normalizeLocale(defaultLocale)
-  });
-  return {
-    state,
-    get locale() {
-      return state.locale;
-    },
-    setLocale(nextLocale) {
-      state.locale = normalizeLocale(nextLocale);
-    },
-    t(key, fallback = key, params = {}) {
-      const normalizedKey = normalizeLookupKey(key);
-      const normalizedFallback = normalizeLookupKey(fallback);
-      const message = MESSAGES[state.locale]?.[key]
-        || MESSAGES[state.locale]?.[normalizedKey]
-        || MESSAGES.en?.[key]
-        || MESSAGES.en?.[normalizedKey]
-        || fallback
-        || normalizedFallback;
-      return interpolate(message, params);
-    }
-  };
-}
+export const vueI18n = createI18n({
+  legacy: false,
+  globalInjection: true,
+  locale: DEFAULT_LOCALE,
+  fallbackLocale: DEFAULT_LOCALE,
+  missingWarn: false,
+  fallbackWarn: false,
+  messages: MESSAGES
+});
 
-export const i18n = createTranslator(DEFAULT_LOCALE);
+export const i18n = {
+  get locale() {
+    return vueI18n.global.locale.value;
+  },
+  setLocale(nextLocale) {
+    vueI18n.global.locale.value = normalizeLocale(nextLocale);
+  },
+  t: translateMessage
+};
 
 export function installI18n(app) {
+  app.use(vueI18n);
   app.config.globalProperties.$t = (key, fallback = key, params = {}) => i18n.t(key, fallback, params);
-  app.config.globalProperties.$i18n = i18n;
   watch(
     () => i18n.locale,
     () => {
@@ -122,8 +131,6 @@ export function installI18n(app) {
     }
   });
 }
-
-export { MESSAGES };
 
 export function getTranslationCredits() {
   return { ...TRANSLATION_CREDITS };

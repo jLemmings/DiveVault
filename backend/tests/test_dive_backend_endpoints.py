@@ -187,6 +187,25 @@ def server_fixture(monkeypatch):
             ],
             "updated_at": "2026-03-29T10:00:00+00:00",
         },
+        "equipment": [
+            {
+                "id": "equipment-1",
+                "type": "Regulator",
+                "year_bought": 2024,
+                "vendor": "Blue Shop",
+                "brand": "Aqualung",
+                "warranty": "2 years",
+                "next_service_due": "2026-01-01",
+                "max_dives_before_service": 1,
+                "is_standard": True,
+                "last_serviced_at": None,
+                "last_service_dive_count": 0,
+                "dives_since_service": 1,
+                "dives_remaining_before_service": 0,
+                "service_due": True,
+                "service_due_reason": "dives",
+            }
+        ],
     }
 
     def fake_open_db(_database_url: str):
@@ -371,6 +390,48 @@ def server_fixture(monkeypatch):
             "data": store["profile_license_data"][license_id],
             "uploaded_at": license_entry["pdf"]["uploaded_at"],
         }
+
+    def fake_list_user_equipment(_conn, user_id: str):
+        assert user_id == "user-1"
+        return [dict(item) for item in store["equipment"]]
+
+    def fake_save_user_equipment(_conn, user_id: str, entries):
+        assert user_id == "user-1"
+        store["equipment"] = [
+            {
+                "id": item.get("id") or f"equipment-{index + 1}",
+                "type": item.get("type") or "",
+                "year_bought": item.get("year_bought"),
+                "vendor": item.get("vendor") or "",
+                "brand": item.get("brand") or "",
+                "warranty": item.get("warranty") or "",
+                "next_service_due": item.get("next_service_due") or "",
+                "max_dives_before_service": item.get("max_dives_before_service"),
+                "is_standard": bool(item.get("is_standard")),
+                "last_serviced_at": item.get("last_serviced_at"),
+                "last_service_dive_count": item.get("last_service_dive_count") or 0,
+                "dives_since_service": 1 if item.get("is_standard") else 0,
+                "dives_remaining_before_service": 0 if item.get("max_dives_before_service") == 1 else item.get("max_dives_before_service"),
+                "service_due": bool(item.get("is_standard") and item.get("max_dives_before_service") == 1),
+                "service_due_reason": "dives" if item.get("is_standard") and item.get("max_dives_before_service") == 1 else "",
+            }
+            for index, item in enumerate(entries or [])
+        ]
+        return [dict(item) for item in store["equipment"]]
+
+    def fake_mark_equipment_serviced(_conn, user_id: str, equipment_id: str):
+        assert user_id == "user-1"
+        for item in store["equipment"]:
+            if item["id"] != equipment_id:
+                continue
+            item["last_serviced_at"] = "2026-04-01T12:00:00+00:00"
+            item["last_service_dive_count"] = 1
+            item["dives_since_service"] = 0
+            item["dives_remaining_before_service"] = item.get("max_dives_before_service")
+            item["service_due"] = False
+            item["service_due_reason"] = ""
+            return dict(item)
+        return None
 
     def fake_get_public_profile_dives(_conn, public_slug: str):
         if public_slug != store["profile"].get("public_slug") or not store["profile"].get("public_dives_enabled"):
@@ -562,6 +623,9 @@ def server_fixture(monkeypatch):
     monkeypatch.setattr(dive_backend, "save_user_profile", fake_save_user_profile)
     monkeypatch.setattr(dive_backend, "save_user_profile_license_pdf", fake_save_user_profile_license_pdf)
     monkeypatch.setattr(dive_backend, "get_user_profile_license_pdf", fake_get_user_profile_license_pdf)
+    monkeypatch.setattr(dive_backend, "list_user_equipment", fake_list_user_equipment)
+    monkeypatch.setattr(dive_backend, "save_user_equipment", fake_save_user_equipment)
+    monkeypatch.setattr(dive_backend, "mark_equipment_serviced", fake_mark_equipment_serviced)
 
     with TemporaryDirectory() as temp_dir:
         frontend_dir = Path(temp_dir)
@@ -719,6 +783,12 @@ def test_authenticated_get_endpoints(server_fixture):
     assert profile.json()["guides"][0]["name"] == "Kai"
     assert profile.json()["licenses"][0]["certification_name"] == "Master Scuba Diver"
     assert profile.json()["licenses"][0]["pdf"] is None
+
+    equipment = request(server, "GET", "/api/equipment", token="session")
+    assert equipment.status == 200
+    assert equipment.json()["equipment"][0]["type"] == "Regulator"
+    assert equipment.json()["equipment"][0]["is_standard"] is True
+    assert equipment.json()["equipment"][0]["service_due"] is True
 
     missing_profile_license = request(server, "GET", "/api/profile/licenses/license-1/pdf", token="session")
     assert missing_profile_license.status == 404
@@ -1117,6 +1187,39 @@ def test_post_and_put_endpoints(server_fixture):
     assert valid_profile_license.status == 200
     assert valid_profile_license.json()["licenses"][0]["pdf"]["filename"] == "my-license.pdf"
 
+    update_equipment = request(
+        server,
+        "PUT",
+        "/api/equipment",
+        token="session",
+        payload={
+            "equipment": [
+                {
+                    "id": "equipment-2",
+                    "type": "BCD",
+                    "year_bought": 2025,
+                    "vendor": "Reef Shop",
+                    "brand": "Scubapro",
+                    "warranty": "3 years",
+                    "next_service_due": "2027-05-01",
+                    "max_dives_before_service": 1,
+                    "is_standard": True,
+                }
+            ]
+        },
+    )
+    assert update_equipment.status == 200
+    assert update_equipment.json()["equipment"][0]["brand"] == "Scubapro"
+    assert update_equipment.json()["equipment"][0]["service_due_reason"] == "dives"
+
+    mark_serviced = request(server, "POST", "/api/equipment/equipment-2/service", token="session")
+    assert mark_serviced.status == 200
+    assert mark_serviced.json()["equipment"]["last_serviced_at"] == "2026-04-01T12:00:00+00:00"
+    assert mark_serviced.json()["equipment"]["service_due"] is False
+
+    missing_equipment = request(server, "POST", "/api/equipment/not-found/service", token="session")
+    assert missing_equipment.status == 404
+
     download_profile_license = request(server, "GET", "/api/profile/licenses/license-1/pdf", token="session")
     assert download_profile_license.status == 200
     assert download_profile_license.headers["Content-Type"] == "application/pdf"
@@ -1328,6 +1431,7 @@ def test_route_manifest_requires_test_updates_for_new_endpoints():
         "/api/cli-auth/approve",
         "/api/cli-auth/request",
         "/api/device-state",
+        "/api/equipment",
         "/api/exports/dives.csv",
         "/api/exports/dives.pdf",
         "/api/geocode/search",
@@ -1337,6 +1441,7 @@ def test_route_manifest_requires_test_updates_for_new_endpoints():
         "prefix:/api/*",
         "regex:/api/dives/(\\d+)",
         "regex:/api/dives/(\\d+)/logbook",
+        "regex:/api/equipment/([A-Za-z0-9_-]+)/service",
         "regex:/api/profile/licenses/([A-Za-z0-9_-]+)/pdf",
         "regex:/api/public/divers/([a-z0-9-]+)",
         "regex:/api/users/(user_[A-Za-z0-9]+)",

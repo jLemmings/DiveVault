@@ -145,6 +145,23 @@ CREATE TABLE IF NOT EXISTS auth_user_invites (
     expires_at BIGINT NOT NULL,
     accepted_at BIGINT
 );
+
+CREATE TABLE IF NOT EXISTS user_equipment (
+    user_id TEXT NOT NULL,
+    equipment_id TEXT NOT NULL,
+    type TEXT NOT NULL DEFAULT '',
+    year_bought INTEGER,
+    vendor TEXT NOT NULL DEFAULT '',
+    brand TEXT NOT NULL DEFAULT '',
+    warranty TEXT NOT NULL DEFAULT '',
+    next_service_due TEXT NOT NULL DEFAULT '',
+    max_dives_before_service INTEGER,
+    is_standard BOOLEAN NOT NULL DEFAULT FALSE,
+    last_serviced_at TEXT,
+    last_service_dive_count INTEGER NOT NULL DEFAULT 0,
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY (user_id, equipment_id)
+);
 """
 
 LOGBOOK_REQUIRED_FIELDS = ("site", "buddy", "guide")
@@ -152,7 +169,7 @@ LOGBOOK_OPTIONAL_FIELDS = ("weather_description", "visibility", "wetsuit_descrip
 LOGBOOK_DISPLAY_FIELD_OPTIONS = set(LOGBOOK_OPTIONAL_FIELDS)
 SAMPLE_TIME_UNIT_SECONDS = "seconds"
 SAMPLE_TIME_UNIT_MILLISECONDS = "milliseconds"
-CURRENT_SCHEMA_VERSION = 8
+CURRENT_SCHEMA_VERSION = 9
 SCHEMA_VERSION_SQL = """
 CREATE TABLE IF NOT EXISTS app_schema_version (
     singleton BOOLEAN PRIMARY KEY DEFAULT TRUE CHECK (singleton),
@@ -573,6 +590,29 @@ def apply_schema_migration_v8(cur: psycopg.Cursor) -> None:
     cur.execute("UPDATE user_profile SET logbook_display_fields_json='[]'::jsonb WHERE logbook_display_fields_json IS NULL")
 
 
+def apply_schema_migration_v9(cur: psycopg.Cursor) -> None:
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS user_equipment (
+            user_id TEXT NOT NULL,
+            equipment_id TEXT NOT NULL,
+            type TEXT NOT NULL DEFAULT '',
+            year_bought INTEGER,
+            vendor TEXT NOT NULL DEFAULT '',
+            brand TEXT NOT NULL DEFAULT '',
+            warranty TEXT NOT NULL DEFAULT '',
+            next_service_due TEXT NOT NULL DEFAULT '',
+            max_dives_before_service INTEGER,
+            is_standard BOOLEAN NOT NULL DEFAULT FALSE,
+            last_serviced_at TEXT,
+            last_service_dive_count INTEGER NOT NULL DEFAULT 0,
+            updated_at TEXT NOT NULL,
+            PRIMARY KEY (user_id, equipment_id)
+        )
+        """
+    )
+
+
 def _run_schema_migrations(conn: psycopg.Connection, cur: psycopg.Cursor, current_version: int) -> int:
     migrations: tuple[tuple[int, Callable[[psycopg.Connection, psycopg.Cursor], None]], ...] = (
         (1, lambda _conn, migration_cur: apply_schema_migration_v1(migration_cur)),
@@ -583,6 +623,7 @@ def _run_schema_migrations(conn: psycopg.Connection, cur: psycopg.Cursor, curren
         (6, lambda _conn, migration_cur: apply_schema_migration_v6(migration_cur)),
         (7, lambda _conn, migration_cur: apply_schema_migration_v7(migration_cur)),
         (8, lambda _conn, migration_cur: apply_schema_migration_v8(migration_cur)),
+        (9, lambda _conn, migration_cur: apply_schema_migration_v9(migration_cur)),
     )
     target_schema_version = min(CURRENT_SCHEMA_VERSION, max(version for version, _ in migrations))
 
@@ -793,6 +834,75 @@ def clean_profile_bool(value: object) -> bool:
         if normalized in {"0", "false", "no", "off", ""}:
             return False
     return False
+
+
+def clean_optional_int(value: object, *, minimum: int | None = None, maximum: int | None = None) -> int | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        parsed = int(value)
+    elif isinstance(value, str) and value.strip():
+        try:
+            parsed = int(value.strip())
+        except ValueError:
+            return None
+    else:
+        return None
+    if minimum is not None and parsed < minimum:
+        return None
+    if maximum is not None and parsed > maximum:
+        return None
+    return parsed
+
+
+def normalize_equipment_item(entry: dict | None) -> dict:
+    source = entry if isinstance(entry, dict) else {}
+    return {
+        "id": clean_profile_text(source.get("id") or source.get("equipment_id")),
+        "type": clean_profile_text(source.get("type")),
+        "year_bought": clean_optional_int(source.get("year_bought"), minimum=1900, maximum=2200),
+        "vendor": clean_profile_text(source.get("vendor")),
+        "brand": clean_profile_text(source.get("brand")),
+        "warranty": clean_profile_text(source.get("warranty") or source.get("waranty")),
+        "next_service_due": clean_profile_text(source.get("next_service_due")),
+        "max_dives_before_service": clean_optional_int(source.get("max_dives_before_service"), minimum=1),
+        "is_standard": clean_profile_bool(source.get("is_standard")),
+        "last_serviced_at": clean_profile_text(source.get("last_serviced_at")) or None,
+        "last_service_dive_count": clean_optional_int(source.get("last_service_dive_count"), minimum=0) or 0,
+    }
+
+
+def equipment_has_values(entry: dict | None) -> bool:
+    normalized = normalize_equipment_item(entry)
+    return any(
+        normalized.get(key)
+        for key in ("type", "vendor", "brand", "warranty", "next_service_due", "year_bought", "max_dives_before_service")
+    ) or normalized.get("is_standard")
+
+
+def normalize_equipment_items(entries: object) -> list[dict]:
+    if not isinstance(entries, list):
+        return []
+    normalized: list[dict] = []
+    seen_ids: set[str] = set()
+    next_fallback = 1
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        normalized_entry = normalize_equipment_item(entry)
+        if not equipment_has_values(normalized_entry):
+            continue
+        equipment_id = normalized_entry["id"] or f"equipment-{next_fallback}"
+        next_fallback += 1
+        base_id = equipment_id
+        dedupe_suffix = 1
+        while equipment_id in seen_ids:
+            dedupe_suffix += 1
+            equipment_id = f"{base_id}-{dedupe_suffix}"
+        normalized_entry["id"] = equipment_id
+        seen_ids.add(equipment_id)
+        normalized.append(normalized_entry)
+    return normalized
 
 
 def normalize_public_slug(value: object) -> str:
@@ -1575,6 +1685,139 @@ def get_dive_id_by_uid(conn: psycopg.Connection, user_id: str, dive_uid: str) ->
         cur.execute("SELECT id FROM dives WHERE user_id=%s AND dive_uid=%s", (user_id, dive_uid))
         row = cur.fetchone()
     return row["id"] if row else None
+
+
+def count_committed_dives(conn: psycopg.Connection, user_id: str) -> int:
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT COUNT(*) AS count
+            FROM dives
+            WHERE user_id=%s AND fields_json->'logbook'->>'status' = 'complete'
+            """,
+            (user_id,),
+        )
+        row = cur.fetchone()
+    return int((row or {}).get("count") or 0)
+
+
+def equipment_service_summary(item: dict, committed_dive_count: int) -> dict:
+    max_dives = item.get("max_dives_before_service")
+    baseline = int(item.get("last_service_dive_count") or 0)
+    dives_since_service = max(committed_dive_count - baseline, 0) if item.get("is_standard") else 0
+    dives_remaining = max(max_dives - dives_since_service, 0) if isinstance(max_dives, int) else None
+    dive_due = isinstance(max_dives, int) and dives_since_service >= max_dives
+    date_due = False
+    next_service_due = clean_profile_text(item.get("next_service_due"))
+    if next_service_due:
+        try:
+            date_due = datetime.fromisoformat(next_service_due).date() <= datetime.now(timezone.utc).date()
+        except ValueError:
+            date_due = False
+    return {
+        "dives_since_service": dives_since_service,
+        "dives_remaining_before_service": dives_remaining,
+        "service_due": bool(dive_due or date_due),
+        "service_due_reason": "dives" if dive_due else "date" if date_due else "",
+    }
+
+
+def list_user_equipment(conn: psycopg.Connection, user_id: str) -> list[dict]:
+    committed_dive_count = count_committed_dives(conn, user_id)
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT equipment_id, type, year_bought, vendor, brand, warranty, next_service_due,
+                   max_dives_before_service, is_standard, last_serviced_at, last_service_dive_count, updated_at
+            FROM user_equipment
+            WHERE user_id=%s
+            ORDER BY is_standard DESC, LOWER(COALESCE(type, '')) ASC, LOWER(COALESCE(brand, '')) ASC, equipment_id ASC
+            """,
+            (user_id,),
+        )
+        rows = cur.fetchall()
+
+    equipment = normalize_equipment_items(
+        [
+            {
+                "id": row.get("equipment_id"),
+                "type": row.get("type"),
+                "year_bought": row.get("year_bought"),
+                "vendor": row.get("vendor"),
+                "brand": row.get("brand"),
+                "warranty": row.get("warranty"),
+                "next_service_due": row.get("next_service_due"),
+                "max_dives_before_service": row.get("max_dives_before_service"),
+                "is_standard": row.get("is_standard"),
+                "last_serviced_at": row.get("last_serviced_at"),
+                "last_service_dive_count": row.get("last_service_dive_count"),
+                "updated_at": row.get("updated_at"),
+            }
+            for row in rows
+        ]
+    )
+    return [
+        {
+            **item,
+            "updated_at": next((row.get("updated_at") for row in rows if row.get("equipment_id") == item["id"]), None),
+            **equipment_service_summary(item, committed_dive_count),
+        }
+        for item in equipment
+    ]
+
+
+def save_user_equipment(conn: psycopg.Connection, user_id: str, entries: object) -> list[dict]:
+    equipment = normalize_equipment_items(entries)
+    updated_at = now_iso()
+    with conn.cursor() as cur:
+        cur.execute("DELETE FROM user_equipment WHERE user_id=%s", (user_id,))
+        for item in equipment:
+            cur.execute(
+                """
+                INSERT INTO user_equipment(
+                    user_id, equipment_id, type, year_bought, vendor, brand, warranty, next_service_due,
+                    max_dives_before_service, is_standard, last_serviced_at, last_service_dive_count, updated_at
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """,
+                (
+                    user_id,
+                    item["id"],
+                    item["type"],
+                    item["year_bought"],
+                    item["vendor"],
+                    item["brand"],
+                    item["warranty"],
+                    item["next_service_due"],
+                    item["max_dives_before_service"],
+                    item["is_standard"],
+                    item["last_serviced_at"],
+                    item["last_service_dive_count"],
+                    updated_at,
+                ),
+            )
+    conn.commit()
+    return list_user_equipment(conn, user_id)
+
+
+def mark_equipment_serviced(conn: psycopg.Connection, user_id: str, equipment_id: str) -> dict | None:
+    serviced_at = now_iso()
+    dive_count = count_committed_dives(conn, user_id)
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            UPDATE user_equipment
+            SET last_serviced_at=%s, last_service_dive_count=%s, updated_at=%s
+            WHERE user_id=%s AND equipment_id=%s
+            RETURNING equipment_id
+            """,
+            (serviced_at, dive_count, serviced_at, user_id, equipment_id),
+        )
+        row = cur.fetchone()
+    conn.commit()
+    if not row:
+        return None
+    return next((item for item in list_user_equipment(conn, user_id) if item.get("id") == equipment_id), None)
 
 
 def save_device_state(conn: psycopg.Connection, user_id: str, vendor: str, product: str, fingerprint_hex: str | None) -> None:
