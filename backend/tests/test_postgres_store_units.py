@@ -42,6 +42,8 @@ def test_decode_dive_row_includes_requested_fields_and_decodes_json_strings():
             "visibility": "",
             "wetsuit_description": "",
             "notes": "",
+            "equipment_ids": [],
+            "equipment_snapshot": [],
             "status": "imported",
         },
     }
@@ -187,6 +189,8 @@ def test_sanitize_logbook_payload_marks_complete_when_required_fields_present(mo
         "visibility": "18m",
         "wetsuit_description": "5mm full suit",
         "notes": "Calm water",
+        "equipment_ids": [],
+        "equipment_snapshot": [],
         "updated_at": "2026-03-24T12:00:00+00:00",
         "status": "complete",
         "completed_at": "2026-03-24T12:05:00+00:00",
