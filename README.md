@@ -131,6 +131,7 @@ Screenshots above were generated from the local mocked development environment s
 - Separates imported drafts from committed dives so incomplete records do not pollute the main logbook
 - Tracks device sync state for importer workflows
 - Supports browser approval for desktop sync requests
+- Optionally exposes Prometheus metrics at `/metrics`
 - Serves a Vue frontend for dashboarding, imports, log review, settings, and public profile views
 - Supports Docker-first local and deployment workflows
 
@@ -143,6 +144,7 @@ Screenshots above were generated from the local mocked development environment s
 - Saved dive sites, buddies, guides, and certification records
 - Public profile / public dive log sharing
 - Backup and restore flows
+- Optional Prometheus-scrapable backend monitoring endpoint
 - Backend schema migration entrypoint for multi-container or Kubernetes deployments
 - UI localization support with English, German, and French bundles
 
@@ -162,6 +164,7 @@ Screenshots above were generated from the local mocked development environment s
 - Device sync checkpoint storage
 - Schema initialization and migrations
 - Public profile and backup APIs
+- Health checks at `/health` and `/api/health`; enable `/metrics` with `METRICS_ENABLED=enabled` or `--metrics enabled`
 
 ### Frontend Responsibilities
 

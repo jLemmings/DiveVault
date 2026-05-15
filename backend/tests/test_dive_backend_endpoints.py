@@ -636,6 +636,9 @@ def server_fixture(monkeypatch):
         server.database_url = "postgresql://unused"
         server.database_ready = True
         server.database_ready_error = ""
+        server.database_schema_version = dive_backend.CURRENT_SCHEMA_VERSION
+        server.metrics_enabled = False
+        server.metrics = None
         server.auth_verifier = FakeVerifier()
         server.cors_origin = "http://localhost:5173"
         server.max_json_body_bytes = 1024 * 1024
@@ -692,6 +695,9 @@ def test_get_and_options_routes(server_fixture):
     assert api_health.status == 200
     assert api_health.json() == {"status": "ok"}
 
+    metrics_disabled = request(server, "GET", "/metrics")
+    assert metrics_disabled.status == 404
+
     config = request(server, "GET", "/config.js")
     assert config.status == 200
     assert '"authEnabled": true' in config.body.decode("utf-8")
@@ -711,6 +717,25 @@ def test_get_and_options_routes(server_fixture):
     assert preflight.headers["Access-Control-Allow-Origin"] == "http://localhost:5173"
     assert preflight.headers["X-Content-Type-Options"] == "nosniff"
     assert preflight.headers["X-Frame-Options"] == "DENY"
+
+
+def test_metrics_endpoint_is_prometheus_scrapable_when_enabled(server_fixture):
+    server = server_fixture
+    server.metrics_enabled = True
+    server.metrics = dive_backend.PrometheusMetrics(started_at=1_700_000_000)
+
+    health = request(server, "GET", "/api/health")
+    assert health.status == 200
+
+    metrics = request(server, "GET", "/metrics")
+    assert metrics.status == 200
+    assert metrics.headers["Content-Type"].startswith("text/plain")
+    body = metrics.body.decode("utf-8")
+    assert "# HELP divevault_up" in body
+    assert "divevault_up 1" in body
+    assert "divevault_database_ready 1" in body
+    assert f"divevault_schema_version {dive_backend.CURRENT_SCHEMA_VERSION}" in body
+    assert 'divevault_http_requests_total{method="GET",route="/api/health",status_class="2xx"} 1' in body
 
 
 def test_authenticated_get_endpoints(server_fixture):
@@ -1417,6 +1442,7 @@ def test_route_manifest_requires_test_updates_for_new_endpoints():
 
     expected_routes = {
         "/health",
+        "/metrics",
         "/api/health",
         "/config.js",
         "/api/auth/invitations",
