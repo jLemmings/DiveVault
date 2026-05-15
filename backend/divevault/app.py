@@ -133,6 +133,15 @@ class FixedWindowRateLimiter:
 
 
 class PrometheusMetrics:
+    ROUTE_LABEL_PATTERNS = (
+        (re.compile(r"/api/dives/\d+"), "/api/dives/{id}"),
+        (re.compile(r"/api/dives/\d+/logbook"), "/api/dives/{id}/logbook"),
+        (re.compile(r"/api/equipment/[A-Za-z0-9_-]+/service"), "/api/equipment/{id}/service"),
+        (re.compile(r"/api/profile/licenses/[A-Za-z0-9_-]+/pdf"), "/api/profile/licenses/{id}/pdf"),
+        (re.compile(r"/api/public/divers/[a-z0-9-]+"), "/api/public/divers/{slug}"),
+        (re.compile(r"/api/users/user_[A-Za-z0-9]+"), "/api/users/{id}"),
+    )
+
     def __init__(self, *, started_at: float | None = None) -> None:
         self.started_at = float(started_at if started_at is not None else time.time())
         self._lock = threading.Lock()
@@ -168,18 +177,9 @@ class PrometheusMetrics:
             "/api/geocode/search",
         }:
             return path
-        if re.fullmatch(r"/api/dives/\d+", path):
-            return "/api/dives/{id}"
-        if re.fullmatch(r"/api/dives/\d+/logbook", path):
-            return "/api/dives/{id}/logbook"
-        if re.fullmatch(r"/api/equipment/[A-Za-z0-9_-]+/service", path):
-            return "/api/equipment/{id}/service"
-        if re.fullmatch(r"/api/profile/licenses/[A-Za-z0-9_-]+/pdf", path):
-            return "/api/profile/licenses/{id}/pdf"
-        if re.fullmatch(r"/api/public/divers/[a-z0-9-]+", path):
-            return "/api/public/divers/{slug}"
-        if re.fullmatch(r"/api/users/user_[A-Za-z0-9]+", path):
-            return "/api/users/{id}"
+        for pattern, label in PrometheusMetrics.ROUTE_LABEL_PATTERNS:
+            if pattern.fullmatch(path):
+                return label
         if path.startswith("/api/"):
             return "/api/*"
         return "frontend"
