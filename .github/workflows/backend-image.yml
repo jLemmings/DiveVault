@@ -11,6 +11,7 @@ on:
 env:
   REGISTRY: ghcr.io
   SOURCE_ARTIFACT_NAME: repo-source
+  RELEASE_SOURCE_ARTIFACT_NAME: release-source
   IMAGE_ARTIFACT_NAME: docker-image
   LOCAL_IMAGE_TAG: divevault-ci:${{ github.sha }}
 
@@ -19,75 +20,12 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-    outputs:
-      base_version: ${{ steps.version.outputs.base_version }}
-      publish_version_tags: ${{ steps.version.outputs.publish_version_tags }}
-      version_tag: ${{ steps.version.outputs.version_tag }}
-      image_repository: ${{ steps.version.outputs.image_repository }}
-      tags: ${{ steps.version.outputs.tags }}
 
     steps:
       - name: Checkout
         uses: actions/checkout@v6
         with:
           fetch-depth: 0
-
-      - name: Resolve release version and tags
-        id: version
-        env:
-          IMAGE_REPOSITORY: ${{ format('{0}/{1}/{2}', env.REGISTRY, github.repository_owner, github.event.repository.name) }}
-        run: |
-          set -euo pipefail
-
-          PACKAGE_FILE="frontend/package.json"
-          if [[ ! -f "${PACKAGE_FILE}" ]]; then
-            echo "Missing ${PACKAGE_FILE} file." >&2
-            exit 1
-          fi
-
-          BASE_VERSION="$(
-            python -c 'import json, pathlib; print(json.loads(pathlib.Path("frontend/package.json").read_text(encoding="utf-8"))["version"].strip())'
-          )"
-          if [[ -z "${BASE_VERSION}" ]]; then
-            echo "${PACKAGE_FILE} must contain a version." >&2
-            exit 1
-          fi
-
-          if [[ ! "${BASE_VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
-            echo "Invalid version '${BASE_VERSION}' in ${PACKAGE_FILE}. Use semver such as 0.1.0 or 0.2.0-beta1." >&2
-            exit 1
-          fi
-
-          IMAGE_REPOSITORY="$(echo "${IMAGE_REPOSITORY}" | tr '[:upper:]' '[:lower:]')"
-          RELEASE_TAG="v${BASE_VERSION}"
-          VERSION_TAG="v${BASE_VERSION}-${GITHUB_SHA::7}"
-          PUBLISH_VERSION_TAGS="false"
-          IMAGE_TAGS=(
-            "${IMAGE_REPOSITORY}:${VERSION_TAG}"
-          )
-
-          if [[ "${GITHUB_EVENT_NAME}" != "pull_request" && "${GITHUB_REF}" == "refs/heads/master" ]]; then
-            PUBLISH_VERSION_TAGS="true"
-          fi
-
-          if [[ "${PUBLISH_VERSION_TAGS}" == "true" ]]; then
-            VERSION_TAG="${RELEASE_TAG}"
-            IMAGE_TAGS=(
-              "${IMAGE_REPOSITORY}:${VERSION_TAG}"
-              "${IMAGE_REPOSITORY}:stable"
-              "${IMAGE_REPOSITORY}:latest"
-            )
-          fi
-
-          {
-            echo "base_version=${BASE_VERSION}"
-            echo "publish_version_tags=${PUBLISH_VERSION_TAGS}"
-            echo "version_tag=${VERSION_TAG}"
-            echo "image_repository=${IMAGE_REPOSITORY}"
-            echo "tags<<EOF"
-            printf '%s\n' "${IMAGE_TAGS[@]}"
-            echo "EOF"
-          } >> "${GITHUB_OUTPUT}"
 
       - name: Package source artifact
         run: |
@@ -181,18 +119,156 @@ jobs:
           PYTHONPATH: ${{ github.workspace }}/backend
         run: python -m pytest -vv -ra backend/tests
 
-  build-image:
+  prepare-release:
     runs-on: ubuntu-latest
     needs:
       - fetch-artifacts
       - test-frontend
       - test-backend
+    permissions:
+      contents: write
+    outputs:
+      base_version: ${{ steps.version.outputs.base_version }}
+      publish_version_tags: ${{ steps.version.outputs.publish_version_tags }}
+      version_tag: ${{ steps.version.outputs.version_tag }}
+      image_repository: ${{ steps.version.outputs.image_repository }}
+      tags: ${{ steps.version.outputs.tags }}
+      source_sha: ${{ steps.version.outputs.source_sha }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/master'
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24.15.0"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Bump frontend version
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/master'
+        working-directory: frontend
+        run: npm version patch --no-git-tag-version
+
+      - name: Commit bumped version
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/master'
+        run: |
+          set -euo pipefail
+
+          BUMPED_VERSION="$(
+            python -c 'import json, pathlib; print(json.loads(pathlib.Path("frontend/package.json").read_text(encoding="utf-8"))["version"].strip())'
+          )"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add frontend/package.json frontend/package-lock.json
+
+          if git diff --cached --quiet; then
+            echo "No version changes were produced." >&2
+            exit 1
+          fi
+
+          git fetch --tags --force
+          if git rev-parse -q --verify "refs/tags/v${BUMPED_VERSION}" >/dev/null; then
+            echo "Release tag v${BUMPED_VERSION} already exists. Bump the package version manually and rerun." >&2
+            exit 1
+          fi
+
+          git commit -m "chore: bump version to v${BUMPED_VERSION} [skip ci]"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
+
+      - name: Resolve release version and tags
+        id: version
+        env:
+          IMAGE_REPOSITORY: ${{ format('{0}/{1}/{2}', env.REGISTRY, github.repository_owner, github.event.repository.name) }}
+        run: |
+          set -euo pipefail
+
+          PACKAGE_FILE="frontend/package.json"
+          if [[ ! -f "${PACKAGE_FILE}" ]]; then
+            echo "Missing ${PACKAGE_FILE} file." >&2
+            exit 1
+          fi
+
+          BASE_VERSION="$(
+            python -c 'import json, pathlib; print(json.loads(pathlib.Path("frontend/package.json").read_text(encoding="utf-8"))["version"].strip())'
+          )"
+          if [[ -z "${BASE_VERSION}" ]]; then
+            echo "${PACKAGE_FILE} must contain a version." >&2
+            exit 1
+          fi
+
+          if [[ ! "${BASE_VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
+            echo "Invalid version '${BASE_VERSION}' in ${PACKAGE_FILE}. Use semver such as 0.1.0 or 0.2.0-beta1." >&2
+            exit 1
+          fi
+
+          IMAGE_REPOSITORY="$(echo "${IMAGE_REPOSITORY}" | tr '[:upper:]' '[:lower:]')"
+          SOURCE_SHA="$(git rev-parse HEAD)"
+          RELEASE_TAG="v${BASE_VERSION}"
+          VERSION_TAG="v${BASE_VERSION}-${SOURCE_SHA::7}"
+          PUBLISH_VERSION_TAGS="false"
+          IMAGE_TAGS=(
+            "${IMAGE_REPOSITORY}:${VERSION_TAG}"
+          )
+
+          if [[ "${GITHUB_EVENT_NAME}" != "pull_request" && "${GITHUB_REF}" == "refs/heads/master" ]]; then
+            PUBLISH_VERSION_TAGS="true"
+          fi
+
+          if [[ "${PUBLISH_VERSION_TAGS}" == "true" ]]; then
+            VERSION_TAG="${RELEASE_TAG}"
+            IMAGE_TAGS=(
+              "${IMAGE_REPOSITORY}:${VERSION_TAG}"
+              "${IMAGE_REPOSITORY}:stable"
+              "${IMAGE_REPOSITORY}:latest"
+            )
+          fi
+
+          {
+            echo "base_version=${BASE_VERSION}"
+            echo "publish_version_tags=${PUBLISH_VERSION_TAGS}"
+            echo "version_tag=${VERSION_TAG}"
+            echo "image_repository=${IMAGE_REPOSITORY}"
+            echo "source_sha=${SOURCE_SHA}"
+            echo "tags<<EOF"
+            printf '%s\n' "${IMAGE_TAGS[@]}"
+            echo "EOF"
+          } >> "${GITHUB_OUTPUT}"
+
+      - name: Package release source artifact
+        run: |
+          set -euo pipefail
+          tar \
+            --exclude='.git' \
+            --exclude='.venv' \
+            --exclude='.pytest_cache' \
+            --exclude='frontend/node_modules' \
+            --exclude='frontend/dist' \
+            --exclude='frontend/playwright-report' \
+            --exclude='frontend/test-results' \
+            -czf "${RUNNER_TEMP}/repo-source.tar.gz" .
+
+      - name: Upload release source artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ env.RELEASE_SOURCE_ARTIFACT_NAME }}
+          path: ${{ runner.temp }}/repo-source.tar.gz
+          if-no-files-found: error
+
+  build-image:
+    runs-on: ubuntu-latest
+    needs:
+      - prepare-release
 
     steps:
       - name: Download source artifact
         uses: actions/download-artifact@v8
         with:
-          name: ${{ env.SOURCE_ARTIFACT_NAME }}
+          name: ${{ env.RELEASE_SOURCE_ARTIFACT_NAME }}
           path: ${{ runner.temp }}/artifacts
 
       - name: Extract source artifact
@@ -201,7 +277,7 @@ jobs:
           tar -xzf "${RUNNER_TEMP}/artifacts/repo-source.tar.gz" -C "${GITHUB_WORKSPACE}"
 
       - name: Set up Node
-        if: needs.fetch-artifacts.outputs.publish_version_tags == 'true'
+        if: needs.prepare-release.outputs.publish_version_tags == 'true'
         uses: actions/setup-node@v6
         with:
           node-version: "24.15.0"
@@ -209,12 +285,12 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
 
       - name: Install frontend dependencies
-        if: needs.fetch-artifacts.outputs.publish_version_tags == 'true'
+        if: needs.prepare-release.outputs.publish_version_tags == 'true'
         working-directory: frontend
         run: npm ci
 
       - name: Build frontend release assets
-        if: needs.fetch-artifacts.outputs.publish_version_tags == 'true'
+        if: needs.prepare-release.outputs.publish_version_tags == 'true'
         working-directory: frontend
         run: npm run build:app
 
@@ -232,8 +308,8 @@ jobs:
           outputs: type=docker,dest=${{ runner.temp }}/divevault-image.tar
           labels: |
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
-            org.opencontainers.image.revision=${{ github.sha }}
-            org.opencontainers.image.version=${{ needs.fetch-artifacts.outputs.version_tag }}
+            org.opencontainers.image.revision=${{ needs.prepare-release.outputs.source_sha }}
+            org.opencontainers.image.version=${{ needs.prepare-release.outputs.version_tag }}
 
       - name: Upload Docker image artifact
         uses: actions/upload-artifact@v7
@@ -245,7 +321,7 @@ jobs:
   publish:
     runs-on: ubuntu-latest
     needs:
-      - fetch-artifacts
+      - prepare-release
       - build-image
     if: github.event_name != 'pull_request'
     permissions:
@@ -276,7 +352,7 @@ jobs:
 
       - name: Publish Docker image tags
         env:
-          TAGS: ${{ needs.fetch-artifacts.outputs.tags }}
+          TAGS: ${{ needs.prepare-release.outputs.tags }}
         run: |
           set -euo pipefail
           while IFS= read -r tag; do
@@ -290,9 +366,9 @@ jobs:
   release:
     runs-on: ubuntu-latest
     needs:
-      - fetch-artifacts
+      - prepare-release
       - publish
-    if: needs.fetch-artifacts.outputs.publish_version_tags == 'true'
+    if: needs.prepare-release.outputs.publish_version_tags == 'true'
     permissions:
       contents: write
 
@@ -300,14 +376,15 @@ jobs:
       - name: Download source artifact
         uses: actions/download-artifact@v8
         with:
-          name: ${{ env.SOURCE_ARTIFACT_NAME }}
+          name: ${{ env.RELEASE_SOURCE_ARTIFACT_NAME }}
           path: ${{ runner.temp }}/artifacts
 
       - name: Publish GitHub release
         uses: softprops/action-gh-release@v3
         with:
-          tag_name: ${{ needs.fetch-artifacts.outputs.version_tag }}
-          name: ${{ needs.fetch-artifacts.outputs.version_tag }}
+          tag_name: ${{ needs.prepare-release.outputs.version_tag }}
+          name: ${{ needs.prepare-release.outputs.version_tag }}
+          target_commitish: ${{ needs.prepare-release.outputs.source_sha }}
           generate_release_notes: true
           make_latest: true
           files: ${{ runner.temp }}/artifacts/repo-source.tar.gz
