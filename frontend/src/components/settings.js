@@ -5,6 +5,11 @@ import { MESSAGES, getTranslationCredits } from "../i18n/index.js";
 
 const MAX_LICENSE_BYTES = 10 * 1024 * 1024;
 const PDF_PREVIEW_SCALE = 1.35;
+const THEME_OPTIONS = [
+  { value: "system", label: "System Default", icon: "desktop_windows" },
+  { value: "light", label: "Light", icon: "light_mode" },
+  { value: "dark", label: "Dark", icon: "dark_mode" }
+];
 
 GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
 
@@ -424,6 +429,18 @@ export default {
     setLocale: {
       type: Function,
       default: null
+    },
+    themePreference: {
+      type: String,
+      default: "system"
+    },
+    resolvedTheme: {
+      type: String,
+      default: "dark"
+    },
+    setThemePreference: {
+      type: Function,
+      default: null
     }
   },
   setup() {
@@ -443,6 +460,7 @@ export default {
         email: ""
       },
       selectedLocale: this.currentLocale || "en",
+      selectedThemePreference: this.themePreference || "system",
       publicSharingDraft: {
         public_dives_enabled: false
       },
@@ -647,6 +665,13 @@ export default {
     selectedLanguageCredit() {
       return this.availableLanguages.find((language) => language.value === this.selectedLocale)?.credit || "";
     },
+    availableThemeOptions() {
+      return THEME_OPTIONS;
+    },
+    selectedThemeLabel() {
+      const label = this.availableThemeOptions.find((theme) => theme.value === this.selectedThemePreference)?.label || "System Default";
+      return this.t(label, label);
+    },
     settingsSections() {
       return SETTINGS_SECTIONS.filter((section) => section.id !== "manage-users" || this.canManageUsers);
     },
@@ -718,6 +743,12 @@ export default {
       },
       immediate: true
     },
+    themePreference: {
+      handler(value) {
+        this.selectedThemePreference = value || "system";
+      },
+      immediate: true
+    },
     profileStatus(value) {
       this.clearProfileStatusTimer();
       if (!value) {
@@ -778,6 +809,13 @@ export default {
       const languageLabel = this.availableLanguages.find((language) => language.value === this.selectedLocale)?.label || this.selectedLocale;
       this.profileError = "";
       this.profileStatus = `Language set to ${languageLabel}.`;
+    },
+    changeThemePreference() {
+      if (typeof this.setThemePreference === "function") {
+        this.setThemePreference(this.selectedThemePreference);
+      }
+      this.profileError = "";
+      this.profileStatus = this.t("Theme set to {theme}.", "Theme set to {theme}.", { theme: this.selectedThemeLabel });
     },
     syncAuthenticationDefaults() {
       if (!this.settingsProfile.name && this.currentUserName) {
@@ -2316,6 +2354,36 @@ export default {
                   <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Translation Credit</p>
                   <p class="mt-2 text-sm leading-6 text-on-surface">{{ selectedLanguageCredit || 'Unavailable' }}</p>
                 </div>
+              </div>
+            </div>
+
+            <div class="mb-8 rounded-2xl border border-primary/15 bg-surface-container-low p-6">
+              <div class="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
+                <div class="max-w-3xl">
+                  <p class="font-label text-[10px] font-bold uppercase tracking-[0.24em] text-primary">Interface Theme</p>
+                  <h4 class="mt-2 font-headline text-3xl font-bold tracking-tight text-on-surface">Appearance</h4>
+                  <p class="mt-3 text-sm leading-7 text-secondary">Use the system theme by default, or keep DiveVault fixed in light or dark mode on this device.</p>
+                </div>
+                <div class="settings-chip is-accent">
+                  {{ resolvedTheme.toUpperCase() }}
+                </div>
+              </div>
+
+              <div class="mt-6 grid gap-3 md:grid-cols-3">
+                <button
+                  v-for="theme in availableThemeOptions"
+                  :key="'settings-theme-' + theme.value"
+                  type="button"
+                  @click="selectedThemePreference = theme.value; changeThemePreference()"
+                  class="flex items-center gap-3 rounded-2xl border px-4 py-4 text-left transition-colors"
+                  :class="selectedThemePreference === theme.value ? 'border-primary/35 bg-primary/10 text-primary' : 'border-primary/10 bg-background/20 text-secondary hover:border-primary/25 hover:text-primary'"
+                >
+                  <span class="material-symbols-outlined text-xl">{{ theme.icon }}</span>
+                  <span>
+                    <span class="block font-label text-[10px] font-bold uppercase tracking-[0.18em]">{{ t(theme.label, theme.label) }}</span>
+                    <span v-if="theme.value === 'system'" class="mt-1 block text-xs opacity-80">{{ t('Currently', 'Currently') }} {{ t(resolvedTheme === 'light' ? 'Light' : 'Dark', resolvedTheme) }}</span>
+                  </span>
+                </button>
               </div>
             </div>
 

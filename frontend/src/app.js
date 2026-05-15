@@ -17,6 +17,8 @@ const DEFAULT_SETTINGS_SECTION = SETTINGS_SECTIONS[0]?.id || "diver-details";
 const SETTINGS_SECTION_IDS = new Set(SETTINGS_SECTIONS.map((section) => section.id));
 const LOCALE_STORAGE_KEY = "divevault.preferredLocale";
 const SUPPORTED_LOCALES = new Set(Object.keys(MESSAGES));
+const THEME_STORAGE_KEY = "divevault.preferredTheme";
+const SUPPORTED_THEMES = new Set(["system", "light", "dark"]);
 
 function normalizeLocale(locale) {
   const normalized = typeof locale === "string" ? locale.trim().slice(0, 2).toLowerCase() : "";
@@ -36,6 +38,38 @@ function getStoredLocale() {
 function getBrowserLocale() {
   if (typeof navigator === "undefined") return "en";
   return normalizeLocale(navigator.language);
+}
+
+function normalizeThemePreference(theme) {
+  const normalized = typeof theme === "string" ? theme.trim().toLowerCase() : "";
+  return SUPPORTED_THEMES.has(normalized) ? normalized : "system";
+}
+
+function getStoredThemePreference() {
+  if (typeof window === "undefined") return "system";
+  try {
+    return normalizeThemePreference(window.localStorage.getItem(THEME_STORAGE_KEY) || "system");
+  } catch (_error) {
+    return "system";
+  }
+}
+
+function systemTheme() {
+  if (typeof window === "undefined" || typeof window.matchMedia !== "function") return "dark";
+  return window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+}
+
+function resolveThemePreference(themePreference) {
+  return normalizeThemePreference(themePreference) === "system" ? systemTheme() : normalizeThemePreference(themePreference);
+}
+
+function applyDocumentTheme(themePreference) {
+  if (typeof document === "undefined") return resolveThemePreference(themePreference);
+  const normalizedPreference = normalizeThemePreference(themePreference);
+  const resolvedTheme = resolveThemePreference(normalizedPreference);
+  document.documentElement.dataset.themePreference = normalizedPreference;
+  document.documentElement.dataset.theme = resolvedTheme;
+  return resolvedTheme;
 }
 
 function createManualDiveDraft() {
@@ -154,7 +188,10 @@ export default {
         { id: "equipment", label: "Equipment", mobileLabel: "Gear", icon: "scuba_diving", mobileIcon: "scuba_diving", eyebrow: "Gear Locker", title: "Equipment" },
         { id: "settings", label: "Settings", mobileLabel: "Settings", icon: "settings", mobileIcon: "settings", eyebrow: "System Configuration", title: "System Config" }
       ],
-      i18nLocale: getStoredLocale() || "en"
+      i18nLocale: getStoredLocale() || "en",
+      themePreference: getStoredThemePreference(),
+      resolvedTheme: applyDocumentTheme(getStoredThemePreference()),
+      themeMediaQuery: null
     };
   },
   watch: {
@@ -300,6 +337,22 @@ export default {
           // Ignore storage failures and keep the active locale in memory.
         }
       }
+    },
+    setThemePreference(themePreference) {
+      const normalizedTheme = normalizeThemePreference(themePreference);
+      this.themePreference = normalizedTheme;
+      this.resolvedTheme = applyDocumentTheme(normalizedTheme);
+      if (typeof window !== "undefined") {
+        try {
+          window.localStorage.setItem(THEME_STORAGE_KEY, normalizedTheme);
+        } catch (_error) {
+          // Ignore storage failures and keep the active theme in memory.
+        }
+      }
+    },
+    syncSystemTheme() {
+      if (this.themePreference !== "system") return;
+      this.resolvedTheme = applyDocumentTheme(this.themePreference);
     },
     syncRouteMode() {
       this.publicRouteSlug = typeof window !== "undefined"
@@ -1345,12 +1398,26 @@ export default {
     window.addEventListener("hashchange", this.handleBrowserNavigation);
     window.addEventListener("popstate", this.handleBrowserNavigation);
     this.setLocale(getStoredLocale() || getBrowserLocale());
+    this.setThemePreference(getStoredThemePreference());
+    if (typeof window.matchMedia === "function") {
+      this.themeMediaQuery = window.matchMedia("(prefers-color-scheme: light)");
+      if (typeof this.themeMediaQuery.addEventListener === "function") {
+        this.themeMediaQuery.addEventListener("change", this.syncSystemTheme);
+      } else {
+        this.themeMediaQuery.addListener?.(this.syncSystemTheme);
+      }
+    }
     this.syncRouteMode();
     this.syncAuthState();
   },
   beforeUnmount() {
     window.removeEventListener("hashchange", this.handleBrowserNavigation);
     window.removeEventListener("popstate", this.handleBrowserNavigation);
+    if (typeof this.themeMediaQuery?.removeEventListener === "function") {
+      this.themeMediaQuery.removeEventListener("change", this.syncSystemTheme);
+    } else {
+      this.themeMediaQuery?.removeListener?.(this.syncSystemTheme);
+    }
   },
   template: `
     <public-profile-view v-if="isPublicRoute" :slug="publicRouteSlug"></public-profile-view>
@@ -1555,7 +1622,7 @@ export default {
           <logbook-editor-view v-else-if="activeView === 'edit' && selectedEditDive" :dive="selectedEditDive" :all-dives="dives" :draft="selectedEditDraft" :dive-sites="profileDiveSites" :buddies="profileBuddies" :guides="profileGuides" :saving-import-id="savingImportId" :deleting-dive-id="deletingDiveId" :status-message="importStatusMessage" :error-message="importError" :update-dive-draft="updateImportDraft" :save-dive-logbook="saveExistingDiveLogbook" :delete-dive="deleteDive" :create-dive-site="createDiveSite" :close-editor="closeDiveEditor"></logbook-editor-view>
           <dive-detail-view v-else-if="activeView === 'logs' && selectedDive" :dive="selectedDive" :all-dives="dives" :deleting-dive-id="deletingDiveId" :close-detail="closeDiveDetail" :open-dive-editor="openDiveEditor" :delete-dive="deleteDive"></dive-detail-view>
           <equipment-view v-else-if="activeView === 'equipment'" :equipment="equipment" :search-text="searchText" :saving="equipmentSaving" :servicing-id="equipmentServicingId" :status-message="equipmentStatusMessage" :error-message="equipmentError" :save-equipment="saveEquipment" :mark-serviced="markEquipmentServiced"></equipment-view>
-          <settings-view v-else-if="activeView === 'settings'" :cli-auth-code="cliAuthCode" :active-section="activeSettingsSection" :set-active-section="setSettingsSection" :profile-updated="handleProfileUpdated" :refresh-dives="fetchDives" :current-locale="i18nLocale" :set-locale="setLocale"></settings-view>
+          <settings-view v-else-if="activeView === 'settings'" :cli-auth-code="cliAuthCode" :active-section="activeSettingsSection" :set-active-section="setSettingsSection" :profile-updated="handleProfileUpdated" :refresh-dives="fetchDives" :current-locale="i18nLocale" :set-locale="setLocale" :theme-preference="themePreference" :resolved-theme="resolvedTheme" :set-theme-preference="setThemePreference"></settings-view>
         </div>
       </main>
       <nav class="fixed bottom-0 left-0 right-0 z-40 flex items-center justify-around border-t border-primary/10 bg-surface-container-low/80 px-4 pb-6 pt-3 backdrop-blur-xl md:hidden">

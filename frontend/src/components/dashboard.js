@@ -613,7 +613,7 @@ export default {
           </div>
         </div>
 
-        <section v-if="hasImportedDives" class="rounded-xl border border-tertiary/30 bg-[linear-gradient(135deg,rgba(255,183,125,0.16),rgba(19,44,64,0.92))] p-4 shadow-panel">
+        <section v-if="hasImportedDives" class="rounded-xl border border-tertiary/30 bg-surface-container-low p-4 shadow-panel">
           <div class="flex items-start justify-between gap-3">
             <div>
               <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-tertiary">Import Queue</p>
@@ -673,7 +673,7 @@ export default {
             <h3 class="mt-2 font-headline text-5xl font-bold tracking-tight">Diver: <span class="text-primary">{{ dashboardUserName }}</span></h3>
           </div>
         </header>
-        <section v-if="hasImportedDives" class="border-l-4 border-tertiary bg-[linear-gradient(135deg,rgba(255,183,125,0.12),rgba(6,33,53,0.96))] p-6 shadow-panel">
+        <section v-if="hasImportedDives" class="border-l-4 border-tertiary bg-surface-container-low p-6 shadow-panel">
           <div class="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
             <div class="max-w-3xl">
               <p class="font-label text-[10px] font-bold uppercase tracking-[0.24em] text-tertiary">Attention Required</p>
@@ -798,7 +798,7 @@ export default {
         class="fixed inset-0 z-[500] flex items-center justify-center bg-background/88 px-6 py-8 backdrop-blur-sm"
         @click.self="closeMissingCoordinateDives()"
       >
-        <section class="max-h-full w-full max-w-6xl overflow-auto border border-tertiary/18 bg-[linear-gradient(180deg,rgba(19,44,64,0.98),rgba(6,29,45,0.98))] p-6 shadow-panel md:p-8">
+        <section class="max-h-full w-full max-w-6xl overflow-auto border border-tertiary/18 bg-surface-container-low p-6 shadow-panel md:p-8">
           <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div>
               <p class="font-label text-[10px] font-bold uppercase tracking-[0.22em] text-tertiary">Missing Coordinates</p>

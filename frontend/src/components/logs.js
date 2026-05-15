@@ -120,6 +120,9 @@ export default {
       const match = /(\d+)/.exec(label);
       return match ? Number(match[1]) : -1;
     },
+    pressureUsedTableLabel(dive) {
+      return pressureUsedLabel(dive).replace(/\s+used$/i, "");
+    },
     temperatureValue(dive) {
       return numberOrZero(surfaceTemperature(dive));
     },
@@ -282,7 +285,7 @@ export default {
                   </div>
                   <div class="flex flex-col">
                     <span class="font-label text-[9px] font-bold uppercase tracking-[0.14em] text-on-surface-variant/60">Bar Used</span>
-                    <span class="font-headline text-sm font-semibold text-tertiary">{{ pressureUsedLabel(dive) }}</span>
+                    <span class="font-headline text-sm font-semibold">{{ pressureUsedTableLabel(dive) }}</span>
                   </div>
                 </div>
               </div>
@@ -355,7 +358,7 @@ export default {
           </button>
         </div>
       </div>
-      <div class="overflow-hidden bg-surface-container-low shadow-panel">
+      <div class="data-table-view overflow-hidden bg-surface-container-low shadow-panel">
         <div class="hidden grid-cols-12 gap-4 bg-surface-container-high/50 px-8 py-4 font-label text-[11px] font-extrabold uppercase tracking-[0.2em] text-secondary md:grid">
           <button type="button" @click="toggleSort('id')" class="col-span-1 flex items-center gap-1 bg-transparent p-0 text-left transition-colors hover:text-primary" :class="sortHeaderClass('id')"><span>Dive ID</span><span class="material-symbols-outlined text-sm">{{ sortIndicator('id') }}</span></button>
           <button type="button" @click="toggleSort('date')" class="col-span-2 flex items-center gap-1 bg-transparent p-0 text-left transition-colors hover:text-primary" :class="sortHeaderClass('date')"><span>Date</span><span class="material-symbols-outlined text-sm">{{ sortIndicator('date') }}</span></button>
@@ -381,7 +384,7 @@ export default {
             <div class="md:col-span-2"><p class="text-sm font-extrabold">{{ diveComputerLabel(dive) }}</p><p class="text-xs text-on-surface-variant">{{ diveTitle(dive) }}</p></div>
             <div class="md:col-span-1 md:text-center"><p class="font-headline text-lg font-bold" :class="dive.max_depth_m > 40 ? 'text-tertiary' : 'text-on-surface'">{{ formatDepth(dive.max_depth_m) }}</p></div>
             <div class="md:col-span-1 md:text-center"><p class="font-headline text-sm font-medium">{{ formatDurationShort(dive.duration_seconds) }}</p></div>
-            <div class="md:col-span-1 md:text-center"><p class="text-sm font-bold text-tertiary">{{ pressureUsedLabel(dive) }}</p></div>
+            <div class="md:col-span-1 md:text-center"><p class="text-sm font-bold">{{ pressureUsedTableLabel(dive) }}</p></div>
             <div class="md:col-span-1 md:text-center"><p class="text-sm font-bold text-secondary">{{ formatTemperature(surfaceTemperature(dive)) }}</p></div>
           </article>
           <div v-if="pagedDives.length === 0" class="px-8 py-16 text-center">
