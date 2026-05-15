@@ -1429,12 +1429,12 @@ export default {
     <login-view v-else-if="!isAuthenticated"></login-view>
     <div v-else class="min-h-screen bg-background text-on-background">
       <aside class="fixed inset-y-0 left-0 z-40 hidden w-64 flex-col bg-background shadow-[40px_0_40px_-20px_rgba(0,15,29,0.4)] md:flex">
-        <div class="flex justify-center px-6 pb-4 pt-6">
-          <div class="flex h-28 w-28 items-center justify-center overflow-hidden rounded-3xl shadow-panel">
-            <img src="/logo.png" alt="DiveVault" class="h-full w-full object-cover" />
+        <div class="flex justify-center px-4 pb-2 pt-5">
+          <div class="flex h-32 w-full items-center justify-center rounded-3xl shadow-panel">
+            <img src="/logo-headline.png" alt="DiveVault" class="max-h-full w-full object-contain p-2" />
           </div>
         </div>
-        <nav class="mt-8 flex-1 space-y-2">
+        <nav class="mt-6 flex-1 space-y-2">
           <div v-for="item in navItems" :key="item.id" class="space-y-2">
             <button @click="handleNavItemClick(item.id)" :disabled="item.disabled" class="group flex w-full items-center gap-4 p-4 text-left transition-all duration-300 disabled:cursor-not-allowed disabled:opacity-100" :class="item.disabled ? 'border-l-4 border-tertiary bg-tertiary/12 text-tertiary' : ((activeView === item.id || (activeView === 'create' && item.id === 'logs')) ? 'border-r-4 border-primary bg-surface-container-high/70 text-primary' : 'text-secondary opacity-70 hover:bg-surface-container-high hover:text-primary hover:opacity-100')">
               <span class="material-symbols-outlined transition-transform group-active:scale-90" :style="(activeView === item.id || (activeView === 'create' && item.id === 'logs')) && !item.disabled ? filledIconStyle : ''">{{ item.icon }}</span>
@@ -1475,8 +1475,8 @@ export default {
       <header class="fixed left-0 right-0 top-0 z-30 h-16 border-b border-primary/10 bg-surface-container-high/95 backdrop-blur-xl md:left-64 md:bg-background/80">
         <div class="relative flex h-full items-center justify-between px-6 md:hidden">
           <div class="flex items-center gap-3">
-            <div class="flex h-14 w-14 items-center justify-center overflow-hidden rounded-2xl shadow-panel">
-              <img src="/logo.png" alt="DiveVault" class="h-full w-full object-cover" />
+            <div class="flex h-14 w-14 items-center justify-center rounded-2xl shadow-panel">
+              <img src="/logo.png" alt="DiveVault" class="max-h-full max-w-full object-contain p-1" />
             </div>
             <h2 class="font-headline text-lg font-bold uppercase tracking-[0.14em] text-primary">DiveVault</h2>
           </div>

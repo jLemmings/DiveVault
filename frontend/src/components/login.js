@@ -144,10 +144,9 @@ export default {
       <div class="relative z-10 mx-auto flex min-h-screen w-full max-w-7xl items-center justify-center px-4 py-4 sm:px-5 sm:py-8 md:px-8 lg:px-10">
         <div class="w-full max-w-[34rem]">
           <div class="mx-auto mb-4 flex max-w-[28rem] flex-col items-center px-2 text-center sm:mb-7">
-            <div class="flex h-24 w-24 items-center justify-center overflow-hidden rounded-[1.5rem] shadow-panel sm:h-36 sm:w-36 sm:rounded-[2rem]">
-              <img src="/logo.png" alt="DiveVault" class="h-full w-full object-cover" />
+            <div class="flex h-40 w-full max-w-[30rem] items-center justify-center sm:h-52">
+              <img src="/logo-headline.png" alt="DiveVault" class="max-h-full w-full object-contain" />
             </div>
-            <p class="mt-3 font-headline text-[1.9rem] font-bold tracking-[0.06em] text-white sm:mt-5 sm:text-5xl sm:tracking-[0.08em]">DiveVault</p>
           </div>
 
           <section class="auth-panel auth-panel-centered relative overflow-hidden rounded-[1.75rem] border border-primary/14 px-4 py-5 sm:rounded-[2rem] sm:px-8 sm:py-8 lg:px-10 lg:py-10">
