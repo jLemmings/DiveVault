@@ -132,6 +132,118 @@ class FixedWindowRateLimiter:
             return True, max(expires_at - now_ts, 1)
 
 
+class PrometheusMetrics:
+    def __init__(self, *, started_at: float | None = None) -> None:
+        self.started_at = float(started_at if started_at is not None else time.time())
+        self._lock = threading.Lock()
+        self._requests: dict[tuple[str, str, str], int] = {}
+        self._duration_count: dict[tuple[str, str], int] = {}
+        self._duration_sum: dict[tuple[str, str], float] = {}
+
+    @staticmethod
+    def route_label(path: str) -> str:
+        if path in {
+            "/health",
+            "/api/health",
+            "/metrics",
+            "/config.js",
+            "/api/dives",
+            "/api/equipment",
+            "/api/profile",
+            "/api/users",
+            "/api/device-state",
+            "/api/backup/export",
+            "/api/backup/import",
+            "/api/cli-auth/approve",
+            "/api/cli-auth/request",
+            "/api/auth/invitations",
+            "/api/auth/login",
+            "/api/auth/me",
+            "/api/auth/password",
+            "/api/auth/register",
+            "/api/auth/settings",
+            "/api/auth/status",
+            "/api/exports/dives.csv",
+            "/api/exports/dives.pdf",
+            "/api/geocode/search",
+        }:
+            return path
+        if re.fullmatch(r"/api/dives/\d+", path):
+            return "/api/dives/{id}"
+        if re.fullmatch(r"/api/dives/\d+/logbook", path):
+            return "/api/dives/{id}/logbook"
+        if re.fullmatch(r"/api/equipment/[A-Za-z0-9_-]+/service", path):
+            return "/api/equipment/{id}/service"
+        if re.fullmatch(r"/api/profile/licenses/[A-Za-z0-9_-]+/pdf", path):
+            return "/api/profile/licenses/{id}/pdf"
+        if re.fullmatch(r"/api/public/divers/[a-z0-9-]+", path):
+            return "/api/public/divers/{slug}"
+        if re.fullmatch(r"/api/users/user_[A-Za-z0-9]+", path):
+            return "/api/users/{id}"
+        if path.startswith("/api/"):
+            return "/api/*"
+        return "frontend"
+
+    def observe_request(self, *, method: str, path: str, status: int, duration_seconds: float) -> None:
+        route = self.route_label(path)
+        status_class = f"{int(status) // 100}xx"
+        with self._lock:
+            self._requests[(method, route, status_class)] = self._requests.get((method, route, status_class), 0) + 1
+            self._duration_count[(method, route)] = self._duration_count.get((method, route), 0) + 1
+            self._duration_sum[(method, route)] = self._duration_sum.get((method, route), 0.0) + max(duration_seconds, 0.0)
+
+    @staticmethod
+    def _labels(labels: dict[str, str]) -> str:
+        def escape(value: str) -> str:
+            return value.replace("\\", "\\\\").replace('"', '\\"')
+
+        return ",".join(f'{key}="{escape(value)}"' for key, value in labels.items())
+
+    def render(self, *, database_ready: bool, schema_version: object) -> bytes:
+        with self._lock:
+            requests = dict(self._requests)
+            duration_count = dict(self._duration_count)
+            duration_sum = dict(self._duration_sum)
+        lines = [
+            "# HELP divevault_up Whether the DiveVault backend process is running.",
+            "# TYPE divevault_up gauge",
+            "divevault_up 1",
+            "# HELP divevault_database_ready Whether startup database checks and migrations completed.",
+            "# TYPE divevault_database_ready gauge",
+            f"divevault_database_ready {1 if database_ready else 0}",
+            "# HELP divevault_schema_version Current application schema version observed at startup.",
+            "# TYPE divevault_schema_version gauge",
+            f"divevault_schema_version {int(schema_version or 0)}",
+            "# HELP divevault_process_start_time_seconds Unix timestamp when the backend process started.",
+            "# TYPE divevault_process_start_time_seconds gauge",
+            f"divevault_process_start_time_seconds {self.started_at:.3f}",
+            "# HELP divevault_http_requests_total HTTP requests by method, route, and status class.",
+            "# TYPE divevault_http_requests_total counter",
+        ]
+        for (method, route, status_class), value in sorted(requests.items()):
+            labels = self._labels({"method": method, "route": route, "status_class": status_class})
+            lines.append(f"divevault_http_requests_total{{{labels}}} {value}")
+        lines.extend(
+            [
+                "# HELP divevault_http_request_duration_seconds_count HTTP request duration count by method and route.",
+                "# TYPE divevault_http_request_duration_seconds_count counter",
+            ]
+        )
+        for (method, route), value in sorted(duration_count.items()):
+            labels = self._labels({"method": method, "route": route})
+            lines.append(f"divevault_http_request_duration_seconds_count{{{labels}}} {value}")
+        lines.extend(
+            [
+                "# HELP divevault_http_request_duration_seconds_sum HTTP request duration sum by method and route.",
+                "# TYPE divevault_http_request_duration_seconds_sum counter",
+            ]
+        )
+        for (method, route), value in sorted(duration_sum.items()):
+            labels = self._labels({"method": method, "route": route})
+            lines.append(f"divevault_http_request_duration_seconds_sum{{{labels}}} {value:.6f}")
+        return ("\n".join(lines) + "\n").encode("utf-8")
+
+
 def normalize_bearer_token(value: str | None) -> str | None:
     if not value:
         return None
@@ -1180,17 +1292,39 @@ class DiveBackendHandler(BaseHTTPRequestHandler):
     server_version = "DiveBackend/2.0"
 
     def do_OPTIONS(self) -> None:
+        self._mark_request_started()
         LOGGER.debug("OPTIONS %s", self.path)
         self.send_response(204)
         self._send_cors_headers()
         self._send_security_headers()
         self.end_headers()
+        self._observe_response(204)
 
     def do_GET(self) -> None:
+        self._mark_request_started()
         parsed = urlparse(self.path)
         path = parsed.path
         query = parse_qs(parsed.query)
         LOGGER.info("GET %s query=%s", path, dict(query))
+
+        if path == "/metrics":
+            if not bool(getattr(self.server, "metrics_enabled", False)):
+                self._send_json(404, {"error": "Not found"})
+                return
+            metrics = getattr(self.server, "metrics", None)
+            if metrics is None:
+                self._send_json(503, {"error": "Metrics collector is not configured"})
+                return
+            self._send_bytes(
+                200,
+                metrics.render(
+                    database_ready=bool(getattr(self.server, "database_ready", False)),
+                    schema_version=getattr(self.server, "database_schema_version", 0),
+                ),
+                "text/plain; version=0.0.4; charset=utf-8",
+                extra_headers={"Cache-Control": "no-store"},
+            )
+            return
 
         if path in {"/health", "/api/health"}:
             database_ready = bool(getattr(self.server, "database_ready", False))
@@ -1620,6 +1754,7 @@ class DiveBackendHandler(BaseHTTPRequestHandler):
         self._serve_frontend(path)
 
     def do_POST(self) -> None:
+        self._mark_request_started()
         LOGGER.info("POST %s", self.path)
         match = re.fullmatch(r"/api/equipment/([A-Za-z0-9_-]+)/service", self.path)
         if match:
@@ -1961,6 +2096,7 @@ class DiveBackendHandler(BaseHTTPRequestHandler):
         self._send_json(201 if inserted else 200, {"inserted": inserted, "id": dive_id})
 
     def do_PUT(self) -> None:
+        self._mark_request_started()
         LOGGER.info("PUT %s", self.path)
         if self.path == "/api/auth/settings":
             claims = self._require_owner_auth()
@@ -2210,6 +2346,7 @@ class DiveBackendHandler(BaseHTTPRequestHandler):
         self._send_json(200, state)
 
     def do_DELETE(self) -> None:
+        self._mark_request_started()
         LOGGER.info("DELETE %s", self.path)
         match = re.fullmatch(r"/api/users/(user_[A-Za-z0-9]+)", self.path)
         if match:
@@ -2367,6 +2504,27 @@ class DiveBackendHandler(BaseHTTPRequestHandler):
         self.send_header("Referrer-Policy", "strict-origin-when-cross-origin")
         self.send_header("Permissions-Policy", "camera=(), microphone=(), geolocation=(self)")
 
+    def _mark_request_started(self) -> None:
+        self._request_started_at = time.perf_counter()
+        self._response_observed = False
+
+    def _observe_response(self, status: int) -> None:
+        if getattr(self, "_response_observed", False):
+            return
+        self._response_observed = True
+        metrics = getattr(self.server, "metrics", None)
+        if metrics is None:
+            return
+        parsed = urlparse(self.path)
+        started_at = getattr(self, "_request_started_at", None)
+        duration_seconds = time.perf_counter() - started_at if isinstance(started_at, float) else 0.0
+        metrics.observe_request(
+            method=getattr(self, "command", ""),
+            path=parsed.path,
+            status=status,
+            duration_seconds=duration_seconds,
+        )
+
     def _send_json(self, status: int, payload: dict, *, extra_headers: dict[str, str] | None = None) -> None:
         body = json.dumps(payload, indent=2, sort_keys=True).encode("utf-8")
         self.send_response(status)
@@ -2378,6 +2536,7 @@ class DiveBackendHandler(BaseHTTPRequestHandler):
             self.send_header(key, value)
         self.end_headers()
         self.wfile.write(body)
+        self._observe_response(status)
 
     def _send_bytes(self, status: int, body: bytes, content_type: str, *, extra_headers: dict[str, str] | None = None) -> None:
         self.send_response(status)
@@ -2389,6 +2548,7 @@ class DiveBackendHandler(BaseHTTPRequestHandler):
             self.send_header(key, value)
         self.end_headers()
         self.wfile.write(body)
+        self._observe_response(status)
 
     def _send_cors_headers(self) -> None:
         self.send_header("Access-Control-Allow-Origin", self.server.cors_origin)
@@ -2435,6 +2595,7 @@ class DiveBackendHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
+        self._observe_response(200)
 
     def _serve_frontend(self, path: str) -> None:
         asset_path = frontend_asset_path(self.server.frontend_dir, path)
@@ -2452,6 +2613,7 @@ class DiveBackendHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
         LOGGER.info("Served frontend asset path=%s", asset_path.name)
+        self._observe_response(200)
 
     @staticmethod
     def _single_query_arg(query: dict[str, list[str]], key: str) -> str | None:
@@ -2516,6 +2678,12 @@ def main() -> None:
     parser.add_argument("--rate-limit-backup-import-per-window", type=int, default=int(os.getenv("RATE_LIMIT_BACKUP_IMPORT_PER_WINDOW", "10")), help="Max backup import calls per IP and window")
     parser.add_argument("--rate-limit-dive-upload-per-window", type=int, default=int(os.getenv("RATE_LIMIT_DIVE_UPLOAD_PER_WINDOW", "120")), help="Max dive upload calls per IP and window")
     parser.add_argument(
+        "--metrics",
+        default=os.getenv("METRICS_ENABLED", "disabled"),
+        choices=["enabled", "disabled"],
+        help="Expose Prometheus-scrapable metrics at /metrics when enabled.",
+    )
+    parser.add_argument(
         "--log-level",
         default=os.getenv("LOG_LEVEL", "INFO"),
         choices=["DEBUG", "INFO", "WARNING", "ERROR"],
@@ -2553,6 +2721,8 @@ def main() -> None:
     server.database_ready = True
     server.database_ready_error = ""
     server.database_schema_version = schema_version
+    server.metrics_enabled = args.metrics == "enabled"
+    server.metrics = PrometheusMetrics() if server.metrics_enabled else None
     server.cli_auth_manager = CliSyncTokenManager(
         request_ttl_seconds=args.cli_auth_request_ttl,
         token_ttl_seconds=args.cli_auth_token_ttl,
@@ -2599,13 +2769,14 @@ def main() -> None:
     )
 
     LOGGER.info(
-        "Starting backend host=%s port=%d database_url=%s cors_origin=%s frontend_dir=%s schema_version=%d",
+        "Starting backend host=%s port=%d database_url=%s cors_origin=%s frontend_dir=%s schema_version=%d metrics=%s",
         args.host,
         args.port,
         redact_database_url(args.database_url),
         args.cors_origin,
         server.frontend_dir,
         schema_version,
+        args.metrics,
     )
     shutdown_started = threading.Event()
 
