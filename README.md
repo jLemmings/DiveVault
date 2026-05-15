@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="./frontend/public/logo.png" alt="DiveVault" width="128" height="128">
+  <img src="./frontend/public/logo-headline.png" alt="DiveVault" width="128" height="128">
 </p>
 
 <h1 align="center">DiveVault</h1>
