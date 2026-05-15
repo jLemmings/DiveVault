@@ -31,6 +31,8 @@ export default {
     "diveSites",
     "buddies",
     "guides",
+    "equipment",
+    "defaultEquipmentIds",
     "creating",
     "errorMessage",
     "updateDraft",
