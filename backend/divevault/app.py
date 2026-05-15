@@ -1000,6 +1000,7 @@ def build_backup_payload(conn, user_id: str) -> dict:
         "exported_at": now_utc().isoformat(),
         "source_user_id": user_id,
         "profile": profile,
+        "equipment": list_user_equipment(conn, user_id),
         "license_documents": profile_license_documents(conn, user_id, profile),
         "device_states": list_device_states(conn, user_id),
         "dives": list_all_dives(conn, user_id, include_samples=True, include_raw_data=True),
@@ -1021,6 +1022,10 @@ def parse_backup_payload(payload: dict | None) -> dict:
     device_states = payload.get("device_states") or []
     if not isinstance(device_states, list):
         raise ValueError("Backup device_states must be an array")
+
+    equipment = payload.get("equipment") or []
+    if not isinstance(equipment, list):
+        raise ValueError("Backup equipment must be an array")
 
     normalized_device_states: list[dict] = []
     for index, entry in enumerate(device_states, start=1):
@@ -1117,6 +1122,7 @@ def parse_backup_payload(payload: dict | None) -> dict:
             "buddies": profile.get("buddies"),
             "guides": profile.get("guides"),
         },
+        "equipment": equipment,
         "device_states": normalized_device_states,
         "dives": normalized_dives,
         "license_documents": normalized_license_documents,
@@ -1126,6 +1132,7 @@ def parse_backup_payload(payload: dict | None) -> dict:
 def import_backup_payload(conn, user_id: str, payload: dict | None) -> dict:
     normalized = parse_backup_payload(payload)
     profile = save_user_profile(conn, user_id, normalized["profile"])
+    save_user_equipment(conn, user_id, normalized["equipment"])
 
     licenses_imported = 0
     for license_document in normalized["license_documents"]:
@@ -2143,7 +2150,11 @@ class DiveBackendHandler(BaseHTTPRequestHandler):
             if conn is None:
                 return
             try:
-                dive = update_dive_logbook(conn, user_id, dive_id, payload)
+                try:
+                    dive = update_dive_logbook(conn, user_id, dive_id, payload)
+                except ValueError as exc:
+                    self._send_json(400, {"error": str(exc)})
+                    return
             finally:
                 conn.close()
 

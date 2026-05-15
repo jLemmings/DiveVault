@@ -217,6 +217,8 @@ function importDraftSeed(dive) {
     wetsuit_description: typeof logbook.wetsuit_description === "string" ? logbook.wetsuit_description : "",
     notes: typeof logbook.notes === "string" ? logbook.notes : "",
     tank_volume_l: tankVolume,
+    equipment_ids: Array.isArray(logbook.equipment_ids) ? logbook.equipment_ids.map(String) : [],
+    equipment_snapshot: Array.isArray(logbook.equipment_snapshot) ? logbook.equipment_snapshot : [],
     status: logbookStatus(logbook),
     completed_at: typeof logbook.completed_at === "string" ? logbook.completed_at : ""
   };
@@ -625,7 +627,12 @@ function decoStatusLabel(dive) {
 }
 
 function detailEquipmentTags(dive) {
+  const logbook = logbookFields(dive);
+  const selectedEquipment = Array.isArray(logbook.equipment_snapshot)
+    ? logbook.equipment_snapshot.map((item) => item?.name || item?.category).filter(Boolean)
+    : [];
   const tags = [
+    ...selectedEquipment,
     `${dive.vendor} ${dive.product}`,
     diveModeLabel(dive),
     gasMixLabel(primaryGasMix(dive)),

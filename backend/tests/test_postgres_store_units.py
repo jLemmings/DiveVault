@@ -42,6 +42,8 @@ def test_decode_dive_row_includes_requested_fields_and_decodes_json_strings():
             "visibility": "",
             "wetsuit_description": "",
             "notes": "",
+            "equipment_ids": [],
+            "equipment_snapshot": [],
             "status": "imported",
         },
     }
@@ -187,6 +189,8 @@ def test_sanitize_logbook_payload_marks_complete_when_required_fields_present(mo
         "visibility": "18m",
         "wetsuit_description": "5mm full suit",
         "notes": "Calm water",
+        "equipment_ids": [],
+        "equipment_snapshot": [],
         "updated_at": "2026-03-24T12:00:00+00:00",
         "status": "complete",
         "completed_at": "2026-03-24T12:05:00+00:00",
@@ -594,13 +598,20 @@ def test_normalize_equipment_items_accepts_optional_fields_and_dedupes_ids():
     assert len(equipment) == 2
     assert equipment[0] == {
         "id": "gear-1",
+        "name": "Aqualung Regulator",
+        "category": "Regulator",
         "type": "Regulator",
         "year_bought": 2024,
         "vendor": "Blue Shop",
         "brand": "Aqualung",
+        "model": "",
+        "serial": "",
         "warranty": "2 years",
         "next_service_due": "2026-05-01",
+        "service_interval_months": None,
+        "last_service_date": "",
         "max_dives_before_service": 100,
+        "is_default": True,
         "is_standard": True,
         "last_serviced_at": None,
         "last_service_dive_count": 0,
@@ -625,3 +636,29 @@ def test_equipment_service_summary_marks_standard_gear_due_by_dives():
         "service_due": True,
         "service_due_reason": "dives",
     }
+
+
+def test_equipment_service_status_for_dive_uses_dive_date():
+    item = {
+        "last_service_date": "2026-01-10",
+        "service_interval_months": 12,
+    }
+
+    status = postgres_store.equipment_service_status_for_dive(item, "2026-07-01T10:00:00+00:00")
+
+    assert status["service_status"] == "serviced"
+    assert status["service_due_date"] == "2027-01-10"
+
+
+def test_equipment_service_status_for_dive_flags_overdue_and_future_service():
+    overdue = postgres_store.equipment_service_status_for_dive(
+        {"last_service_date": "2025-01-10", "service_interval_months": 12},
+        "2026-02-01T10:00:00+00:00",
+    )
+    future = postgres_store.equipment_service_status_for_dive(
+        {"last_service_date": "2026-03-10", "service_interval_months": 12},
+        "2026-02-01T10:00:00+00:00",
+    )
+
+    assert overdue["service_status"] == "overdue"
+    assert future["service_status"] == "unknown"

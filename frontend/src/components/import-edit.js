@@ -16,6 +16,43 @@ function sortNamedCollection(collection) {
     .sort((left, right) => left.name.localeCompare(right.name, undefined, { sensitivity: "base", numeric: true }));
 }
 
+function parseDate(value) {
+  if (!value) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function addMonths(date, months) {
+  const next = new Date(date.getTime());
+  const targetMonth = next.getMonth() + months;
+  next.setMonth(targetMonth);
+  if (next.getMonth() !== ((targetMonth % 12) + 12) % 12) {
+    next.setDate(0);
+  }
+  return next;
+}
+
+function equipmentTitle(item) {
+  return item?.name || [item?.brand, item?.model, item?.category || item?.type].filter(Boolean).join(" ") || "Unnamed equipment";
+}
+
+function serviceStatusForDive(item, diveStartedAt) {
+  const diveDate = parseDate(diveStartedAt);
+  const serviceDate = parseDate(item?.last_service_date || item?.last_serviced_at);
+  const interval = Number.parseInt(item?.service_interval_months, 10);
+  if (!diveDate || !serviceDate || !Number.isFinite(interval) || interval <= 0) {
+    return { status: "unknown", label: "Service data missing" };
+  }
+  const dueDate = addMonths(serviceDate, interval);
+  if (serviceDate > diveDate) {
+    return { status: "unknown", label: "Service date after dive" };
+  }
+  if (diveDate > dueDate) {
+    return { status: "overdue", label: `Overdue ${dueDate.toISOString().slice(0, 10)}` };
+  }
+  return { status: dueDate <= addMonths(diveDate, 1) ? "due_soon" : "serviced", label: `OK until ${dueDate.toISOString().slice(0, 10)}` };
+}
+
 export default {
   name: "DiveImportEditorView",
   components: {
@@ -27,6 +64,8 @@ export default {
     "diveSites",
     "buddies",
     "guides",
+    "equipment",
+    "defaultEquipmentIds",
     "savingImportId",
     "bulkImportSavePending",
     "deletingDiveId",
@@ -97,6 +136,35 @@ export default {
       if (!buddyName) return null;
       return this.savedBuddies.find((buddy) => normalizeBuddyName(buddy.name) === buddyName) || null;
     },
+    selectedEquipmentIds() {
+      return Array.isArray(this.selectedDraft?.equipment_ids) ? this.selectedDraft.equipment_ids.map(String) : [];
+    },
+    equipmentGroups() {
+      const groups = new Map();
+      for (const item of Array.isArray(this.equipment) ? this.equipment : []) {
+        const category = item?.category || item?.type || "Other";
+        if (!groups.has(category)) groups.set(category, []);
+        groups.get(category).push(item);
+      }
+      return [...groups.entries()].map(([category, items]) => ({
+        category,
+        items: items.sort((left, right) => equipmentTitle(left).localeCompare(equipmentTitle(right), undefined, { sensitivity: "base" }))
+      }));
+    },
+    selectedEquipmentStatus() {
+      const lookup = new Map((Array.isArray(this.equipment) ? this.equipment : []).map((item) => [String(item.id), item]));
+      return this.selectedEquipmentIds.map((id) => {
+        const item = lookup.get(id);
+        const service = serviceStatusForDive(item, this.dive?.started_at);
+        return { id, item, name: equipmentTitle(item || { name: id }), ...service };
+      });
+    },
+    invalidSelectedEquipment() {
+      return this.selectedEquipmentStatus.filter((item) => item.status === "unknown" || item.status === "overdue");
+    },
+    equipmentBlocksCommit() {
+      return this.invalidSelectedEquipment.length > 0;
+    },
     filledIconStyle() {
       return filledIconStyle;
     },
@@ -130,6 +198,24 @@ export default {
     updateBuddy(value) {
       this.updateField("buddy", value);
     },
+    equipmentTitle,
+    serviceStatusForDive,
+    equipmentChecked(equipmentId) {
+      return this.selectedEquipmentIds.includes(String(equipmentId));
+    },
+    toggleEquipment(equipmentId) {
+      const id = String(equipmentId);
+      const nextIds = this.equipmentChecked(id)
+        ? this.selectedEquipmentIds.filter((entry) => entry !== id)
+        : [...this.selectedEquipmentIds, id];
+      this.updateField("equipment_ids", nextIds);
+    },
+    useDefaultEquipment() {
+      this.updateField("equipment_ids", Array.isArray(this.defaultEquipmentIds) ? [...this.defaultEquipmentIds] : []);
+    },
+    clearEquipment() {
+      this.updateField("equipment_ids", []);
+    },
     clearDiveSiteCreateFeedback() {
       this.diveSiteCreateError = "";
       this.diveSiteCreateStatus = "";
@@ -155,6 +241,7 @@ export default {
     },
     saveDraft(commit = false) {
       if (!this.dive) return;
+      if (commit && this.equipmentBlocksCommit) return;
       this.saveImportDraft(this.dive.id, commit);
     },
     applyBuddyGuide() {
@@ -344,6 +431,44 @@ export default {
                   <option v-for="option in tankVolumeOptions" :key="'mobile-tank-' + option.value" :value="option.value">{{ option.label }}</option>
                 </select>
               </label>
+              <section class="space-y-3 rounded-xl border border-primary/10 bg-surface-container-high/35 p-4">
+                <div class="flex items-start justify-between gap-3">
+                  <div>
+                    <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Equipment Used</p>
+                    <p class="mt-1 text-xs leading-5" :class="equipmentBlocksCommit ? 'text-on-error-container' : 'text-primary'">
+                      {{ equipmentBlocksCommit ? 'Selected gear needs valid service data before commit.' : selectedEquipmentIds.length ? 'Service OK for this dive date.' : 'No equipment selected.' }}
+                    </p>
+                  </div>
+                  <span class="material-symbols-outlined" :class="equipmentBlocksCommit ? 'text-tertiary' : 'text-primary'">{{ equipmentBlocksCommit ? 'warning' : 'verified' }}</span>
+                </div>
+                <div class="flex flex-wrap gap-2">
+                  <button @click="useDefaultEquipment()" type="button" class="rounded-lg bg-surface-container-highest px-3 py-2 font-label text-[10px] font-bold uppercase tracking-[0.14em] text-primary">Use Defaults</button>
+                  <button @click="clearEquipment()" type="button" class="rounded-lg bg-background/30 px-3 py-2 font-label text-[10px] font-bold uppercase tracking-[0.14em] text-secondary">Clear</button>
+                </div>
+                <div v-if="equipmentGroups.length" class="space-y-3">
+                  <div v-for="group in equipmentGroups" :key="'mobile-equipment-' + group.category" class="space-y-2">
+                    <p class="font-label text-[10px] font-bold uppercase tracking-[0.16em] text-secondary">{{ group.category }}</p>
+                    <button
+                      v-for="item in group.items"
+                      :key="'mobile-equipment-item-' + item.id"
+                      type="button"
+                      @click="toggleEquipment(item.id)"
+                      class="flex w-full items-center justify-between gap-3 rounded-lg border px-3 py-3 text-left"
+                      :class="equipmentChecked(item.id) ? 'border-primary/35 bg-primary/10 text-on-surface' : 'border-primary/10 bg-background/20 text-secondary'"
+                    >
+                      <span>
+                        <span class="block text-sm font-semibold">{{ equipmentTitle(item) }}</span>
+                        <span class="mt-1 block text-xs" :class="['unknown','overdue'].includes(serviceStatusForDive(item, dive.started_at).status) ? 'text-tertiary' : 'text-primary'">{{ serviceStatusForDive(item, dive.started_at).label }}</span>
+                      </span>
+                      <span class="material-symbols-outlined text-sm">{{ equipmentChecked(item.id) ? 'check_circle' : 'radio_button_unchecked' }}</span>
+                    </button>
+                  </div>
+                </div>
+                <p v-else class="text-xs leading-5 text-on-surface-variant">Add equipment in the Equipment section to reuse it here.</p>
+                <div v-if="invalidSelectedEquipment.length" class="space-y-1 rounded-lg bg-error-container/20 px-3 py-2 text-xs text-on-error-container">
+                  <p v-for="item in invalidSelectedEquipment" :key="'mobile-invalid-equipment-' + item.id">{{ item.name }}: {{ item.label }}</p>
+                </div>
+              </section>
               <label class="block space-y-2">
                 <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">{{ t('Weather', 'Weather') }}</span>
                 <input :value="selectedDraft.weather_description" @input="updateField('weather_description', $event.target.value)" type="text" :placeholder="t('importEdit.weather.placeholder', 'Sunny, current building')" class="w-full rounded-lg border-none bg-surface-container-high px-4 py-3 text-sm text-on-surface placeholder:text-secondary/50 focus:ring-1 focus:ring-primary" />
@@ -375,14 +500,14 @@ export default {
               <button @click="saveDraft(false)" :disabled="saveLocked" class="w-full rounded-lg bg-surface-container-highest px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-on-surface disabled:opacity-50">
                 {{ bulkImportSavePending ? 'Applying...' : isSaving ? 'Saving...' : 'Save Draft' }}
               </button>
-              <button @click="saveDraft(true)" :disabled="saveLocked || !canCompleteImport(selectedDraft)" class="w-full rounded-lg bg-primary px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-on-primary disabled:opacity-50">
+              <button @click="saveDraft(true)" :disabled="saveLocked || !canCompleteImport(selectedDraft) || equipmentBlocksCommit" class="w-full rounded-lg bg-primary px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-on-primary disabled:opacity-50">
                 {{ bulkImportSavePending ? 'Applying...' : isSaving ? 'Saving...' : 'Complete Record' }}
               </button>
               <button @click="removeDive()" :disabled="saveLocked" class="w-full rounded-lg bg-error-container/20 px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-on-error-container disabled:opacity-50">
                 {{ isDeleting ? 'Removing...' : 'Remove Imported Dive' }}
               </button>
             </div>
-            <button v-else @click="saveDraft(true)" :disabled="saveLocked || !canCompleteImport(selectedDraft)" class="w-full rounded-lg bg-primary px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-on-primary disabled:opacity-50">
+            <button v-else @click="saveDraft(true)" :disabled="saveLocked || !canCompleteImport(selectedDraft) || equipmentBlocksCommit" class="w-full rounded-lg bg-primary px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-on-primary disabled:opacity-50">
               {{ isSaving ? 'Saving...' : 'Save Changes' }}
             </button>
           </section>
@@ -517,6 +642,44 @@ export default {
                 </label>
               </div>
 
+              <section class="space-y-4 border border-primary/10 bg-surface-container-high/18 p-5">
+                <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                  <div>
+                    <p class="font-label text-[10px] font-bold uppercase tracking-[0.2em] text-secondary">Equipment Used</p>
+                    <p class="mt-2 text-sm leading-6" :class="equipmentBlocksCommit ? 'text-on-error-container' : 'text-primary'">
+                      {{ equipmentBlocksCommit ? 'Selected gear needs valid service data before this dive can be committed.' : selectedEquipmentIds.length ? 'All selected gear is service-valid for this dive date.' : 'No equipment selected for this dive.' }}
+                    </p>
+                  </div>
+                  <div class="flex flex-wrap gap-2">
+                    <button @click="useDefaultEquipment()" type="button" class="bg-surface-container-high px-3 py-2 font-label text-[10px] font-bold uppercase tracking-[0.16em] text-primary">Use Defaults</button>
+                    <button @click="clearEquipment()" type="button" class="bg-background/30 px-3 py-2 font-label text-[10px] font-bold uppercase tracking-[0.16em] text-secondary">Clear</button>
+                  </div>
+                </div>
+                <div v-if="equipmentGroups.length" class="grid gap-4 lg:grid-cols-2">
+                  <div v-for="group in equipmentGroups" :key="'desktop-equipment-' + group.category" class="space-y-2">
+                    <p class="font-label text-[10px] font-bold uppercase tracking-[0.16em] text-secondary">{{ group.category }}</p>
+                    <button
+                      v-for="item in group.items"
+                      :key="'desktop-equipment-item-' + item.id"
+                      type="button"
+                      @click="toggleEquipment(item.id)"
+                      class="flex w-full items-center justify-between gap-3 border px-4 py-3 text-left transition-colors"
+                      :class="equipmentChecked(item.id) ? 'border-primary/35 bg-primary/10 text-on-surface' : 'border-primary/10 bg-background/20 text-secondary hover:border-primary/25'"
+                    >
+                      <span>
+                        <span class="block text-sm font-semibold">{{ equipmentTitle(item) }}</span>
+                        <span class="mt-1 block text-xs" :class="['unknown','overdue'].includes(serviceStatusForDive(item, dive.started_at).status) ? 'text-tertiary' : 'text-primary'">{{ serviceStatusForDive(item, dive.started_at).label }}</span>
+                      </span>
+                      <span class="material-symbols-outlined text-base">{{ equipmentChecked(item.id) ? 'check_circle' : 'radio_button_unchecked' }}</span>
+                    </button>
+                  </div>
+                </div>
+                <p v-else class="text-sm leading-6 text-on-surface-variant">Add equipment in the Equipment section to reuse it here.</p>
+                <div v-if="invalidSelectedEquipment.length" class="space-y-1 border border-error/20 bg-error-container/20 px-4 py-3 text-sm text-on-error-container">
+                  <p v-for="item in invalidSelectedEquipment" :key="'desktop-invalid-equipment-' + item.id">{{ item.name }}: {{ item.label }}</p>
+                </div>
+              </section>
+
               <div class="grid grid-cols-1 gap-4 md:grid-cols-3">
                 <label class="block space-y-2">
                   <span class="font-label text-[10px] font-bold uppercase tracking-[0.2em] text-secondary">{{ t('Weather', 'Weather') }}</span>
@@ -552,14 +715,14 @@ export default {
                 <button @click="saveDraft(false)" :disabled="saveLocked" class="bg-surface-container-high px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-on-surface transition-colors hover:text-primary disabled:opacity-50">
                   {{ bulkImportSavePending ? 'Applying...' : isSaving ? 'Saving...' : 'Save Draft' }}
                 </button>
-                <button @click="saveDraft(true)" :disabled="saveLocked || !canCompleteImport(selectedDraft)" class="bg-primary px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-on-primary transition-all hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50">
+                <button @click="saveDraft(true)" :disabled="saveLocked || !canCompleteImport(selectedDraft) || equipmentBlocksCommit" class="bg-primary px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-on-primary transition-all hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50">
                   {{ bulkImportSavePending ? 'Applying...' : isSaving ? 'Saving...' : 'Complete Record' }}
                 </button>
               </div>
               <button v-if="!isCommittedRecord" @click="removeDive()" :disabled="saveLocked" class="w-full bg-error-container/20 px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-on-error-container transition-colors hover:bg-error-container/30 disabled:opacity-50">
                 {{ isDeleting ? 'Removing...' : 'Remove Imported Dive' }}
               </button>
-              <button v-else @click="saveDraft(true)" :disabled="saveLocked || !canCompleteImport(selectedDraft)" class="w-full bg-primary px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-on-primary transition-all hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50">
+              <button v-else @click="saveDraft(true)" :disabled="saveLocked || !canCompleteImport(selectedDraft) || equipmentBlocksCommit" class="w-full bg-primary px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-on-primary transition-all hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50">
                 {{ isSaving ? 'Saving...' : 'Save Changes' }}
               </button>
             </section>

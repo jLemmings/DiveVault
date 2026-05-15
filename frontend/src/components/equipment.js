@@ -5,53 +5,69 @@ function createEquipmentId() {
 function emptyEquipment() {
   return {
     id: createEquipmentId(),
-    type: "",
+    name: "",
+    category: "Regulator",
     year_bought: "",
     vendor: "",
     brand: "",
+    model: "",
+    serial: "",
     warranty: "",
     next_service_due: "",
     max_dives_before_service: "",
-    is_standard: false,
-    last_serviced_at: null,
-    last_service_dive_count: 0
+    service_interval_months: "12",
+    last_service_date: "",
+    is_default: false
   };
 }
 
-function normalizeEquipmentItem(item = {}) {
-  return {
-    id: item?.id || createEquipmentId(),
-    type: item?.type || "",
-    year_bought: item?.year_bought ?? "",
+function normalizeEquipment(items) {
+  if (!Array.isArray(items)) return [];
+  return items.map((item, index) => ({
+    id: item?.id || `equipment-${index + 1}`,
+    name: item?.name || [item?.brand, item?.vendor, item?.model, item?.category || item?.type].filter(Boolean).join(" "),
+    category: item?.category || item?.type || "",
+    year_bought: item?.year_bought ? String(item.year_bought) : "",
     vendor: item?.vendor || "",
     brand: item?.brand || "",
+    model: item?.model || "",
+    serial: item?.serial || "",
     warranty: item?.warranty || "",
     next_service_due: item?.next_service_due || "",
-    max_dives_before_service: item?.max_dives_before_service ?? "",
-    is_standard: Boolean(item?.is_standard),
-    last_serviced_at: item?.last_serviced_at || null,
-    last_service_dive_count: item?.last_service_dive_count || 0,
-    dives_since_service: item?.dives_since_service || 0,
-    dives_remaining_before_service: item?.dives_remaining_before_service ?? null,
-    service_due: Boolean(item?.service_due),
-    service_due_reason: item?.service_due_reason || ""
+    max_dives_before_service: item?.max_dives_before_service ? String(item.max_dives_before_service) : "",
+    service_interval_months: item?.service_interval_months ? String(item.service_interval_months) : "",
+    last_service_date: item?.last_service_date || item?.last_serviced_at?.slice?.(0, 10) || "",
+    is_default: Boolean(item?.is_default || item?.is_standard),
+    service_status: item?.service_status || "unknown",
+    service_due_date: item?.service_due_date || "",
+    dives_remaining_before_service: item?.dives_remaining_before_service
+  }));
+}
+
+function equipmentPayload(item) {
+  return {
+    id: item.id,
+    name: item.name.trim(),
+    category: item.category.trim(),
+    type: item.category.trim(),
+    year_bought: item.year_bought ? Number.parseInt(item.year_bought, 10) : null,
+    vendor: item.vendor.trim(),
+    brand: item.brand.trim(),
+    model: item.model.trim(),
+    serial: item.serial.trim(),
+    warranty: item.warranty.trim(),
+    next_service_due: item.next_service_due,
+    service_interval_months: item.service_interval_months ? Number.parseInt(item.service_interval_months, 10) : null,
+    last_service_date: item.last_service_date,
+    max_dives_before_service: item.max_dives_before_service ? Number.parseInt(item.max_dives_before_service, 10) : null,
+    is_default: Boolean(item.is_default)
   };
 }
 
-function cloneEquipment(equipment) {
-  return Array.isArray(equipment) ? equipment.map(normalizeEquipmentItem) : [];
-}
-
-function dateLabel(value, translate = (key) => key) {
-  if (!value) return translate("Not scheduled", "Not scheduled");
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "2-digit" });
-}
-
-function equipmentName(item, translate = (key) => key) {
-  const type = item.type ? translate(item.type, item.type) : "";
-  return [item.brand, item.vendor, type].filter(Boolean).join(" ") || translate("Unnamed Equipment", "Unnamed Equipment");
+function serviceTone(status) {
+  if (status === "serviced") return "text-primary";
+  if (status === "due_soon") return "text-tertiary";
+  return "text-on-error-container";
 }
 
 export default {
@@ -59,237 +75,179 @@ export default {
   props: ["equipment", "searchText", "saving", "servicingId", "statusMessage", "errorMessage", "saveEquipment", "markServiced"],
   data() {
     return {
-      activeTab: "inventory",
-      draftEquipment: cloneEquipment(this.equipment)
+      drafts: normalizeEquipment(this.equipment),
+      editing: false
     };
   },
   watch: {
     equipment: {
       handler(value) {
-        this.draftEquipment = cloneEquipment(value);
+        if (!this.editing) {
+          this.drafts = normalizeEquipment(value);
+        }
       },
       deep: true
     }
   },
   computed: {
-    filteredEquipment() {
+    visibleDrafts() {
       const query = typeof this.searchText === "string" ? this.searchText.trim().toLowerCase() : "";
-      if (!query) return this.draftEquipment;
-      return this.draftEquipment.filter((item) => [item.type, item.vendor, item.brand, item.warranty].join(" ").toLowerCase().includes(query));
+      if (!query) return this.drafts;
+      return this.drafts.filter((item) => [item.name, item.category, item.brand, item.model, item.serial].join(" ").toLowerCase().includes(query));
     },
-    standardEquipment() {
-      return this.draftEquipment.filter((item) => item.is_standard);
-    },
-    serviceSchedule() {
-      return this.draftEquipment
-        .slice()
-        .sort((left, right) => {
-          if (left.service_due !== right.service_due) return left.service_due ? -1 : 1;
-          const leftDate = left.next_service_due ? new Date(left.next_service_due).getTime() : Number.POSITIVE_INFINITY;
-          const rightDate = right.next_service_due ? new Date(right.next_service_due).getTime() : Number.POSITIVE_INFINITY;
-          if (leftDate !== rightDate) return leftDate - rightDate;
-          return equipmentName(left).localeCompare(equipmentName(right));
-        });
-    },
-    dueCount() {
-      return this.draftEquipment.filter((item) => item.service_due).length;
+    defaultCount() {
+      return this.drafts.filter((item) => item.is_default).length;
     }
   },
   methods: {
-    equipmentName(item) {
-      return equipmentName(item, (...args) => this.t(...args));
+    serviceTone,
+    beginEdit() {
+      this.drafts = normalizeEquipment(this.equipment);
+      this.editing = true;
     },
-    dateLabel(value) {
-      return dateLabel(value, (...args) => this.t(...args));
+    cancelEdit() {
+      this.drafts = normalizeEquipment(this.equipment);
+      this.editing = false;
     },
-    t(key, fallback = key, params = {}) {
-      return typeof this.$t === "function" ? this.$t(key, fallback, params) : fallback;
+    addItem() {
+      if (!this.editing) this.beginEdit();
+      this.drafts = [emptyEquipment(), ...this.drafts];
     },
-    addEquipment() {
-      this.draftEquipment = [emptyEquipment(), ...this.draftEquipment];
+    removeItem(id) {
+      this.drafts = this.drafts.filter((item) => item.id !== id);
     },
-    removeEquipment(equipmentId) {
-      this.draftEquipment = this.draftEquipment.filter((item) => String(item.id) !== String(equipmentId));
+    updateItem(id, key, value) {
+      this.drafts = this.drafts.map((item) => item.id === id ? { ...item, [key]: value } : item);
     },
-    payloadItem(item) {
-      return {
-        id: item.id,
-        type: String(item.type || "").trim(),
-        year_bought: item.year_bought === "" ? null : Number.parseInt(item.year_bought, 10),
-        vendor: String(item.vendor || "").trim(),
-        brand: String(item.brand || "").trim(),
-        warranty: String(item.warranty || "").trim(),
-        next_service_due: String(item.next_service_due || "").trim(),
-        max_dives_before_service: item.max_dives_before_service === "" ? null : Number.parseInt(item.max_dives_before_service, 10),
-        is_standard: Boolean(item.is_standard),
-        last_serviced_at: item.last_serviced_at || null,
-        last_service_dive_count: item.last_service_dive_count || 0
-      };
-    },
-    async persistEquipment() {
-      await this.saveEquipment(this.draftEquipment.map(this.payloadItem));
-    },
-    async serviceItem(item) {
-      await this.markServiced(item.id);
-    },
-    serviceStatusLabel(item) {
-      if (item.service_due) {
-        return item.service_due_reason === "dives"
-          ? this.t("Service due by dive count", "Service due by dive count")
-          : this.t("Service due by date", "Service due by date");
+    async save() {
+      const saved = await this.saveEquipment(this.drafts.map(equipmentPayload));
+      if (saved) {
+        this.drafts = normalizeEquipment(this.drafts.map(equipmentPayload));
+        this.editing = false;
       }
-      if (item.max_dives_before_service) {
-        return this.t(
-          "{count} dives remaining",
-          "{count} dives remaining",
-          { count: item.dives_remaining_before_service ?? item.max_dives_before_service }
-        );
-      }
-      return this.t("No dive-count interval", "No dive-count interval");
+    },
+    statusLabel(item) {
+      if (item.service_status === "serviced") return item.service_due_date ? `Serviced until ${item.service_due_date}` : "Serviced";
+      if (item.service_status === "due_soon") return item.service_due_date ? `Due soon: ${item.service_due_date}` : "Due soon";
+      if (item.service_status === "overdue") return item.service_due_date ? `Overdue since ${item.service_due_date}` : "Overdue";
+      return "Service data missing";
     }
   },
   template: `
     <section class="space-y-8 text-on-surface">
-      <div class="relative overflow-hidden rounded-[2rem] border border-primary/10 bg-surface-container-low p-6 shadow-panel md:p-8">
-        <div class="absolute -right-16 -top-16 h-48 w-48 rounded-full bg-tertiary/10 blur-3xl"></div>
-        <div class="relative z-10 grid gap-6 lg:grid-cols-[minmax(0,1fr)_22rem] lg:items-end">
-          <div>
-            <p class="font-label text-[10px] font-bold uppercase tracking-[0.24em] text-tertiary">Gear Locker</p>
-            <h3 class="mt-3 font-headline text-4xl font-bold tracking-tight text-on-surface">Equipment Management</h3>
-            <p class="mt-4 max-w-2xl text-base leading-7 text-secondary">
-              Register optional equipment details, choose the standard kit used on every dive, and track date or dive-count service windows.
-            </p>
-          </div>
-          <div class="grid grid-cols-3 gap-3 text-center">
-            <div class="rounded-3xl bg-background/25 p-4">
-              <p class="font-headline text-3xl font-bold text-primary">{{ draftEquipment.length }}</p>
-              <p class="mt-1 font-label text-[9px] font-bold uppercase tracking-[0.16em] text-secondary">Items</p>
-            </div>
-            <div class="rounded-3xl bg-background/25 p-4">
-              <p class="font-headline text-3xl font-bold text-primary">{{ standardEquipment.length }}</p>
-              <p class="mt-1 font-label text-[9px] font-bold uppercase tracking-[0.16em] text-secondary">Standard</p>
-            </div>
-            <div class="rounded-3xl bg-background/25 p-4">
-              <p class="font-headline text-3xl font-bold" :class="dueCount ? 'text-error' : 'text-primary'">{{ dueCount }}</p>
-              <p class="mt-1 font-label text-[9px] font-bold uppercase tracking-[0.16em] text-secondary">Due</p>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div class="flex flex-wrap items-center justify-between gap-3">
-        <div class="inline-flex rounded-2xl border border-primary/10 bg-surface-container-low p-1">
-          <button @click="activeTab = 'inventory'" class="rounded-xl px-4 py-2 font-label text-[10px] font-bold uppercase tracking-[0.16em] transition-colors" :class="activeTab === 'inventory' ? 'bg-primary text-on-primary' : 'text-primary hover:bg-surface-container-high'">Inventory</button>
-          <button @click="activeTab = 'service'" class="rounded-xl px-4 py-2 font-label text-[10px] font-bold uppercase tracking-[0.16em] transition-colors" :class="activeTab === 'service' ? 'bg-primary text-on-primary' : 'text-primary hover:bg-surface-container-high'">Service Schedule</button>
+      <header class="flex flex-col justify-between gap-5 bg-surface-container-low p-6 shadow-panel lg:flex-row lg:items-end">
+        <div>
+          <p class="font-label text-[10px] font-bold uppercase tracking-[0.24em] text-primary">Gear Locker</p>
+          <h3 class="mt-2 font-headline text-4xl font-bold tracking-tight">Equipment Management</h3>
+          <p class="mt-3 max-w-3xl text-sm leading-7 text-secondary">Maintain reusable dive gear, mark normal defaults, and keep service intervals current before gear is used on committed dives.</p>
         </div>
         <div class="flex flex-wrap gap-3">
-          <button @click="addEquipment" class="inline-flex items-center gap-2 rounded-2xl bg-surface-container-high px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.16em] text-primary transition-colors hover:bg-surface-container-highest">
-            <span class="material-symbols-outlined text-sm">add</span>
-            Add Equipment
-          </button>
-          <button @click="persistEquipment" :disabled="saving" class="inline-flex items-center gap-2 rounded-2xl bg-primary px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.16em] text-on-primary transition-all hover:brightness-110 disabled:cursor-wait disabled:opacity-70">
-            <span class="material-symbols-outlined text-sm">save</span>
-            {{ saving ? 'Saving' : 'Save Gear' }}
-          </button>
+          <button @click="addItem" class="settings-button settings-button-secondary">Add Equipment</button>
+          <button type="button" class="settings-button settings-button-ghost">Service Schedule</button>
+          <button v-if="!editing" @click="beginEdit" class="settings-button settings-button-primary">Edit Inventory</button>
+          <button v-if="editing" @click="cancelEdit" :disabled="saving" class="settings-button settings-button-ghost">Cancel</button>
+          <button v-if="editing" @click="save" :disabled="saving" class="settings-button settings-button-primary">{{ saving ? 'Saving' : 'Save Gear' }}</button>
+        </div>
+      </header>
+
+      <div v-if="statusMessage" class="settings-feedback border-primary/20 bg-primary/10 text-primary shadow-panel">{{ statusMessage }}</div>
+      <div v-if="errorMessage" class="settings-feedback border-error/20 bg-error-container/20 text-on-error-container shadow-panel">{{ errorMessage }}</div>
+
+      <div class="grid gap-4 md:grid-cols-3">
+        <div class="settings-stat-card">
+          <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Items</p>
+          <p class="mt-3 font-headline text-3xl font-bold">{{ drafts.length }}</p>
+        </div>
+        <div class="settings-stat-card">
+          <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Defaults</p>
+          <p class="mt-3 font-headline text-3xl font-bold text-primary">{{ defaultCount }}</p>
+        </div>
+        <div class="settings-stat-card">
+          <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Service Rule</p>
+          <p class="mt-3 text-sm leading-6 text-on-surface">Service due by dive count and commit checks use each dive date.</p>
         </div>
       </div>
 
-      <p v-if="statusMessage" class="rounded-2xl border border-primary/10 bg-primary/10 px-4 py-3 text-sm text-primary">{{ statusMessage }}</p>
-      <p v-if="errorMessage" class="rounded-2xl border border-error/20 bg-error-container/20 px-4 py-3 text-sm text-error">{{ errorMessage }}</p>
+      <div v-if="!drafts.length" class="settings-empty-state">
+        <p class="font-headline text-lg font-bold">No equipment registered</p>
+        <p class="mt-2 text-sm text-secondary">Add your first item, set its service interval and latest service date, then mark it as default if it should be applied to new imports.</p>
+      </div>
 
-      <div v-if="activeTab === 'inventory'" class="space-y-5">
-        <div v-if="!draftEquipment.length" class="rounded-[2rem] border border-primary/10 bg-surface-container-low p-8 text-center shadow-panel">
-          <p class="font-headline text-2xl font-bold text-on-surface">No equipment registered yet</p>
-          <p class="mt-2 text-sm text-secondary">Add your first regulator, BCD, computer, suit, tank, or accessory.</p>
-        </div>
-
-        <article v-for="item in filteredEquipment" :key="item.id" class="rounded-[2rem] border border-primary/10 bg-surface-container-low p-5 shadow-panel">
-          <div class="flex flex-wrap items-start justify-between gap-4">
-            <div>
-              <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em]" :class="item.service_due ? 'text-error' : 'text-primary'">{{ item.service_due ? 'Service Due' : 'Registered Gear' }}</p>
-              <h4 class="mt-2 font-headline text-2xl font-bold text-on-surface">{{ equipmentName(item) }}</h4>
-              <p class="mt-1 text-sm text-secondary">{{ item.is_standard ? 'Standard equipment for every dive' : 'Not part of the standard kit' }}</p>
+      <div v-else class="grid gap-4 xl:grid-cols-2">
+        <article v-for="item in visibleDrafts" :key="item.id" class="settings-item-card">
+          <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div class="min-w-0">
+              <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">{{ item.category || 'Uncategorized' }}</p>
+              <h4 class="mt-2 font-headline text-2xl font-bold">{{ item.name || 'Unnamed Equipment' }}</h4>
+              <div class="settings-chip-row mt-3">
+                <span class="settings-chip" :class="item.is_default ? 'is-accent' : ''">{{ item.is_default ? 'Default' : 'Optional' }}</span>
+                <span class="settings-chip" :class="serviceTone(item.service_status)">{{ statusLabel(item) }}</span>
+                <span v-if="item.dives_remaining_before_service !== null && item.dives_remaining_before_service !== undefined" class="settings-chip">{{ item.dives_remaining_before_service }} dives remaining</span>
+              </div>
             </div>
-            <button @click="removeEquipment(item.id)" class="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-primary/10 text-secondary transition-colors hover:bg-error-container/20 hover:text-error" aria-label="Remove equipment">
-              <span class="material-symbols-outlined text-lg">delete</span>
-            </button>
-          </div>
-
-          <div class="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-            <label class="space-y-2">
-              <span class="font-label text-[10px] font-bold uppercase tracking-[0.16em] text-secondary">Type</span>
-              <input v-model="item.type" placeholder="Regulator" class="w-full rounded-2xl border border-primary/15 bg-background/20 px-4 py-3 text-sm outline-none focus:border-primary/40" />
-            </label>
-            <label class="space-y-2">
-              <span class="font-label text-[10px] font-bold uppercase tracking-[0.16em] text-secondary">Year Bought</span>
-              <input v-model="item.year_bought" type="number" min="1900" placeholder="2024" class="w-full rounded-2xl border border-primary/15 bg-background/20 px-4 py-3 text-sm outline-none focus:border-primary/40" />
-            </label>
-            <label class="space-y-2">
-              <span class="font-label text-[10px] font-bold uppercase tracking-[0.16em] text-secondary">Vendor</span>
-              <input v-model="item.vendor" placeholder="Dive Shop" class="w-full rounded-2xl border border-primary/15 bg-background/20 px-4 py-3 text-sm outline-none focus:border-primary/40" />
-            </label>
-            <label class="space-y-2">
-              <span class="font-label text-[10px] font-bold uppercase tracking-[0.16em] text-secondary">Brand</span>
-              <input v-model="item.brand" placeholder="Aqualung" class="w-full rounded-2xl border border-primary/15 bg-background/20 px-4 py-3 text-sm outline-none focus:border-primary/40" />
-            </label>
-          </div>
-
-          <div class="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-            <label class="space-y-2 xl:col-span-2">
-              <span class="font-label text-[10px] font-bold uppercase tracking-[0.16em] text-secondary">Warranty</span>
-              <input v-model="item.warranty" placeholder="2 years, shop receipt, serial number..." class="w-full rounded-2xl border border-primary/15 bg-background/20 px-4 py-3 text-sm outline-none focus:border-primary/40" />
-            </label>
-            <label class="space-y-2">
-              <span class="font-label text-[10px] font-bold uppercase tracking-[0.16em] text-secondary">Next Service Due</span>
-              <input v-model="item.next_service_due" type="date" class="w-full rounded-2xl border border-primary/15 bg-background/20 px-4 py-3 text-sm outline-none focus:border-primary/40" />
-            </label>
-            <label class="space-y-2">
-              <span class="font-label text-[10px] font-bold uppercase tracking-[0.16em] text-secondary">Max Dives Before Service</span>
-              <input v-model="item.max_dives_before_service" type="number" min="1" placeholder="100" class="w-full rounded-2xl border border-primary/15 bg-background/20 px-4 py-3 text-sm outline-none focus:border-primary/40" />
-            </label>
-          </div>
-
-          <div class="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-3xl bg-background/20 p-4">
-            <label class="inline-flex items-center gap-3 text-sm text-secondary">
-              <input v-model="item.is_standard" type="checkbox" class="h-5 w-5 accent-primary" />
-              Use by default on each dive
-            </label>
-            <button @click="serviceItem(item)" :disabled="servicingId === String(item.id)" class="inline-flex items-center gap-2 rounded-2xl border border-primary/15 px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.16em] text-primary transition-colors hover:bg-surface-container-high disabled:cursor-wait disabled:opacity-70">
-              <span class="material-symbols-outlined text-sm">build_circle</span>
+            <button v-if="!editing" @click="markServiced(item.id)" :disabled="servicingId === String(item.id)" class="settings-button settings-button-secondary">
               {{ servicingId === String(item.id) ? 'Updating' : 'Mark Serviced' }}
             </button>
+            <button v-else @click="removeItem(item.id)" class="settings-button settings-button-danger">Remove</button>
           </div>
-        </article>
-      </div>
 
-      <div v-else class="grid gap-5 lg:grid-cols-2">
-        <article v-for="item in serviceSchedule" :key="'service-' + item.id" class="rounded-[2rem] border p-5 shadow-panel" :class="item.service_due ? 'border-error/30 bg-error-container/15' : 'border-primary/10 bg-surface-container-low'">
-          <div class="flex items-start justify-between gap-4">
-            <div>
-              <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em]" :class="item.service_due ? 'text-error' : 'text-primary'">{{ serviceStatusLabel(item) }}</p>
-              <h4 class="mt-2 font-headline text-2xl font-bold text-on-surface">{{ equipmentName(item) }}</h4>
-              <p class="mt-1 text-sm text-secondary">Next date: {{ dateLabel(item.next_service_due) }}</p>
-            </div>
-            <span class="material-symbols-outlined text-3xl" :class="item.service_due ? 'text-error' : 'text-primary'">{{ item.service_due ? 'warning' : 'verified' }}</span>
+          <div v-if="editing" class="mt-5 grid gap-4 md:grid-cols-2">
+            <label class="space-y-2">
+              <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Name</span>
+              <input :value="item.name" @input="updateItem(item.id, 'name', $event.target.value)" class="settings-input" placeholder="Equipment name" />
+            </label>
+            <label class="space-y-2">
+              <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Category</span>
+              <input :value="item.category" @input="updateItem(item.id, 'category', $event.target.value)" class="settings-input" placeholder="Regulator" />
+            </label>
+            <label class="space-y-2">
+              <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Year Bought</span>
+              <input :value="item.year_bought" @input="updateItem(item.id, 'year_bought', $event.target.value)" class="settings-input" placeholder="2024" />
+            </label>
+            <label class="space-y-2">
+              <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Vendor</span>
+              <input :value="item.vendor" @input="updateItem(item.id, 'vendor', $event.target.value)" class="settings-input" placeholder="Dive Shop" />
+            </label>
+            <label class="space-y-2">
+              <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Brand</span>
+              <input :value="item.brand" @input="updateItem(item.id, 'brand', $event.target.value)" class="settings-input" placeholder="Aqualung" />
+            </label>
+            <label class="space-y-2">
+              <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Model</span>
+              <input :value="item.model" @input="updateItem(item.id, 'model', $event.target.value)" class="settings-input" placeholder="MK25" />
+            </label>
+            <label class="space-y-2">
+              <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Serial</span>
+              <input :value="item.serial" @input="updateItem(item.id, 'serial', $event.target.value)" class="settings-input" placeholder="Serial number" />
+            </label>
+            <label class="space-y-2">
+              <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Warranty</span>
+              <input :value="item.warranty" @input="updateItem(item.id, 'warranty', $event.target.value)" class="settings-input" placeholder="2 years, shop receipt, serial number..." />
+            </label>
+            <label class="space-y-2">
+              <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Next Service Due</span>
+              <input :value="item.next_service_due" @input="updateItem(item.id, 'next_service_due', $event.target.value)" type="date" class="settings-input" />
+            </label>
+            <label class="space-y-2">
+              <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Max Dives Before Service</span>
+              <input :value="item.max_dives_before_service" @input="updateItem(item.id, 'max_dives_before_service', $event.target.value)" class="settings-input" placeholder="100" />
+            </label>
+            <label class="space-y-2">
+              <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Service Interval Months</span>
+              <input :value="item.service_interval_months" @input="updateItem(item.id, 'service_interval_months', $event.target.value)" type="number" min="1" class="settings-input" />
+            </label>
+            <label class="space-y-2">
+              <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Latest Service Date</span>
+              <input :value="item.last_service_date" @input="updateItem(item.id, 'last_service_date', $event.target.value)" class="settings-input" placeholder="YYYY-MM-DD" />
+            </label>
+            <label class="flex items-start gap-3 rounded-xl border border-primary/10 bg-background/20 p-4">
+              <input :checked="item.is_default" @change="updateItem(item.id, 'is_default', $event.target.checked)" type="checkbox" class="mt-1 h-5 w-5 rounded border-primary/20 bg-surface-container-high text-primary focus:ring-primary/30" />
+              <span>
+                <span class="block text-sm font-semibold">Use by default on each dive</span>
+                <span class="mt-1 block text-xs leading-5 text-secondary">Defaults are applied to new imported dives.</span>
+              </span>
+            </label>
           </div>
-          <div class="mt-5 grid grid-cols-3 gap-3 text-center">
-            <div class="rounded-2xl bg-background/20 p-3">
-              <p class="font-headline text-xl font-bold text-on-surface">{{ item.is_standard ? item.dives_since_service : 0 }}</p>
-              <p class="mt-1 font-label text-[9px] font-bold uppercase tracking-[0.14em] text-secondary">Dives Since</p>
-            </div>
-            <div class="rounded-2xl bg-background/20 p-3">
-              <p class="font-headline text-xl font-bold text-on-surface">{{ item.max_dives_before_service || '--' }}</p>
-              <p class="mt-1 font-label text-[9px] font-bold uppercase tracking-[0.14em] text-secondary">Max Dives</p>
-            </div>
-            <div class="rounded-2xl bg-background/20 p-3">
-              <p class="font-headline text-xl font-bold text-on-surface">{{ item.last_serviced_at ? dateLabel(item.last_serviced_at) : 'Never' }}</p>
-              <p class="mt-1 font-label text-[9px] font-bold uppercase tracking-[0.14em] text-secondary">Serviced</p>
-            </div>
-          </div>
-          <button @click="serviceItem(item)" :disabled="servicingId === String(item.id)" class="mt-5 inline-flex items-center gap-2 rounded-2xl bg-primary px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.16em] text-on-primary transition-all hover:brightness-110 disabled:cursor-wait disabled:opacity-70">
-            <span class="material-symbols-outlined text-sm">build_circle</span>
-            Mark Serviced
-          </button>
         </article>
       </div>
     </section>
