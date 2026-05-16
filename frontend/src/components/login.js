@@ -147,6 +147,7 @@ export default {
             <div class="flex h-40 w-full max-w-[30rem] items-center justify-center sm:h-52">
               <img src="/logo-headline.png" alt="DiveVault" class="max-h-full w-full object-contain" />
             </div>
+            <p class="font-headline text-sm font-bold uppercase tracking-[0.2em] text-primary">DiveVault</p>
           </div>
 
           <section class="auth-panel auth-panel-centered relative overflow-hidden rounded-[1.75rem] border border-primary/14 px-4 py-5 sm:rounded-[2rem] sm:px-8 sm:py-8 lg:px-10 lg:py-10">
