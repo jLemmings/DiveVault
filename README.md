@@ -44,14 +44,14 @@ The result is a system that keeps raw telemetry, review state, and curated logbo
 Run the full local stack with:
 
 ```powershell
-docker compose -f examples/docker/docker-compose.yml up --build
+docker compose -f examples/docker/docker-compose.yml up
 ```
 
 This starts:
 
 - PostgreSQL on `localhost:5432`
 - A one-shot migration service
-- DiveVault backend on `localhost:8000`
+- DiveVault backend on `localhost:8000` from `ghcr.io/jlemmings/divevault:latest`
 
 For multi-pod deployments, run migrations as a separate job and set `STARTUP_MIGRATIONS=disabled` on backend pods.
 
