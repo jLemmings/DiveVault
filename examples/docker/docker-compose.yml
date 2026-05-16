@@ -16,9 +16,7 @@ services:
       - postgres-data:/var/lib/postgresql/data
 
   migrate:
-    build:
-      context: .
-      dockerfile: backend/Dockerfile
+    image: ghcr.io/jlemmings/divevault:latest
     depends_on:
       postgres:
         condition: service_healthy
@@ -28,9 +26,7 @@ services:
     restart: "no"
 
   backend:
-    build:
-      context: .
-      dockerfile: backend/Dockerfile
+    image: ghcr.io/jlemmings/divevault:latest
     depends_on:
       postgres:
         condition: service_healthy
@@ -57,9 +53,6 @@ services:
       LOG_LEVEL: INFO
     ports:
       - "8000:8000"
-    volumes:
-      - ./backend/divevault:/app/backend/divevault
-      - ./backend/migrations:/app/backend/migrations
 
 volumes:
   postgres-data:
