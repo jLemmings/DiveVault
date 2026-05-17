@@ -21,6 +21,43 @@ function sortNamedCollection(collection) {
     .sort((left, right) => left.name.localeCompare(right.name, undefined, { sensitivity: "base", numeric: true }));
 }
 
+function parseDate(value) {
+  if (!value) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function addMonths(date, months) {
+  const next = new Date(date.getTime());
+  const targetMonth = next.getMonth() + months;
+  next.setMonth(targetMonth);
+  if (next.getMonth() !== ((targetMonth % 12) + 12) % 12) {
+    next.setDate(0);
+  }
+  return next;
+}
+
+function equipmentTitle(item) {
+  return item?.name || [item?.brand, item?.model, item?.category || item?.type].filter(Boolean).join(" ") || "Unnamed equipment";
+}
+
+function serviceStatusForDive(item, diveDateSource) {
+  const diveDate = parseDate(diveDateSource);
+  const serviceDate = parseDate(item?.last_service_date || item?.last_serviced_at);
+  const interval = Number.parseInt(item?.service_interval_months, 10);
+  if (!diveDate || !serviceDate || !Number.isFinite(interval) || interval <= 0) {
+    return { status: "unknown", label: "Service data missing" };
+  }
+  const dueDate = addMonths(serviceDate, interval);
+  if (serviceDate > diveDate) {
+    return { status: "unknown", label: "Service date after dive" };
+  }
+  if (diveDate > dueDate) {
+    return { status: "overdue", label: `Overdue ${dueDate.toISOString().slice(0, 10)}` };
+  }
+  return { status: dueDate <= addMonths(diveDate, 1) ? "due_soon" : "serviced", label: `OK until ${dueDate.toISOString().slice(0, 10)}` };
+}
+
 export default {
   name: "ManualDiveEntryView",
   components: {
@@ -33,6 +70,7 @@ export default {
     "guides",
     "equipment",
     "defaultEquipmentIds",
+    "equipmentSelectionEnabled",
     "creating",
     "errorMessage",
     "updateDraft",
@@ -98,6 +136,35 @@ export default {
     },
     canSubmit() {
       return this.validationItems.length === 0;
+    },
+    selectedEquipmentIds() {
+      return Array.isArray(this.draft?.equipment_ids) ? this.draft.equipment_ids.map(String) : [];
+    },
+    equipmentGroups() {
+      const groups = new Map();
+      for (const item of Array.isArray(this.equipment) ? this.equipment : []) {
+        const category = item?.category || item?.type || "Other";
+        if (!groups.has(category)) groups.set(category, []);
+        groups.get(category).push(item);
+      }
+      return [...groups.entries()].map(([category, items]) => ({
+        category,
+        items: items.sort((left, right) => equipmentTitle(left).localeCompare(equipmentTitle(right), undefined, { sensitivity: "base" }))
+      }));
+    },
+    selectedEquipmentStatus() {
+      const date = String(this.draft?.date || "").trim();
+      const time = String(this.draft?.time || "").trim() || "00:00";
+      const diveDate = date ? `${date}T${time}` : "";
+      const lookup = new Map((Array.isArray(this.equipment) ? this.equipment : []).map((item) => [String(item.id), item]));
+      return this.selectedEquipmentIds.map((id) => {
+        const item = lookup.get(id);
+        const service = serviceStatusForDive(item, diveDate);
+        return { id, item, name: equipmentTitle(item || { name: id }), ...service };
+      });
+    },
+    invalidSelectedEquipment() {
+      return this.selectedEquipmentStatus.filter((item) => item.status === "unknown" || item.status === "overdue");
     }
   },
   methods: {
@@ -119,6 +186,24 @@ export default {
     },
     updateGuide(value) {
       this.updateField("guide", value);
+    },
+    equipmentTitle,
+    serviceStatusForDive,
+    equipmentChecked(equipmentId) {
+      return this.selectedEquipmentIds.includes(String(equipmentId));
+    },
+    toggleEquipment(equipmentId) {
+      const id = String(equipmentId);
+      const nextIds = this.equipmentChecked(id)
+        ? this.selectedEquipmentIds.filter((entry) => entry !== id)
+        : [...this.selectedEquipmentIds, id];
+      this.updateField("equipment_ids", nextIds);
+    },
+    useDefaultEquipment() {
+      this.updateField("equipment_ids", Array.isArray(this.defaultEquipmentIds) ? [...this.defaultEquipmentIds] : []);
+    },
+    clearEquipment() {
+      this.updateField("equipment_ids", []);
     },
     clearDiveSiteCreateFeedback() {
       this.diveSiteCreateError = "";
@@ -371,6 +456,44 @@ export default {
               </div>
             </div>
           </div>
+
+          <section v-if="equipmentSelectionEnabled" class="space-y-4 border border-primary/10 bg-surface-container-high/18 p-5">
+            <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+              <div>
+                <p class="font-label text-[10px] font-bold uppercase tracking-[0.2em] text-secondary">{{ t('manualDive.equipment.title', 'Equipment Used') }}</p>
+                <p class="mt-2 text-sm leading-6" :class="invalidSelectedEquipment.length ? 'text-on-error-container' : 'text-primary'">
+                  {{ invalidSelectedEquipment.length ? t('manualDive.equipment.warning', 'Selected gear has service warnings, but the dive can still be saved.') : selectedEquipmentIds.length ? t('manualDive.equipment.ready', 'Selected gear will be attached to this dive.') : t('manualDive.equipment.empty', 'No equipment selected. This is optional.') }}
+                </p>
+              </div>
+              <div class="flex flex-wrap gap-2">
+                <button @click="useDefaultEquipment()" type="button" class="bg-surface-container-high px-3 py-2 font-label text-[10px] font-bold uppercase tracking-[0.16em] text-primary">{{ t('Use Defaults', 'Use Defaults') }}</button>
+                <button @click="clearEquipment()" type="button" class="bg-background/30 px-3 py-2 font-label text-[10px] font-bold uppercase tracking-[0.16em] text-secondary">{{ t('Clear', 'Clear') }}</button>
+              </div>
+            </div>
+            <div v-if="equipmentGroups.length" class="grid gap-4 lg:grid-cols-2">
+              <div v-for="group in equipmentGroups" :key="'manual-equipment-' + group.category" class="space-y-2">
+                <p class="font-label text-[10px] font-bold uppercase tracking-[0.16em] text-secondary">{{ group.category }}</p>
+                <button
+                  v-for="item in group.items"
+                  :key="'manual-equipment-item-' + item.id"
+                  type="button"
+                  @click="toggleEquipment(item.id)"
+                  class="flex w-full items-center justify-between gap-3 border px-4 py-3 text-left transition-colors"
+                  :class="equipmentChecked(item.id) ? 'border-primary/35 bg-primary/10 text-on-surface' : 'border-primary/10 bg-background/20 text-secondary hover:border-primary/25'"
+                >
+                  <span>
+                    <span class="block text-sm font-semibold">{{ equipmentTitle(item) }}</span>
+                    <span class="mt-1 block text-xs" :class="['unknown','overdue'].includes(serviceStatusForDive(item, draft.date ? (draft.date + 'T' + (draft.time || '00:00')) : '').status) ? 'text-tertiary' : 'text-primary'">{{ serviceStatusForDive(item, draft.date ? (draft.date + 'T' + (draft.time || '00:00')) : '').label }}</span>
+                  </span>
+                  <span class="material-symbols-outlined text-base">{{ equipmentChecked(item.id) ? 'check_circle' : 'radio_button_unchecked' }}</span>
+                </button>
+              </div>
+            </div>
+            <p v-else class="text-sm leading-6 text-on-surface-variant">{{ t('manualDive.equipment.noneAvailable', 'Add equipment in the Equipment section to reuse it here.') }}</p>
+            <div v-if="invalidSelectedEquipment.length" class="space-y-1 border border-error/20 bg-error-container/20 px-4 py-3 text-sm text-on-error-container">
+              <p v-for="item in invalidSelectedEquipment" :key="'manual-invalid-equipment-' + item.id">{{ item.name }}: {{ item.label }}</p>
+            </div>
+          </section>
         </section>
 
         <section class="space-y-6 border border-primary/10 bg-surface-container-low p-6 shadow-panel">

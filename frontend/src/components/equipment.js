@@ -70,6 +70,11 @@ function serviceTone(status) {
   return "text-on-error-container";
 }
 
+function defaultMissingServiceData(item) {
+  if (!item?.is_default) return false;
+  return !item.last_service_date || !item.service_interval_months;
+}
+
 export default {
   name: "EquipmentView",
   props: ["equipment", "searchText", "saving", "servicingId", "statusMessage", "errorMessage", "saveEquipment", "markServiced"],
@@ -101,6 +106,7 @@ export default {
   },
   methods: {
     serviceTone,
+    defaultMissingServiceData,
     beginEdit() {
       this.drafts = normalizeEquipment(this.equipment);
       this.editing = true;
@@ -127,6 +133,7 @@ export default {
       }
     },
     statusLabel(item) {
+      if (defaultMissingServiceData(item)) return "Default gear service data missing";
       if (item.service_status === "serviced") return item.service_due_date ? `Serviced until ${item.service_due_date}` : "Serviced";
       if (item.service_status === "due_soon") return item.service_due_date ? `Due soon: ${item.service_due_date}` : "Due soon";
       if (item.service_status === "overdue") return item.service_due_date ? `Overdue since ${item.service_due_date}` : "Overdue";
@@ -138,8 +145,6 @@ export default {
       <header class="flex flex-col justify-between gap-5 bg-surface-container-low p-6 shadow-panel lg:flex-row lg:items-end">
         <div>
           <p class="font-label text-[10px] font-bold uppercase tracking-[0.24em] text-primary">Gear Locker</p>
-          <h3 class="mt-2 font-headline text-4xl font-bold tracking-tight">Equipment Management</h3>
-          <p class="mt-3 max-w-3xl text-sm leading-7 text-secondary">Maintain reusable dive gear, mark normal defaults, and keep service intervals current before gear is used on committed dives.</p>
         </div>
         <div class="flex flex-wrap gap-3">
           <button @click="addItem" class="settings-button settings-button-secondary">Add Equipment</button>
@@ -174,14 +179,14 @@ export default {
       </div>
 
       <div v-else class="grid gap-4 xl:grid-cols-2">
-        <article v-for="item in visibleDrafts" :key="item.id" class="settings-item-card">
+        <article v-for="item in visibleDrafts" :key="item.id" class="settings-item-card" :class="defaultMissingServiceData(item) ? 'settings-item-card-error' : ''">
           <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div class="min-w-0">
               <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">{{ item.category || 'Uncategorized' }}</p>
               <h4 class="mt-2 font-headline text-2xl font-bold">{{ item.name || 'Unnamed Equipment' }}</h4>
               <div class="settings-chip-row mt-3">
                 <span class="settings-chip" :class="item.is_default ? 'is-accent' : ''">{{ item.is_default ? 'Default' : 'Optional' }}</span>
-                <span class="settings-chip" :class="serviceTone(item.service_status)">{{ statusLabel(item) }}</span>
+                <span class="settings-chip" :class="defaultMissingServiceData(item) ? 'settings-chip-error' : serviceTone(item.service_status)">{{ statusLabel(item) }}</span>
                 <span v-if="item.dives_remaining_before_service !== null && item.dives_remaining_before_service !== undefined" class="settings-chip">{{ item.dives_remaining_before_service }} dives remaining</span>
               </div>
             </div>

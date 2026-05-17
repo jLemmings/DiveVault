@@ -175,6 +175,7 @@ function emptyProfile() {
     public_dives_enabled: false,
     public_slug: "",
     logbook_display_fields: [],
+    equipment_selection_enabled: true,
     licenses: [],
     dive_sites: [],
     buddies: [],
@@ -189,6 +190,7 @@ function cloneProfile(profile = {}) {
     public_dives_enabled: Boolean(profile?.public_dives_enabled),
     public_slug: profile?.public_slug || "",
     logbook_display_fields: Array.isArray(profile?.logbook_display_fields) ? [...profile.logbook_display_fields] : [],
+    equipment_selection_enabled: profile?.equipment_selection_enabled !== false,
     licenses: cloneLicenses(profile?.licenses),
     dive_sites: cloneDiveSites(profile?.dive_sites),
     buddies: cloneBuddies(profile?.buddies),
@@ -841,6 +843,7 @@ export default {
         public_dives_enabled: Boolean(payload?.public_dives_enabled),
         public_slug: payload?.public_slug || "",
         logbook_display_fields: Array.isArray(payload?.logbook_display_fields) ? payload.logbook_display_fields : [],
+        equipment_selection_enabled: payload?.equipment_selection_enabled !== false,
         licenses: normalizeLicenses(payload?.licenses),
         dive_sites: normalizeDiveSites(payload?.dive_sites),
         buddies: normalizeBuddies(payload?.buddies),
@@ -903,6 +906,12 @@ export default {
       this.settingsProfile = this.hydrateProfile({
         ...this.settingsProfile,
         logbook_display_fields: ordered
+      });
+    },
+    toggleEquipmentSelectionEnabled() {
+      this.settingsProfile = this.hydrateProfile({
+        ...this.settingsProfile,
+        equipment_selection_enabled: !this.settingsProfile.equipment_selection_enabled
       });
     },
     licenseTitle(license, index) {
@@ -1361,6 +1370,7 @@ export default {
             name: this.profileDraft.name,
             email: this.profileDraft.email,
             logbook_display_fields: this.settingsProfile.logbook_display_fields,
+            equipment_selection_enabled: this.settingsProfile.equipment_selection_enabled,
             licenses: this.settingsProfile.licenses.map(editableLicensePayload),
             dive_sites: this.settingsProfile.dive_sites.map(editableDiveSitePayload),
             buddies: this.settingsProfile.buddies.map(editableBuddyPayload),
@@ -2443,6 +2453,14 @@ export default {
                   </div>
                 </label>
               </div>
+
+              <label class="mt-5 flex items-start gap-4 rounded-2xl border border-primary/10 bg-background/20 px-4 py-4">
+                <input :checked="settingsProfile.equipment_selection_enabled" @change="toggleEquipmentSelectionEnabled()" type="checkbox" class="mt-1 h-5 w-5 rounded border-primary/20 bg-surface-container-high text-primary focus:ring-primary/30" />
+                <div>
+                  <p class="text-sm font-semibold text-on-surface">{{ t('settings.logLayout.equipmentSelector', 'Used gear selector') }}</p>
+                  <p class="mt-1 text-sm leading-6 text-secondary">{{ t('settings.logLayout.equipmentSelector.detail', 'Show an optional equipment area when creating or completing dive logs. Service warnings are informational and do not block saving.') }}</p>
+                </div>
+              </label>
 
               <div class="mt-5 flex justify-end">
                 <button @click="saveProfile" :disabled="profileSaving" class="settings-button settings-button-primary">

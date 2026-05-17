@@ -246,23 +246,8 @@ export default {
 
         <div class="space-y-4">
           <article v-for="dive in pagedDives" :key="'mobile-log-' + dive.id" @click="openDive(dive.id)" @keyup.enter="openDive(dive.id)" tabindex="0" role="button" class="rounded-xl bg-surface-container-low p-4 transition-all active:scale-[0.98] focus:bg-surface-container-high focus:outline-none">
-            <div class="flex gap-4">
-              <div class="relative h-24 w-16 flex-shrink-0 overflow-hidden rounded bg-surface-container-high">
-                <template v-if="diveMapPreview(dive)">
-                  <img :src="diveMapPreview(dive).tileUrl" alt="" class="h-full w-full object-cover opacity-90" />
-                  <div class="absolute inset-0 bg-gradient-to-t from-background/50 via-transparent to-transparent"></div>
-                  <span class="absolute left-1/2 top-1/2 h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white bg-primary shadow-[0_0_12px_rgba(156,202,255,0.8)]" :style="{ left: diveMapPreview(dive).markerLeft, top: diveMapPreview(dive).markerTop }"></span>
-                  <span class="absolute bottom-1 left-1 right-1 rounded bg-background/72 px-1 py-0.5 text-center font-label text-[9px] font-bold text-primary">{{ displayDiveIndex(dive) }}</span>
-                </template>
-                <template v-else>
-                  <div class="absolute inset-0 opacity-10" style="background-image: radial-gradient(circle at 2px 2px, #9ccaff 1px, transparent 0); background-size: 8px 8px;"></div>
-                  <div class="flex h-full flex-col items-center justify-center">
-                    <span class="z-10 font-label text-[10px] font-bold uppercase text-on-surface-variant/70">ID</span>
-                    <span class="z-10 font-headline text-xl font-bold text-primary">{{ displayDiveIndex(dive) }}</span>
-                  </div>
-                </template>
-              </div>
-              <div class="flex min-w-0 flex-1 flex-col justify-between py-1">
+            <div>
+              <div class="flex min-w-0 flex-1 flex-col justify-between">
                 <div class="flex items-start justify-between gap-3">
                   <div class="min-w-0">
                     <h3 class="truncate font-headline text-lg font-bold tracking-tight">{{ diveSiteLabel(dive) }}</h3>
@@ -351,62 +336,110 @@ export default {
           </button>
         </div>
       </div>
-      <div class="data-table-view overflow-hidden bg-surface-container-low shadow-panel">
-        <div class="hidden grid-cols-12 gap-4 bg-surface-container-high/50 px-8 py-4 font-label text-[11px] font-extrabold uppercase tracking-[0.2em] text-secondary md:grid">
-          <button type="button" @click="toggleSort('id')" class="col-span-1 flex items-center gap-1 bg-transparent p-0 text-left transition-colors hover:text-primary" :class="sortHeaderClass('id')"><span>Dive ID</span><span class="material-symbols-outlined text-sm">{{ sortIndicator('id') }}</span></button>
-          <button type="button" @click="toggleSort('date')" class="col-span-2 flex items-center gap-1 bg-transparent p-0 text-left transition-colors hover:text-primary" :class="sortHeaderClass('date')"><span>Date</span><span class="material-symbols-outlined text-sm">{{ sortIndicator('date') }}</span></button>
-          <button type="button" @click="toggleSort('site')" class="col-span-2 flex items-center gap-1 bg-transparent p-0 text-left transition-colors hover:text-primary" :class="sortHeaderClass('site')"><span>Dive Site</span><span class="material-symbols-outlined text-sm">{{ sortIndicator('site') }}</span></button>
-          <button type="button" @click="toggleSort('device')" class="col-span-1 flex items-center gap-1 bg-transparent p-0 text-left transition-colors hover:text-primary" :class="sortHeaderClass('device')"><span>Device</span><span class="material-symbols-outlined text-sm">{{ sortIndicator('device') }}</span></button>
-          <button type="button" @click="toggleSort('computer')" class="col-span-2 flex items-center gap-1 bg-transparent p-0 text-left transition-colors hover:text-primary" :class="sortHeaderClass('computer')"><span>Dive Computer</span><span class="material-symbols-outlined text-sm">{{ sortIndicator('computer') }}</span></button>
-          <button type="button" @click="toggleSort('depth')" class="col-span-1 flex items-center justify-center gap-1 bg-transparent p-0 text-center transition-colors hover:text-primary" :class="sortHeaderClass('depth')"><span>Depth</span><span class="material-symbols-outlined text-sm">{{ sortIndicator('depth') }}</span></button>
-          <button type="button" @click="toggleSort('duration')" class="col-span-1 flex items-center justify-center gap-1 bg-transparent p-0 text-center transition-colors hover:text-primary" :class="sortHeaderClass('duration')"><span>Duration</span><span class="material-symbols-outlined text-sm">{{ sortIndicator('duration') }}</span></button>
-          <button type="button" @click="toggleSort('barUsed')" class="col-span-1 flex items-center justify-center gap-1 bg-transparent p-0 text-center transition-colors hover:text-primary" :class="sortHeaderClass('barUsed')"><span>Bar Used</span><span class="material-symbols-outlined text-sm">{{ sortIndicator('barUsed') }}</span></button>
-          <button type="button" @click="toggleSort('temp')" class="col-span-1 flex items-center justify-center gap-1 bg-transparent p-0 text-center transition-colors hover:text-primary" :class="sortHeaderClass('temp')"><span>Temp</span><span class="material-symbols-outlined text-sm">{{ sortIndicator('temp') }}</span></button>
+
+      <div class="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+        <div class="flex flex-wrap gap-3">
+          <button type="button" @click="toggleSort('date')" class="log-filter-chip" :class="sortHeaderClass('date')">
+            <span class="material-symbols-outlined text-base">calendar_month</span>
+            Date
+            <span class="material-symbols-outlined text-sm">{{ sortIndicator('date') }}</span>
+          </button>
+          <button type="button" @click="toggleSort('depth')" class="log-filter-chip" :class="sortHeaderClass('depth')">
+            <span class="material-symbols-outlined text-base">straighten</span>
+            {{ t("Depth", "Depth") }}
+            <span class="material-symbols-outlined text-sm">{{ sortIndicator('depth') }}</span>
+          </button>
+          <button type="button" @click="toggleSort('site')" class="log-filter-chip" :class="sortHeaderClass('site')">
+            <span class="material-symbols-outlined text-base">location_on</span>
+            Location
+            <span class="material-symbols-outlined text-sm">{{ sortIndicator('site') }}</span>
+          </button>
         </div>
-        <div class="divide-y divide-outline-variant/10">
-          <article v-for="dive in pagedDives" :key="dive.id" @click="openDive(dive.id)" @keyup.enter="openDive(dive.id)" tabindex="0" role="button" class="grid cursor-pointer gap-4 px-5 py-6 text-left transition-colors hover:bg-surface-container-highest/30 focus:bg-surface-container-highest/30 focus:outline-none md:grid-cols-12 md:px-8">
-            <div class="md:col-span-1"><p class="font-headline text-sm font-bold tracking-widest text-primary">{{ displayDiveIndex(dive) }}</p></div>
-            <div class="md:col-span-2"><p class="text-sm font-bold">{{ formatDate(dive.started_at) }}</p><p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-on-surface-variant">{{ formatTime(dive.started_at) }}</p></div>
-            <div class="md:col-span-2">
-              <p class="text-sm font-extrabold">{{ diveSiteLabel(dive) }}</p>
-              <div v-if="configuredLogbookMeta(dive).length" class="mt-2 space-y-1">
-                <p v-for="item in configuredLogbookMeta(dive)" :key="'desktop-meta-' + dive.id + '-' + item.key" class="text-xs text-on-surface-variant"><span class="font-semibold text-secondary">{{ item.label }}:</span> {{ item.value }}</p>
+        <p class="font-label text-sm font-bold tracking-[0.08em] text-on-surface-variant">Displaying {{ paginationLabel }}</p>
+      </div>
+
+      <div v-if="pagedDives.length" class="grid gap-6 xl:grid-cols-3">
+        <article
+          v-for="dive in pagedDives"
+          :key="'desktop-card-' + dive.id"
+          @click="openDive(dive.id)"
+          @keyup.enter="openDive(dive.id)"
+          tabindex="0"
+          role="button"
+          class="log-dive-card cursor-pointer p-5 transition-all hover:-translate-y-0.5 focus:-translate-y-0.5 focus:outline-none"
+        >
+          <div class="flex items-start justify-between gap-4">
+            <div class="min-w-0">
+              <h3 class="truncate text-lg font-extrabold text-primary">{{ diveSiteLabel(dive) }}</h3>
+              <p class="mt-1 font-label text-[11px] font-bold tracking-[0.14em] text-on-surface-variant">{{ formatDate(dive.started_at) }} &bull; {{ formatTime(dive.started_at) }}</p>
+            </div>
+            <p class="font-label text-[11px] font-bold tracking-[0.14em] text-on-surface">#{{ displayDiveIndex(dive) }}</p>
+          </div>
+
+          <div class="mt-4 border-t border-outline-variant/18 pt-4">
+            <div class="grid grid-cols-2 gap-x-6 gap-y-4">
+              <div class="log-card-metric">
+                <span class="material-symbols-outlined text-lg text-primary">straighten</span>
+                <div>
+                  <p>{{ t("Depth", "Depth") }}</p>
+                  <strong>{{ formatDepth(dive.max_depth_m) }}</strong>
+                </div>
+              </div>
+              <div class="log-card-metric">
+                <span class="material-symbols-outlined text-lg text-primary">timer</span>
+                <div>
+                  <p>{{ t("Duration", "Duration") }}</p>
+                  <strong>{{ formatDurationShort(dive.duration_seconds) }}</strong>
+                </div>
+              </div>
+              <div class="log-card-metric">
+                <span class="material-symbols-outlined text-lg text-secondary">thermometer</span>
+                <div>
+                  <p>{{ t("Temperature", "Temperature") }}</p>
+                  <strong class="text-secondary">{{ formatTemperature(surfaceTemperature(dive)) }}</strong>
+                </div>
+              </div>
+              <div class="log-card-metric">
+                <span class="material-symbols-outlined text-lg" :class="barUsedValue(dive) > 180 ? 'text-tertiary' : 'text-primary'">air</span>
+                <div>
+                  <p>{{ t("Air", "Air") }}</p>
+                  <strong :class="barUsedValue(dive) > 180 ? 'text-tertiary' : ''">{{ pressureUsedTableLabel(dive) }}</strong>
+                </div>
               </div>
             </div>
-            <div class="md:col-span-1"><p class="text-sm font-extrabold">{{ diveDeviceLabel(dive) }}</p></div>
-            <div class="md:col-span-2"><p class="text-sm font-extrabold">{{ diveComputerLabel(dive) }}</p><p class="text-xs text-on-surface-variant">{{ diveTitle(dive) }}</p></div>
-            <div class="md:col-span-1 md:text-center"><p class="font-headline text-lg font-bold" :class="dive.max_depth_m > 40 ? 'text-tertiary' : 'text-on-surface'">{{ formatDepth(dive.max_depth_m) }}</p></div>
-            <div class="md:col-span-1 md:text-center"><p class="font-headline text-sm font-medium">{{ formatDurationShort(dive.duration_seconds) }}</p></div>
-            <div class="md:col-span-1 md:text-center"><p class="text-sm font-bold">{{ pressureUsedTableLabel(dive) }}</p></div>
-            <div class="md:col-span-1 md:text-center"><p class="text-sm font-bold text-secondary">{{ formatTemperature(surfaceTemperature(dive)) }}</p></div>
-          </article>
-          <div v-if="pagedDives.length === 0" class="px-8 py-16 text-center">
-            <p class="font-headline text-2xl font-bold">No dives match the current filters</p>
-            <p class="mt-2 text-on-surface-variant">Change the search or complete imported dives before they enter the logbook.</p>
-            <button @click="openImportQueue()" class="mt-5 bg-primary px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-on-primary">
-              Open Imported Queue
-            </button>
           </div>
-        </div>
-        <div class="flex flex-col items-center justify-between gap-4 bg-surface-container-high/30 px-8 py-6 md:flex-row">
-          <div>
-            <p class="font-label text-[10px] font-bold uppercase tracking-[0.22em] text-on-surface-variant">Displaying {{ paginationLabel }}</p>
-            <p class="mt-1 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-primary">Page {{ pageCountLabel }}</p>
+
+          <div class="mt-4 flex items-center justify-between border-t border-outline-variant/18 pt-4">
+            <div class="flex min-w-0 items-center gap-2 text-xs text-on-surface-variant">
+              <span class="material-symbols-outlined text-base">computer</span>
+              <span class="truncate">{{ diveComputerLabel(dive) }}</span>
+            </div>
+            <div class="flex flex-wrap justify-end gap-1.5">
+              <span v-for="item in configuredLogbookMeta(dive).slice(0, 2)" :key="'desktop-card-meta-' + dive.id + '-' + item.key" class="rounded bg-surface-container-high px-2 py-1 font-label text-[9px] font-bold uppercase tracking-[0.12em] text-secondary">{{ item.value }}</span>
+              <span v-if="dive.max_depth_m > 40" class="rounded bg-tertiary/14 px-2 py-1 font-label text-[9px] font-bold uppercase tracking-[0.12em] text-tertiary">Deep</span>
+            </div>
           </div>
-          <div class="flex items-center gap-3">
-            <label class="flex items-center gap-3 bg-surface-container-high px-4 py-2 text-sm font-bold text-on-surface">
-              <span>Dives Per Page</span>
-              <select v-model.number="pageSize" class="border-none bg-transparent p-0 pr-6 text-sm font-bold text-on-surface focus:ring-0">
-                <option v-for="size in pageSizeOptions" :key="'desktop-page-size-' + size" :value="size">{{ size }}</option>
-              </select>
-            </label>
-          </div>
-          <div class="flex items-center gap-2">
-            <button @click="previousPage" :disabled="currentPage === 1" class="bg-surface-container-high px-3 py-2 text-on-surface-variant transition-colors hover:text-primary disabled:opacity-30"><span class="material-symbols-outlined">chevron_left</span></button>
-            <span class="border border-primary/20 bg-primary/10 px-4 py-2 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-primary">{{ currentPage }}</span>
-            <button @click="nextPage" :disabled="currentPage >= pageCount" class="bg-surface-container-high px-3 py-2 text-on-surface-variant transition-colors hover:text-primary disabled:opacity-30"><span class="material-symbols-outlined">chevron_right</span></button>
-          </div>
-        </div>
+        </article>
+      </div>
+
+      <div v-else class="log-empty-card px-8 py-16 text-center">
+        <p class="font-headline text-2xl font-bold">No dives match the current filters</p>
+        <p class="mt-2 text-on-surface-variant">Change the search or complete imported dives before they enter the logbook.</p>
+        <button @click="openImportQueue()" class="mt-5 bg-primary px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-on-primary">
+          Open Imported Queue
+        </button>
+      </div>
+
+      <div class="flex flex-col items-center justify-center gap-4 pt-6 md:flex-row">
+        <button @click="previousPage" :disabled="currentPage === 1" class="log-page-button"><span class="material-symbols-outlined">chevron_left</span></button>
+        <span class="font-label text-sm font-bold text-on-surface">Page {{ pageCountLabel }}</span>
+        <button @click="nextPage" :disabled="currentPage >= pageCount" class="log-page-button"><span class="material-symbols-outlined">chevron_right</span></button>
+        <label class="ml-0 flex items-center gap-3 rounded-lg border border-primary/12 bg-surface-container-high/55 px-4 py-2 text-sm font-bold text-on-surface md:ml-6">
+          <span>Dives Per Page</span>
+          <select v-model.number="pageSize" class="border-none bg-transparent p-0 pr-6 text-sm font-bold text-on-surface focus:ring-0">
+            <option v-for="size in pageSizeOptions" :key="'desktop-page-size-' + size" :value="size">{{ size }}</option>
+          </select>
+        </label>
       </div>
       </section>
     </section>

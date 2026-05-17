@@ -164,6 +164,92 @@ body {
   backdrop-filter: blur(20px);
 }
 
+.log-filter-chip {
+  align-items: center;
+  background: rgb(var(--color-surface-container-low) / 0.64);
+  border: 1px solid rgb(var(--color-primary) / 0.14);
+  border-radius: 0.75rem;
+  display: inline-flex;
+  gap: 0.55rem;
+  padding: 0.85rem 1rem;
+  transition:
+    background-color 160ms ease,
+    border-color 160ms ease,
+    color 160ms ease;
+}
+
+.log-filter-chip:hover {
+  background: rgb(var(--color-surface-container-high) / 0.66);
+  border-color: rgb(var(--color-primary) / 0.3);
+}
+
+.log-dive-card,
+.log-empty-card {
+  background:
+    linear-gradient(90deg, rgb(var(--color-surface-container-low) / 0.74), rgb(var(--color-surface-container) / 0.46)),
+    rgb(var(--color-surface-container) / 0.5);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgb(var(--color-primary) / 0.22);
+  border-radius: 1rem;
+  box-shadow:
+    0 18px 38px rgba(0, 15, 29, 0.26),
+    inset 0 1px 0 rgb(var(--color-primary) / 0.08);
+}
+
+.log-dive-card:hover,
+.log-dive-card:focus {
+  border-color: rgb(var(--color-secondary) / 0.42);
+  box-shadow:
+    0 22px 42px rgba(0, 15, 29, 0.3),
+    0 0 26px -12px rgb(var(--color-secondary) / 0.72),
+    inset 0 1px 0 rgb(var(--color-primary) / 0.12);
+}
+
+.log-card-metric {
+  align-items: center;
+  display: flex;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+.log-card-metric p {
+  color: rgb(var(--color-on-surface-variant));
+  font-size: 0.75rem;
+  line-height: 1;
+}
+
+.log-card-metric strong {
+  color: rgb(var(--color-on-surface));
+  display: block;
+  font-size: 0.95rem;
+  line-height: 1.15;
+}
+
+.log-page-button {
+  align-items: center;
+  background: rgb(var(--color-surface-container-high) / 0.62);
+  border: 1px solid rgb(var(--color-primary) / 0.14);
+  border-radius: 0.75rem;
+  color: rgb(var(--color-on-surface-variant));
+  display: flex;
+  height: 3rem;
+  justify-content: center;
+  transition:
+    border-color 160ms ease,
+    color 160ms ease,
+    opacity 160ms ease;
+  width: 3rem;
+}
+
+.log-page-button:hover {
+  border-color: rgb(var(--color-primary) / 0.32);
+  color: rgb(var(--color-primary));
+}
+
+.log-page-button:disabled {
+  opacity: 0.32;
+}
+
 .dashboard-command-strip {
   background:
     linear-gradient(135deg, rgb(var(--color-primary) / 0.08), transparent 28rem),
@@ -1340,6 +1426,19 @@ body {
   border-color: rgba(255, 183, 125, 0.24);
   background: rgba(255, 183, 125, 0.12);
   color: #ffdcc3;
+}
+
+.settings-chip-error {
+  border-color: rgba(255, 180, 171, 0.55);
+  background: rgba(147, 0, 10, 0.38);
+  color: #ffb4ab;
+}
+
+.settings-item-card-error {
+  border-color: rgba(255, 180, 171, 0.42);
+  background:
+    linear-gradient(180deg, rgba(147, 0, 10, 0.16), rgba(147, 0, 10, 0.08)),
+    rgba(0, 15, 29, 0.2);
 }
 
 .settings-button {

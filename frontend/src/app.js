@@ -141,6 +141,7 @@ export default {
       profileBuddies: [],
       profileGuides: [],
       profileLogbookDisplayFields: [],
+      profileEquipmentSelectionEnabled: true,
       equipment: [],
       equipmentSaving: false,
       equipmentServicingId: null,
@@ -409,6 +410,7 @@ export default {
       this.profileBuddies = [];
       this.profileGuides = [];
       this.profileLogbookDisplayFields = [];
+      this.profileEquipmentSelectionEnabled = true;
       this.equipment = [];
       this.equipmentSaving = false;
       this.equipmentServicingId = null;
@@ -848,7 +850,7 @@ export default {
       const wetsuitDescription = String(this.manualDiveDraft.wetsuitDescription || "").trim();
       const notes = String(this.manualDiveDraft.notes || "").trim();
       const selectedEquipmentIds = Array.isArray(this.manualDiveDraft.equipment_ids) ? this.manualDiveDraft.equipment_ids.map(String) : [];
-      const equipmentIds = selectedEquipmentIds.length ? selectedEquipmentIds : this.defaultEquipmentIds;
+      const equipmentIds = this.profileEquipmentSelectionEnabled ? selectedEquipmentIds : [];
       const durationMinutes = Number.parseFloat(this.manualDiveDraft.durationMinutes);
       const maxDepthM = Number.parseFloat(this.manualDiveDraft.maxDepthM);
       const temperatureInput = String(this.manualDiveDraft.temperatureC || "").trim();
@@ -1338,6 +1340,7 @@ export default {
         this.profileBuddies = [];
         this.profileGuides = [];
         this.profileLogbookDisplayFields = [];
+        this.profileEquipmentSelectionEnabled = true;
       }
     },
     async fetchEquipment() {
@@ -1409,6 +1412,7 @@ export default {
       this.profileBuddies = Array.isArray(payload?.buddies) ? payload.buddies : [];
       this.profileGuides = Array.isArray(payload?.guides) ? payload.guides : [];
       this.profileLogbookDisplayFields = Array.isArray(payload?.logbook_display_fields) ? payload.logbook_display_fields : [];
+      this.profileEquipmentSelectionEnabled = payload?.equipment_selection_enabled !== false;
     }
   },
   mounted() {
@@ -1637,8 +1641,8 @@ export default {
           <dashboard-view v-else-if="activeView === 'dashboard'" display-mode="dashboard" :dives="committedDives" :all-dives="dives" :dive-sites="profileDiveSites" :stats="stats" :set-view="setView" :backend-healthy="backendHealthy" :open-dive="openDive" :current-user-name="currentUserName" :imported-dive-count="importedDiveCount" :open-import-queue="openImportQueue"></dashboard-view>
           <dashboard-view v-else-if="activeView === 'map'" display-mode="map" :dives="committedDives" :all-dives="dives" :dive-sites="profileDiveSites" :stats="stats" :set-view="setView" :backend-healthy="backendHealthy" :open-dive="openDive" :current-user-name="currentUserName" :imported-dive-count="importedDiveCount" :open-import-queue="openImportQueue"></dashboard-view>
           <logs-view v-else-if="activeView === 'logs' && !selectedDive" :dives="committedDives" :dive-sites="profileDiveSites" :logbook-display-fields="profileLogbookDisplayFields" :search-text="searchText" :open-dive="openDive" :open-import-queue="openImportQueue" :open-manual-dive="openManualDiveCreator" :set-search-text="setSearchText" :delete-dive="deleteDive" :deleting-dive-id="deletingDiveId" :status-message="importStatusMessage" :error-message="importError"></logs-view>
-          <manual-dive-entry-view v-else-if="activeView === 'create'" :draft="manualDiveDraft" :dive-sites="profileDiveSites" :buddies="profileBuddies" :guides="profileGuides" :equipment="equipment" :default-equipment-ids="defaultEquipmentIds" :creating="manualDiveCreating" :error-message="manualDiveError" :update-draft="updateManualDiveDraft" :create-manual-dive="createManualDive" :close-creator="closeManualDiveCreator" :create-dive-site="createDiveSite" :search-dive-site-location="searchDiveSiteLocation"></manual-dive-entry-view>
-          <dive-import-editor-view v-else-if="activeView === 'imports' && selectedImportDive" :dive="selectedImportDive" :draft="selectedImportDraft" :dive-sites="profileDiveSites" :buddies="profileBuddies" :guides="profileGuides" :equipment="equipment" :default-equipment-ids="defaultEquipmentIds" :saving-import-id="savingImportId" :bulk-import-save-pending="bulkImportSavePending" :deleting-dive-id="deletingDiveId" :import-error="importError" :import-status-message="importStatusMessage" :update-import-draft="updateImportDraft" :save-import-draft="saveImportDraft" :delete-dive="deleteDive" :apply-buddy-guide-to-pending-imports="applyBuddyGuideToPendingImports" :create-dive-site="createDiveSite" :back-to-queue="backToImportQueue"></dive-import-editor-view>
+          <manual-dive-entry-view v-else-if="activeView === 'create'" :draft="manualDiveDraft" :dive-sites="profileDiveSites" :buddies="profileBuddies" :guides="profileGuides" :equipment="equipment" :default-equipment-ids="defaultEquipmentIds" :equipment-selection-enabled="profileEquipmentSelectionEnabled" :creating="manualDiveCreating" :error-message="manualDiveError" :update-draft="updateManualDiveDraft" :create-manual-dive="createManualDive" :close-creator="closeManualDiveCreator" :create-dive-site="createDiveSite" :search-dive-site-location="searchDiveSiteLocation"></manual-dive-entry-view>
+          <dive-import-editor-view v-else-if="activeView === 'imports' && selectedImportDive" :dive="selectedImportDive" :draft="selectedImportDraft" :dive-sites="profileDiveSites" :buddies="profileBuddies" :guides="profileGuides" :equipment="equipment" :default-equipment-ids="defaultEquipmentIds" :equipment-selection-enabled="profileEquipmentSelectionEnabled" :saving-import-id="savingImportId" :bulk-import-save-pending="bulkImportSavePending" :deleting-dive-id="deletingDiveId" :import-error="importError" :import-status-message="importStatusMessage" :update-import-draft="updateImportDraft" :save-import-draft="saveImportDraft" :delete-dive="deleteDive" :apply-buddy-guide-to-pending-imports="applyBuddyGuideToPendingImports" :create-dive-site="createDiveSite" :back-to-queue="backToImportQueue"></dive-import-editor-view>
           <dive-import-view v-else-if="activeView === 'imports'" :dives="dives" :import-drafts="importDrafts" :selected-import-id="selectedImportId" :select-import-dive="selectImportDive" :deleting-dive-id="deletingDiveId" :import-error="importError" :import-status-message="importStatusMessage" :delete-dive="deleteDive" :set-view="setView" :fetch-dives="fetchDives"></dive-import-view>
           <logbook-editor-view v-else-if="activeView === 'edit' && selectedEditDive" :dive="selectedEditDive" :all-dives="dives" :draft="selectedEditDraft" :dive-sites="profileDiveSites" :buddies="profileBuddies" :guides="profileGuides" :saving-import-id="savingImportId" :deleting-dive-id="deletingDiveId" :status-message="importStatusMessage" :error-message="importError" :update-dive-draft="updateImportDraft" :save-dive-logbook="saveExistingDiveLogbook" :delete-dive="deleteDive" :create-dive-site="createDiveSite" :close-editor="closeDiveEditor"></logbook-editor-view>
           <dive-detail-view v-else-if="activeView === 'logs' && selectedDive" :dive="selectedDive" :all-dives="dives" :deleting-dive-id="deletingDiveId" :close-detail="closeDiveDetail" :open-dive-editor="openDiveEditor" :delete-dive="deleteDive"></dive-detail-view>

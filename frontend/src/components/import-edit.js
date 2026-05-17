@@ -66,6 +66,7 @@ export default {
     "guides",
     "equipment",
     "defaultEquipmentIds",
+    "equipmentSelectionEnabled",
     "savingImportId",
     "bulkImportSavePending",
     "deletingDiveId",
@@ -162,9 +163,6 @@ export default {
     invalidSelectedEquipment() {
       return this.selectedEquipmentStatus.filter((item) => item.status === "unknown" || item.status === "overdue");
     },
-    equipmentBlocksCommit() {
-      return this.invalidSelectedEquipment.length > 0;
-    },
     filledIconStyle() {
       return filledIconStyle;
     },
@@ -241,7 +239,6 @@ export default {
     },
     saveDraft(commit = false) {
       if (!this.dive) return;
-      if (commit && this.equipmentBlocksCommit) return;
       this.saveImportDraft(this.dive.id, commit);
     },
     applyBuddyGuide() {
@@ -431,15 +428,15 @@ export default {
                   <option v-for="option in tankVolumeOptions" :key="'mobile-tank-' + option.value" :value="option.value">{{ option.label }}</option>
                 </select>
               </label>
-              <section class="space-y-3 rounded-xl border border-primary/10 bg-surface-container-high/35 p-4">
+              <section v-if="equipmentSelectionEnabled" class="space-y-3 rounded-xl border border-primary/10 bg-surface-container-high/35 p-4">
                 <div class="flex items-start justify-between gap-3">
                   <div>
                     <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Equipment Used</p>
-                    <p class="mt-1 text-xs leading-5" :class="equipmentBlocksCommit ? 'text-on-error-container' : 'text-primary'">
-                      {{ equipmentBlocksCommit ? 'Selected gear needs valid service data before commit.' : selectedEquipmentIds.length ? 'Service OK for this dive date.' : 'No equipment selected.' }}
+                    <p class="mt-1 text-xs leading-5" :class="invalidSelectedEquipment.length ? 'text-on-error-container' : 'text-primary'">
+                      {{ invalidSelectedEquipment.length ? 'Selected gear has service warnings. You can still complete the dive.' : selectedEquipmentIds.length ? 'Service OK for this dive date.' : 'No equipment selected.' }}
                     </p>
                   </div>
-                  <span class="material-symbols-outlined" :class="equipmentBlocksCommit ? 'text-tertiary' : 'text-primary'">{{ equipmentBlocksCommit ? 'warning' : 'verified' }}</span>
+                  <span class="material-symbols-outlined" :class="invalidSelectedEquipment.length ? 'text-tertiary' : 'text-primary'">{{ invalidSelectedEquipment.length ? 'warning' : 'verified' }}</span>
                 </div>
                 <div class="flex flex-wrap gap-2">
                   <button @click="useDefaultEquipment()" type="button" class="rounded-lg bg-surface-container-highest px-3 py-2 font-label text-[10px] font-bold uppercase tracking-[0.14em] text-primary">Use Defaults</button>
@@ -500,14 +497,14 @@ export default {
               <button @click="saveDraft(false)" :disabled="saveLocked" class="w-full rounded-lg bg-surface-container-highest px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-on-surface disabled:opacity-50">
                 {{ bulkImportSavePending ? 'Applying...' : isSaving ? 'Saving...' : 'Save Draft' }}
               </button>
-              <button @click="saveDraft(true)" :disabled="saveLocked || !canCompleteImport(selectedDraft) || equipmentBlocksCommit" class="w-full rounded-lg bg-primary px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-on-primary disabled:opacity-50">
+              <button @click="saveDraft(true)" :disabled="saveLocked || !canCompleteImport(selectedDraft)" class="w-full rounded-lg bg-primary px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-on-primary disabled:opacity-50">
                 {{ bulkImportSavePending ? 'Applying...' : isSaving ? 'Saving...' : 'Complete Record' }}
               </button>
               <button @click="removeDive()" :disabled="saveLocked" class="w-full rounded-lg bg-error-container/20 px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-on-error-container disabled:opacity-50">
                 {{ isDeleting ? 'Removing...' : 'Remove Imported Dive' }}
               </button>
             </div>
-            <button v-else @click="saveDraft(true)" :disabled="saveLocked || !canCompleteImport(selectedDraft) || equipmentBlocksCommit" class="w-full rounded-lg bg-primary px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-on-primary disabled:opacity-50">
+            <button v-else @click="saveDraft(true)" :disabled="saveLocked || !canCompleteImport(selectedDraft)" class="w-full rounded-lg bg-primary px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-on-primary disabled:opacity-50">
               {{ isSaving ? 'Saving...' : 'Save Changes' }}
             </button>
           </section>
@@ -642,12 +639,12 @@ export default {
                 </label>
               </div>
 
-              <section class="space-y-4 border border-primary/10 bg-surface-container-high/18 p-5">
+              <section v-if="equipmentSelectionEnabled" class="space-y-4 border border-primary/10 bg-surface-container-high/18 p-5">
                 <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                   <div>
                     <p class="font-label text-[10px] font-bold uppercase tracking-[0.2em] text-secondary">Equipment Used</p>
-                    <p class="mt-2 text-sm leading-6" :class="equipmentBlocksCommit ? 'text-on-error-container' : 'text-primary'">
-                      {{ equipmentBlocksCommit ? 'Selected gear needs valid service data before this dive can be committed.' : selectedEquipmentIds.length ? 'All selected gear is service-valid for this dive date.' : 'No equipment selected for this dive.' }}
+                    <p class="mt-2 text-sm leading-6" :class="invalidSelectedEquipment.length ? 'text-on-error-container' : 'text-primary'">
+                      {{ invalidSelectedEquipment.length ? 'Selected gear has service warnings, but this dive can still be committed.' : selectedEquipmentIds.length ? 'All selected gear is service-valid for this dive date.' : 'No equipment selected for this dive.' }}
                     </p>
                   </div>
                   <div class="flex flex-wrap gap-2">
@@ -715,14 +712,14 @@ export default {
                 <button @click="saveDraft(false)" :disabled="saveLocked" class="bg-surface-container-high px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-on-surface transition-colors hover:text-primary disabled:opacity-50">
                   {{ bulkImportSavePending ? 'Applying...' : isSaving ? 'Saving...' : 'Save Draft' }}
                 </button>
-                <button @click="saveDraft(true)" :disabled="saveLocked || !canCompleteImport(selectedDraft) || equipmentBlocksCommit" class="bg-primary px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-on-primary transition-all hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50">
+                <button @click="saveDraft(true)" :disabled="saveLocked || !canCompleteImport(selectedDraft)" class="bg-primary px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-on-primary transition-all hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50">
                   {{ bulkImportSavePending ? 'Applying...' : isSaving ? 'Saving...' : 'Complete Record' }}
                 </button>
               </div>
               <button v-if="!isCommittedRecord" @click="removeDive()" :disabled="saveLocked" class="w-full bg-error-container/20 px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-on-error-container transition-colors hover:bg-error-container/30 disabled:opacity-50">
                 {{ isDeleting ? 'Removing...' : 'Remove Imported Dive' }}
               </button>
-              <button v-else @click="saveDraft(true)" :disabled="saveLocked || !canCompleteImport(selectedDraft) || equipmentBlocksCommit" class="w-full bg-primary px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-on-primary transition-all hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50">
+              <button v-else @click="saveDraft(true)" :disabled="saveLocked || !canCompleteImport(selectedDraft)" class="w-full bg-primary px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-on-primary transition-all hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50">
                 {{ isSaving ? 'Saving...' : 'Save Changes' }}
               </button>
             </section>

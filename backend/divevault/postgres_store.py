@@ -52,6 +52,7 @@ CREATE TABLE IF NOT EXISTS user_profile (
     public_dives_enabled BOOLEAN NOT NULL DEFAULT FALSE,
     public_slug TEXT NOT NULL DEFAULT '',
     logbook_display_fields_json JSONB NOT NULL DEFAULT '[]'::jsonb,
+    equipment_selection_enabled BOOLEAN NOT NULL DEFAULT TRUE,
     updated_at TEXT NOT NULL
 );
 
@@ -177,7 +178,7 @@ LOGBOOK_OPTIONAL_FIELDS = ("weather_description", "visibility", "wetsuit_descrip
 LOGBOOK_DISPLAY_FIELD_OPTIONS = set(LOGBOOK_OPTIONAL_FIELDS)
 SAMPLE_TIME_UNIT_SECONDS = "seconds"
 SAMPLE_TIME_UNIT_MILLISECONDS = "milliseconds"
-CURRENT_SCHEMA_VERSION = 10
+CURRENT_SCHEMA_VERSION = 11
 SCHEMA_VERSION_SQL = """
 CREATE TABLE IF NOT EXISTS app_schema_version (
     singleton BOOLEAN PRIMARY KEY DEFAULT TRUE CHECK (singleton),
@@ -641,6 +642,11 @@ def apply_schema_migration_v10(cur: psycopg.Cursor) -> None:
     cur.execute("UPDATE user_equipment SET is_default=is_standard WHERE is_default=FALSE AND is_standard=TRUE")
 
 
+def apply_schema_migration_v11(cur: psycopg.Cursor) -> None:
+    cur.execute("ALTER TABLE user_profile ADD COLUMN IF NOT EXISTS equipment_selection_enabled BOOLEAN NOT NULL DEFAULT TRUE")
+    cur.execute("UPDATE user_profile SET equipment_selection_enabled=TRUE WHERE equipment_selection_enabled IS NULL")
+
+
 def _run_schema_migrations(conn: psycopg.Connection, cur: psycopg.Cursor, current_version: int) -> int:
     migrations: tuple[tuple[int, Callable[[psycopg.Connection, psycopg.Cursor], None]], ...] = (
         (1, lambda _conn, migration_cur: apply_schema_migration_v1(migration_cur)),
@@ -653,6 +659,7 @@ def _run_schema_migrations(conn: psycopg.Connection, cur: psycopg.Cursor, curren
         (8, lambda _conn, migration_cur: apply_schema_migration_v8(migration_cur)),
         (9, lambda _conn, migration_cur: apply_schema_migration_v9(migration_cur)),
         (10, lambda _conn, migration_cur: apply_schema_migration_v10(migration_cur)),
+        (11, lambda _conn, migration_cur: apply_schema_migration_v11(migration_cur)),
     )
     target_schema_version = min(CURRENT_SCHEMA_VERSION, max(version for version, _ in migrations))
 
@@ -1767,15 +1774,12 @@ def insert_dive_record(conn: psycopg.Connection, user_id: str, payload: dict) ->
     fields_source = apply_default_equipment_to_fields(fields_source, equipment)
     fields = normalize_dive_fields(fields_source, samples=samples, duration_seconds=duration_seconds)
     if fields.get("logbook", {}).get("status") == "complete":
-        equipment_snapshot, invalid_equipment = equipment_snapshot_for_dive(
+        equipment_snapshot, _invalid_equipment = equipment_snapshot_for_dive(
             equipment,
             fields.get("logbook", {}).get("equipment_ids") or [],
             payload.get("started_at"),
         )
         fields["logbook"]["equipment_snapshot"] = equipment_snapshot
-        if invalid_equipment:
-            invalid_names = ", ".join(item.get("name") or item.get("id") for item in invalid_equipment[:3])
-            raise ValueError(f"Selected equipment is not service-valid for this dive: {invalid_names}")
     raw_data = decode_base64_payload(payload)
     import_payload = build_import_payload(payload, imported_at=imported_at)
 
@@ -2292,6 +2296,7 @@ def empty_user_profile() -> dict:
         "public_dives_enabled": False,
         "public_slug": "",
         "logbook_display_fields": [],
+        "equipment_selection_enabled": True,
         "licenses": [],
         "dive_sites": [],
         "buddies": [],
@@ -2341,6 +2346,7 @@ def decode_user_profile_row(
         "public_dives_enabled": clean_profile_bool(row.get("public_dives_enabled")),
         "public_slug": clean_profile_text(row.get("public_slug")),
         "logbook_display_fields": normalize_logbook_display_fields(row.get("logbook_display_fields_json")),
+        "equipment_selection_enabled": clean_profile_bool(row.get("equipment_selection_enabled")) if row.get("equipment_selection_enabled") is not None else True,
         "licenses": hydrated_licenses,
         "dive_sites": normalized_dive_sites,
         "buddies": normalized_buddies,
@@ -2403,6 +2409,7 @@ def save_user_profile(conn: psycopg.Connection, user_id: str, payload: dict | No
         existing_public_dives_enabled = clean_profile_bool(existing.get("public_dives_enabled"))
         existing_public_slug = clean_profile_text(existing.get("public_slug"))
         existing_logbook_display_fields = normalize_logbook_display_fields(existing.get("logbook_display_fields_json"))
+        existing_equipment_selection_enabled = clean_profile_bool(existing.get("equipment_selection_enabled")) if existing.get("equipment_selection_enabled") is not None else True
         existing_licenses, existing_dive_sites, existing_buddies, existing_guides = resolve_user_profile_collections(
             conn, user_id, existing
         )
@@ -2416,15 +2423,16 @@ def save_user_profile(conn: psycopg.Connection, user_id: str, payload: dict | No
         buddies = normalize_profile_buddies(source.get("buddies")) if "buddies" in source else existing_buddies
         guides = normalize_profile_guides(source.get("guides")) if "guides" in source else existing_guides
         public_dives_enabled = clean_profile_bool(source.get("public_dives_enabled")) if "public_dives_enabled" in source else existing_public_dives_enabled
+        equipment_selection_enabled = clean_profile_bool(source.get("equipment_selection_enabled")) if "equipment_selection_enabled" in source else existing_equipment_selection_enabled
         public_slug = existing_public_slug
         if public_dives_enabled:
             public_slug = ensure_unique_public_slug(cur, user_id, source.get("public_slug"), existing_public_slug)
         cur.execute(
             """
             INSERT INTO user_profile(
-                user_id, name, email, public_dives_enabled, public_slug, logbook_display_fields_json, updated_at
+                user_id, name, email, public_dives_enabled, public_slug, logbook_display_fields_json, equipment_selection_enabled, updated_at
             )
-            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT (user_id)
             DO UPDATE SET
                 name=excluded.name,
@@ -2432,6 +2440,7 @@ def save_user_profile(conn: psycopg.Connection, user_id: str, payload: dict | No
                 public_dives_enabled=excluded.public_dives_enabled,
                 public_slug=excluded.public_slug,
                 logbook_display_fields_json=excluded.logbook_display_fields_json,
+                equipment_selection_enabled=excluded.equipment_selection_enabled,
                 updated_at=excluded.updated_at
             """,
             (
@@ -2441,6 +2450,7 @@ def save_user_profile(conn: psycopg.Connection, user_id: str, payload: dict | No
                 public_dives_enabled,
                 public_slug,
                 Jsonb(logbook_display_fields),
+                equipment_selection_enabled,
                 updated_at,
             ),
         )
@@ -2615,11 +2625,8 @@ def update_dive_logbook(conn: psycopg.Connection, user_id: str, dive_id: int, pa
         fields = normalize_dive_fields(fields, samples=samples, duration_seconds=resolve_duration_seconds(row))
         fields["logbook"] = sanitize_logbook_payload(payload, fields.get("logbook"))
         equipment_ids = fields["logbook"].get("equipment_ids") or []
-        equipment_snapshot, invalid_equipment = equipment_snapshot_for_dive(list_user_equipment(conn, user_id), equipment_ids, row.get("started_at"))
+        equipment_snapshot, _invalid_equipment = equipment_snapshot_for_dive(list_user_equipment(conn, user_id), equipment_ids, row.get("started_at"))
         fields["logbook"]["equipment_snapshot"] = equipment_snapshot
-        if fields["logbook"].get("status") == "complete" and invalid_equipment:
-            invalid_names = ", ".join(item.get("name") or item.get("id") for item in invalid_equipment[:3])
-            raise ValueError(f"Selected equipment is not service-valid for this dive: {invalid_names}")
         fields = apply_tank_volume_update(fields, payload)
 
         cur.execute(
