@@ -333,14 +333,7 @@ export default {
       <div v-if="statusMessage" class="border border-primary/20 bg-primary/10 px-5 py-4 text-sm text-primary shadow-panel">{{ statusMessage }}</div>
       <div v-if="errorMessage" class="border border-error/20 bg-error-container/20 px-5 py-4 text-sm text-on-error-container shadow-panel">{{ errorMessage }}</div>
 
-      <div class="flex flex-col justify-between gap-6 lg:flex-row lg:items-end">
-        <div>
-          <div class="mb-2 flex items-center gap-3">
-            <span class="h-2 w-2 rounded-full bg-primary shadow-[0_0_12px_rgba(156,202,255,0.8)]"></span>
-            <span class="font-label text-[10px] font-bold uppercase tracking-[0.3em] text-primary">Dive Logs</span>
-          </div>
-          <h3 class="font-headline text-5xl font-bold tracking-tight">Dive Log Database</h3>
-        </div>
+      <div class="flex flex-col justify-end gap-6 lg:flex-row lg:items-end">
         <div class="flex flex-col gap-3 sm:flex-row sm:items-center">
           <div class="relative min-w-[18rem] flex-1 sm:w-[24rem] sm:flex-none">
             <span class="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-lg text-on-surface-variant">search</span>

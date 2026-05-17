@@ -1,10 +1,26 @@
 import { loginWithPassword, registerUser } from "../auth.js";
+import { MESSAGES } from "../i18n/index.js";
 
 const AUTH_VIEW_SIGNIN = "signin";
 const AUTH_VIEW_REGISTER = "register";
+const LANGUAGE_LABELS = {
+  en: "English",
+  de: "Deutsch",
+  fr: "Fran\u00e7ais"
+};
 
 export default {
   name: "LoginView",
+  props: {
+    currentLocale: {
+      type: String,
+      default: "en"
+    },
+    setLocale: {
+      type: Function,
+      default: null
+    }
+  },
   data() {
     const inviteToken = typeof window !== "undefined"
       ? new URLSearchParams(window.location.search).get("invite_token") || ""
@@ -32,6 +48,18 @@ export default {
   computed: {
     canRegister() {
       return Boolean(this.authStatus.public_registration_open || this.authStatus.invite);
+    },
+    availableLanguages() {
+      return Object.keys(MESSAGES).map((locale) => ({
+        value: locale,
+        label: LANGUAGE_LABELS[locale] || locale.toUpperCase()
+      }));
+    },
+    selectedLocale() {
+      return this.availableLanguages.some((language) => language.value === this.currentLocale) ? this.currentLocale : "en";
+    },
+    showAlternateAccountPrompt() {
+      return this.authView === AUTH_VIEW_REGISTER || this.canRegister;
     },
     isInviteRegistration() {
       return Boolean(this.inviteToken && this.authStatus.invite);
@@ -93,6 +121,12 @@ export default {
         this.error = error?.message || "Unable to load sign-in options.";
       }
     },
+    handleLocaleChange(event) {
+      const locale = event?.target?.value || "en";
+      if (typeof this.setLocale === "function") {
+        this.setLocale(locale);
+      }
+    },
     async submitSignIn() {
       this.loading = true;
       this.error = "";
@@ -140,6 +174,21 @@ export default {
       <div class="auth-stage-wave auth-stage-wave-back"></div>
       <div class="auth-stage-wave auth-stage-wave-front"></div>
       <div class="auth-stage-caustics"></div>
+
+      <div class="absolute right-4 top-4 z-20 sm:right-6 sm:top-6">
+        <label class="sr-only" for="login-language">Language</label>
+        <select
+          id="login-language"
+          :value="selectedLocale"
+          @change="handleLocaleChange"
+          aria-label="Language"
+          class="rounded-xl border border-primary/14 bg-surface-container-high/55 px-3 py-2 text-xs font-semibold text-secondary outline-none transition-colors hover:border-primary/30 hover:text-white focus:border-primary/50"
+        >
+          <option v-for="language in availableLanguages" :key="'login-language-' + language.value" :value="language.value">
+            {{ language.label }}
+          </option>
+        </select>
+      </div>
 
       <div class="relative z-10 mx-auto flex min-h-screen w-full max-w-7xl items-center justify-center px-4 py-4 sm:px-5 sm:py-8 md:px-8 lg:px-10">
         <div class="w-full max-w-[34rem]">
@@ -246,7 +295,7 @@ export default {
               </button>
             </div>
 
-            <div class="relative mt-4 flex flex-wrap items-center gap-2 text-xs text-secondary sm:mt-5">
+            <div v-if="showAlternateAccountPrompt" class="relative mt-4 flex flex-wrap items-center gap-2 text-xs text-secondary sm:mt-5">
               <span>{{ alternateActionCopy }}</span>
               <span v-if="canRegister" class="font-semibold uppercase tracking-[0.14em] text-primary/80">
                 {{ alternateActionLabel }}

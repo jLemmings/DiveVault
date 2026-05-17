@@ -84,7 +84,7 @@ function escapeHtml(value) {
 
 export default {
   name: "DashboardView",
-  props: ["dives", "allDives", "diveSites", "stats", "setView", "backendHealthy", "openDive", "currentUserName", "importedDiveCount", "openImportQueue"],
+  props: ["displayMode", "dives", "allDives", "diveSites", "stats", "setView", "backendHealthy", "openDive", "currentUserName", "importedDiveCount", "openImportQueue"],
   data() {
     return {
       diveMap: null,
@@ -432,6 +432,9 @@ export default {
     filledIconStyle() {
       return filledIconStyle;
     },
+    isMapView() {
+      return this.displayMode === "map";
+    },
     dashboardUserName() {
       return this.currentUserName || this.t("Diver", "Diver");
     },
@@ -445,6 +448,83 @@ export default {
         count === 1 ? "{count} imported dive awaiting completion" : "{count} imported dives awaiting completion",
         { count }
       );
+    },
+    totalBottomTimeLabel() {
+      const totalSeconds = Number(this.stats?.totalSeconds || 0);
+      const hours = Math.floor(totalSeconds / 3600);
+      const minutes = Math.round((totalSeconds % 3600) / 60);
+      return `${hours}h ${minutes}min`;
+    },
+    averageBottomTimeLabel() {
+      const diveCount = Number(this.stats?.totalDives || 0);
+      const totalSeconds = Number(this.stats?.totalSeconds || 0);
+      if (!diveCount || !totalSeconds) return "No average yet";
+      return `Avg ${durationShort(Math.round(totalSeconds / diveCount)).replace(/m/g, "min")}`;
+    },
+    yearlyDiveCount() {
+      const currentYear = new Date().getFullYear();
+      return this.dives.filter((dive) => parseDate(dive?.started_at)?.getFullYear() === currentYear).length;
+    },
+    dashboardStatCards() {
+      return [
+        {
+          id: "dive-count",
+          icon: "database",
+          label: "Dive Count",
+          value: String(this.stats?.totalDives || 0),
+          unit: "Dives",
+          detail: `${this.yearlyDiveCount} this year`
+        },
+        {
+          id: "bottom-time",
+          icon: "timer",
+          label: "Bottom Time",
+          value: this.totalBottomTimeLabel.replace("h ", "h\n"),
+          unit: "",
+          detail: this.averageBottomTimeLabel
+        },
+        {
+          id: "max-depth",
+          icon: "straighten",
+          label: "Max Depth",
+          value: `${this.formatDepthNumber(this.stats?.maxDepth)} m`,
+          unit: "",
+          detail: "Deepest logged dive"
+        },
+        {
+          id: "gas-used",
+          icon: "water_drop",
+          label: "Air Consumption",
+          value: `${this.formatBarTotal(this.stats?.totalBarConsumed)} bar`,
+          unit: "",
+          detail: "Recorded consumption"
+        },
+        {
+          id: "mapped-sites",
+          icon: "explore",
+          label: "Mapped Sites",
+          value: String(this.mappedSiteCount),
+          unit: "Sites",
+          detail: `${this.mappedDiveCount} mapped dives`
+        },
+        {
+          id: "import-queue",
+          icon: this.hasImportedDives ? "warning" : "task_alt",
+          label: "Import Queue",
+          value: String(Number(this.importedDiveCount || 0)),
+          unit: "Pending",
+          detail: this.hasImportedDives ? "Needs review" : "Clear"
+        }
+      ];
+    },
+    recentDiveFeed() {
+      return this.recentDives.slice(0, 5).map((dive, index) => ({
+        dive,
+        active: index === 0,
+        dateLabel: this.formatDate(dive.started_at),
+        title: this.diveTitle(dive),
+        meta: `${this.formatDepth(dive.max_depth_m)} / ${this.formatDurationShort(dive.duration_seconds).replace(/m/g, "min")}`
+      }));
     },
     diveSequenceMap() {
       return buildDiveSequenceMap(this.allDives);
@@ -580,218 +660,109 @@ export default {
     }
   },
   template: `
-    <section class="space-y-10 text-on-surface">
-      <section class="space-y-6 md:hidden">
-        <div class="grid grid-cols-2 gap-3">
-          <div class="flex items-center gap-3 rounded-xl bg-surface-container-low p-4">
-            <span class="material-symbols-outlined flex-shrink-0 leading-none text-primary/60" style="font-size: 2.5rem;" :style="filledIconStyle">database</span>
-            <div class="min-w-0">
-              <div class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-on-surface-variant">Dive Count</div>
-              <div class="mt-2 font-headline text-3xl font-bold">{{ stats.totalDives }}</div>
-            </div>
+    <section :class="['dashboard-command-center text-on-surface', isMapView ? 'dashboard-map-only' : '']">
+      <section v-if="hasImportedDives && !isMapView" class="dashboard-glass-card border-l-4 border-tertiary p-5">
+        <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <p class="dashboard-micro-label text-tertiary">Attention Required</p>
+            <h4 class="mt-2 font-headline text-2xl font-bold text-primary">{{ importedDiveLabel }}</h4>
+            <p class="mt-2 text-sm leading-6 text-on-surface-variant">Complete site, buddy, and guide details before these imported dives enter the logbook.</p>
           </div>
-          <div class="flex items-center gap-3 rounded-xl bg-surface-container-low p-4">
-            <span class="material-symbols-outlined flex-shrink-0 leading-none text-primary/60" style="font-size: 2.5rem;" :style="filledIconStyle">timer</span>
-            <div class="min-w-0">
-              <div class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-on-surface-variant">Bottom Time</div>
-              <div class="mt-2 font-headline text-3xl font-bold">{{ Math.floor((stats.totalSeconds || 0) / 3600) }}<span class="ml-1 text-sm font-normal uppercase text-secondary">h</span> {{ Math.round(((stats.totalSeconds || 0) % 3600) / 60) }}<span class="ml-1 text-sm font-normal uppercase text-secondary">min</span></div>
-            </div>
-          </div>
-          <div class="flex items-center gap-3 rounded-xl bg-surface-container-low p-4">
-            <span class="material-symbols-outlined flex-shrink-0 leading-none text-primary/60" style="font-size: 2.5rem;" :style="filledIconStyle">straighten</span>
-            <div class="min-w-0">
-              <div class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-on-surface-variant">Max Depth</div>
-              <div class="mt-2 font-headline text-3xl font-bold">{{ formatDepthNumber(stats.maxDepth) }}<span class="ml-1 text-sm text-on-surface-variant">M</span></div>
-            </div>
-          </div>
-          <div class="flex items-center gap-3 rounded-xl border-l-2 border-primary/20 bg-surface-container-low p-4">
-            <span class="material-symbols-outlined flex-shrink-0 leading-none text-primary/60" style="font-size: 2.5rem;" :style="filledIconStyle">water_drop</span>
-            <div class="min-w-0">
-              <div class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-on-surface-variant">Consumption</div>
-              <div class="mt-2 font-headline text-3xl font-bold">{{ formatBarTotal(stats.totalBarConsumed) }}<span class="ml-1 text-sm font-normal uppercase text-secondary">bar</span></div>
-            </div>
-          </div>
-        </div>
-
-        <section v-if="hasImportedDives" class="rounded-xl border border-tertiary/30 bg-surface-container-low p-4 shadow-panel">
-          <div class="flex items-start justify-between gap-3">
-            <div>
-              <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-tertiary">Import Queue</p>
-              <p class="mt-2 font-headline text-xl font-bold text-on-surface">{{ importedDiveLabel }}</p>
-              <p class="mt-2 text-sm text-on-surface-variant">Add dive site, buddy, and guide details before these dives enter the logbook.</p>
-            </div>
-            <span class="material-symbols-outlined text-2xl text-tertiary">warning</span>
-          </div>
-          <button @click="openImportQueue()" class="mt-4 w-full bg-tertiary px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-background">
+          <button @click="openImportQueue()" class="rounded-xl bg-tertiary px-5 py-3 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-background transition-transform hover:scale-[0.98]">
             Review Imported Dives
           </button>
-        </section>
+        </div>
+      </section>
 
-        <section class="space-y-4">
-          <div class="flex items-center justify-between">
-            <h4 class="font-headline text-lg font-bold uppercase tracking-tight text-primary-fixed-dim">Recent Expeditions</h4>
-            <button @click="setView('logs')" class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-primary">View All</button>
-          </div>
-          <div class="space-y-3">
-            <article
-              v-for="dive in recentDives.slice(0, 3)"
-              :key="'mobile-' + dive.id"
-              @click="openDive(dive.id)"
-              @keyup.enter="openDive(dive.id)"
-              tabindex="0"
-              role="button"
-              class="glass-panel flex cursor-pointer items-center gap-4 rounded-xl p-4 transition-colors hover:bg-surface-container-high focus:bg-surface-container-high focus:outline-none"
-            >
-              <div class="relative h-12 w-12 flex-shrink-0 overflow-hidden rounded-lg border border-outline-variant/20 bg-[radial-gradient(circle_at_30%_30%,rgba(156,202,255,0.35),transparent_35%),linear-gradient(180deg,#132c40,#000f1d)]">
-                <template v-if="diveMapPreview(dive)">
-                  <img :src="diveMapPreview(dive).tileUrl" alt="" class="h-full w-full object-cover opacity-95" />
-                  <div class="absolute inset-0 bg-gradient-to-t from-surface-container-lowest/55 to-transparent"></div>
-                  <span class="absolute left-1/2 top-1/2 h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full border border-white bg-primary shadow-[0_0_10px_rgba(156,202,255,0.8)]" :style="{ left: diveMapPreview(dive).markerLeft, top: diveMapPreview(dive).markerTop }"></span>
-                </template>
-                <template v-else>
-                  <div class="absolute inset-0 bg-gradient-to-t from-surface-container-lowest to-transparent"></div>
-                </template>
+      <div class="dashboard-canvas">
+        <aside v-if="!isMapView" class="dashboard-side-rail">
+          <section class="dashboard-glass-card dashboard-section dashboard-recent-card flex min-h-[30rem] flex-col p-5">
+            <div class="mb-6 flex items-center justify-between">
+              <h4 class="font-headline text-xl font-bold text-primary">Recent Dives</h4>
+              <span class="material-symbols-outlined text-secondary">history</span>
+            </div>
+            <div class="dashboard-feed flex-1 space-y-5 overflow-y-auto pr-1">
+              <article
+                v-for="entry in recentDiveFeed"
+                :key="'feed-' + entry.dive.id"
+                @click="openDive(entry.dive.id)"
+                @keyup.enter="openDive(entry.dive.id)"
+                tabindex="0"
+                role="button"
+                class="dashboard-feed-item cursor-pointer"
+                :class="entry.active ? 'dashboard-feed-item-active' : ''"
+              >
+                <span class="dashboard-feed-dot"></span>
+                <p class="dashboard-micro-label mb-1" :class="entry.active ? 'text-secondary' : 'text-on-surface-variant'">{{ entry.dateLabel }}</p>
+                <h5 class="truncate text-sm font-bold text-primary">{{ entry.title }}</h5>
+                <p class="mt-1 text-sm text-on-surface-variant">{{ entry.meta }}</p>
+              </article>
+              <div v-if="!recentDiveFeed.length" class="rounded-xl border border-outline-variant/15 bg-surface-container-low/60 p-4 text-sm text-on-surface-variant">
+                No committed dives yet.
               </div>
-              <div class="min-w-0 flex-1">
-                <h5 class="truncate font-headline text-sm font-bold tracking-tight">{{ diveTitle(dive) }}</h5>
-                <p class="font-label text-[10px] font-bold uppercase tracking-[0.16em] text-on-surface-variant">{{ formatDate(dive.started_at) }} | {{ diveModeLabel(dive) }}</p>
+            </div>
+            <button @click="setView('logs')" class="mt-6 flex items-center gap-2 self-start font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary hover:underline">
+              View All Logs <span class="material-symbols-outlined text-sm">arrow_forward</span>
+            </button>
+          </section>
+
+        </aside>
+
+        <main class="dashboard-main-stage">
+          <section v-if="!isMapView" class="dashboard-section dashboard-stat-grid grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            <article v-for="card in dashboardStatCards.slice(0, 4)" :key="'stage-stat-' + card.id" class="dashboard-glass-card dashboard-stat-tile p-4">
+              <div class="dashboard-stat-icon-wrap">
+                <span class="material-symbols-outlined dashboard-stat-icon text-secondary" :class="card.id === 'dive-count' ? 'dashboard-neon' : ''" :style="filledIconStyle">{{ card.icon }}</span>
               </div>
-              <div class="text-right">
-                <div class="font-headline text-sm font-bold text-tertiary">{{ formatDepth(dive.max_depth_m) }}</div>
-                <div class="font-label text-[10px] font-bold uppercase tracking-[0.16em] text-on-surface-variant">{{ formatDurationShort(dive.duration_seconds).replace(/m/g, 'min') }}</div>
+              <div class="min-w-0">
+                <p class="dashboard-stat-label">{{ card.label }}</p>
+                <p class="dashboard-stat-value">
+                  <span>{{ card.value }}</span>
+                  <span v-if="card.unit" class="dashboard-stat-unit">{{ card.unit }}</span>
+                </p>
               </div>
             </article>
-          </div>
-        </section>
+          </section>
 
-      </section>
-
-      <section class="hidden space-y-10 md:block">
-        <header>
-          <div>
-            <p class="font-label text-[10px] font-bold uppercase tracking-[0.3em] text-primary">Dive Overview</p>
-            <h3 class="mt-2 font-headline text-5xl font-bold tracking-tight">Diver: <span class="text-primary">{{ dashboardUserName }}</span></h3>
-          </div>
-        </header>
-        <section v-if="hasImportedDives" class="border-l-4 border-tertiary bg-surface-container-low p-6 shadow-panel">
-          <div class="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
-            <div class="max-w-3xl">
-              <p class="font-label text-[10px] font-bold uppercase tracking-[0.24em] text-tertiary">Attention Required</p>
-              <h4 class="mt-2 font-headline text-3xl font-bold tracking-tight">{{ importedDiveLabel }}</h4>
-              <p class="mt-3 text-sm leading-7 text-on-surface-variant">Imported dives do not appear in the dive logbook until the missing registry metadata has been completed.</p>
-            </div>
-            <div class="flex items-center gap-4">
-              <div class="min-w-[110px] bg-background/35 px-5 py-4 text-center">
-                <p class="font-headline text-4xl font-bold text-tertiary">{{ importedDiveCount }}</p>
-                <p class="mt-1 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Imported</p>
-              </div>
-              <button @click="openImportQueue()" class="bg-tertiary px-6 py-4 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-background">
-                Review Imported Dives
-              </button>
-            </div>
-          </div>
-        </section>
-        <div class="grid grid-cols-1 gap-4 md:grid-cols-4">
-          <div class="group flex h-36 items-center justify-center gap-4 bg-surface-container-low px-5 py-4 text-center transition-colors hover:bg-surface-container-high">
-            <span class="material-symbols-outlined flex-shrink-0 leading-none text-primary/60" style="font-size: 3rem;" :style="filledIconStyle">database</span>
-            <div class="min-w-0">
-              <p class="font-label text-[10px] font-bold uppercase tracking-[0.24em] text-secondary">Dive Count</p>
-              <p class="mt-2 font-headline text-4xl font-bold group-hover:text-primary">{{ stats.totalDives }}</p>
-            </div>
-          </div>
-          <div class="group flex h-36 items-center justify-center gap-4 bg-surface-container-low px-5 py-4 text-center transition-colors hover:bg-surface-container-high">
-            <span class="material-symbols-outlined flex-shrink-0 leading-none text-primary/60" style="font-size: 3rem;" :style="filledIconStyle">timer</span>
-            <div class="min-w-0">
-              <p class="font-label text-[10px] font-bold uppercase tracking-[0.24em] text-secondary">Bottom Time</p>
-              <p class="mt-2 font-headline text-4xl font-bold group-hover:text-primary">{{ Math.floor((stats.totalSeconds || 0) / 3600) }}<span class="ml-1 text-sm font-normal uppercase text-secondary">h</span> {{ Math.round(((stats.totalSeconds || 0) % 3600) / 60) }}<span class="ml-1 text-sm font-normal uppercase text-secondary">min</span></p>
-            </div>
-          </div>
-          <div class="group flex h-36 items-center justify-center gap-4 bg-surface-container-low px-5 py-4 text-center transition-colors hover:bg-surface-container-high">
-            <span class="material-symbols-outlined flex-shrink-0 leading-none text-primary/60" style="font-size: 3rem;" :style="filledIconStyle">straighten</span>
-            <div class="min-w-0">
-              <p class="font-label text-[10px] font-bold uppercase tracking-[0.24em] text-secondary">Max Depth</p>
-              <p class="mt-2 font-headline text-4xl font-bold group-hover:text-primary">{{ formatDepthNumber(stats.maxDepth) }}<span class="ml-1 text-sm font-normal uppercase text-secondary">m</span></p>
-            </div>
-          </div>
-          <div class="group flex h-36 items-center justify-center gap-4 border-l-2 border-primary/20 bg-surface-container-low px-5 py-4 text-center transition-colors hover:bg-surface-container-high">
-            <span class="material-symbols-outlined flex-shrink-0 leading-none text-primary/60" style="font-size: 3rem;" :style="filledIconStyle">water_drop</span>
-            <div class="min-w-0">
-              <p class="font-label text-[10px] font-bold uppercase tracking-[0.24em] text-secondary">Consumption</p>
-              <p class="mt-2 font-headline text-4xl font-bold">{{ formatBarTotal(stats.totalBarConsumed) }}<span class="ml-1 text-sm font-normal uppercase text-secondary">bar</span></p>
-            </div>
-          </div>
-        </div>
-        <section class="space-y-6">
-          <div class="space-y-6">
-            <div class="grid gap-6 xl:grid-cols-[minmax(0,1fr)_19rem]">
-              <div class="space-y-5">
-                <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-                  <div>
-                    <h4 class="font-headline text-3xl font-bold tracking-tight text-on-surface">Dive Map</h4>
-                    <p class="mt-2 font-label text-[10px] font-bold uppercase tracking-[0.24em] text-secondary">{{ mapTelemetryLabel }}</p>
-                  </div>
-                  <div class="flex flex-wrap gap-3">
-                    <button
-                      @click="toggleMapExpanded()"
-                      class="border border-primary/15 bg-surface-container-high px-3 py-2 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-primary transition-colors hover:border-primary/30 hover:text-on-surface"
-                    >
-                      {{ isMapExpanded ? 'Close Map' : 'Expand Map' }}
-                    </button>
-                    <span class="border border-primary/15 bg-surface-container-high px-3 py-2 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-primary">{{ mappedDiveCount }} mapped dives</span>
-                    <span class="border border-tertiary/15 bg-surface-container-high px-3 py-2 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-tertiary">{{ mappedSiteCount }} unique sites</span>
-                    <button
-                      v-if="unmappedDiveCount"
-                      @click="toggleMissingCoordinateDives()"
-                      class="border border-outline-variant/15 bg-surface-container-high px-3 py-2 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary transition-colors hover:border-primary/25 hover:text-primary"
-                    >
-                      {{ mapCoverageLabel }}
-                    </button>
-                    <span v-else class="border border-outline-variant/15 bg-surface-container-high px-3 py-2 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">{{ mapCoverageLabel }}</span>
-                  </div>
-                </div>
-
-                <div
-                  :class="isMapExpanded ? 'fixed inset-0 z-[490] flex items-center justify-center bg-background/88 px-6 py-8 backdrop-blur-sm' : 'relative'"
-                  @click.self="closeMapExpanded()"
+          <section
+            :class="isMapExpanded ? 'fixed inset-0 z-[490] flex items-center justify-center bg-background/88 px-6 py-8 backdrop-blur-sm' : (isMapView ? 'dashboard-section dashboard-map-section relative min-h-[calc(100vh-10rem)]' : 'dashboard-section dashboard-map-section relative min-h-[31rem]')"
+            @click.self="closeMapExpanded()"
+          >
+            <div :class="isMapExpanded ? 'w-full max-w-7xl' : 'h-full'">
+              <div :class="['dashboard-glass-card dashboard-map-panel relative h-full overflow-hidden']" :style="isMapExpanded ? { height: '85vh' } : null">
+                <button
+                  v-if="isMapExpanded"
+                  @click="closeMapExpanded()"
+                  class="absolute right-6 top-6 z-[480] rounded-full border border-outline-variant/30 bg-background/65 px-4 py-2 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-primary backdrop-blur-sm"
                 >
-                  <div :class="isMapExpanded ? 'w-full max-w-7xl' : ''">
-                    <div :class="['dive-map-shell relative overflow-hidden border border-primary/10 bg-surface-container-low shadow-panel']" :style="isMapExpanded ? { height: '85vh' } : null">
-                      <div v-if="isMapExpanded" class="absolute left-6 top-6 z-[480] flex items-center gap-3">
-                        <div class="border border-primary/15 bg-background/65 px-4 py-3 backdrop-blur-sm">
-                          <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-primary">Expanded Map</p>
-                          <p class="mt-1 text-sm text-on-surface-variant">{{ mapTelemetryLabel }}</p>
-                        </div>
-                      </div>
-                      <button
-                        v-if="isMapExpanded"
-                        @click="closeMapExpanded()"
-                        class="absolute right-6 top-6 z-[480] bg-background/65 px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary backdrop-blur-sm transition-colors hover:text-primary"
-                      >
-                        Close
-                      </button>
-                      <div ref="diveMapCanvas" class="dive-theme-map"></div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div v-if="mapTopSites.length" class="border border-primary/10 bg-surface-container-low p-5 shadow-panel">
-                <p class="font-label text-[10px] font-bold uppercase tracking-[0.22em] text-primary">Top Locations</p>
-                <div class="mt-4 space-y-3">
-                  <div v-for="site in mapTopSites" :key="'site-' + site.key" class="flex items-center justify-between gap-4 border border-outline-variant/10 bg-surface-container-high/70 px-4 py-3 text-sm">
-                    <div class="min-w-0">
-                      <p class="truncate font-semibold text-on-surface">{{ site.label }}</p>
-                      <p class="mt-1 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">{{ coordinateLabel(site.latitude, 'N', 'S') }} / {{ coordinateLabel(site.longitude, 'E', 'W') }}</p>
-                    </div>
-                    <span class="font-headline text-2xl font-bold text-tertiary">{{ site.count }}</span>
-                  </div>
-                </div>
+                  Close
+                </button>
+                <button
+                  v-else
+                  @click="toggleMapExpanded()"
+                  class="dashboard-map-expand-button"
+                  type="button"
+                  aria-label="Expand map"
+                  title="Expand map"
+                >
+                  <span class="material-symbols-outlined text-lg">fullscreen</span>
+                </button>
+                <div ref="diveMapCanvas" class="dive-theme-map"></div>
               </div>
             </div>
+          </section>
 
-          </div>
-        </section>
-      </section>
+          <section v-if="mapTopSites.length" class="dashboard-section dashboard-sites-section grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            <article v-for="site in mapTopSites" :key="'site-card-' + site.key" class="dashboard-glass-card dashboard-location-card flex items-center justify-between gap-4 p-4">
+              <div class="min-w-0">
+                <h5 class="truncate text-sm font-bold text-primary">{{ site.label }}</h5>
+                <p class="dashboard-micro-label mt-1 text-on-surface-variant">{{ coordinateLabel(site.latitude, 'N', 'S') }} / {{ coordinateLabel(site.longitude, 'E', 'W') }}</p>
+              </div>
+              <div class="font-headline text-2xl font-bold text-secondary">{{ site.count }}</div>
+            </article>
+          </section>
+        </main>
+      </div>
 
       <div
         v-if="showMissingCoordinateDives && missingCoordinateDives.length"
