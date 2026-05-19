@@ -679,9 +679,8 @@ export default {
           <section class="dashboard-glass-card dashboard-section dashboard-recent-card flex min-h-[30rem] flex-col p-5">
             <div class="mb-6 flex items-center justify-between">
               <h4 class="font-headline text-xl font-bold text-primary">Recent Dives</h4>
-              <span class="material-symbols-outlined text-secondary">history</span>
             </div>
-            <div class="dashboard-feed flex-1 space-y-5 overflow-y-auto pr-1">
+            <div class="dashboard-feed flex-1 overflow-y-auto pr-1">
               <article
                 v-for="entry in recentDiveFeed"
                 :key="'feed-' + entry.dive.id"
