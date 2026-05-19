@@ -18,6 +18,8 @@ test("renders login flows with the local auth screen", async ({ page }) => {
   await expect(page.getByPlaceholder("Email")).toBeVisible();
   await expect(page.getByRole("button", { name: "Sign In" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Create Account" })).toBeVisible();
+  await expect(page.getByLabel("Language")).toBeVisible();
+  await expect(page.getByLabel("Language").locator("option")).toHaveText(["English", "Deutsch", "Français"]);
 
   await page.getByRole("button", { name: "Create Account" }).last().click();
   await expect(page.getByRole("heading", { name: "Create your DiveVault account" })).toBeVisible();
@@ -29,6 +31,23 @@ test("renders login flows with the local auth screen", async ({ page }) => {
   await page.getByPlaceholder("Password").fill("Password123!");
   await page.getByRole("button", { name: "Sign In" }).click();
   await expect(page.getByText("Dive Overview")).toBeVisible();
+});
+
+test("hides the public account prompt when registration is closed", async ({ page }) => {
+  await installAppMocks(page, {
+    signedIn: false,
+    authStatus: {
+      initialized: true,
+      bootstrap_registration_open: false,
+      public_registration_enabled: false,
+      public_registration_open: false
+    }
+  });
+  await gotoAndWait(page);
+
+  await expect(page.getByRole("heading", { name: "Welcome back" })).toBeVisible();
+  await expect(page.getByText("Need an account?")).toBeHidden();
+  await expect(page.getByRole("button", { name: "Create Account" })).toBeHidden();
 });
 
 test("covers dashboard, logs, dive detail, and logbook editing", async ({ page }) => {
