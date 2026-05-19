@@ -190,28 +190,30 @@ export default {
     }
   },
   template: `
-    <section class="space-y-8 text-on-surface">
+    <section class="dashboard-command-center text-on-surface">
       <section class="space-y-6 md:hidden">
         <div v-if="statusMessage" class="rounded-xl bg-primary/10 px-4 py-3 text-sm text-primary">{{ statusMessage }}</div>
         <div v-if="errorMessage" class="rounded-xl bg-error-container/20 px-4 py-3 text-sm text-on-error-container">{{ errorMessage }}</div>
 
-        <div class="mb-2 flex gap-2">
+        <div class="dashboard-glass-card p-4">
+        <div class="flex gap-2">
           <div class="relative flex-1">
             <span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-lg text-on-surface-variant">search</span>
-            <input :value="searchText" @input="setSearchText($event.target.value)" type="text" class="w-full rounded-lg border-none bg-surface-container-high py-2.5 pl-10 pr-4 text-sm font-label tracking-[0.12em] text-on-surface placeholder:text-on-surface-variant/50 focus:ring-1 focus:ring-primary/20" placeholder="Search Logs..." />
+            <input :value="searchText" @input="setSearchText($event.target.value)" type="text" class="w-full rounded-lg border border-primary/10 bg-surface-container-high/70 py-2.5 pl-10 pr-4 text-sm font-label tracking-[0.12em] text-on-surface placeholder:text-on-surface-variant/50 focus:ring-1 focus:ring-primary/20" placeholder="Search Logs..." />
           </div>
-          <button @click="toggleMobileControls" class="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-lg bg-surface-container-high active:scale-95" :class="mobileControlsOpen ? 'text-primary' : 'text-on-surface-variant'">
+          <button @click="toggleMobileControls" class="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-lg border border-primary/10 bg-surface-container-high/70 active:scale-95" :class="mobileControlsOpen ? 'text-primary' : 'text-on-surface-variant'">
             <span class="material-symbols-outlined">{{ mobileControlsOpen ? 'close' : 'filter_list' }}</span>
           </button>
         </div>
 
-        <div class="grid grid-cols-2 gap-2">
+        <div class="mt-3 grid grid-cols-2 gap-2">
           <button @click="openManualDive()" class="rounded-lg bg-primary px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-on-primary">
             New Entry
           </button>
           <button @click="openImportQueue()" class="rounded-lg bg-surface-container-high px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-primary">
             Imported Queue
           </button>
+        </div>
         </div>
 
         <div v-if="mobileControlsOpen" class="space-y-4 rounded-xl bg-surface-container-low px-4 py-4 shadow-panel">
@@ -245,7 +247,7 @@ export default {
         </div>
 
         <div class="space-y-4">
-          <article v-for="dive in pagedDives" :key="'mobile-log-' + dive.id" @click="openDive(dive.id)" @keyup.enter="openDive(dive.id)" tabindex="0" role="button" class="rounded-xl bg-surface-container-low p-4 transition-all active:scale-[0.98] focus:bg-surface-container-high focus:outline-none">
+          <article v-for="dive in pagedDives" :key="'mobile-log-' + dive.id" @click="openDive(dive.id)" @keyup.enter="openDive(dive.id)" tabindex="0" role="button" class="log-dive-card p-4 transition-all active:scale-[0.98] focus:outline-none">
             <div>
               <div class="flex min-w-0 flex-1 flex-col justify-between">
                 <div class="flex items-start justify-between gap-3">
@@ -318,7 +320,7 @@ export default {
       <div v-if="statusMessage" class="border border-primary/20 bg-primary/10 px-5 py-4 text-sm text-primary shadow-panel">{{ statusMessage }}</div>
       <div v-if="errorMessage" class="border border-error/20 bg-error-container/20 px-5 py-4 text-sm text-on-error-container shadow-panel">{{ errorMessage }}</div>
 
-      <div class="flex flex-col justify-end gap-6 lg:flex-row lg:items-end">
+      <div class="flex flex-col justify-end gap-3 lg:flex-row lg:items-center">
         <div class="flex flex-col gap-3 sm:flex-row sm:items-center">
           <div class="relative min-w-[18rem] flex-1 sm:w-[24rem] sm:flex-none">
             <span class="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-lg text-on-surface-variant">search</span>
@@ -326,11 +328,11 @@ export default {
               :value="searchText"
               @input="setSearchText($event.target.value)"
               type="text"
-              class="w-full bg-surface-container-high py-3 pl-12 pr-4 text-sm font-label tracking-[0.12em] text-on-surface placeholder:text-on-surface-variant/50 focus:ring-1 focus:ring-primary/20"
+              class="w-full rounded-xl border border-primary/10 bg-surface-container-high/70 py-3 pl-12 pr-4 text-sm font-label tracking-[0.12em] text-on-surface placeholder:text-on-surface-variant/50 focus:ring-1 focus:ring-primary/20"
               placeholder="Search dive logs..."
             />
           </div>
-          <button @click="openManualDive()" class="flex items-center gap-2 bg-primary px-6 py-3 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-on-primary">
+          <button @click="openManualDive()" class="flex items-center gap-2 rounded-xl bg-primary px-6 py-3 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-on-primary">
             <span class="material-symbols-outlined text-sm">add</span>
             New Entry
           </button>

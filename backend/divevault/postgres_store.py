@@ -164,6 +164,8 @@ CREATE TABLE IF NOT EXISTS user_equipment (
     service_interval_months INTEGER,
     last_service_date TEXT NOT NULL DEFAULT '',
     max_dives_before_service INTEGER,
+    track_service BOOLEAN NOT NULL DEFAULT TRUE,
+    service_tag TEXT NOT NULL DEFAULT '',
     is_default BOOLEAN NOT NULL DEFAULT FALSE,
     is_standard BOOLEAN NOT NULL DEFAULT FALSE,
     last_serviced_at TEXT,
@@ -178,7 +180,7 @@ LOGBOOK_OPTIONAL_FIELDS = ("weather_description", "visibility", "wetsuit_descrip
 LOGBOOK_DISPLAY_FIELD_OPTIONS = set(LOGBOOK_OPTIONAL_FIELDS)
 SAMPLE_TIME_UNIT_SECONDS = "seconds"
 SAMPLE_TIME_UNIT_MILLISECONDS = "milliseconds"
-CURRENT_SCHEMA_VERSION = 11
+CURRENT_SCHEMA_VERSION = 12
 SCHEMA_VERSION_SQL = """
 CREATE TABLE IF NOT EXISTS app_schema_version (
     singleton BOOLEAN PRIMARY KEY DEFAULT TRUE CHECK (singleton),
@@ -618,6 +620,8 @@ def apply_schema_migration_v9(cur: psycopg.Cursor) -> None:
             service_interval_months INTEGER,
             last_service_date TEXT NOT NULL DEFAULT '',
             max_dives_before_service INTEGER,
+            track_service BOOLEAN NOT NULL DEFAULT TRUE,
+            service_tag TEXT NOT NULL DEFAULT '',
             is_default BOOLEAN NOT NULL DEFAULT FALSE,
             is_standard BOOLEAN NOT NULL DEFAULT FALSE,
             last_serviced_at TEXT,
@@ -647,6 +651,13 @@ def apply_schema_migration_v11(cur: psycopg.Cursor) -> None:
     cur.execute("UPDATE user_profile SET equipment_selection_enabled=TRUE WHERE equipment_selection_enabled IS NULL")
 
 
+def apply_schema_migration_v12(cur: psycopg.Cursor) -> None:
+    cur.execute("ALTER TABLE user_equipment ADD COLUMN IF NOT EXISTS track_service BOOLEAN NOT NULL DEFAULT TRUE")
+    cur.execute("ALTER TABLE user_equipment ADD COLUMN IF NOT EXISTS service_tag TEXT NOT NULL DEFAULT ''")
+    cur.execute("UPDATE user_equipment SET track_service=TRUE WHERE track_service IS NULL")
+    cur.execute("UPDATE user_equipment SET service_tag='' WHERE service_tag IS NULL")
+
+
 def _run_schema_migrations(conn: psycopg.Connection, cur: psycopg.Cursor, current_version: int) -> int:
     migrations: tuple[tuple[int, Callable[[psycopg.Connection, psycopg.Cursor], None]], ...] = (
         (1, lambda _conn, migration_cur: apply_schema_migration_v1(migration_cur)),
@@ -660,6 +671,7 @@ def _run_schema_migrations(conn: psycopg.Connection, cur: psycopg.Cursor, curren
         (9, lambda _conn, migration_cur: apply_schema_migration_v9(migration_cur)),
         (10, lambda _conn, migration_cur: apply_schema_migration_v10(migration_cur)),
         (11, lambda _conn, migration_cur: apply_schema_migration_v11(migration_cur)),
+        (12, lambda _conn, migration_cur: apply_schema_migration_v12(migration_cur)),
     )
     target_schema_version = min(CURRENT_SCHEMA_VERSION, max(version for version, _ in migrations))
 
@@ -924,6 +936,8 @@ def normalize_equipment_item(entry: dict | None) -> dict:
         "service_interval_months": clean_optional_int(source.get("service_interval_months"), minimum=1),
         "last_service_date": last_service_date,
         "max_dives_before_service": clean_optional_int(source.get("max_dives_before_service"), minimum=1),
+        "track_service": clean_profile_bool(source.get("track_service")) if "track_service" in source else True,
+        "service_tag": clean_profile_text(source.get("service_tag")),
         "is_default": is_default,
         "is_standard": is_default,
         "last_serviced_at": clean_profile_text(source.get("last_serviced_at")) or None,
@@ -949,6 +963,7 @@ def equipment_has_values(entry: dict | None) -> bool:
             "year_bought",
             "service_interval_months",
             "max_dives_before_service",
+            "service_tag",
         )
     ) or normalized.get("is_default")
 
@@ -1945,7 +1960,7 @@ def list_user_equipment(conn: psycopg.Connection, user_id: str) -> list[dict]:
         cur.execute(
             """
             SELECT equipment_id, name, category, type, year_bought, vendor, brand, model, serial, warranty, next_service_due,
-                   service_interval_months, last_service_date, max_dives_before_service, is_default, is_standard,
+                   service_interval_months, last_service_date, max_dives_before_service, track_service, service_tag, is_default, is_standard,
                    last_serviced_at, last_service_dive_count, updated_at
             FROM user_equipment
             WHERE user_id=%s
@@ -1972,6 +1987,8 @@ def list_user_equipment(conn: psycopg.Connection, user_id: str) -> list[dict]:
                 "service_interval_months": row.get("service_interval_months"),
                 "last_service_date": row.get("last_service_date"),
                 "max_dives_before_service": row.get("max_dives_before_service"),
+                "track_service": row.get("track_service"),
+                "service_tag": row.get("service_tag"),
                 "is_default": row.get("is_default"),
                 "is_standard": row.get("is_standard"),
                 "last_serviced_at": row.get("last_serviced_at"),
@@ -2002,10 +2019,10 @@ def save_user_equipment(conn: psycopg.Connection, user_id: str, entries: object)
                 """
                 INSERT INTO user_equipment(
                     user_id, equipment_id, name, category, type, year_bought, vendor, brand, model, serial, warranty,
-                    next_service_due, service_interval_months, last_service_date, max_dives_before_service,
+                    next_service_due, service_interval_months, last_service_date, max_dives_before_service, track_service, service_tag,
                     is_default, is_standard, last_serviced_at, last_service_dive_count, updated_at
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """,
                 (
                     user_id,
@@ -2023,6 +2040,8 @@ def save_user_equipment(conn: psycopg.Connection, user_id: str, entries: object)
                     item["service_interval_months"],
                     item["last_service_date"],
                     item["max_dives_before_service"],
+                    item["track_service"],
+                    item["service_tag"],
                     item["is_default"],
                     item["is_standard"],
                     item["last_serviced_at"],
