@@ -1,5 +1,5 @@
 import L from "leaflet";
-import { buildDiveSequenceMap, dayOfMonth, monthShort, formatDate, formatTime, diveTitle, diveSubtitle, formatDepth, formatDepthNumber, formatDateTime, durationShort, formatTemperature, surfaceTemperature, diveModeLabel, pressureUsedLabel, decoStatusLabel, formatBarTotal, filledIconStyle, numberOrZero, parseDate, importDraftSeed, paddedDiveIndex } from "../core.js";
+import { buildDiveSequenceMap, dayOfMonth, monthShort, formatDate, formatTime, diveTitle, diveSubtitle, diveDeviceLabel, formatDepth, formatDepthNumber, formatDateTime, durationShort, formatTemperature, surfaceTemperature, diveModeLabel, pressureUsedLabel, decoStatusLabel, formatBarTotal, filledIconStyle, numberOrZero, parseDate, importDraftSeed, paddedDiveIndex } from "../core.js";
 import { diveMapPreview } from "../map-preview.js";
 
 function numericCoordinate(value) {
@@ -612,7 +612,7 @@ export default {
             date: dive.started_at,
             siteName: siteName || this.t("Site pending", "Site pending"),
             title: diveTitle(dive),
-            device: `${dive.vendor || this.t("Unknown", "Unknown")} ${dive.product || ""}`.trim(),
+            device: diveDeviceLabel(dive),
             depth: formatDepth(dive.max_depth_m),
             duration: durationShort(dive.duration_seconds),
             reason

@@ -1,8 +1,6 @@
 <p align="center">
-  <img src="./frontend/public/logo-headline.png" alt="DiveVault" width="128" height="128">
+  <img src="./frontend/public/logo-headline.png" alt="DiveVault" width="512">
 </p>
-
-<h1 align="center">DiveVault</h1>
 
 <p align="center">
   Self-hosted dive logbook, import queue, and review UI for dive computer telemetry.
@@ -110,12 +108,20 @@ Before using that chart, compare its values with this repo's current environment
 
 ![DiveVault dashboard](./docs/readme/dashboard.png)
 
-### Imports And Settings
+### Dive Logs, Imports, Equipment, And Settings
 
 <table>
   <tr>
     <td width="50%">
+      <img src="./docs/readme/logs.png" alt="DiveVault dive logs">
+    </td>
+    <td width="50%">
       <img src="./docs/readme/imports.png" alt="DiveVault import queue">
+    </td>
+  </tr>
+  <tr>
+    <td width="50%">
+      <img src="./docs/readme/equipment.png" alt="DiveVault equipment">
     </td>
     <td width="50%">
       <img src="./docs/readme/settings.png" alt="DiveVault settings">
@@ -193,7 +199,7 @@ If you want to work on DiveVault itself:
 
 - Start with the run-it-yourself steps above so you can use the app end to end before changing code.
 - Run backend and frontend tests before opening changes.
-- Regenerate README screenshots with `frontend/scripts/capture-readme-screenshots.mjs` when UI changes affect the screenshots.
+- Regenerate README screenshots with `cd frontend && npm run screenshots:readme` when UI changes affect the screenshots.
 
 ### Requirements
 

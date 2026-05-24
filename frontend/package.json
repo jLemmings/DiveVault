@@ -1,13 +1,14 @@
 {
   "name": "divevault-frontend",
   "private": true,
-  "version": "0.2.3",
+  "version": "0.2.4",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "npm run test && npm run build:app",
     "build:app": "vite build",
     "preview": "vite preview",
+    "screenshots:readme": "node scripts/capture-readme-screenshots.mjs",
     "test": "playwright test",
     "test:ui": "playwright test --ui"
   },

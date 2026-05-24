@@ -1,4 +1,4 @@
-import { buildDiveSequenceMap, formatDate, numberOrZero, parseDate, formatTime, formatDepth, formatTemperature, durationShort, surfaceTemperature, diveTitle, pressureUsedLabel, importDraftSeed, paddedDiveIndex } from "../core.js";
+import { buildDiveSequenceMap, formatDate, numberOrZero, parseDate, formatTime, formatDepth, formatTemperature, durationShort, surfaceTemperature, diveTitle, diveDeviceLabel, pressureUsedLabel, importDraftSeed, paddedDiveIndex } from "../core.js";
 import { diveMapPreview } from "../map-preview.js";
 
 export default {
@@ -35,7 +35,7 @@ export default {
     filteredDives() {
       const search = (this.searchText || "").toLowerCase();
       const filtered = this.dives.filter((dive) => {
-        const device = `${dive.vendor} ${dive.product}`;
+        const device = diveDeviceLabel(dive);
         const site = this.diveSiteLabel(dive);
         const matchesSearch = !search || [
           device,
@@ -170,13 +170,11 @@ export default {
       return site || "Site pending";
     },
     diveComputerLabel(dive) {
+      if (diveDeviceLabel(dive) === "Manual Entry") return "Manual Entry";
       const product = typeof dive?.product === "string" ? dive.product.trim() : "";
       return product || "Unknown computer";
     },
-    diveDeviceLabel(dive) {
-      const vendor = typeof dive?.vendor === "string" ? dive.vendor.trim() : "";
-      return vendor || "Unknown device";
-    },
+    diveDeviceLabel,
     configuredLogbookMeta(dive) {
       const draft = importDraftSeed(dive);
       const enabled = Array.isArray(this.logbookDisplayFields) ? this.logbookDisplayFields : [];
