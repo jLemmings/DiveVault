@@ -2072,6 +2072,19 @@ body {
   background: rgba(0, 83, 139, 0.08);
 }
 
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-delay: 0ms !important;
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-delay: 0ms !important;
+    transition-duration: 1ms !important;
+  }
+}
+
 @media (min-width: 768px) {
   .settings-stat-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
