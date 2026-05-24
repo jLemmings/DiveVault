@@ -400,7 +400,7 @@ async function installAppMocks(page, options = {}) {
     await route.fulfill({
       status: 200,
       contentType: "application/javascript",
-      body: "window.__APP_CONFIG__ = { authEnabled: true };"
+      body: "window.__APP_CONFIG__ = { authEnabled: true, demoMode: false };"
     });
   });
 

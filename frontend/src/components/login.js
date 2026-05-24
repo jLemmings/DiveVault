@@ -58,6 +58,9 @@ export default {
     selectedLocale() {
       return this.availableLanguages.some((language) => language.value === this.currentLocale) ? this.currentLocale : "en";
     },
+    demoMode() {
+      return Boolean(typeof window !== "undefined" && window.__APP_CONFIG__?.demoMode);
+    },
     showAlternateAccountPrompt() {
       return this.authView === AUTH_VIEW_REGISTER || this.canRegister;
     },
@@ -205,6 +208,16 @@ export default {
             <div class="relative">
               <h2 class="font-headline text-[2rem] font-bold tracking-tight text-white sm:text-[2.6rem] sm:leading-[1.02]">{{ authHeading }}</h2>
               <p class="mt-3 max-w-[30rem] text-sm leading-6 text-secondary sm:mt-4 sm:leading-7">{{ authSummary }}</p>
+            </div>
+
+            <div v-if="demoMode" class="relative mt-5 rounded-2xl border border-primary/20 bg-primary/10 px-4 py-4 text-sm text-on-surface sm:mt-6">
+              <div class="flex items-start gap-3">
+                <span class="material-symbols-outlined mt-0.5 text-[20px] text-primary">info</span>
+                <div class="min-w-0">
+                  <p class="font-label text-[0.65rem] font-bold uppercase tracking-[0.18em] text-primary">Demo Mode</p>
+                  <p class="mt-1 leading-6 text-secondary">This public instance resets on a schedule. Sign in with username <span class="font-semibold text-on-surface">admin</span> and password <span class="font-semibold text-on-surface">admin</span>.</p>
+                </div>
+              </div>
             </div>
 
             <div v-if="message" class="relative mt-5 rounded-2xl border border-primary/16 bg-primary/10 px-4 py-3 text-sm text-primary sm:mt-6">
