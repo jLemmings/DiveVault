@@ -307,6 +307,28 @@ async function fulfillJson(route, payload, status = 200) {
 
 async function setupTestState(page, { signedIn = true, user = baseUser() } = {}) {
   await page.addInitScript((state) => {
+    const installStabilityStyles = () => {
+      if (document.querySelector("style[data-playwright-stability]")) return;
+      const target = document.head || document.documentElement;
+      if (!target) return;
+      const style = document.createElement("style");
+      style.dataset.playwrightStability = "true";
+      style.textContent = `
+        *,
+        *::before,
+        *::after {
+          animation-delay: 0ms !important;
+          animation-duration: 1ms !important;
+          animation-iteration-count: 1 !important;
+          scroll-behavior: auto !important;
+          transition-delay: 0ms !important;
+          transition-duration: 1ms !important;
+        }
+      `;
+      target.appendChild(style);
+    };
+    installStabilityStyles();
+    document.addEventListener("DOMContentLoaded", installStabilityStyles, { once: true });
     window.scrollTo = () => {};
     window.HTMLElement.prototype.scrollIntoView = function scrollIntoView() {};
     const storageKey = "divevault_auth_token";
