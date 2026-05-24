@@ -22,6 +22,11 @@
 - `cd frontend && npm run build` runs Playwright first, then `vite build`; use `npm run build:app` only when you intentionally want build without tests, as CI does for release assets.
 - There are no configured lint, formatter, or typecheck scripts in the current manifests.
 
+## MCP Usage
+- Use the Context7 MCP when framework, library, or API behavior is uncertain, especially for Vue, Vite, Playwright, Python, PostgreSQL, Docker, or Kubernetes docs that may have changed.
+- Use the Playwright MCP when inspecting, debugging, or validating frontend behavior in a real browser, including layout issues, interaction flows, screenshots, console errors, and network requests.
+- Prefer existing repository tests and commands for final verification; MCP tools are for gathering current docs/context or investigating browser state when applicable.
+
 ## Testing Gotchas
 - Backend tests are mostly unit/fake-server tests; they monkeypatch DB access and do not require a live PostgreSQL server unless you run the app or migration entrypoints.
 - Frontend Playwright tests mock app API responses in `frontend/tests/helpers/app-fixtures.js`; do not start the Python backend for normal frontend test runs.

@@ -141,6 +141,7 @@ export default {
       profileBuddies: [],
       profileGuides: [],
       profileLogbookDisplayFields: [],
+      profileEquipmentSelectionEnabled: true,
       equipment: [],
       equipmentSaving: false,
       equipmentServicingId: null,
@@ -185,6 +186,7 @@ export default {
       navItems: [
         { id: "dashboard", label: "Dashboard", mobileLabel: "Dashboard", icon: "dashboard", mobileIcon: "dashboard", eyebrow: "Dive Overview", title: "Logbook" },
         { id: "logs", label: "Dive Logs", mobileLabel: "Logs", icon: "waves", mobileIcon: "sailing", eyebrow: "Dive Logs", title: "Dive Log Database" },
+        { id: "map", label: "Map", mobileLabel: "Map", icon: "map", mobileIcon: "map", eyebrow: "Dive Map", title: "Map" },
         { id: "equipment", label: "Equipment", mobileLabel: "Gear", icon: "scuba_diving", mobileIcon: "scuba_diving", eyebrow: "Gear Locker", title: "Equipment" },
         { id: "settings", label: "Settings", mobileLabel: "Settings", icon: "settings", mobileIcon: "settings", eyebrow: "System Configuration", title: "System Config" }
       ],
@@ -263,6 +265,15 @@ export default {
       }
       return this.navItems.find((item) => item.id === this.activeView) || this.navItems[0];
     },
+    activeMenuTitle() {
+      if (this.activeView === "edit" || this.activeView === "create" || this.activeView === "imports") {
+        return this.navItems.find((item) => item.id === "logs")?.label || "Dive Logs";
+      }
+      if (this.activeView === "logs") {
+        return this.navItems.find((item) => item.id === "logs")?.label || "Dive Logs";
+      }
+      return this.navItems.find((item) => item.id === this.activeView)?.label || "Dashboard";
+    },
     selectedDive() {
       return this.dives.find((dive) => String(dive.id) === String(this.selectedDiveId)) || null;
     },
@@ -312,10 +323,17 @@ export default {
     settingsSubnavItems() {
       return SETTINGS_SECTIONS.filter((section) => section.id !== "manage-users" || this.canManageUsers);
     },
+    desktopNavItems() {
+      return this.navItems.filter((item) => item.id !== "map");
+    },
+    mobileNavItems() {
+      return this.navItems;
+    },
     loadingViewKey() {
       if (this.activeView === "edit") return "edit";
       if (this.activeView === "create") return "edit";
       if (this.activeView === "imports") return "imports";
+      if (this.activeView === "map") return "dashboard";
       if (this.activeView === "settings") return "settings";
       if (this.activeView === "logs" && this.selectedDiveId) return "detail";
       if (this.activeView === "logs") return "logs";
@@ -392,6 +410,7 @@ export default {
       this.profileBuddies = [];
       this.profileGuides = [];
       this.profileLogbookDisplayFields = [];
+      this.profileEquipmentSelectionEnabled = true;
       this.equipment = [];
       this.equipmentSaving = false;
       this.equipmentServicingId = null;
@@ -831,7 +850,7 @@ export default {
       const wetsuitDescription = String(this.manualDiveDraft.wetsuitDescription || "").trim();
       const notes = String(this.manualDiveDraft.notes || "").trim();
       const selectedEquipmentIds = Array.isArray(this.manualDiveDraft.equipment_ids) ? this.manualDiveDraft.equipment_ids.map(String) : [];
-      const equipmentIds = selectedEquipmentIds.length ? selectedEquipmentIds : this.defaultEquipmentIds;
+      const equipmentIds = this.profileEquipmentSelectionEnabled ? selectedEquipmentIds : [];
       const durationMinutes = Number.parseFloat(this.manualDiveDraft.durationMinutes);
       const maxDepthM = Number.parseFloat(this.manualDiveDraft.maxDepthM);
       const temperatureInput = String(this.manualDiveDraft.temperatureC || "").trim();
@@ -1321,6 +1340,7 @@ export default {
         this.profileBuddies = [];
         this.profileGuides = [];
         this.profileLogbookDisplayFields = [];
+        this.profileEquipmentSelectionEnabled = true;
       }
     },
     async fetchEquipment() {
@@ -1392,6 +1412,7 @@ export default {
       this.profileBuddies = Array.isArray(payload?.buddies) ? payload.buddies : [];
       this.profileGuides = Array.isArray(payload?.guides) ? payload.guides : [];
       this.profileLogbookDisplayFields = Array.isArray(payload?.logbook_display_fields) ? payload.logbook_display_fields : [];
+      this.profileEquipmentSelectionEnabled = payload?.equipment_selection_enabled !== false;
     }
   },
   mounted() {
@@ -1426,8 +1447,11 @@ export default {
         <p class="font-headline text-2xl font-bold">Loading secure access...</p>
       </section>
     </div>
-    <login-view v-else-if="!isAuthenticated"></login-view>
-    <div v-else class="min-h-screen bg-background text-on-background">
+    <login-view v-else-if="!isAuthenticated" :current-locale="i18nLocale" :set-locale="setLocale"></login-view>
+    <div v-else class="app-stage relative min-h-screen overflow-hidden bg-background text-on-background">
+      <div class="app-stage-wave auth-stage-wave auth-stage-wave-back"></div>
+      <div class="app-stage-wave auth-stage-wave auth-stage-wave-front"></div>
+      <div class="app-stage-caustics auth-stage-caustics"></div>
       <aside class="fixed inset-y-0 left-0 z-40 hidden w-64 flex-col bg-background shadow-[40px_0_40px_-20px_rgba(0,15,29,0.4)] md:flex">
         <div class="flex justify-center px-4 pb-2 pt-5">
           <div class="flex h-32 w-full items-center justify-center rounded-3xl shadow-panel">
@@ -1435,7 +1459,7 @@ export default {
           </div>
         </div>
         <nav class="mt-6 flex-1 space-y-2">
-          <div v-for="item in navItems" :key="item.id" class="space-y-2">
+          <div v-for="item in desktopNavItems" :key="item.id" class="space-y-2">
             <button @click="handleNavItemClick(item.id)" :disabled="item.disabled" class="group flex w-full items-center gap-4 p-4 text-left transition-all duration-300 disabled:cursor-not-allowed disabled:opacity-100" :class="item.disabled ? 'border-l-4 border-tertiary bg-tertiary/12 text-tertiary' : ((activeView === item.id || (activeView === 'create' && item.id === 'logs')) ? 'border-r-4 border-primary bg-surface-container-high/70 text-primary' : 'text-secondary opacity-70 hover:bg-surface-container-high hover:text-primary hover:opacity-100')">
               <span class="material-symbols-outlined transition-transform group-active:scale-90" :style="(activeView === item.id || (activeView === 'create' && item.id === 'logs')) && !item.disabled ? filledIconStyle : ''">{{ item.icon }}</span>
               <span class="hidden items-center gap-2 font-label text-[11px] font-bold md:flex">
@@ -1478,7 +1502,7 @@ export default {
             <div class="flex h-14 w-14 items-center justify-center rounded-2xl shadow-panel">
               <img src="/logo.png" alt="DiveVault" class="max-h-full max-w-full object-contain p-1" />
             </div>
-            <h2 class="font-headline text-lg font-bold uppercase tracking-[0.14em] text-primary">DiveVault</h2>
+            <h2 class="font-headline text-lg font-bold uppercase tracking-[0.14em] text-primary">{{ activeMenuTitle }}</h2>
           </div>
           <div class="relative">
             <button @click="toggleMobileAccountMenu" class="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-primary/15 bg-surface-container-high text-[11px] font-bold uppercase tracking-[0.12em] text-primary">
@@ -1504,7 +1528,7 @@ export default {
           </div>
         </div>
         <div class="hidden h-full items-center justify-between px-8 md:flex">
-          <h2 class="font-headline text-2xl font-bold tracking-[0.08em] text-primary">DiveVault</h2>
+          <h2 class="font-headline text-2xl font-bold tracking-[0.08em] text-primary">{{ activeMenuTitle }}</h2>
           <div class="relative flex items-center gap-3 rounded-2xl border border-primary/10 bg-surface-container-high/70 px-3 py-2 text-on-surface">
             <button @click="toggleDesktopAccountMenu" class="flex h-10 w-10 items-center justify-center rounded-2xl bg-primary/12 text-[11px] font-bold uppercase tracking-[0.14em] text-primary transition-colors hover:bg-primary/18">
               {{ currentUserInitials }}
@@ -1530,8 +1554,8 @@ export default {
           </div>
         </div>
       </header>
-      <main class="pb-24 pt-20 md:ml-64">
-        <div class="mx-auto max-w-md px-4 md:px-8" :class="activeView === 'imports' ? 'md:max-w-[92rem]' : 'md:max-w-7xl'">
+      <main class="relative z-10 md:ml-64" :class="activeView === 'map' ? 'px-0 pb-0 pt-16' : 'pb-24 pt-20'">
+        <div class="mx-auto" :class="activeView === 'map' ? 'w-full max-w-none px-0 md:max-w-[96rem] md:px-8' : 'max-w-md px-4 md:max-w-[96rem] md:px-8'">
           <section v-if="loading" class="space-y-6">
             <div class="border border-primary/10 bg-surface-container-low p-6 shadow-panel animate-pulse">
               <p class="font-label text-[10px] font-bold uppercase tracking-[0.22em] text-primary">
@@ -1614,10 +1638,11 @@ export default {
             <p class="mt-2 text-sm text-on-error-container">{{ error }}</p>
             <button @click="fetchDives" class="mt-5 bg-primary px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-on-primary">Retry</button>
           </section>
-          <dashboard-view v-else-if="activeView === 'dashboard'" :dives="committedDives" :all-dives="dives" :dive-sites="profileDiveSites" :stats="stats" :set-view="setView" :backend-healthy="backendHealthy" :open-dive="openDive" :current-user-name="currentUserName" :imported-dive-count="importedDiveCount" :open-import-queue="openImportQueue"></dashboard-view>
+          <dashboard-view v-else-if="activeView === 'dashboard'" display-mode="dashboard" :dives="committedDives" :all-dives="dives" :dive-sites="profileDiveSites" :stats="stats" :set-view="setView" :backend-healthy="backendHealthy" :open-dive="openDive" :current-user-name="currentUserName" :imported-dive-count="importedDiveCount" :open-import-queue="openImportQueue"></dashboard-view>
+          <dashboard-view v-else-if="activeView === 'map'" display-mode="map" :dives="committedDives" :all-dives="dives" :dive-sites="profileDiveSites" :stats="stats" :set-view="setView" :backend-healthy="backendHealthy" :open-dive="openDive" :current-user-name="currentUserName" :imported-dive-count="importedDiveCount" :open-import-queue="openImportQueue"></dashboard-view>
           <logs-view v-else-if="activeView === 'logs' && !selectedDive" :dives="committedDives" :dive-sites="profileDiveSites" :logbook-display-fields="profileLogbookDisplayFields" :search-text="searchText" :open-dive="openDive" :open-import-queue="openImportQueue" :open-manual-dive="openManualDiveCreator" :set-search-text="setSearchText" :delete-dive="deleteDive" :deleting-dive-id="deletingDiveId" :status-message="importStatusMessage" :error-message="importError"></logs-view>
-          <manual-dive-entry-view v-else-if="activeView === 'create'" :draft="manualDiveDraft" :dive-sites="profileDiveSites" :buddies="profileBuddies" :guides="profileGuides" :equipment="equipment" :default-equipment-ids="defaultEquipmentIds" :creating="manualDiveCreating" :error-message="manualDiveError" :update-draft="updateManualDiveDraft" :create-manual-dive="createManualDive" :close-creator="closeManualDiveCreator" :create-dive-site="createDiveSite" :search-dive-site-location="searchDiveSiteLocation"></manual-dive-entry-view>
-          <dive-import-editor-view v-else-if="activeView === 'imports' && selectedImportDive" :dive="selectedImportDive" :draft="selectedImportDraft" :dive-sites="profileDiveSites" :buddies="profileBuddies" :guides="profileGuides" :equipment="equipment" :default-equipment-ids="defaultEquipmentIds" :saving-import-id="savingImportId" :bulk-import-save-pending="bulkImportSavePending" :deleting-dive-id="deletingDiveId" :import-error="importError" :import-status-message="importStatusMessage" :update-import-draft="updateImportDraft" :save-import-draft="saveImportDraft" :delete-dive="deleteDive" :apply-buddy-guide-to-pending-imports="applyBuddyGuideToPendingImports" :create-dive-site="createDiveSite" :back-to-queue="backToImportQueue"></dive-import-editor-view>
+          <manual-dive-entry-view v-else-if="activeView === 'create'" :draft="manualDiveDraft" :dive-sites="profileDiveSites" :buddies="profileBuddies" :guides="profileGuides" :equipment="equipment" :default-equipment-ids="defaultEquipmentIds" :equipment-selection-enabled="profileEquipmentSelectionEnabled" :creating="manualDiveCreating" :error-message="manualDiveError" :update-draft="updateManualDiveDraft" :create-manual-dive="createManualDive" :close-creator="closeManualDiveCreator" :create-dive-site="createDiveSite" :search-dive-site-location="searchDiveSiteLocation"></manual-dive-entry-view>
+          <dive-import-editor-view v-else-if="activeView === 'imports' && selectedImportDive" :dive="selectedImportDive" :draft="selectedImportDraft" :dive-sites="profileDiveSites" :buddies="profileBuddies" :guides="profileGuides" :equipment="equipment" :default-equipment-ids="defaultEquipmentIds" :equipment-selection-enabled="profileEquipmentSelectionEnabled" :saving-import-id="savingImportId" :bulk-import-save-pending="bulkImportSavePending" :deleting-dive-id="deletingDiveId" :import-error="importError" :import-status-message="importStatusMessage" :update-import-draft="updateImportDraft" :save-import-draft="saveImportDraft" :delete-dive="deleteDive" :apply-buddy-guide-to-pending-imports="applyBuddyGuideToPendingImports" :create-dive-site="createDiveSite" :back-to-queue="backToImportQueue"></dive-import-editor-view>
           <dive-import-view v-else-if="activeView === 'imports'" :dives="dives" :import-drafts="importDrafts" :selected-import-id="selectedImportId" :select-import-dive="selectImportDive" :deleting-dive-id="deletingDiveId" :import-error="importError" :import-status-message="importStatusMessage" :delete-dive="deleteDive" :set-view="setView" :fetch-dives="fetchDives"></dive-import-view>
           <logbook-editor-view v-else-if="activeView === 'edit' && selectedEditDive" :dive="selectedEditDive" :all-dives="dives" :draft="selectedEditDraft" :dive-sites="profileDiveSites" :buddies="profileBuddies" :guides="profileGuides" :saving-import-id="savingImportId" :deleting-dive-id="deletingDiveId" :status-message="importStatusMessage" :error-message="importError" :update-dive-draft="updateImportDraft" :save-dive-logbook="saveExistingDiveLogbook" :delete-dive="deleteDive" :create-dive-site="createDiveSite" :close-editor="closeDiveEditor"></logbook-editor-view>
           <dive-detail-view v-else-if="activeView === 'logs' && selectedDive" :dive="selectedDive" :all-dives="dives" :deleting-dive-id="deletingDiveId" :close-detail="closeDiveDetail" :open-dive-editor="openDiveEditor" :delete-dive="deleteDive"></dive-detail-view>
@@ -1627,7 +1652,7 @@ export default {
       </main>
       <nav class="fixed bottom-0 left-0 right-0 z-40 flex items-center justify-around border-t border-primary/10 bg-surface-container-low/80 px-4 pb-6 pt-3 backdrop-blur-xl md:hidden">
         <button
-          v-for="item in navItems"
+          v-for="item in mobileNavItems"
           :key="item.id"
           @click="setView(item.id)"
           :disabled="item.disabled"

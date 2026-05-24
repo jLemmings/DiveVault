@@ -18,6 +18,8 @@ test("renders login flows with the local auth screen", async ({ page }) => {
   await expect(page.getByPlaceholder("Email")).toBeVisible();
   await expect(page.getByRole("button", { name: "Sign In" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Create Account" })).toBeVisible();
+  await expect(page.getByLabel("Language")).toBeVisible();
+  await expect(page.getByLabel("Language").locator("option")).toHaveText(["English", "Deutsch", "Français"]);
 
   await page.getByRole("button", { name: "Create Account" }).last().click();
   await expect(page.getByRole("heading", { name: "Create your DiveVault account" })).toBeVisible();
@@ -28,18 +30,35 @@ test("renders login flows with the local auth screen", async ({ page }) => {
   await page.getByPlaceholder("Email").fill("avery@example.com");
   await page.getByPlaceholder("Password").fill("Password123!");
   await page.getByRole("button", { name: "Sign In" }).click();
-  await expect(page.getByText("Dive Overview")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible();
+});
+
+test("hides the public account prompt when registration is closed", async ({ page }) => {
+  await installAppMocks(page, {
+    signedIn: false,
+    authStatus: {
+      initialized: true,
+      bootstrap_registration_open: false,
+      public_registration_enabled: false,
+      public_registration_open: false
+    }
+  });
+  await gotoAndWait(page);
+
+  await expect(page.getByRole("heading", { name: "Welcome back" })).toBeVisible();
+  await expect(page.getByText("Need an account?")).toBeHidden();
+  await expect(page.getByRole("button", { name: "Create Account" })).toBeHidden();
 });
 
 test("covers dashboard, logs, dive detail, and logbook editing", async ({ page }) => {
   await installAppMocks(page);
   await gotoAndWait(page);
 
-  await expect(page.getByText("Dive Overview")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible();
   await expect(page.getByRole("banner").getByText("Avery Marlow")).toBeVisible();
 
   await page.getByRole("button", { name: "Dive Logs" }).click();
-  await expect(page.getByRole("heading", { name: "Dive Log Database" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Dive Logs", exact: true })).toBeVisible();
   await page.getByPlaceholder("Search dive logs...").fill("Blue Hole");
   const visibleLogRow = page.locator("article[role='button']:visible").filter({ hasText: "Blue Hole" }).first();
   await expect(visibleLogRow).toBeVisible();
@@ -109,7 +128,7 @@ test("covers settings profile loading and public sharing updates", async ({ page
   await installAppMocks(page);
   await gotoAndWait(page, "/#settings/diver-details");
 
-  await expect(page.getByText("System Configuration")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Settings", exact: true })).toBeVisible();
   await expect(page.getByText("Public Dive Profile")).toBeVisible();
 
   await page.getByRole("checkbox", { name: "Make My Completed Dives Public" }).check();
@@ -128,26 +147,24 @@ test("manages equipment inventory and service schedule", async ({ page }) => {
   await installAppMocks(page);
   await gotoAndWait(page, "/#equipment");
 
-  await expect(page.getByRole("heading", { name: "Equipment Management" })).toBeVisible();
-  await expect(page.getByText("Aqualung Blue Shop Regulator")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Equipment", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Aqualung Blue Shop Regulator" }).first()).toBeVisible();
 
   await page.getByRole("button", { name: "Add Equipment" }).click();
-  const newCard = page.locator("article").first();
-  await expect(newCard.getByText("Unnamed Equipment")).toBeVisible();
-  await newCard.getByPlaceholder("Regulator").fill("BCD");
-  await newCard.getByPlaceholder("2024").fill("2025");
-  await newCard.getByPlaceholder("Dive Shop").fill("Reef Shop");
-  await newCard.getByPlaceholder("Aqualung").fill("Scubapro");
-  await newCard.getByPlaceholder("2 years, shop receipt, serial number...").fill("3 years");
-  await newCard.locator("input[type='date']").fill("2027-05-01");
-  await newCard.getByPlaceholder("100").fill("50");
-  await newCard.getByLabel("Use by default on each dive").check();
+  await expect(page.getByRole("heading", { name: "New Equipment" })).toBeVisible();
+  await page.getByRole("textbox", { name: "Category" }).fill("BCD");
+  await page.getByRole("textbox", { name: "Year Bought" }).fill("2025");
+  await page.getByRole("textbox", { name: "Vendor" }).fill("Reef Shop");
+  await page.getByRole("textbox", { name: "Brand" }).fill("Scubapro");
+  await page.getByRole("textbox", { name: "Warranty" }).fill("3 years");
+  await page.getByLabel("Next Service Due").fill("2027-05-01");
+  await page.getByPlaceholder("100").fill("50");
+  await page.getByLabel("Use by default on each dive").check();
   await page.getByRole("button", { name: "Save Gear" }).click();
   await expect(page.getByText("Equipment inventory saved.")).toBeVisible();
 
-  await page.getByRole("button", { name: "Service Schedule" }).click();
-  await expect(page.getByText("Service due by dive count")).toBeVisible();
-  await expect(page.getByText("Scubapro Reef Shop BCD")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Next Equipment Due" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Scubapro Reef Shop BCD" }).first()).toBeVisible();
   await page.locator("article").filter({ hasText: "Aqualung Blue Shop Regulator" }).getByRole("button", { name: "Mark Serviced" }).click();
   await expect(page.getByText("Equipment marked as serviced.")).toBeVisible();
   await expect(page.locator("article").filter({ hasText: "Aqualung Blue Shop Regulator" }).getByText("1 dives remaining")).toBeVisible();
