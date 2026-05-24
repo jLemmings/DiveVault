@@ -47,6 +47,7 @@ function formatBarTotal(value) {
 }
 
 function diveModeLabel(dive) {
+  if (isManualDive(dive)) return "Manual Entry";
   const code = dive?.fields?.dive_mode_code;
   const labels = {
     0: "Open Circuit",
@@ -58,9 +59,18 @@ function diveModeLabel(dive) {
   return labels[code] || "Telemetry";
 }
 
+function isManualDive(dive) {
+  return Boolean(dive?.fields?.manual_entry || dive?.fields?.source === "manual");
+}
+
+function diveDeviceLabel(dive) {
+  if (isManualDive(dive)) return "Manual Entry";
+  return `${dive?.vendor || "Unknown"} ${dive?.product || ""}`.trim();
+}
+
 function diveTitle(dive) {
   if (!dive) return "Untitled Dive";
-  const maxDepth = numberOrZero(dive.max_depth_m).toFixed(1);
+  if (isManualDive(dive)) return "Manual Entry";
   return `${dive.vendor} ${dive.product} Dive`;
 }
 
@@ -633,7 +643,7 @@ function detailEquipmentTags(dive) {
     : [];
   const tags = [
     ...selectedEquipment,
-    `${dive.vendor} ${dive.product}`,
+    diveDeviceLabel(dive),
     diveModeLabel(dive),
     gasMixLabel(primaryGasMix(dive)),
     tankLabel(primaryTank(dive)),
@@ -673,6 +683,8 @@ export {
   formatAccumulatedDuration,
   formatBarTotal,
   diveModeLabel,
+  isManualDive,
+  diveDeviceLabel,
   diveTitle,
   diveSubtitle,
   formatDepth,

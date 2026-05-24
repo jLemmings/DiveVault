@@ -1,4 +1,4 @@
-import { buildDiveSequenceMap, canCompleteImport, formatDate, formatDateTime, formatDepthNumber, formatTemperature, importTemperature, missingImportFields, paddedDiveIndex, durationShort, numberOrZero } from "../core.js";
+import { buildDiveSequenceMap, canCompleteImport, diveDeviceLabel, formatDate, formatDateTime, formatDepthNumber, formatTemperature, importTemperature, missingImportFields, paddedDiveIndex, durationShort, numberOrZero } from "../core.js";
 import MetadataAutocompleteField from "./metadata-autocomplete.js";
 
 function normalizeSiteName(value) {
@@ -109,6 +109,7 @@ export default {
       return typeof this.$t === "function" ? this.$t(key, fallback, params) : fallback;
     },
     formatDateTime,
+    diveDeviceLabel,
     displayDiveIndex(dive) {
       return paddedDiveIndex(dive, this.diveSequenceMap);
     },
@@ -325,7 +326,7 @@ export default {
             </div>
             <div class="space-y-1">
               <p>{{ t('Device', 'Device') }}</p>
-              <p class="text-on-surface">{{ dive.vendor }} {{ dive.product }}</p>
+              <p class="text-on-surface">{{ diveDeviceLabel(dive) }}</p>
             </div>
           </div>
         </section>

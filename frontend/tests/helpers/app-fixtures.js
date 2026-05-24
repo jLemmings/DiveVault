@@ -245,7 +245,7 @@ function createDiveFromPayload(data, payload) {
   const dive = {
     id: nextId,
     vendor: payload.vendor || "Manual",
-    product: payload.product || "Logbook Entry",
+    product: payload.product || "Entry",
     started_at: payload.started_at || "2026-04-07T09:00:00Z",
     imported_at: "2026-04-07T12:00:00Z",
     duration_seconds: payload.duration_seconds || 0,

@@ -1,11 +1,19 @@
 import fs from "node:fs/promises";
+import http from "node:http";
+import net from "node:net";
 import path from "node:path";
+import { spawn } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import { chromium } from "@playwright/test";
 
 import { baseData, buildDive, installAppMocks, gotoAndWait } from "../tests/helpers/app-fixtures.js";
 
-const baseUrl = "http://127.0.0.1:4173";
-const outputDir = path.resolve(process.cwd(), "../docs/readme");
+let baseUrl = "";
+const scriptDir = path.dirname(fileURLToPath(import.meta.url));
+const frontendDir = path.resolve(scriptDir, "..");
+const outputDir = path.resolve(frontendDir, "../docs/readme");
+const serverTimeoutMs = 120000;
+const themeStorageKey = "divevault.preferredTheme";
 
 const egyptSites = [
   { name: "Blue Hole", location: "Dahab", country: "Egypt", latitude: 28.5729, longitude: 34.5367 },
@@ -112,58 +120,163 @@ async function ensureDir(dir) {
   await fs.mkdir(dir, { recursive: true });
 }
 
+function requestLocalServer() {
+  return new Promise((resolve) => {
+    const request = http.get(baseUrl, (response) => {
+      response.resume();
+      resolve(response.statusCode >= 200 && response.statusCode < 500);
+    });
+    request.on("error", () => resolve(false));
+    request.setTimeout(1000, () => {
+      request.destroy();
+      resolve(false);
+    });
+  });
+}
+
+function getAvailablePort() {
+  return new Promise((resolve, reject) => {
+    const server = net.createServer();
+    server.on("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      const address = server.address();
+      server.close(() => {
+        if (!address || typeof address === "string") {
+          reject(new Error("Could not reserve a local port for the screenshot server."));
+          return;
+        }
+        resolve(address.port);
+      });
+    });
+  });
+}
+
+async function waitForServer(deadline) {
+  while (Date.now() < deadline) {
+    if (await requestLocalServer()) return true;
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  }
+  return false;
+}
+
+async function startServer() {
+  const port = await getAvailablePort();
+  baseUrl = `http://127.0.0.1:${port}`;
+
+  const server = spawn(
+    process.execPath,
+    ["./node_modules/vite/bin/vite.js", "--host", "127.0.0.1", "--port", String(port), "--strictPort"],
+    {
+      cwd: frontendDir,
+      stdio: ["ignore", "pipe", "pipe"],
+      windowsHide: true
+    }
+  );
+
+  let output = "";
+  server.stdout.on("data", (chunk) => {
+    output += chunk.toString();
+  });
+  server.stderr.on("data", (chunk) => {
+    output += chunk.toString();
+  });
+
+  const started = await waitForServer(Date.now() + serverTimeoutMs);
+  if (!started) {
+    server.kill();
+    throw new Error(`Vite did not start at ${baseUrl} within ${serverTimeoutMs / 1000}s.\n${output}`);
+  }
+
+  return server;
+}
+
+async function stopServer(server) {
+  if (!server || server.killed) return;
+  server.kill();
+  await new Promise((resolve) => {
+    server.once("exit", resolve);
+    setTimeout(resolve, 5000);
+  });
+}
+
 async function waitForDashboardMap(page) {
   await page.waitForSelector(".dive-theme-map", { state: "visible", timeout: 15000 });
-  await page.waitForFunction(() => {
-    const tiles = Array.from(document.querySelectorAll(".leaflet-tile"));
-    if (!tiles.length) return false;
-    return tiles.some((tile) => tile.classList.contains("leaflet-tile-loaded"));
-  }, { timeout: 20000 });
+  try {
+    await page.waitForFunction(() => {
+      const tiles = Array.from(document.querySelectorAll(".leaflet-tile"));
+      if (!tiles.length) return false;
+      return tiles.some((tile) => tile.classList.contains("leaflet-tile-loaded"));
+    }, { timeout: 20000 });
+  } catch {
+    console.warn("Map tiles did not finish loading; capturing the rendered map shell.");
+  }
   await page.waitForTimeout(1500);
 }
 
-async function captureDashboard(page) {
-  await installAppMocks(page, { data: mockedData });
-  await gotoAndWait(page, `${baseUrl}/`);
-  await page.setViewportSize({ width: 1500, height: 1100 });
-  await waitForDashboardMap(page);
-  await page.screenshot({
-    path: path.join(outputDir, "dashboard.png"),
-    fullPage: false
-  });
+async function forceDarkTheme(page) {
+  await page.addInitScript((key) => {
+    window.localStorage.setItem(key, "dark");
+    document.documentElement.dataset.themePreference = "dark";
+    document.documentElement.dataset.theme = "dark";
+  }, themeStorageKey);
 }
 
-async function captureImports(page) {
-  await installAppMocks(page, { data: mockedData });
-  await gotoAndWait(page, `${baseUrl}/#imports`);
-  await page.screenshot({
-    path: path.join(outputDir, "imports.png"),
-    fullPage: false
+async function captureRoute(browser, { name, route, waitFor }) {
+  const page = await browser.newPage({
+    colorScheme: "dark",
+    viewport: { width: 1500, height: 1100 }
   });
-}
 
-async function captureSettings(page) {
   await installAppMocks(page, { data: mockedData });
-  await gotoAndWait(page, `${baseUrl}/#settings/diver-details`);
-  await page.screenshot({
-    path: path.join(outputDir, "settings.png"),
-    fullPage: false
-  });
+  await forceDarkTheme(page);
+  try {
+    await gotoAndWait(page, `${baseUrl}/${route}`);
+    if (typeof waitFor === "function") {
+      await waitFor(page);
+    }
+    await page.screenshot({
+      path: path.join(outputDir, `${name}.png`),
+      fullPage: false
+    });
+  } finally {
+    await page.close();
+  }
 }
 
 async function main() {
   await ensureDir(outputDir);
+  const server = await startServer();
   const browser = await chromium.launch();
-  const page = await browser.newPage({
-    viewport: { width: 1500, height: 1100 }
-  });
 
   try {
-    await captureDashboard(page);
-    await captureImports(page);
-    await captureSettings(page);
+    await captureRoute(browser, {
+      name: "dashboard",
+      route: "",
+      waitFor: waitForDashboardMap
+    });
+    await captureRoute(browser, {
+      name: "logs",
+      route: "#logs",
+      waitFor: (page) => page.getByRole("heading", { name: "Dive Logs", exact: true }).waitFor()
+    });
+    await captureRoute(browser, {
+      name: "imports",
+      route: "#imports",
+      waitFor: (page) => page.getByRole("heading", { name: "Imported Dives" }).waitFor()
+    });
+    await captureRoute(browser, {
+      name: "equipment",
+      route: "#equipment",
+      waitFor: (page) => page.getByRole("heading", { name: "Equipment", exact: true }).waitFor()
+    });
+    await captureRoute(browser, {
+      name: "settings",
+      route: "#settings/diver-details",
+      waitFor: (page) => page.getByRole("heading", { name: "Settings", exact: true }).waitFor()
+    });
   } finally {
     await browser.close();
+    await stopServer(server);
   }
 }
 
