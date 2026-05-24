@@ -1,8 +1,6 @@
 <p align="center">
-  <img src="./frontend/public/logo-headline.png" alt="DiveVault" width="128" height="128">
+  <img src="./frontend/public/logo-headline.png" alt="DiveVault" width="512">
 </p>
-
-<h1 align="center">DiveVault</h1>
 
 <p align="center">
   Self-hosted dive logbook, import queue, and review UI for dive computer telemetry.
