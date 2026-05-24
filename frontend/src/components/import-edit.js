@@ -1,4 +1,4 @@
-import { canCompleteImport, filledIconStyle, formatDate, formatDateTime, formatDepthNumber, formatTemperature, gasSummary, importCompletionPercent, importTemperature, isCommittedDive, missingImportFields, paddedDiveIndex, durationShort, numberOrZero } from "../core.js";
+import { canCompleteImport, filledIconStyle, formatDate, formatDateTime, formatDepthNumber, formatTemperature, gasSummary, hasRecordedPressureSamples, importCompletionPercent, importTemperature, isCommittedDive, missingImportFields, paddedDiveIndex, durationShort, numberOrZero } from "../core.js";
 import MetadataAutocompleteField from "./metadata-autocomplete.js";
 
 function normalizeSiteName(value) {
@@ -106,6 +106,9 @@ export default {
     missingFields() {
       return this.selectedDraft ? missingImportFields(this.selectedDraft) : [];
     },
+    canEditTankPressure() {
+      return this.dive ? !hasRecordedPressureSamples(this.dive) : false;
+    },
     selectedGas() {
       return this.dive ? gasSummary(this.dive) : { label: "--", detail: "" };
     },
@@ -200,6 +203,9 @@ export default {
     serviceStatusForDive,
     equipmentChecked(equipmentId) {
       return this.selectedEquipmentIds.includes(String(equipmentId));
+    },
+    equipmentWarning(item) {
+      return ["unknown", "overdue"].includes(serviceStatusForDive(item, this.dive?.started_at).status);
     },
     toggleEquipment(equipmentId) {
       const id = String(equipmentId);
@@ -428,11 +434,21 @@ export default {
                   <option v-for="option in tankVolumeOptions" :key="'mobile-tank-' + option.value" :value="option.value">{{ option.label }}</option>
                 </select>
               </label>
+              <template v-if="canEditTankPressure">
+                <label class="block space-y-2">
+                  <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Entry Pressure</span>
+                  <input :value="selectedDraft.begin_pressure_bar || ''" @input="updateField('begin_pressure_bar', $event.target.value)" type="number" min="0" max="400" step="1" placeholder="200" class="ui-number-input w-full rounded-lg border-none bg-surface-container-high px-4 py-3 text-sm text-on-surface placeholder:text-secondary/50 focus:ring-1 focus:ring-primary" />
+                </label>
+                <label class="block space-y-2">
+                  <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Exit Pressure</span>
+                  <input :value="selectedDraft.end_pressure_bar || ''" @input="updateField('end_pressure_bar', $event.target.value)" type="number" min="0" max="400" step="1" placeholder="70" class="ui-number-input w-full rounded-lg border-none bg-surface-container-high px-4 py-3 text-sm text-on-surface placeholder:text-secondary/50 focus:ring-1 focus:ring-primary" />
+                </label>
+              </template>
               <section v-if="equipmentSelectionEnabled" class="space-y-3 rounded-xl border border-primary/10 bg-surface-container-high/35 p-4">
                 <div class="flex items-start justify-between gap-3">
                   <div>
                     <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Equipment Used</p>
-                    <p class="mt-1 text-xs leading-5" :class="invalidSelectedEquipment.length ? 'text-on-error-container' : 'text-primary'">
+                    <p class="mt-1 text-xs leading-5" :class="invalidSelectedEquipment.length ? 'text-tertiary' : 'text-primary'">
                       {{ invalidSelectedEquipment.length ? 'Selected gear has service warnings. You can still complete the dive.' : selectedEquipmentIds.length ? 'Service OK for this dive date.' : 'No equipment selected.' }}
                     </p>
                   </div>
@@ -455,14 +471,14 @@ export default {
                     >
                       <span>
                         <span class="block text-sm font-semibold">{{ equipmentTitle(item) }}</span>
-                        <span class="mt-1 block text-xs" :class="['unknown','overdue'].includes(serviceStatusForDive(item, dive.started_at).status) ? 'text-tertiary' : 'text-primary'">{{ serviceStatusForDive(item, dive.started_at).label }}</span>
+                        <span class="mt-1 block text-xs" :class="equipmentWarning(item) ? 'text-tertiary' : 'text-primary'">{{ serviceStatusForDive(item, dive.started_at).label }}</span>
                       </span>
                       <span class="material-symbols-outlined text-sm">{{ equipmentChecked(item.id) ? 'check_circle' : 'radio_button_unchecked' }}</span>
                     </button>
                   </div>
                 </div>
                 <p v-else class="text-xs leading-5 text-on-surface-variant">Add equipment in the Equipment section to reuse it here.</p>
-                <div v-if="invalidSelectedEquipment.length" class="space-y-1 rounded-lg bg-error-container/20 px-3 py-2 text-xs text-on-error-container">
+                <div v-if="invalidSelectedEquipment.length" class="space-y-1 rounded-lg border border-tertiary/30 bg-tertiary/10 px-3 py-2 text-xs text-tertiary">
                   <p v-for="item in invalidSelectedEquipment" :key="'mobile-invalid-equipment-' + item.id">{{ item.name }}: {{ item.label }}</p>
                 </div>
               </section>
@@ -637,13 +653,23 @@ export default {
                     <option v-for="option in tankVolumeOptions" :key="'desktop-tank-' + option.value" :value="option.value">{{ option.label }}</option>
                   </select>
                 </label>
+                <template v-if="canEditTankPressure">
+                  <label class="block space-y-2">
+                    <span class="font-label text-[10px] font-bold uppercase tracking-[0.2em] text-secondary">Entry Pressure</span>
+                    <input :value="selectedDraft.begin_pressure_bar || ''" @input="updateField('begin_pressure_bar', $event.target.value)" type="number" min="0" max="400" step="1" placeholder="200" class="ui-number-input w-full border border-primary/10 bg-surface-container-high/35 px-4 py-3 text-sm text-on-surface placeholder:text-secondary/50 focus:border-primary/30 focus:ring-1 focus:ring-primary" />
+                  </label>
+                  <label class="block space-y-2">
+                    <span class="font-label text-[10px] font-bold uppercase tracking-[0.2em] text-secondary">Exit Pressure</span>
+                    <input :value="selectedDraft.end_pressure_bar || ''" @input="updateField('end_pressure_bar', $event.target.value)" type="number" min="0" max="400" step="1" placeholder="70" class="ui-number-input w-full border border-primary/10 bg-surface-container-high/35 px-4 py-3 text-sm text-on-surface placeholder:text-secondary/50 focus:border-primary/30 focus:ring-1 focus:ring-primary" />
+                  </label>
+                </template>
               </div>
 
               <section v-if="equipmentSelectionEnabled" class="space-y-4 border border-primary/10 bg-surface-container-high/18 p-5">
                 <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                   <div>
                     <p class="font-label text-[10px] font-bold uppercase tracking-[0.2em] text-secondary">Equipment Used</p>
-                    <p class="mt-2 text-sm leading-6" :class="invalidSelectedEquipment.length ? 'text-on-error-container' : 'text-primary'">
+                    <p class="mt-2 text-sm leading-6" :class="invalidSelectedEquipment.length ? 'text-tertiary' : 'text-primary'">
                       {{ invalidSelectedEquipment.length ? 'Selected gear has service warnings, but this dive can still be committed.' : selectedEquipmentIds.length ? 'All selected gear is service-valid for this dive date.' : 'No equipment selected for this dive.' }}
                     </p>
                   </div>
@@ -661,18 +687,18 @@ export default {
                       type="button"
                       @click="toggleEquipment(item.id)"
                       class="flex w-full items-center justify-between gap-3 border px-4 py-3 text-left transition-colors"
-                      :class="equipmentChecked(item.id) ? 'border-primary/35 bg-primary/10 text-on-surface' : 'border-primary/10 bg-background/20 text-secondary hover:border-primary/25'"
+                      :class="equipmentChecked(item.id) ? (equipmentWarning(item) ? 'border-tertiary/45 bg-tertiary/10 text-on-surface' : 'border-primary/35 bg-primary/10 text-on-surface') : 'border-primary/10 bg-background/20 text-secondary hover:border-primary/25'"
                     >
                       <span>
                         <span class="block text-sm font-semibold">{{ equipmentTitle(item) }}</span>
-                        <span class="mt-1 block text-xs" :class="['unknown','overdue'].includes(serviceStatusForDive(item, dive.started_at).status) ? 'text-tertiary' : 'text-primary'">{{ serviceStatusForDive(item, dive.started_at).label }}</span>
+                        <span class="mt-1 block text-xs" :class="equipmentWarning(item) ? 'text-tertiary' : 'text-primary'">{{ serviceStatusForDive(item, dive.started_at).label }}</span>
                       </span>
                       <span class="material-symbols-outlined text-base">{{ equipmentChecked(item.id) ? 'check_circle' : 'radio_button_unchecked' }}</span>
                     </button>
                   </div>
                 </div>
                 <p v-else class="text-sm leading-6 text-on-surface-variant">Add equipment in the Equipment section to reuse it here.</p>
-                <div v-if="invalidSelectedEquipment.length" class="space-y-1 border border-error/20 bg-error-container/20 px-4 py-3 text-sm text-on-error-container">
+                <div v-if="invalidSelectedEquipment.length" class="space-y-1 border border-tertiary/30 bg-tertiary/10 px-4 py-3 text-sm text-tertiary">
                   <p v-for="item in invalidSelectedEquipment" :key="'desktop-invalid-equipment-' + item.id">{{ item.name }}: {{ item.label }}</p>
                 </div>
               </section>

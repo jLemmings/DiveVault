@@ -193,9 +193,8 @@ export default {
                 Back
               </button>
               <div class="flex items-center gap-2">
-                <button v-if="!publicView" @click="removeDive()" :disabled="isDeleting" class="inline-flex items-center gap-2 rounded-lg bg-error-container/20 px-3 py-2 font-label text-[10px] font-bold uppercase tracking-[0.16em] text-on-error-container disabled:opacity-50">
+                <button v-if="!publicView" @click="removeDive()" :disabled="isDeleting" aria-label="Remove dive" title="Remove dive" class="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-error-container/20 text-on-error-container transition-colors hover:bg-error-container/30 disabled:opacity-50">
                   <span class="material-symbols-outlined text-sm">delete</span>
-                  {{ isDeleting ? 'Removing...' : 'Remove' }}
                 </button>
                 <span class="rounded bg-surface-container-high px-3 py-2 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Dive {{ displayDiveIndex }}</span>
               </div>
@@ -368,21 +367,13 @@ export default {
               <div class="mt-3 flex flex-wrap items-center gap-3 text-sm text-secondary">
                 <span class="bg-surface-container-high px-3 py-1 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-secondary">Imported {{ formatDate(dive.imported_at) }}</span>
               </div>
-              </div>
+            </div>
             <div v-if="!publicView" class="flex flex-wrap gap-3">
-              <button class="bg-surface-container-high p-3 text-secondary transition-colors hover:text-primary">
-                <span class="material-symbols-outlined">share</span>
+              <button @click="openDiveEditor(dive.id)" aria-label="Edit dive" title="Edit dive" class="group inline-flex h-11 w-11 items-center justify-center bg-surface-container-high text-secondary transition-colors hover:bg-primary/10 hover:text-primary">
+                <span class="material-symbols-outlined text-[21px] leading-none transition-transform group-hover:-rotate-6 group-hover:scale-110">edit</span>
               </button>
-              <button @click="openDiveEditor(dive.id)" class="bg-surface-container-high p-3 text-secondary transition-colors hover:text-primary">
-                <span class="material-symbols-outlined">edit</span>
-              </button>
-              <button @click="removeDive()" :disabled="isDeleting" class="inline-flex items-center gap-2 bg-error-container/20 px-5 py-3 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-on-error-container transition-colors hover:bg-error-container/30 disabled:opacity-50">
-                <span class="material-symbols-outlined text-sm">delete</span>
-                {{ isDeleting ? 'Removing...' : 'Remove Dive' }}
-              </button>
-              <button class="inline-flex items-center gap-2 bg-primary px-5 py-3 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-on-primary">
-                <span class="material-symbols-outlined">download</span>
-                Export PDF
+              <button @click="removeDive()" :disabled="isDeleting" aria-label="Remove dive" title="Remove dive" class="inline-flex h-11 w-11 items-center justify-center bg-surface-container-high text-on-error-container transition-colors hover:bg-error-container/30 disabled:opacity-50">
+                <span class="material-symbols-outlined text-[21px] leading-none">delete</span>
               </button>
             </div>
           </div>
