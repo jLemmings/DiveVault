@@ -89,6 +89,12 @@ LOGGER = logging.getLogger("dive_backend")
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
 REPO_ROOT = BACKEND_ROOT.parent
 MAX_PROFILE_LICENSE_BYTES = 10 * 1024 * 1024
+DEMO_ADMIN_USER_ID = "user_demoadmin"
+DEMO_ADMIN_USERNAME = "admin"
+DEMO_ADMIN_PASSWORD_HASH = (
+    "scrypt$000102030405060708090a0b0c0d0e0f$"
+    "39e0e8ec42ae38fa261d39c6fbf3caaacc6647921c33a54c99770f5ba0283d90685177b5ff7cbb13a56671fd3f74ebaf442667cdaab09a4a60385cec2980c231"
+)
 
 load_dotenv(REPO_ROOT / ".env")
 
@@ -690,6 +696,12 @@ def redact_database_url(database_url: str) -> str:
     return parsed._replace(netloc=netloc).geturl()
 
 
+def parse_bool(value: object, *, default: bool = False) -> bool:
+    if value is None:
+        return default
+    return str(value).strip().lower() in {"1", "true", "yes", "on", "enabled"}
+
+
 def wait_for_database(
     database_url: str,
     *,
@@ -751,6 +763,46 @@ def run_startup_database_migrations(database_url: str) -> int:
         schema_version,
     )
     return schema_version
+
+
+def ensure_demo_admin_user(database_url: str) -> None:
+    timestamp = datetime.now(timezone.utc).isoformat()
+    with open_db(database_url) as conn:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM auth_users WHERE email=%s AND id<>%s", (DEMO_ADMIN_USERNAME, DEMO_ADMIN_USER_ID))
+            cur.execute(
+                """
+                INSERT INTO auth_users(
+                    id, email, password_hash, first_name, last_name, role, is_active, created_at, updated_at, last_login_at
+                )
+                VALUES (%s, %s, %s, 'Demo', 'Diver', 'admin', TRUE, %s, %s, NULL)
+                ON CONFLICT (id)
+                DO UPDATE SET
+                    email=excluded.email,
+                    password_hash=excluded.password_hash,
+                    first_name=excluded.first_name,
+                    last_name=excluded.last_name,
+                    role=excluded.role,
+                    is_active=TRUE,
+                    updated_at=excluded.updated_at
+                """,
+                (DEMO_ADMIN_USER_ID, DEMO_ADMIN_USERNAME, DEMO_ADMIN_PASSWORD_HASH, timestamp, timestamp),
+            )
+            cur.execute(
+                """
+                INSERT INTO auth_instance_settings(singleton, initialized, public_registration_enabled, owner_user_id, updated_at)
+                VALUES (TRUE, TRUE, FALSE, %s, %s)
+                ON CONFLICT (singleton)
+                DO UPDATE SET
+                    initialized=TRUE,
+                    public_registration_enabled=FALSE,
+                    owner_user_id=excluded.owner_user_id,
+                    updated_at=excluded.updated_at
+                """,
+                (DEMO_ADMIN_USER_ID, timestamp),
+            )
+        conn.commit()
+    LOGGER.info("Ensured demo admin user username=%s user_id=%s", DEMO_ADMIN_USERNAME, DEMO_ADMIN_USER_ID)
 
 
 def get_current_database_schema_version(database_url: str) -> int:
@@ -2585,7 +2637,10 @@ class DiveBackendHandler(BaseHTTPRequestHandler):
     def _send_config_js(self) -> None:
         body = (
             "window.__APP_CONFIG__ = "
-            + json.dumps({"authEnabled": True})
+            + json.dumps({
+                "authEnabled": True,
+                "demoMode": bool(getattr(self.server, "demo_mode", False)),
+            })
             + ";\n"
         ).encode("utf-8")
         self.send_response(200)
@@ -2655,6 +2710,13 @@ def main() -> None:
     parser.add_argument("--auth-jwt-issuer", default=os.getenv("AUTH_JWT_ISSUER", "divevault.local"), help="JWT issuer for first-party DiveVault tokens")
     parser.add_argument("--auth-jwt-audience", default=os.getenv("AUTH_JWT_AUDIENCE", "divevault.app"), help="JWT audience for first-party DiveVault tokens")
     parser.add_argument("--auth-token-ttl-seconds", type=int, default=int(os.getenv("AUTH_TOKEN_TTL_SECONDS", "43200")), help="Session token TTL in seconds")
+    parser.add_argument(
+        "--demo-mode",
+        nargs="?",
+        const="true",
+        default=os.getenv("DEMO_MODE", "false"),
+        help="Show public demo messaging in the frontend. Use --demo-mode, --demo-mode true, or DEMO_MODE=true.",
+    )
     parser.add_argument("--cli-auth-request-ttl", type=int, default=int(os.getenv("CLI_AUTH_REQUEST_TTL", "600")), help="Seconds a desktop login request stays valid")
     parser.add_argument("--cli-auth-token-ttl", type=int, default=int(os.getenv("CLI_AUTH_TOKEN_TTL", "1800")), help="Seconds an approved desktop sync token stays valid")
     parser.add_argument("--nominatim-base-url", default=os.getenv("NOMINATIM_BASE_URL", "https://nominatim.openstreetmap.org"), help="Base URL for the Nominatim search service")
@@ -2693,6 +2755,7 @@ def main() -> None:
 
     if not args.database_url:
         parser.error("Provide --database-url or set DATABASE_URL.")
+    demo_mode = parse_bool(args.demo_mode)
 
     logging.basicConfig(
         level=getattr(logging, args.log_level),
@@ -2715,12 +2778,15 @@ def main() -> None:
             schema_version,
         )
     require_expected_schema_version(schema_version)
+    if demo_mode:
+        ensure_demo_admin_user(args.database_url)
 
     server = ThreadingHTTPServer((args.host, args.port), DiveBackendHandler)
     server.database_url = args.database_url
     server.database_ready = True
     server.database_ready_error = ""
     server.database_schema_version = schema_version
+    server.demo_mode = demo_mode
     server.metrics_enabled = args.metrics == "enabled"
     server.metrics = PrometheusMetrics() if server.metrics_enabled else None
     server.cli_auth_manager = CliSyncTokenManager(
@@ -2769,13 +2835,14 @@ def main() -> None:
     )
 
     LOGGER.info(
-        "Starting backend host=%s port=%d database_url=%s cors_origin=%s frontend_dir=%s schema_version=%d metrics=%s",
+        "Starting backend host=%s port=%d database_url=%s cors_origin=%s frontend_dir=%s schema_version=%d demo_mode=%s metrics=%s",
         args.host,
         args.port,
         redact_database_url(args.database_url),
         args.cors_origin,
         server.frontend_dir,
         schema_version,
+        server.demo_mode,
         args.metrics,
     )
     shutdown_started = threading.Event()

@@ -701,6 +701,7 @@ def test_get_and_options_routes(server_fixture):
     config = request(server, "GET", "/config.js")
     assert config.status == 200
     assert '"authEnabled": true' in config.body.decode("utf-8")
+    assert '"demoMode": false' in config.body.decode("utf-8")
 
     static_asset = request(server, "GET", "/asset.js")
     assert static_asset.status == 200
