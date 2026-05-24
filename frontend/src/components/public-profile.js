@@ -1,6 +1,6 @@
 import L from "leaflet";
 import DiveDetailView from "./dive-detail.js";
-import { buildDiveSequenceMap, diveTitle, formatDate, formatDepth, durationShort, numberOrZero, parseDate, importDraftSeed, paddedDiveIndex } from "../core.js";
+import { buildDiveSequenceMap, diveTitle, diveDeviceLabel, formatDate, formatDepth, durationShort, numberOrZero, parseDate, importDraftSeed, paddedDiveIndex } from "../core.js";
 
 function numericCoordinate(value) {
   if (typeof value === "number" && Number.isFinite(value)) return value;
@@ -183,6 +183,7 @@ export default {
     formatDepth,
     formatDurationShort: durationShort,
     diveTitle,
+    diveDeviceLabel,
     displayDiveIndex(dive) {
       return paddedDiveIndex(dive, this.diveSequenceMap);
     },
@@ -569,7 +570,7 @@ export default {
                   </div>
                   <div class="rounded-xl bg-surface-container-high px-4 py-3">
                     <p class="font-label text-[10px] font-bold uppercase tracking-[0.16em] text-secondary">Computer</p>
-                    <p class="mt-2 text-sm font-semibold text-on-surface">{{ dive.vendor }} {{ dive.product }}</p>
+                    <p class="mt-2 text-sm font-semibold text-on-surface">{{ diveDeviceLabel(dive) }}</p>
                   </div>
                 </div>
               </article>

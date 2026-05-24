@@ -929,7 +929,7 @@ export default {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             vendor: "Manual",
-            product: "Logbook Entry",
+            product: "Entry",
             dive_uid: `manual-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
             raw_sha256: rawSha256,
             raw_data_b64: rawDataB64,
@@ -1529,14 +1529,23 @@ export default {
         </div>
         <div class="hidden h-full items-center justify-between px-8 md:flex">
           <h2 class="font-headline text-2xl font-bold tracking-[0.08em] text-primary">{{ activeMenuTitle }}</h2>
-          <div class="relative flex items-center gap-3 rounded-2xl border border-primary/10 bg-surface-container-high/70 px-3 py-2 text-on-surface">
-            <button @click="toggleDesktopAccountMenu" class="flex h-10 w-10 items-center justify-center rounded-2xl bg-primary/12 text-[11px] font-bold uppercase tracking-[0.14em] text-primary transition-colors hover:bg-primary/18">
-              {{ currentUserInitials }}
-            </button>
-            <div class="min-w-0">
-              <p class="max-w-[12rem] truncate text-sm font-semibold text-on-surface">{{ currentUserName }}</p>
-              <p class="max-w-[12rem] truncate text-xs text-secondary">{{ currentUserEmail }}</p>
+          <div class="relative flex items-center gap-4 border-l border-primary/10 pl-5 text-on-surface">
+            <div class="min-w-0 text-right">
+              <p class="font-label text-[9px] font-bold uppercase tracking-[0.18em] text-secondary/70">Diver</p>
+              <p class="max-w-[11rem] truncate text-sm font-semibold leading-5 text-on-surface">{{ currentUserName }}</p>
             </div>
+            <button
+              @click="toggleDesktopAccountMenu"
+              type="button"
+              aria-label="Account menu"
+              :aria-expanded="desktopAccountMenuOpen ? 'true' : 'false'"
+              class="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-primary/15 bg-background/50 text-[11px] font-bold uppercase tracking-[0.12em] text-primary shadow-[inset_0_1px_0_rgba(205,229,255,0.08)] transition-colors hover:border-primary/35 hover:bg-primary/12"
+            >
+              {{ currentUserInitials }}
+              <span class="absolute -bottom-0.5 -right-0.5 flex h-5 w-5 items-center justify-center rounded-full border border-background bg-surface-container-high text-secondary">
+                <span class="material-symbols-outlined text-[14px] transition-transform" :class="desktopAccountMenuOpen ? 'rotate-180 text-primary' : ''">expand_more</span>
+              </span>
+            </button>
             <div v-if="desktopAccountMenuOpen" class="absolute right-0 top-[calc(100%+0.75rem)] z-40 w-56 rounded-2xl border border-primary/10 bg-surface-container-low p-3 shadow-panel">
               <div class="border-b border-primary/10 pb-3">
                 <p class="truncate text-sm font-semibold text-on-surface">{{ currentUserName }}</p>
