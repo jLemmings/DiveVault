@@ -1,0 +1,91 @@
+name: Feature Request
+description: Suggest an improvement or new capability for DiveVault
+title: "[Feature]: "
+labels:
+  - enhancement
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for suggesting an improvement to DiveVault.
+
+        Describe the problem you're trying to solve and how this feature would improve your diving workflow.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem are you trying to solve?
+      description: Describe the pain point or limitation.
+      placeholder: |
+        I use multiple dive computers and currently have no easy way to compare data between them.
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+      description: Describe the feature you'd like to see.
+      placeholder: |
+        Add side-by-side dive profile comparison for imported dives.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Describe any workarounds or alternative approaches you've tried.
+
+  - type: dropdown
+    id: category
+    attributes:
+      label: Feature category
+      options:
+        - Dive Import
+        - Dive Computer Support
+        - Dive Log Management
+        - Statistics & Analytics
+        - Mapping & Locations
+        - Photos & Media
+        - Export / Backup
+        - Synchronization
+        - UI / UX
+        - API
+        - Performance
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: user_story
+    attributes:
+      label: User story
+      description: Describe the feature from a user perspective.
+      placeholder: |
+        As a diver, I want to...
+        So that I can...
+    validations:
+      required: true
+
+  - type: textarea
+    id: examples
+    attributes:
+      label: Examples or references
+      description: Links, screenshots, or examples from other applications.
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional context
+      description: Any extra information that may help.
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Checklist
+      options:
+        - label: I searched existing feature requests before creating this one.
+          required: true
+        - label: This feature would be useful to multiple users, not only my specific setup.
