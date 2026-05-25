@@ -1,4 +1,4 @@
-import { buildDiveSequenceMap, depthChartPath, pressureChartPath, numberOrZero, depthSeries, axisTicks, pressureRange, pressureSeries, profileTimeLabels, checkpointCards, detailEquipmentTags, pressureRangeLabel, diveModeLabel, diveTitle, formatDate, formatTime, formatDepth, formatDepthNumber, formatTemperature, durationShort, gasMixLabel, primaryGasMix, primaryTank, tankLabel, surfaceTemperature, depthParts, durationParts, temperatureParts, averageDepthValue, importDraftSeed, paddedDiveIndex } from "../core.js";
+import { buildDiveSequenceMap, depthChartPath, pressureChartPath, numberOrZero, depthSeries, axisTicks, pressureRange, pressureSeries, profileTimeLabels, checkpointCards, detailEquipmentTags, pressureRangeLabel, pressureUsedLabel, diveModeLabel, diveTitle, formatDate, formatTime, formatDepth, formatDepthNumber, formatTemperature, durationShort, gasMixLabel, primaryGasMix, primaryTank, tankLabel, surfaceTemperature, depthParts, durationParts, temperatureParts, averageDepthValue, importDraftSeed, paddedDiveIndex } from "../core.js";
 
 const PROFILE_CHART_WIDTH = 800;
 const PROFILE_CHART_HEIGHT = 250;
@@ -34,6 +34,9 @@ export default {
     depthPlotSeries() {
       return depthSeries(this.dive);
     },
+    hasDepthProfile() {
+      return this.depthPlotSeries.length > 0;
+    },
     pressurePlotSeries() {
       return pressureSeries(this.dive);
     },
@@ -55,11 +58,17 @@ export default {
     checkpoints() {
       return checkpointCards(this.dive);
     },
+    hasCheckpoints() {
+      return this.checkpoints.length > 0;
+    },
     equipmentTags() {
       return detailEquipmentTags(this.dive);
     },
     pressureRangeText() {
       return pressureRangeLabel(this.dive);
+    },
+    pressureUsedText() {
+      return pressureUsedLabel(this.dive);
     },
     mobileTimeLabels() {
       if (!this.timeLabels.length) return ["0m", "--", "--"];
@@ -241,7 +250,7 @@ export default {
             </div>
           </section>
 
-          <section class="space-y-4">
+          <section v-if="hasDepthProfile" class="space-y-4">
             <div class="flex items-end justify-between">
               <h4 class="font-headline text-xs font-bold uppercase tracking-[0.2em] text-on-surface-variant">Profile Analysis</h4>
               <div class="flex gap-4">
@@ -323,7 +332,7 @@ export default {
             </div>
           </section>
 
-          <section class="space-y-4">
+          <section v-if="hasCheckpoints" class="space-y-4">
             <div class="flex items-center justify-between">
               <h4 class="font-headline text-xs font-bold uppercase tracking-[0.2em] text-on-surface-variant">Dive Checkpoints</h4>
               <span class="font-label text-[10px] font-bold uppercase tracking-[0.16em] text-primary">{{ checkpoints.length }} events</span>
@@ -379,7 +388,7 @@ export default {
           </div>
         </header>
 
-        <div class="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-6">
+        <div class="grid grid-cols-[repeat(auto-fit,minmax(13rem,1fr))] gap-4">
           <div class="rounded-[1.2rem] border border-primary/10 bg-surface-container-high p-5 shadow-[inset_0_1px_0_rgba(205,229,255,0.03)]">
             <p class="font-label text-[10px] font-bold uppercase tracking-[0.24em] text-secondary">Duration</p>
             <p class="mt-2 font-headline text-3xl font-bold text-on-surface">{{ durationParts(dive.duration_seconds).value }}<span class="ml-0.5 text-on-surface">{{ durationParts(dive.duration_seconds).unit }}</span></p>
@@ -388,7 +397,7 @@ export default {
             <p class="font-label text-[10px] font-bold uppercase tracking-[0.24em] text-secondary">Max Depth</p>
             <p class="mt-2 font-headline text-3xl font-bold text-on-surface">{{ depthParts(dive.max_depth_m).value }}<span class="ml-0.5 text-on-surface">{{ depthParts(dive.max_depth_m).unit }}</span></p>
           </div>
-          <div class="rounded-[1.2rem] border border-primary/10 bg-surface-container-high p-5 shadow-[inset_0_1px_0_rgba(205,229,255,0.03)]">
+          <div v-if="hasDepthProfile" class="rounded-[1.2rem] border border-primary/10 bg-surface-container-high p-5 shadow-[inset_0_1px_0_rgba(205,229,255,0.03)]">
             <p class="font-label text-[10px] font-bold uppercase tracking-[0.24em] text-secondary">Avg Depth</p>
             <p class="mt-2 font-headline text-3xl font-bold text-on-surface">{{ depthParts(averageDepth).value }}<span class="ml-0.5 text-on-surface">{{ depthParts(averageDepth).unit }}</span></p>
           </div>
@@ -398,16 +407,12 @@ export default {
           </div>
           <div class="rounded-[1.2rem] border border-primary/10 bg-surface-container-high p-5 shadow-[inset_0_1px_0_rgba(205,229,255,0.03)]">
             <p class="font-label text-[10px] font-bold uppercase tracking-[0.24em] text-secondary">Pressure</p>
-            <p class="mt-2 font-headline text-3xl font-bold text-on-surface">{{ pressureRangeText.replace(' bar', '') }}<span v-if="pressureRangeText !== '--'" class="ml-1 text-on-surface">bar</span></p>
-          </div>
-          <div class="rounded-[1.2rem] border border-primary/10 bg-surface-container-high p-5 shadow-[inset_0_1px_0_rgba(205,229,255,0.03)]">
-            <p class="font-label text-[10px] font-bold uppercase tracking-[0.24em] text-secondary">Samples</p>
-            <p class="mt-2 font-headline text-3xl font-bold text-on-surface">{{ dive.sample_count }}</p>
+            <p class="mt-2 font-headline text-3xl font-bold text-on-surface">{{ pressureUsedText.replace(' used', '') }}</p>
           </div>
         </div>
 
         <div class="grid grid-cols-12 gap-6">
-          <section class="col-span-12 rounded-[1.5rem] bg-surface-container-high p-6">
+          <section v-if="hasDepthProfile" class="col-span-12 rounded-[1.5rem] bg-surface-container-high p-6">
             <div class="mb-8 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
               <h4 class="font-headline text-lg font-bold">Dive Profile</h4>
               <div class="flex flex-wrap gap-4">
@@ -510,7 +515,7 @@ export default {
               </div>
             </section>
 
-            <section class="rounded-[1.5rem] bg-surface-container-low p-6">
+            <section v-if="hasCheckpoints" class="rounded-[1.5rem] bg-surface-container-low p-6">
             <div class="mb-6 flex items-center justify-between gap-4">
               <h4 class="flex items-center gap-2 font-headline text-lg font-bold">
                 <span class="material-symbols-outlined text-secondary">photo_library</span>

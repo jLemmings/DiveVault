@@ -1434,30 +1434,33 @@ body {
 
 @media (min-width: 1280px) {
   .equipment-items-grid {
-    grid-template-columns: repeat(2, minmax(22rem, 1fr));
+    grid-template-columns: repeat(2, minmax(24rem, 1fr));
   }
 }
 
 .equipment-item-card {
-  min-height: 13.25rem;
-  padding: 1.1rem;
+  min-height: 16rem;
+  padding: 1.35rem;
 }
 
 .equipment-item-card-header {
   align-items: start;
   display: flex;
-  gap: 1rem;
+  gap: 1.25rem;
   justify-content: space-between;
 }
 
 .equipment-service-countdown {
   align-items: center;
   border-top: 1px solid rgb(var(--color-primary) / 0.1);
-  display: flex;
-  gap: 1rem;
-  margin-top: 0.85rem;
-  max-width: 18rem;
-  padding-top: 0.85rem;
+  display: grid;
+  gap: 0.9rem;
+  grid-template-columns: minmax(0, 1fr);
+  justify-items: center;
+  margin-top: 1.25rem;
+  padding-top: 1.25rem;
+  text-align: center;
+  width: 100%;
 }
 
 .equipment-service-countdown-ring {
@@ -1465,26 +1468,79 @@ body {
   aspect-ratio: 1;
   --days-color: #20e7f1;
   --dives-color: #9fd4ff;
-  background:
-    radial-gradient(circle at center, rgb(var(--color-background)) 0 47%, transparent 48%),
-    conic-gradient(var(--dives-color) 0 var(--dives-progress), rgb(var(--color-secondary) / 0.12) var(--dives-progress) 100%),
-    radial-gradient(circle at center, transparent 0 60%, rgb(var(--color-background)) 61% 70%, transparent 71%),
-    conic-gradient(var(--days-color) 0 var(--days-progress), rgb(var(--color-primary) / 0.12) var(--days-progress) 100%);
+  --days-track: rgb(var(--color-primary) / 0.12);
+  --dives-track: rgb(var(--color-secondary) / 0.14);
+  background: radial-gradient(circle at center, rgb(var(--color-background)) 0 46%, rgb(var(--color-background) / 0.72) 47% 100%);
   border-radius: 999px;
   box-shadow:
-    0 0 22px rgba(32, 231, 241, 0.44),
+    0 0 16px rgba(32, 231, 241, 0.28),
     inset 0 0 0 1px rgb(var(--color-primary) / 0.16);
   color: #c7ecff;
   display: flex;
-  flex: 0 0 4rem;
+  flex: 0 0 5.25rem;
   flex-direction: column;
   justify-content: center;
-  width: 4rem;
+  isolation: isolate;
+  position: relative;
+  width: 5.25rem;
+}
+
+.equipment-service-countdown-svg {
+  inset: 0;
+  overflow: visible;
+  position: absolute;
+  transform: rotate(-90deg);
+  width: 100%;
+}
+
+.equipment-service-countdown-track,
+.equipment-service-countdown-progress {
+  fill: none;
+  stroke-linecap: round;
+  transform-origin: center;
+}
+
+.equipment-service-countdown-track.is-time,
+.equipment-service-countdown-progress.is-time {
+  stroke-width: 7.5;
+}
+
+.equipment-service-countdown-track.is-dives,
+.equipment-service-countdown-progress.is-dives {
+  stroke-width: 7;
+}
+
+.equipment-service-countdown-track.is-time {
+  stroke: var(--days-track);
+}
+
+.equipment-service-countdown-track.is-dives {
+  stroke: var(--dives-track);
+}
+
+.equipment-service-countdown-progress.is-time {
+  stroke: var(--days-color);
+  stroke-dasharray: var(--days-progress-value) 100;
+}
+
+.equipment-service-countdown-progress.is-dives {
+  stroke: var(--dives-color);
+  stroke-dasharray: var(--dives-progress-value) 100;
+}
+
+.equipment-service-countdown-center {
+  align-items: center;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  position: relative;
+  z-index: 1;
 }
 
 .equipment-service-countdown-ring.is-soon {
   --days-color: rgb(var(--color-tertiary));
   --dives-color: #9ccaff;
+  --days-track: rgb(var(--color-tertiary) / 0.14);
   box-shadow: 0 0 16px rgb(var(--color-tertiary) / 0.32);
   color: rgb(var(--color-tertiary));
 }
@@ -1492,17 +1548,19 @@ body {
 .equipment-service-countdown-ring.is-urgent {
   --days-color: rgb(var(--color-error));
   --dives-color: rgb(var(--color-tertiary));
+  --days-track: rgb(var(--color-error) / 0.14);
+  --dives-track: rgb(var(--color-tertiary) / 0.16);
   box-shadow: 0 0 16px rgb(var(--color-error) / 0.32);
   color: rgb(var(--color-error));
 }
 
-.equipment-service-countdown-ring strong {
+.equipment-service-countdown-center strong {
   font-family: "Space Grotesk", sans-serif;
-  font-size: 1.1rem;
+  font-size: 1.22rem;
   line-height: 1;
 }
 
-.equipment-service-countdown-ring span {
+.equipment-service-countdown-center span {
   font-family: "Manrope", sans-serif;
   font-size: 0.5rem;
   font-weight: 800;
@@ -1512,13 +1570,51 @@ body {
   text-transform: uppercase;
 }
 
-.equipment-service-countdown .font-headline {
-  font-size: 1.45rem;
-  line-height: 0.98;
-}
-
 .equipment-service-countdown p:last-child {
   max-width: 11rem;
+}
+
+.equipment-service-countdown-copy {
+  min-width: 0;
+  padding-top: 0;
+}
+
+.equipment-service-countdown-layer {
+  align-items: center;
+  display: flex;
+  gap: 0.5rem;
+  justify-content: center;
+  line-height: 1.1;
+  margin-top: 0.35rem;
+}
+
+.equipment-service-countdown-layer span {
+  border-radius: 999px;
+  display: inline-flex;
+  flex: 0 0 0.48rem;
+  height: 0.48rem;
+  width: 0.48rem;
+}
+
+.equipment-service-countdown-layer.is-time {
+  color: var(--days-color, #20e7f1);
+  font-family: "Space Grotesk", sans-serif;
+  font-size: 1.35rem;
+  font-weight: 800;
+}
+
+.equipment-service-countdown-layer.is-time span {
+  background: var(--days-color, #20e7f1);
+}
+
+.equipment-service-countdown-layer.is-dives {
+  color: rgb(var(--color-on-surface-variant));
+  font-size: 0.88rem;
+  font-weight: 700;
+}
+
+.equipment-service-countdown-layer.is-dives span {
+  background: var(--dives-color, #9fd4ff);
 }
 
 .equipment-item-actions {
@@ -1533,6 +1629,26 @@ body {
   min-height: 2rem;
   min-width: 5rem;
   padding: 0.45rem 0.7rem;
+}
+
+@media (max-width: 520px) {
+  .equipment-item-card-header {
+    flex-direction: column;
+  }
+
+  .equipment-item-actions {
+    align-items: stretch;
+    flex-direction: row;
+    width: 100%;
+  }
+
+  .equipment-item-actions .settings-button {
+    flex: 1;
+  }
+
+  .equipment-service-countdown {
+    justify-items: center;
+  }
 }
 
 .equipment-edit-modal {

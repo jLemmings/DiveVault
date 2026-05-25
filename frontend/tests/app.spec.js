@@ -65,6 +65,7 @@ test("covers dashboard, logs, dive detail, and logbook editing", async ({ page }
 
   await visibleLogRow.click();
   await expect(page.getByText("Back To Logs")).toBeVisible();
+  await expect(page.getByText("Samples", { exact: true })).toBeHidden();
 
   await page.getByRole("button", { name: "Edit dive" }).click();
   await expect(page.getByText("Logbook Entry")).toBeVisible();
@@ -118,6 +119,11 @@ test("creates a manual dive entry outside the importer workflow", async ({ page 
 
   await expect(page.getByRole("heading", { name: "Cathedral" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Back To Logs" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Dive Profile" })).toBeHidden();
+  await expect(page.getByRole("heading", { name: "Dive Checkpoints" })).toBeHidden();
+  await expect(page.getByText("Avg Depth", { exact: true })).toBeHidden();
+  await expect(page.getByText("Samples", { exact: true })).toBeHidden();
+  await expect(page.getByText("0 telemetry points")).toBeHidden();
 
   await page.goto("/#imports");
   await expect(page.getByRole("heading", { name: "Imported Dives" })).toBeVisible();
@@ -149,15 +155,15 @@ test("manages equipment inventory and service schedule", async ({ page }) => {
 
   await expect(page.getByRole("heading", { name: "Equipment", exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Aqualung Blue Shop Regulator" }).first()).toBeVisible();
+  await expect(page.getByPlaceholder("Search equipment...")).toBeVisible();
 
-  await page.getByRole("button", { name: "Add Equipment" }).click();
+  await page.getByRole("button", { name: "New Entry" }).click();
   await expect(page.getByRole("heading", { name: "New Equipment" })).toBeVisible();
   await page.getByRole("textbox", { name: "Category" }).fill("BCD");
   await page.getByRole("textbox", { name: "Year Bought" }).fill("2025");
   await page.getByRole("textbox", { name: "Vendor" }).fill("Reef Shop");
   await page.getByRole("textbox", { name: "Brand" }).fill("Scubapro");
   await page.getByRole("textbox", { name: "Warranty" }).fill("3 years");
-  await page.getByLabel("Next Service Due").fill("2027-05-01");
   await page.getByPlaceholder("100").fill("50");
   await page.getByLabel("Use by default on each dive").check();
   await page.getByRole("button", { name: "Save Gear" }).click();
@@ -165,9 +171,8 @@ test("manages equipment inventory and service schedule", async ({ page }) => {
 
   await expect(page.getByRole("heading", { name: "Next Equipment Due" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Scubapro Reef Shop BCD" }).first()).toBeVisible();
-  await page.locator("article").filter({ hasText: "Aqualung Blue Shop Regulator" }).getByRole("button", { name: "Mark Serviced" }).click();
-  await expect(page.getByText("Equipment marked as serviced.")).toBeVisible();
-  await expect(page.locator("article").filter({ hasText: "Aqualung Blue Shop Regulator" }).getByText("1 dives remaining")).toBeVisible();
+  await expect(page.locator("article").filter({ hasText: "Scubapro Reef Shop BCD" }).getByText("50 dives left")).toBeVisible();
+  await expect(page.locator("article").filter({ hasText: "Aqualung Blue Shop Regulator" }).getByRole("button", { name: "Mark Serviced" })).toBeHidden();
 });
 
 test("covers the public profile route", async ({ page }) => {
