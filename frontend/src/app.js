@@ -172,7 +172,6 @@ export default {
       requestTimeoutMs: 15000,
       cliAuthCode: "",
       activeSettingsSection: DEFAULT_SETTINGS_SECTION,
-      settingsMenuExpanded: false,
       mobileAccountMenuOpen: false,
       desktopAccountMenuOpen: false,
       passwordDialogOpen: false,
@@ -322,9 +321,6 @@ export default {
     canManageUsers() {
       return Boolean(this.authUser?.isOwner);
     },
-    settingsSubnavItems() {
-      return SETTINGS_SECTIONS.filter((section) => section.id !== "manage-users" || this.canManageUsers);
-    },
     desktopNavItems() {
       return this.navItems.filter((item) => item.id !== "map");
     },
@@ -447,7 +443,6 @@ export default {
         bottomTimeProgress: 0
       };
       this.activeSettingsSection = DEFAULT_SETTINGS_SECTION;
-      this.settingsMenuExpanded = false;
       this.desktopAccountMenuOpen = false;
       this.lastAuthenticatedSessionId = null;
     },
@@ -639,15 +634,6 @@ export default {
       if (this.isDisabledNavItem(view)) {
         return;
       }
-      if (view === "settings") {
-        if (this.activeView === "settings") {
-          this.settingsMenuExpanded = !this.settingsMenuExpanded;
-          return;
-        }
-        this.settingsMenuExpanded = true;
-      } else {
-        this.settingsMenuExpanded = false;
-      }
       await this.setView(view);
     },
     async setView(view) {
@@ -698,7 +684,6 @@ export default {
       this.closeMobileAccountMenu();
       this.activeView = "settings";
       this.activeSettingsSection = this.normalizeSettingsSection(sectionId);
-      this.settingsMenuExpanded = true;
       this.selectedDiveId = null;
       this.selectedImportId = null;
       this.selectedEditDiveId = null;
@@ -1309,7 +1294,6 @@ export default {
       }
       if (view === "settings") {
         this.activeView = "settings";
-        this.settingsMenuExpanded = true;
         this.selectedDiveId = null;
         this.selectedImportId = null;
         this.selectedEditDiveId = null;
@@ -1504,27 +1488,7 @@ export default {
                 <span>{{ item.label }}</span>
                 <span v-if="item.badge" class="rounded bg-tertiary px-2 py-0.5 text-[9px] font-black tracking-[0.18em] text-background">{{ item.badge }}</span>
               </span>
-              <span v-if="item.id === 'settings'" class="material-symbols-outlined ml-auto hidden text-base opacity-70 md:flex">
-                {{ activeView === 'settings' && settingsMenuExpanded ? 'keyboard_arrow_down' : 'keyboard_arrow_right' }}
-              </span>
             </button>
-            <div
-              v-if="item.id === 'settings' && activeView === 'settings' && settingsMenuExpanded"
-              class="ml-14 mr-4 flex flex-col gap-1 border-l border-primary/10 pl-4"
-            >
-              <button
-                v-for="section in settingsSubnavItems"
-                :key="section.id"
-                @click="setSettingsSection(section.id)"
-                class="flex items-start gap-3 rounded-xl px-3 py-2 text-left transition-colors"
-                :class="activeSettingsSection === section.id ? 'bg-surface-container-high/80 text-primary' : 'text-secondary opacity-80 hover:bg-surface-container-high/60 hover:text-primary hover:opacity-100'"
-              >
-                <span class="material-symbols-outlined mt-0.5 text-[18px]" :style="activeSettingsSection === section.id ? filledIconStyle : ''">{{ section.icon }}</span>
-                <div class="min-w-0">
-                  <p class="font-label text-[10px] font-bold">{{ section.label }}</p>
-                </div>
-              </button>
-            </div>
           </div>
         </nav>
         <div class="mt-auto p-6">

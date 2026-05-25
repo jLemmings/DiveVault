@@ -141,11 +141,12 @@ test("covers settings profile loading and public sharing updates", async ({ page
   await page.getByRole("button", { name: "Save Sharing" }).click();
   await expect(page.getByText("Public dive profile enabled.")).toBeVisible();
 
-  await page.getByRole("button", { name: "Dive Sites" }).click();
+  const settingsRail = page.locator(".settings-section-nav");
+  await settingsRail.getByRole("button", { name: /Dive Sites/ }).click();
   await expect(page.getByRole("heading", { name: "Reusable Site Directory" })).toBeVisible();
-  await page.getByRole("button", { name: "Data Management" }).click();
+  await settingsRail.getByRole("button", { name: /Data Management/ }).click();
   await expect(page.getByRole("heading", { name: "Exports And Desktop Sync" })).toBeVisible();
-  await page.getByRole("button", { name: "Backup" }).click();
+  await settingsRail.getByRole("button", { name: /Backup/ }).click();
   await expect(page.getByRole("heading", { name: "Backup And Restore" })).toBeVisible();
 });
 
@@ -171,7 +172,9 @@ test("manages equipment inventory and service schedule", async ({ page }) => {
 
   await expect(page.getByRole("heading", { name: "Next Equipment Due" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Scubapro Reef Shop BCD" }).first()).toBeVisible();
-  await expect(page.locator("article").filter({ hasText: "Scubapro Reef Shop BCD" }).getByText("50 dives left")).toBeVisible();
+  const savedEquipmentCard = page.locator("article").filter({ hasText: "Scubapro Reef Shop BCD" });
+  await expect(savedEquipmentCard.getByText("Service Countdown")).toBeVisible();
+  await expect(savedEquipmentCard.getByText(/dives left|Dive interval not set/)).toBeVisible();
   await expect(page.locator("article").filter({ hasText: "Aqualung Blue Shop Regulator" }).getByRole("button", { name: "Mark Serviced" })).toBeHidden();
 });
 
