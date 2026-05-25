@@ -1,0 +1,124 @@
+name: Bug Report
+description: Report a problem with DiveVault
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting an issue.
+
+        Please provide as much information as possible. For dive computer import and sync issues, logs and device details are especially helpful.
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: What happened?
+      description: A clear description of the problem.
+      placeholder: |
+        I connected my dive computer and attempted an import. The import completed but no dives appeared.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect to happen?
+      placeholder: The dives should have been imported and visible in the dive list.
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Provide exact steps if possible.
+      placeholder: |
+        1. Open DiveVault
+        2. Connect Suunto D5
+        3. Click "Import Dives"
+        4. Select device
+        5. Import fails
+    validations:
+      required: true
+
+  - type: dropdown
+    id: installation
+    attributes:
+      label: Installation method
+      options:
+        - Release binary
+        - Docker
+        - Homebrew
+        - Built from source
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: DiveVault version
+      placeholder: v1.2.3
+    validations:
+      required: true
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - Linux
+        - macOS
+        - Windows
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: os_version
+    attributes:
+      label: Operating system version
+      placeholder: Ubuntu 24.04, macOS 15.5, Windows 11 24H2
+
+  - type: input
+    id: dive_computer
+    attributes:
+      label: Dive computer model (if applicable)
+      placeholder: Shearwater Perdix 2, Suunto D5, Garmin Descent Mk3i
+
+  - type: input
+    id: connection
+    attributes:
+      label: Connection method (if applicable)
+      placeholder: USB, Bluetooth, Serial adapter, etc.
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: Paste relevant logs or error messages.
+      render: text
+
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: Screenshots
+      description: Drag and drop screenshots if relevant.
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional context
+      description: Anything else that might help us diagnose the issue.
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Checklist
+      options:
+        - label: I searched existing issues before creating this report.
+          required: true
+        - label: I can consistently reproduce this issue.
+        - label: I have included logs or screenshots where applicable.
