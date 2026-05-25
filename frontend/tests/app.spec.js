@@ -146,6 +146,8 @@ test("covers settings profile loading and public sharing updates", async ({ page
   await expect(page.getByRole("heading", { name: "Reusable Site Directory" })).toBeVisible();
   await settingsRail.getByRole("button", { name: /Data Management/ }).click();
   await expect(page.getByRole("heading", { name: "Exports And Desktop Sync" })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Import Dives \(CSV\)/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Import Subsurface Export/ })).toBeVisible();
   await settingsRail.getByRole("button", { name: /Backup/ }).click();
   await expect(page.getByRole("heading", { name: "Backup And Restore" })).toBeVisible();
 });

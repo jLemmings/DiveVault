@@ -424,6 +424,18 @@ export default {
       type: Function,
       default: null
     },
+    openImportQueue: {
+      type: Function,
+      default: null
+    },
+    uploadCsvImport: {
+      type: Function,
+      default: null
+    },
+    uploadSubsurfaceImport: {
+      type: Function,
+      default: null
+    },
     currentLocale: {
       type: String,
       default: "en"
@@ -487,8 +499,12 @@ export default {
       profileStatus: "",
       profileError: "",
       dataManagementStatus: "",
+      dataManagementWarning: "",
       dataManagementError: "",
       dataManagementAction: "",
+      importReadyForReview: false,
+      pendingSubsurfaceFile: null,
+      subsurfacePreview: null,
       manageUsersLoading: false,
       manageUsersSaving: false,
       manageUsersStatus: "",
@@ -878,7 +894,19 @@ export default {
     },
     resetDataManagementFeedback() {
       this.dataManagementStatus = "";
+      this.dataManagementWarning = "";
       this.dataManagementError = "";
+      this.importReadyForReview = false;
+    },
+    duplicateImportWarning,
+    importResultStatus(payload, label) {
+      const inserted = Number(payload?.inserted ?? 0);
+      const rows = Number(payload?.rows ?? 0);
+      const duplicates = Number(payload?.duplicates ?? 0);
+      if (inserted <= 0 && duplicates > 0) {
+        return `No new dives were added from this ${label}.`;
+      }
+      return `${label} import complete. ${inserted} new dives added from ${rows} dive${rows === 1 ? '' : 's'}; ${duplicates} duplicate dive${duplicates === 1 ? '' : 's'} skipped. Next step: review the imported dives and complete their logbook fields.`;
     },
     displayValue(value, fallback = "Not provided") {
       return value ? value : fallback;
@@ -1269,6 +1297,92 @@ export default {
         "Exporting CSV",
         "Dive telemetry CSV downloaded."
       );
+    },
+    triggerCsvImport() {
+      this.resetDataManagementFeedback();
+      this.$refs.csvImportInput?.click();
+    },
+    async handleCsvImportSelection(event) {
+      const file = event?.target?.files?.[0];
+      if (event?.target) {
+        event.target.value = "";
+      }
+      if (!file || typeof this.uploadCsvImport !== "function") return;
+
+      this.dataManagementAction = "Importing CSV";
+      this.resetDataManagementFeedback();
+      try {
+        const payload = await this.uploadCsvImport(file, {
+          navigateToQueue: false,
+          setImportFeedback: false,
+          refreshDives: false
+        });
+        this.dataManagementStatus = this.importResultStatus(payload, "CSV file");
+        this.dataManagementWarning = this.duplicateImportWarning(payload, "CSV file");
+        this.importReadyForReview = Number(payload?.inserted ?? 0) > 0;
+      } catch (error) {
+        this.dataManagementError = error?.message || "Could not import the CSV file.";
+      } finally {
+        this.dataManagementAction = "";
+      }
+    },
+    triggerSubsurfaceImport() {
+      this.resetDataManagementFeedback();
+      this.$refs.subsurfaceImportInput?.click();
+    },
+    async handleSubsurfaceImportSelection(event) {
+      const file = event?.target?.files?.[0];
+      if (event?.target) {
+        event.target.value = "";
+      }
+      if (!file || typeof this.uploadSubsurfaceImport !== "function") return;
+
+      this.dataManagementAction = "Previewing Subsurface";
+      this.resetDataManagementFeedback();
+      this.pendingSubsurfaceFile = file;
+      this.subsurfacePreview = null;
+      try {
+        const payload = await this.uploadSubsurfaceImport(file, { dryRun: true });
+        this.subsurfacePreview = payload?.summary || null;
+        const rows = this.subsurfacePreview?.rows ?? 0;
+        this.dataManagementStatus = `Subsurface export preview ready: ${rows} dive${rows === 1 ? '' : 's'} found. Confirm import to place them in the imported-dive review queue.`;
+      } catch (error) {
+        this.pendingSubsurfaceFile = null;
+        this.subsurfacePreview = null;
+        this.dataManagementError = error?.message || "Could not preview the Subsurface export.";
+      } finally {
+        this.dataManagementAction = "";
+      }
+    },
+    async confirmSubsurfaceImport() {
+      if (!this.pendingSubsurfaceFile || typeof this.uploadSubsurfaceImport !== "function") return;
+      this.dataManagementAction = "Importing Subsurface";
+      this.dataManagementError = "";
+      try {
+        const payload = await this.uploadSubsurfaceImport(this.pendingSubsurfaceFile, {
+          dryRun: false,
+          refreshDives: false
+        });
+        this.dataManagementStatus = this.importResultStatus(payload, "Subsurface export");
+        this.dataManagementWarning = this.duplicateImportWarning(payload, "Subsurface export");
+        this.importReadyForReview = Number(payload?.inserted ?? 0) > 0;
+        this.pendingSubsurfaceFile = null;
+        this.subsurfacePreview = null;
+      } catch (error) {
+        this.dataManagementError = error?.message || "Could not import the Subsurface export.";
+      } finally {
+        this.dataManagementAction = "";
+      }
+    },
+    cancelSubsurfaceImportPreview() {
+      this.pendingSubsurfaceFile = null;
+      this.subsurfacePreview = null;
+      this.resetDataManagementFeedback();
+    },
+    reviewCsvImportQueue() {
+      if (typeof this.openImportQueue === "function") {
+        this.openImportQueue();
+      }
     },
     exportBackup() {
       return this.exportDownload(
@@ -2956,8 +3070,26 @@ export default {
               </div>
             </div>
 
-            <div v-if="dataManagementStatus" class="settings-feedback border-primary/20 bg-primary/10 text-primary">{{ dataManagementStatus }}</div>
+            <div v-if="dataManagementStatus" class="settings-feedback border-primary/20 bg-primary/10 text-primary">
+              <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                <span>{{ dataManagementStatus }}</span>
+                <button
+                  v-if="importReadyForReview"
+                  type="button"
+                  @click="reviewCsvImportQueue"
+                  class="settings-button settings-button-primary shrink-0"
+                >
+                  Review Imported Dives
+                </button>
+              </div>
+            </div>
             <div v-if="dataManagementError" class="settings-feedback border-error/20 bg-error-container/20 text-on-error-container">{{ dataManagementError }}</div>
+            <div v-if="dataManagementWarning" class="settings-feedback border-tertiary/30 bg-tertiary/10 text-tertiary">
+              <div class="flex items-start gap-3">
+                <span class="material-symbols-outlined text-base">warning</span>
+                <span>{{ dataManagementWarning }}</span>
+              </div>
+            </div>
 
             <div class="settings-action-grid">
               <button
@@ -2989,6 +3121,85 @@ export default {
                 </div>
                 <span class="material-symbols-outlined text-secondary/60">north_east</span>
               </button>
+
+              <button
+                @click="triggerCsvImport"
+                :disabled="isDataManagementBusy || isInteractionLocked"
+                class="settings-action-card"
+              >
+                <div>
+                  <div class="flex items-center gap-3">
+                    <span class="material-symbols-outlined text-primary">upload_file</span>
+                    <p class="font-headline text-xl font-bold text-on-surface">{{ dataManagementAction === 'Importing CSV' ? 'Importing Dive CSV' : 'Import Dives (CSV)' }}</p>
+                  </div>
+                  <p class="mt-3 text-sm leading-6 text-secondary">Load spreadsheet dive rows into the imported dive queue for review before they enter the logbook.</p>
+                </div>
+                <span class="material-symbols-outlined text-secondary/60">upload</span>
+              </button>
+
+              <button
+                @click="triggerSubsurfaceImport"
+                :disabled="isDataManagementBusy || isInteractionLocked"
+                class="settings-action-card"
+              >
+                <div>
+                  <div class="flex items-center gap-3">
+                    <span class="material-symbols-outlined text-primary">backup_table</span>
+                    <p class="font-headline text-xl font-bold text-on-surface">{{ dataManagementAction === 'Previewing Subsurface' ? 'Reading Subsurface Export' : dataManagementAction === 'Importing Subsurface' ? 'Importing Subsurface Export' : 'Import Subsurface Export' }}</p>
+                  </div>
+                  <p class="mt-3 text-sm leading-6 text-secondary">Preview a Subsurface XML or archive export, then confirm before adding the dives to the review queue.</p>
+                </div>
+                <span class="material-symbols-outlined text-secondary/60">upload</span>
+              </button>
+            </div>
+            <input
+              ref="csvImportInput"
+              type="file"
+              accept=".csv,text/csv"
+              class="hidden"
+              @change="handleCsvImportSelection"
+            />
+            <input
+              ref="subsurfaceImportInput"
+              type="file"
+              accept=".xml,.ssrf,application/xml,text/xml,application/zip,application/gzip"
+              class="hidden"
+              @change="handleSubsurfaceImportSelection"
+            />
+
+            <div v-if="subsurfacePreview" class="settings-side-panel mt-6">
+              <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                <div>
+                  <p class="font-label text-[10px] font-bold uppercase tracking-[0.24em] text-primary">Subsurface Preview</p>
+                  <h5 class="mt-2 font-headline text-2xl font-bold tracking-tight text-on-surface">{{ subsurfacePreview.rows }} dives ready to import</h5>
+                  <p class="mt-3 text-sm leading-7 text-secondary">Confirming will add these dives to the imported-dive queue. They will not enter the main logbook until you review and complete them.</p>
+                </div>
+                <div class="flex flex-wrap gap-3">
+                  <button
+                    type="button"
+                    @click="confirmSubsurfaceImport"
+                    :disabled="isDataManagementBusy || isInteractionLocked"
+                    class="settings-button settings-button-primary"
+                  >
+                    Confirm Import
+                  </button>
+                  <button
+                    type="button"
+                    @click="cancelSubsurfaceImportPreview"
+                    :disabled="isDataManagementBusy"
+                    class="settings-button settings-button-ghost"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+              <div class="mt-5 grid gap-3 md:grid-cols-2">
+                <div v-for="dive in subsurfacePreview.dives" :key="dive.dive_uid" class="settings-info-card">
+                  <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">{{ dive.started_at }}</p>
+                  <p class="mt-2 text-base font-semibold text-on-surface">{{ dive.site || 'Unassigned site' }}</p>
+                  <p class="mt-1 text-sm text-secondary">{{ Math.round((dive.duration_seconds || 0) / 60) }} min / {{ dive.max_depth_m || 0 }} m / {{ dive.sample_count || 0 }} samples</p>
+                </div>
+              </div>
             </div>
 
             <div class="settings-side-panel mt-6">
@@ -3441,3 +3652,14 @@ export default {
     </section>
   `
 };
+
+function duplicateImportWarning(payload, label) {
+  const duplicates = Number(payload?.duplicates ?? 0);
+  if (!Number.isFinite(duplicates) || duplicates <= 0) return "";
+  const rows = Number(payload?.rows ?? 0);
+  const inserted = Number(payload?.inserted ?? 0);
+  if (inserted <= 0) {
+    return `Warning: this ${label} appears to have already been imported. No new dives were added.`;
+  }
+  return `Warning: ${duplicates} of ${rows} ${rows === 1 ? 'dive was' : 'dives were'} already imported and skipped.`;
+}

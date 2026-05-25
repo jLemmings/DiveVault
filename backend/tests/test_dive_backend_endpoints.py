@@ -645,6 +645,8 @@ def server_fixture(monkeypatch):
         server.cors_origin = "http://localhost:5173"
         server.max_json_body_bytes = 1024 * 1024
         server.max_backup_import_bytes = 25 * 1024 * 1024
+        server.max_csv_import_bytes = 5 * 1024 * 1024
+        server.max_subsurface_import_bytes = 15 * 1024 * 1024
         server.max_list_limit = 200
         server.rate_limiter = dive_backend.FixedWindowRateLimiter()
         server.rate_limit_policies = {
@@ -1065,6 +1067,75 @@ def test_post_and_put_endpoints(server_fixture):
         },
     )
     assert valid_insert.status == 201
+
+    csv_import = request(
+        server,
+        "POST",
+        "/api/imports/csv",
+        token="session",
+        body=(
+            "started_at,duration_minutes,max_depth_m,site,buddy,guide\n"
+            "2026-05-01T08:30:00Z,42,18.6,House Reef,Sam,Kai\n"
+        ).encode("utf-8"),
+        content_type="text/csv",
+    )
+    assert csv_import.status == 200
+    assert csv_import.json()["rows"] == 1
+    assert csv_import.json()["inserted"] == 1
+    assert server.test_store["dives"][-1]["fields"]["logbook"]["status"] == "complete"
+
+    invalid_csv_import = request(
+        server,
+        "POST",
+        "/api/imports/csv",
+        token="session",
+        body="started_at,max_depth_m\n2026-05-01T08:30:00Z,18.6\n".encode("utf-8"),
+        content_type="text/csv",
+    )
+    assert invalid_csv_import.status == 400
+    assert "duration_seconds or duration_minutes" in invalid_csv_import.json()["error"]
+
+    subsurface_xml = b"""
+    <divelog>
+      <dives>
+        <dive number="7" date="2026-05-05" time="10:15:00" duration="42:00 min">
+          <location gps="25.3104 34.8818">Canyon Reef</location>
+          <divemaster>Kai</divemaster>
+          <buddy>Sam</buddy>
+          <notes>Subsurface test import.</notes>
+          <divecomputer model="Perdix 2">
+            <depth max="21.5 m" mean="11.0 m" />
+            <sample time="0:00 min" depth="0.0 m" />
+            <sample time="42:00 min" depth="0.0 m" />
+          </divecomputer>
+        </dive>
+      </dives>
+    </divelog>
+    """
+    subsurface_preview = request(
+        server,
+        "POST",
+        "/api/imports/subsurface?dry_run=1",
+        token="session",
+        body=subsurface_xml,
+        content_type="application/xml",
+    )
+    assert subsurface_preview.status == 200
+    assert subsurface_preview.json()["summary"]["rows"] == 1
+    assert subsurface_preview.json()["summary"]["dives"][0]["site"] == "Canyon Reef"
+
+    subsurface_import = request(
+        server,
+        "POST",
+        "/api/imports/subsurface",
+        token="session",
+        body=subsurface_xml,
+        content_type="application/xml",
+    )
+    assert subsurface_import.status == 200
+    assert subsurface_import.json()["rows"] == 1
+    assert subsurface_import.json()["inserted"] == 1
+    assert server.test_store["dives"][-1]["fields"]["logbook"]["status"] == "complete"
 
     server.max_json_body_bytes = 64
     oversized_insert = request(
@@ -1500,6 +1571,8 @@ def test_route_manifest_requires_test_updates_for_new_endpoints():
         "/api/exports/dives.csv",
         "/api/exports/dives.pdf",
         "/api/geocode/search",
+        "/api/imports/csv",
+        "/api/imports/subsurface",
         "/api/profile",
         "/api/users",
         "/api/dives",
