@@ -653,13 +653,14 @@ function detailEquipmentTags(dive) {
   const selectedEquipment = Array.isArray(logbook.equipment_snapshot)
     ? logbook.equipment_snapshot.map((item) => item?.name || item?.category).filter(Boolean)
     : [];
+  const sampleCount = numberOrZero(dive?.sample_count);
   const tags = [
     ...selectedEquipment,
     diveDeviceLabel(dive),
     diveModeLabel(dive),
     gasMixLabel(primaryGasMix(dive)),
     tankLabel(primaryTank(dive)),
-    `${numberOrZero(dive.sample_count)} telemetry points`
+    sampleCount > 0 ? `${sampleCount} telemetry points` : ""
   ];
   return [...new Set(tags.filter(Boolean))];
 }
