@@ -90,6 +90,7 @@ function createManualDiveDraft() {
     weatherDescription: "",
     visibility: "",
     wetsuitDescription: "",
+    weightDescription: "",
     notes: "",
     equipment_ids: []
   };
@@ -835,6 +836,7 @@ export default {
       const weatherDescription = String(this.manualDiveDraft.weatherDescription || "").trim();
       const visibility = String(this.manualDiveDraft.visibility || "").trim();
       const wetsuitDescription = String(this.manualDiveDraft.wetsuitDescription || "").trim();
+      const weightDescription = String(this.manualDiveDraft.weightDescription || "").trim();
       const notes = String(this.manualDiveDraft.notes || "").trim();
       const selectedEquipmentIds = Array.isArray(this.manualDiveDraft.equipment_ids) ? this.manualDiveDraft.equipment_ids.map(String) : [];
       const equipmentIds = this.profileEquipmentSelectionEnabled ? selectedEquipmentIds : [];
@@ -907,6 +909,7 @@ export default {
           weather_description: weatherDescription,
           visibility,
           wetsuit_description: wetsuitDescription,
+          weight_description: weightDescription,
           notes,
           equipment_ids: equipmentIds,
           status: "complete",
@@ -997,6 +1000,7 @@ export default {
             weather_description: draft.weather_description,
             visibility: draft.visibility,
             wetsuit_description: draft.wetsuit_description,
+            weight_description: draft.weight_description,
             notes: draft.notes,
             equipment_ids: Array.isArray(draft.equipment_ids) ? draft.equipment_ids : [],
             status: commit ? "complete" : "imported"

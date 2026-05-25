@@ -495,6 +495,10 @@ export default {
                 <input :value="selectedDraft.wetsuit_description" @input="updateField('wetsuit_description', $event.target.value)" type="text" :placeholder="t('importEdit.wetsuit.placeholder', '3mm shorty / drysuit')" class="w-full rounded-lg border-none bg-surface-container-high px-4 py-3 text-sm text-on-surface placeholder:text-secondary/50 focus:ring-1 focus:ring-primary" />
               </label>
               <label class="block space-y-2">
+                <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">{{ t('Weights', 'Weights') }}</span>
+                <input :value="selectedDraft.weight_description" @input="updateField('weight_description', $event.target.value)" type="text" :placeholder="t('importEdit.weights.placeholder', '8 kg integrated + 1 kg trim')" class="w-full rounded-lg border-none bg-surface-container-high px-4 py-3 text-sm text-on-surface placeholder:text-secondary/50 focus:ring-1 focus:ring-primary" />
+              </label>
+              <label class="block space-y-2">
                 <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Dive Notes</span>
                 <textarea :value="selectedDraft.notes" @input="updateField('notes', $event.target.value)" rows="5" placeholder="Visibility, current, wildlife, entry notes..." class="w-full resize-none rounded-lg border-none bg-surface-container-high px-4 py-3 text-sm leading-6 text-on-surface placeholder:text-secondary/50 focus:ring-1 focus:ring-primary"></textarea>
               </label>
@@ -703,7 +707,7 @@ export default {
                 </div>
               </section>
 
-              <div class="grid grid-cols-1 gap-4 md:grid-cols-3">
+              <div class="grid grid-cols-1 gap-4 md:grid-cols-4">
                 <label class="block space-y-2">
                   <span class="font-label text-[10px] font-bold uppercase tracking-[0.2em] text-secondary">{{ t('Weather', 'Weather') }}</span>
                   <input :value="selectedDraft.weather_description" @input="updateField('weather_description', $event.target.value)" type="text" :placeholder="t('importEdit.weather.placeholder', 'Sunny, current building')" class="w-full border border-primary/10 bg-surface-container-high/35 px-4 py-3 text-sm text-on-surface placeholder:text-secondary/50 focus:border-primary/30 focus:ring-1 focus:ring-primary" />
@@ -715,6 +719,10 @@ export default {
                 <label class="block space-y-2">
                   <span class="font-label text-[10px] font-bold uppercase tracking-[0.2em] text-secondary">{{ t('Wetsuit', 'Wetsuit') }}</span>
                   <input :value="selectedDraft.wetsuit_description" @input="updateField('wetsuit_description', $event.target.value)" type="text" :placeholder="t('importEdit.wetsuit.placeholder', '3mm shorty / drysuit')" class="w-full border border-primary/10 bg-surface-container-high/35 px-4 py-3 text-sm text-on-surface placeholder:text-secondary/50 focus:border-primary/30 focus:ring-1 focus:ring-primary" />
+                </label>
+                <label class="block space-y-2">
+                  <span class="font-label text-[10px] font-bold uppercase tracking-[0.2em] text-secondary">{{ t('Weights', 'Weights') }}</span>
+                  <input :value="selectedDraft.weight_description" @input="updateField('weight_description', $event.target.value)" type="text" :placeholder="t('importEdit.weights.placeholder', '8 kg integrated + 1 kg trim')" class="w-full border border-primary/10 bg-surface-container-high/35 px-4 py-3 text-sm text-on-surface placeholder:text-secondary/50 focus:border-primary/30 focus:ring-1 focus:ring-primary" />
                 </label>
               </div>
 

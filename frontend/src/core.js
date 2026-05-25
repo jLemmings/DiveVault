@@ -231,6 +231,7 @@ function importDraftSeed(dive) {
     weather_description: typeof logbook.weather_description === "string" ? logbook.weather_description : "",
     visibility: typeof logbook.visibility === "string" ? logbook.visibility : "",
     wetsuit_description: typeof logbook.wetsuit_description === "string" ? logbook.wetsuit_description : "",
+    weight_description: typeof logbook.weight_description === "string" ? logbook.weight_description : "",
     notes: typeof logbook.notes === "string" ? logbook.notes : "",
     tank_volume_l: tankVolume,
     begin_pressure_bar: beginPressure,

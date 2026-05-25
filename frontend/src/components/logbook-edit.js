@@ -404,6 +404,11 @@ export default {
             <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">{{ t('Wetsuit', 'Wetsuit') }}</span>
             <input :value="selectedDraft.wetsuit_description" @input="updateField('wetsuit_description', $event.target.value)" type="text" :placeholder="t('logbookEdit.wetsuit.placeholder', '7mm semi-dry')" class="w-full border border-primary/10 bg-background/35 px-4 py-3 text-sm text-on-surface placeholder:text-secondary/50 focus:border-primary/30 focus:ring-1 focus:ring-primary" />
           </label>
+
+          <label class="space-y-2">
+            <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">{{ t('Weights', 'Weights') }}</span>
+            <input :value="selectedDraft.weight_description" @input="updateField('weight_description', $event.target.value)" type="text" :placeholder="t('logbookEdit.weights.placeholder', '8 kg integrated + 1 kg trim')" class="w-full border border-primary/10 bg-background/35 px-4 py-3 text-sm text-on-surface placeholder:text-secondary/50 focus:border-primary/30 focus:ring-1 focus:ring-primary" />
+          </label>
         </div>
 
         <section v-if="equipmentSelectionEnabled" class="space-y-4 border border-primary/10 bg-surface-container-high/18 p-5">

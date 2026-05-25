@@ -922,6 +922,10 @@ def csv_export_rows(dives: list[dict]) -> list[dict]:
             "site": logbook.get("site") or "",
             "buddy": logbook.get("buddy") or "",
             "guide": logbook.get("guide") or "",
+            "weather_description": logbook.get("weather_description") or "",
+            "visibility": logbook.get("visibility") or "",
+            "wetsuit_description": logbook.get("wetsuit_description") or "",
+            "weight_description": logbook.get("weight_description") or "",
             "notes": logbook.get("notes") or "",
             "vendor": dive.get("vendor") or "",
             "product": dive.get("product") or "",
@@ -975,6 +979,10 @@ def build_dives_csv(dives: list[dict]) -> bytes:
         "site",
         "buddy",
         "guide",
+        "weather_description",
+        "visibility",
+        "wetsuit_description",
+        "weight_description",
         "notes",
         "vendor",
         "product",
@@ -1040,6 +1048,20 @@ def build_pdf_lines(dives: list[dict], *, generated_at: datetime) -> list[dict]:
                 "gap": 4,
             }
         )
+        optional_details = [
+            ("Weather", logbook.get("weather_description")),
+            ("Visibility", logbook.get("visibility")),
+            ("Wetsuit", logbook.get("wetsuit_description")),
+            ("Weights", logbook.get("weight_description")),
+        ]
+        detail_text = " | ".join(
+            f"{label} {value.strip()}"
+            for label, value in optional_details
+            if isinstance(value, str) and value.strip()
+        )
+        if detail_text:
+            for detail_line in wrap_pdf_text(detail_text, width=92)[:2]:
+                lines.append({"text": detail_line, "font": "F1", "size": 10, "gap": 4})
         notes = logbook.get("notes")
         if isinstance(notes, str) and notes.strip():
             wrapped_notes = wrap_pdf_text(f"Notes: {notes.strip()}", width=92)[:3]

@@ -90,9 +90,13 @@ export default {
     },
     optionalFieldConfig() {
       return [
-        { key: "weather_description", label: this.t("Weather", "Weather") },
-        { key: "visibility", label: this.t("Visibility", "Visibility") },
-        { key: "wetsuit_description", label: this.t("Wetsuit", "Wetsuit") }
+        { key: "buddy", label: this.t("Buddy", "Buddy"), icon: "diversity_3" },
+        { key: "guide", label: this.t("Guide", "Guide"), icon: "badge" },
+        { key: "weather_description", label: this.t("Weather", "Weather"), icon: "partly_cloudy_day" },
+        { key: "visibility", label: this.t("Visibility", "Visibility"), icon: "visibility" },
+        { key: "wetsuit_description", label: this.t("Suit", "Suit"), icon: "checkroom" },
+        { key: "weight_description", label: this.t("Weights", "Weights"), icon: "fitness_center" },
+        { key: "notes", label: this.t("Notes", "Notes"), icon: "notes" }
       ];
     },
     compareDives(left, right) {
@@ -177,9 +181,7 @@ export default {
     diveDeviceLabel,
     configuredLogbookMeta(dive) {
       const draft = importDraftSeed(dive);
-      const enabled = Array.isArray(this.logbookDisplayFields) ? this.logbookDisplayFields : [];
       return this.optionalFieldConfig()
-        .filter((item) => enabled.includes(item.key))
         .map((item) => ({ ...item, value: typeof draft?.[item.key] === "string" ? draft[item.key].trim() : "" }))
         .filter((item) => item.value);
     },
@@ -254,7 +256,10 @@ export default {
                     <p class="font-label text-[10px] font-bold uppercase tracking-[0.16em] text-on-surface-variant">{{ formatDate(dive.started_at) }} | {{ formatTime(dive.started_at) }}</p>
                     <p class="mt-1 truncate text-sm text-secondary">{{ diveDeviceLabel(dive) }} / {{ diveComputerLabel(dive) }}</p>
                     <div v-if="configuredLogbookMeta(dive).length" class="mt-2 flex flex-wrap gap-2">
-                      <span v-for="item in configuredLogbookMeta(dive)" :key="'mobile-meta-' + dive.id + '-' + item.key" class="rounded-full bg-surface-container-high px-2.5 py-1 font-label text-[9px] font-bold uppercase tracking-[0.12em] text-primary">{{ item.label }}: {{ item.value }}</span>
+                      <span v-for="item in configuredLogbookMeta(dive)" :key="'mobile-meta-' + dive.id + '-' + item.key" class="inline-flex max-w-full items-center gap-1.5 rounded-full bg-surface-container-high px-2.5 py-1 font-label text-[9px] font-bold uppercase tracking-[0.12em] text-primary">
+                        <span class="material-symbols-outlined text-[13px] leading-none">{{ item.icon }}</span>
+                        <span class="truncate">{{ item.label }}: {{ item.value }}</span>
+                      </span>
                     </div>
                   </div>
                   <span class="material-symbols-outlined text-sm text-on-surface-variant">chevron_right</span>
@@ -373,7 +378,7 @@ export default {
               <h3 class="truncate text-lg font-extrabold text-primary">{{ diveSiteLabel(dive) }}</h3>
               <p class="mt-1 font-label text-[11px] font-bold tracking-[0.14em] text-on-surface-variant">{{ formatDate(dive.started_at) }} &bull; {{ formatTime(dive.started_at) }}</p>
             </div>
-            <p class="font-label text-[11px] font-bold tracking-[0.14em] text-on-surface">#{{ displayDiveIndex(dive) }}</p>
+            <p class="font-label text-[11px] font-bold tracking-[0.14em] text-on-surface">{{ displayDiveIndex(dive) }}</p>
           </div>
 
           <div class="mt-4 border-t border-outline-variant/18 pt-4">
@@ -415,7 +420,10 @@ export default {
               <span class="truncate">{{ diveComputerLabel(dive) }}</span>
             </div>
             <div class="flex flex-wrap justify-end gap-1.5">
-              <span v-for="item in configuredLogbookMeta(dive).slice(0, 2)" :key="'desktop-card-meta-' + dive.id + '-' + item.key" class="rounded bg-surface-container-high px-2 py-1 font-label text-[9px] font-bold uppercase tracking-[0.12em] text-secondary">{{ item.value }}</span>
+              <span v-for="item in configuredLogbookMeta(dive)" :key="'desktop-card-meta-' + dive.id + '-' + item.key" :title="item.label + ': ' + item.value" class="inline-flex max-w-[12rem] items-center gap-1 rounded bg-surface-container-high px-2 py-1 font-label text-[9px] font-bold uppercase tracking-[0.12em] text-secondary">
+                <span class="material-symbols-outlined text-[13px] leading-none">{{ item.icon }}</span>
+                <span class="truncate">{{ item.value }}</span>
+              </span>
               <span v-if="dive.max_depth_m > 40" class="rounded bg-tertiary/14 px-2 py-1 font-label text-[9px] font-bold uppercase tracking-[0.12em] text-tertiary">Deep</span>
             </div>
           </div>
