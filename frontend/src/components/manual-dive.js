@@ -122,6 +122,10 @@ export default {
       const temperatureValue = typeof this.draft?.temperatureC === "string" ? this.draft.temperatureC.trim() : "";
       const temperatureC = temperatureValue ? Number.parseFloat(temperatureValue) : null;
       const tankVolumeValue = typeof this.draft?.tankVolumeL === "string" ? this.draft.tankVolumeL.trim() : "";
+      const beginPressureValue = typeof this.draft?.beginPressureBar === "string" ? this.draft.beginPressureBar.trim() : "";
+      const endPressureValue = typeof this.draft?.endPressureBar === "string" ? this.draft.endPressureBar.trim() : "";
+      const beginPressure = beginPressureValue ? Number.parseFloat(beginPressureValue) : null;
+      const endPressure = endPressureValue ? Number.parseFloat(endPressureValue) : null;
 
       if (!String(this.draft?.date || "").trim()) issues.push("Start date is required.");
       if (!String(this.draft?.time || "").trim()) issues.push("Start time is required.");
@@ -129,6 +133,9 @@ export default {
       if (!Number.isFinite(maxDepthM) || maxDepthM < 0) issues.push("Max depth must be zero or greater.");
       if (temperatureValue && !Number.isFinite(temperatureC)) issues.push("Temperature must be a valid number.");
       if (tankVolumeValue && !this.tankVolumeOptions.some((option) => option.value === tankVolumeValue)) issues.push("Tank volume must be 9L, 12L, or 15L.");
+      if (beginPressureValue && (!Number.isFinite(beginPressure) || beginPressure < 0 || beginPressure > 400)) issues.push("Entry tank pressure must be between 0 and 400 bar.");
+      if (endPressureValue && (!Number.isFinite(endPressure) || endPressure < 0 || endPressure > 400)) issues.push("Exit tank pressure must be between 0 and 400 bar.");
+      if (beginPressure !== null && endPressure !== null && endPressure > beginPressure) issues.push("Exit tank pressure cannot be higher than entry tank pressure.");
       if (!String(this.draft?.site || "").trim()) issues.push("Dive site is required.");
       if (!String(this.draft?.buddy || "").trim()) issues.push("Buddy is required.");
       if (!String(this.draft?.guide || "").trim()) issues.push("Guide is required.");
@@ -139,6 +146,11 @@ export default {
     },
     selectedEquipmentIds() {
       return Array.isArray(this.draft?.equipment_ids) ? this.draft.equipment_ids.map(String) : [];
+    },
+    draftDateTime() {
+      const date = String(this.draft?.date || "").trim();
+      const time = String(this.draft?.time || "").trim() || "00:00";
+      return date ? `${date}T${time}` : "";
     },
     equipmentGroups() {
       const groups = new Map();
@@ -153,13 +165,10 @@ export default {
       }));
     },
     selectedEquipmentStatus() {
-      const date = String(this.draft?.date || "").trim();
-      const time = String(this.draft?.time || "").trim() || "00:00";
-      const diveDate = date ? `${date}T${time}` : "";
       const lookup = new Map((Array.isArray(this.equipment) ? this.equipment : []).map((item) => [String(item.id), item]));
       return this.selectedEquipmentIds.map((id) => {
         const item = lookup.get(id);
-        const service = serviceStatusForDive(item, diveDate);
+        const service = serviceStatusForDive(item, this.draftDateTime);
         return { id, item, name: equipmentTitle(item || { name: id }), ...service };
       });
     },
@@ -191,6 +200,9 @@ export default {
     serviceStatusForDive,
     equipmentChecked(equipmentId) {
       return this.selectedEquipmentIds.includes(String(equipmentId));
+    },
+    equipmentWarning(item) {
+      return ["unknown", "overdue"].includes(serviceStatusForDive(item, this.draftDateTime).status);
     },
     toggleEquipment(equipmentId) {
       const id = String(equipmentId);
@@ -448,6 +460,16 @@ export default {
                   <option v-for="option in tankVolumeOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
                 </select>
               </label>
+              <div class="grid gap-3 sm:grid-cols-2 md:grid-cols-1">
+                <label class="space-y-2">
+                  <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Entry Pressure</span>
+                  <input :value="draft.beginPressureBar" @input="updateField('beginPressureBar', $event.target.value)" type="number" min="0" max="400" step="1" placeholder="200" class="ui-number-input w-full border border-primary/10 bg-background/35 px-4 py-3 text-sm text-on-surface placeholder:text-secondary/50 focus:border-primary/30 focus:ring-1 focus:ring-primary" />
+                </label>
+                <label class="space-y-2">
+                  <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Exit Pressure</span>
+                  <input :value="draft.endPressureBar" @input="updateField('endPressureBar', $event.target.value)" type="number" min="0" max="400" step="1" placeholder="70" class="ui-number-input w-full border border-primary/10 bg-background/35 px-4 py-3 text-sm text-on-surface placeholder:text-secondary/50 focus:border-primary/30 focus:ring-1 focus:ring-primary" />
+                </label>
+              </div>
               <div class="border border-primary/10 bg-background/35 p-4">
                 <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-primary">Workflow</p>
                 <p class="mt-3 text-sm leading-6 text-on-surface-variant">
@@ -461,7 +483,7 @@ export default {
             <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
               <div>
                 <p class="font-label text-[10px] font-bold uppercase tracking-[0.2em] text-secondary">{{ t('manualDive.equipment.title', 'Equipment Used') }}</p>
-                <p class="mt-2 text-sm leading-6" :class="invalidSelectedEquipment.length ? 'text-on-error-container' : 'text-primary'">
+                <p class="mt-2 text-sm leading-6" :class="invalidSelectedEquipment.length ? 'text-tertiary' : 'text-primary'">
                   {{ invalidSelectedEquipment.length ? t('manualDive.equipment.warning', 'Selected gear has service warnings, but the dive can still be saved.') : selectedEquipmentIds.length ? t('manualDive.equipment.ready', 'Selected gear will be attached to this dive.') : t('manualDive.equipment.empty', 'No equipment selected. This is optional.') }}
                 </p>
               </div>
@@ -479,18 +501,18 @@ export default {
                   type="button"
                   @click="toggleEquipment(item.id)"
                   class="flex w-full items-center justify-between gap-3 border px-4 py-3 text-left transition-colors"
-                  :class="equipmentChecked(item.id) ? 'border-primary/35 bg-primary/10 text-on-surface' : 'border-primary/10 bg-background/20 text-secondary hover:border-primary/25'"
+                  :class="equipmentChecked(item.id) ? (equipmentWarning(item) ? 'border-tertiary/45 bg-tertiary/10 text-on-surface' : 'border-primary/35 bg-primary/10 text-on-surface') : 'border-primary/10 bg-background/20 text-secondary hover:border-primary/25'"
                 >
                   <span>
                     <span class="block text-sm font-semibold">{{ equipmentTitle(item) }}</span>
-                    <span class="mt-1 block text-xs" :class="['unknown','overdue'].includes(serviceStatusForDive(item, draft.date ? (draft.date + 'T' + (draft.time || '00:00')) : '').status) ? 'text-tertiary' : 'text-primary'">{{ serviceStatusForDive(item, draft.date ? (draft.date + 'T' + (draft.time || '00:00')) : '').label }}</span>
+                    <span class="mt-1 block text-xs" :class="equipmentWarning(item) ? 'text-tertiary' : 'text-primary'">{{ serviceStatusForDive(item, draftDateTime).label }}</span>
                   </span>
                   <span class="material-symbols-outlined text-base">{{ equipmentChecked(item.id) ? 'check_circle' : 'radio_button_unchecked' }}</span>
                 </button>
               </div>
             </div>
             <p v-else class="text-sm leading-6 text-on-surface-variant">{{ t('manualDive.equipment.noneAvailable', 'Add equipment in the Equipment section to reuse it here.') }}</p>
-            <div v-if="invalidSelectedEquipment.length" class="space-y-1 border border-error/20 bg-error-container/20 px-4 py-3 text-sm text-on-error-container">
+            <div v-if="invalidSelectedEquipment.length" class="space-y-1 border border-tertiary/30 bg-tertiary/10 px-4 py-3 text-sm text-tertiary">
               <p v-for="item in invalidSelectedEquipment" :key="'manual-invalid-equipment-' + item.id">{{ item.name }}: {{ item.label }}</p>
             </div>
           </section>

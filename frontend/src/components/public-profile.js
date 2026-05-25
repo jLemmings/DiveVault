@@ -485,7 +485,6 @@ export default {
               <div>
                 <p class="font-label text-[10px] font-bold uppercase tracking-[0.24em] text-primary">Public Dive Log</p>
                 <h1 class="mt-3 font-headline text-4xl font-bold tracking-tight text-on-surface md:text-5xl">{{ diver?.name || 'DiveVault Diver' }}</h1>
-                <p class="mt-3 max-w-3xl text-sm leading-7 text-secondary">Published dives only. Private settings, certifications, and internal telemetry metadata stay off this page.</p>
               </div>
               <div class="grid grid-cols-3 gap-3">
                 <div class="rounded-2xl bg-surface-container-high px-5 py-4">

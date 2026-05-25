@@ -4,8 +4,10 @@ import base64
 import json
 import re
 import threading
+import zipfile
 from dataclasses import dataclass
 from http.client import HTTPConnection
+from io import BytesIO
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
@@ -667,15 +669,25 @@ def server_fixture(monkeypatch):
             thread.join(timeout=5)
 
 
-def request(server, method: str, path: str, *, token: str | None = None, payload: dict | None = None) -> Response:
+def request(
+    server,
+    method: str,
+    path: str,
+    *,
+    token: str | None = None,
+    payload: dict | None = None,
+    body: bytes | None = None,
+    content_type: str | None = None,
+) -> Response:
     conn = HTTPConnection("127.0.0.1", server.server_address[1], timeout=5)
     headers = {}
-    body = None
     if token:
         headers["Authorization"] = f"Bearer {token}"
     if payload is not None:
         body = json.dumps(payload).encode("utf-8")
         headers["Content-Type"] = "application/json"
+    elif content_type:
+        headers["Content-Type"] = content_type
     conn.request(method, path, body=body, headers=headers)
     raw = conn.getresponse()
     data = raw.read()
@@ -1270,14 +1282,33 @@ def test_export_and_backup_endpoints(server_fixture):
     assert pdf_export.headers["Content-Type"] == "application/pdf"
     assert pdf_export.body.startswith(b"%PDF-")
 
+    uploaded_license = request(
+        server,
+        "PUT",
+        "/api/profile/licenses/license-1/pdf",
+        token="session",
+        payload={
+            "filename": "master-scuba-diver.pdf",
+            "content_type": "application/pdf",
+            "data_b64": base64.b64encode(b"%PDF-1.7\nexported license").decode("ascii"),
+        },
+    )
+    assert uploaded_license.status == 200
+
     backup_export = request(server, "GET", "/api/backup/export", token="session")
     assert backup_export.status == 200
-    assert backup_export.headers["Content-Type"] == "application/json; charset=utf-8"
-    backup_payload = backup_export.json()
+    assert backup_export.headers["Content-Type"] == "application/zip"
+    assert backup_export.headers["Content-Disposition"].endswith('.zip"')
+    with zipfile.ZipFile(BytesIO(backup_export.body), "r") as archive:
+        backup_payload = json.loads(archive.read("backup.json").decode("utf-8"))
+        license_document = backup_payload["license_documents"][0]
+        assert license_document["license_id"] == "license-1"
+        assert license_document["filename"] == "master-scuba-diver.pdf"
+        assert license_document["file_path"] == "licenses/license-1/master-scuba-diver.pdf"
+        assert archive.read(license_document["file_path"]).startswith(b"%PDF-")
     assert backup_payload["version"] == 1
     assert len(backup_payload["dives"]) == 1
     assert backup_payload["profile"]["dive_sites"][0]["name"] == "Blue Hole"
-    assert backup_payload["license_documents"] == []
 
     invalid_import = request(server, "POST", "/api/backup/import", token="session", payload={"version": 999})
     assert invalid_import.status == 400
@@ -1310,86 +1341,93 @@ def test_export_and_backup_endpoints(server_fixture):
     server.max_json_body_bytes = 1024 * 1024
     server.max_backup_import_bytes = 25 * 1024 * 1024
 
+    backup_manifest = {
+        "version": 1,
+        "profile": {
+            "name": "Elias Thorne",
+            "email": "diver@example.com",
+            "licenses": [
+                {
+                    "id": "license-1",
+                    "company": "PADI",
+                    "certification_name": "Advanced Open Water",
+                    "student_number": "AOW-55",
+                    "certification_date": "2025-06-01",
+                    "instructor_number": "PADI-7788",
+                }
+            ],
+            "dive_sites": [
+                {
+                    "id": "site-1",
+                    "name": "Blue Hole",
+                    "location": "Blue Hole, Dahab, Egypt",
+                    "latitude": 25.3104,
+                    "longitude": -80.2961,
+                },
+                {
+                    "id": "site-2",
+                    "name": "Elphinstone",
+                    "location": "Elphinstone Reef, Egypt",
+                    "latitude": 24.9103,
+                    "longitude": 35.8552,
+                }
+            ],
+            "buddies": [{"id": "buddy-1", "name": "Sam"}],
+            "guides": [{"id": "guide-1", "name": "Kai"}],
+        },
+        "license_documents": [
+            {
+                "license_id": "license-1",
+                "filename": "license.pdf",
+                "content_type": "application/pdf",
+                "file_path": "licenses/license-1/license.pdf",
+            }
+        ],
+        "device_states": [
+            {
+                "vendor": "Mares",
+                "product": "Smart Air",
+                "fingerprint_hex": "ff00aa",
+            }
+        ],
+        "dives": [
+            {
+                "vendor": "Mares",
+                "product": "Smart Air",
+                "fingerprint_hex": "ff00aa",
+                "dive_uid": "uid-backup-1",
+                "started_at": "2026-03-25T08:00:00+00:00",
+                "duration_seconds": 3200,
+                "max_depth_m": 28.4,
+                "avg_depth_m": 14.1,
+                "fields": {
+                    "logbook": {
+                        "site": "Elphinstone",
+                        "buddy": "Sam",
+                        "guide": "Kai",
+                        "notes": "Backup import dive",
+                        "status": "complete",
+                    }
+                },
+                "raw_sha256": "sha-backup-1",
+                "raw_data_b64": base64.b64encode(b"backup-raw").decode("ascii"),
+                "samples": [{"time_seconds": 0, "depth_m": 0.0}],
+                "imported_at": "2026-03-25T10:00:00+00:00",
+            }
+        ],
+    }
+    backup_archive = BytesIO()
+    with zipfile.ZipFile(backup_archive, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr("backup.json", json.dumps(backup_manifest).encode("utf-8"))
+        archive.writestr("licenses/license-1/license.pdf", b"%PDF-1.7\nbackup")
+
     imported_backup = request(
         server,
         "POST",
         "/api/backup/import",
         token="session",
-        payload={
-            "version": 1,
-            "profile": {
-                "name": "Elias Thorne",
-                "email": "diver@example.com",
-                "licenses": [
-                    {
-                        "id": "license-1",
-                        "company": "PADI",
-                        "certification_name": "Advanced Open Water",
-                        "student_number": "AOW-55",
-                        "certification_date": "2025-06-01",
-                        "instructor_number": "PADI-7788",
-                    }
-                ],
-                "dive_sites": [
-                    {
-                        "id": "site-1",
-                        "name": "Blue Hole",
-                        "location": "Blue Hole, Dahab, Egypt",
-                        "latitude": 25.3104,
-                        "longitude": -80.2961,
-                    },
-                    {
-                        "id": "site-2",
-                        "name": "Elphinstone",
-                        "location": "Elphinstone Reef, Egypt",
-                        "latitude": 24.9103,
-                        "longitude": 35.8552,
-                    }
-                ],
-                "buddies": [{"id": "buddy-1", "name": "Sam"}],
-                "guides": [{"id": "guide-1", "name": "Kai"}],
-            },
-            "license_documents": [
-                {
-                    "license_id": "license-1",
-                    "filename": "license.pdf",
-                    "content_type": "application/pdf",
-                    "data_b64": base64.b64encode(b"%PDF-1.7\nbackup").decode("ascii"),
-                }
-            ],
-            "device_states": [
-                {
-                    "vendor": "Mares",
-                    "product": "Smart Air",
-                    "fingerprint_hex": "ff00aa",
-                }
-            ],
-            "dives": [
-                {
-                    "vendor": "Mares",
-                    "product": "Smart Air",
-                    "fingerprint_hex": "ff00aa",
-                    "dive_uid": "uid-backup-1",
-                    "started_at": "2026-03-25T08:00:00+00:00",
-                    "duration_seconds": 3200,
-                    "max_depth_m": 28.4,
-                    "avg_depth_m": 14.1,
-                    "fields": {
-                        "logbook": {
-                            "site": "Elphinstone",
-                            "buddy": "Sam",
-                            "guide": "Kai",
-                            "notes": "Backup import dive",
-                            "status": "complete",
-                        }
-                    },
-                    "raw_sha256": "sha-backup-1",
-                    "raw_data_b64": base64.b64encode(b"backup-raw").decode("ascii"),
-                    "samples": [{"time_seconds": 0, "depth_m": 0.0}],
-                    "imported_at": "2026-03-25T10:00:00+00:00",
-                }
-            ],
-        },
+        body=backup_archive.getvalue(),
+        content_type="application/zip",
     )
     assert imported_backup.status == 200
     assert imported_backup.json()["summary"]["dives_inserted"] == 1

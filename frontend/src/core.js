@@ -218,6 +218,12 @@ function importDraftSeed(dive) {
   const tankVolume = typeof tank?.volume === "number" && Number.isFinite(tank.volume)
     ? String(Math.round(tank.volume))
     : "";
+  const beginPressure = typeof tank?.beginpressure_bar === "number" && Number.isFinite(tank.beginpressure_bar)
+    ? String(Math.round(tank.beginpressure_bar))
+    : "";
+  const endPressure = typeof tank?.endpressure_bar === "number" && Number.isFinite(tank.endpressure_bar)
+    ? String(Math.round(tank.endpressure_bar))
+    : "";
   return {
     site: typeof logbook.site === "string" ? logbook.site : "",
     buddy: typeof logbook.buddy === "string" ? logbook.buddy : "",
@@ -227,6 +233,8 @@ function importDraftSeed(dive) {
     wetsuit_description: typeof logbook.wetsuit_description === "string" ? logbook.wetsuit_description : "",
     notes: typeof logbook.notes === "string" ? logbook.notes : "",
     tank_volume_l: tankVolume,
+    begin_pressure_bar: beginPressure,
+    end_pressure_bar: endPressure,
     equipment_ids: Array.isArray(logbook.equipment_ids) ? logbook.equipment_ids.map(String) : [],
     equipment_snapshot: Array.isArray(logbook.equipment_snapshot) ? logbook.equipment_snapshot : [],
     status: logbookStatus(logbook),
@@ -474,6 +482,10 @@ function pressureSeries(dive) {
     .filter((point) => typeof point.value === "number" && isValidDiveSampleTime(dive, point.time));
 }
 
+function hasRecordedPressureSamples(dive) {
+  return pressureSeries(dive).length > 0;
+}
+
 function depthSeries(dive) {
   return diveSamples(dive)
     .map((sample, index) => ({
@@ -641,13 +653,14 @@ function detailEquipmentTags(dive) {
   const selectedEquipment = Array.isArray(logbook.equipment_snapshot)
     ? logbook.equipment_snapshot.map((item) => item?.name || item?.category).filter(Boolean)
     : [];
+  const sampleCount = numberOrZero(dive?.sample_count);
   const tags = [
     ...selectedEquipment,
     diveDeviceLabel(dive),
     diveModeLabel(dive),
     gasMixLabel(primaryGasMix(dive)),
     tankLabel(primaryTank(dive)),
-    `${numberOrZero(dive.sample_count)} telemetry points`
+    sampleCount > 0 ? `${sampleCount} telemetry points` : ""
   ];
   return [...new Set(tags.filter(Boolean))];
 }
@@ -720,6 +733,7 @@ export {
   pressureRange,
   pressureRangeLabel,
   pressureUsedLabel,
+  hasRecordedPressureSamples,
   depthSeries,
   pressureSeries,
   depthChartPath,

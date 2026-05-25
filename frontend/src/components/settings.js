@@ -1,7 +1,7 @@
 import { useAuth, useUser } from "../auth.js";
 import { getDocument, GlobalWorkerOptions } from "pdfjs-dist";
 import pdfWorkerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
-import { MESSAGES, getTranslationCredits } from "../i18n/index.js";
+import { MESSAGES } from "../i18n/index.js";
 
 const MAX_LICENSE_BYTES = 10 * 1024 * 1024;
 const PDF_PREVIEW_SCALE = 1.35;
@@ -508,6 +508,7 @@ export default {
       desktopSyncApproving: false,
       profileStatusTimeoutId: null,
       pendingLicenseUploadId: null,
+      activeLicenseDocument: null,
       activeLicensePreview: null,
       licenseFilter: "",
       diveSiteFilter: "",
@@ -657,15 +658,10 @@ export default {
       return stats;
     },
     availableLanguages() {
-      const translationCredits = getTranslationCredits();
       return Object.keys(MESSAGES).map((locale) => ({
         value: locale,
-        label: LANGUAGE_LABELS[locale] || locale.toUpperCase(),
-        credit: translationCredits[locale] || ""
+        label: LANGUAGE_LABELS[locale] || locale.toUpperCase()
       }));
-    },
-    selectedLanguageCredit() {
-      return this.availableLanguages.find((language) => language.value === this.selectedLocale)?.credit || "";
     },
     availableThemeOptions() {
       return THEME_OPTIONS;
@@ -1277,7 +1273,7 @@ export default {
     exportBackup() {
       return this.exportDownload(
         "/api/backup/export",
-        "divevault-backup.json",
+        "divevault-backup.zip",
         "Exporting Backup",
         "Full backup downloaded."
       );
@@ -1294,20 +1290,12 @@ export default {
       this.dataManagementAction = "Importing Backup";
       this.resetDataManagementFeedback();
       try {
-        const text = await file.text();
-        let backupPayload = null;
-        try {
-          backupPayload = JSON.parse(text);
-        } catch (_error) {
-          throw new Error("Backup file must be valid JSON.");
-        }
-
         const response = await this.authenticatedFetch("/api/backup/import", {
           method: "POST",
           headers: {
-            "Content-Type": "application/json"
+            "Content-Type": file.type || (file.name.toLowerCase().endsWith(".zip") ? "application/zip" : "application/json")
           },
-          body: JSON.stringify(backupPayload)
+          body: file
         });
         const payload = await response.json().catch(() => null);
         if (!response.ok) {
@@ -1810,6 +1798,7 @@ export default {
         this.resetDraftsFromProfile();
         this.areDiveSitesEditing = false;
         this.editingDiveSiteIds = [];
+        this.expandedDiveSiteIds = [];
         this.diveSiteExpandedSnapshot = null;
         this.profileStatus = "Dive sites updated.";
       } catch (error) {
@@ -1962,6 +1951,14 @@ export default {
         this.licenseUploadingId = null;
       }
     },
+    viewLicensePdf(license) {
+      if (!license?.pdf?.preview_url) {
+        return;
+      }
+      this.activeLicenseDocument = license;
+      this.profileError = "";
+      this.profileStatus = "";
+    },
     async approveDesktopSync() {
       if (!this.cliAuthCode) {
         return;
@@ -2004,6 +2001,10 @@ export default {
       };
     },
     closeLicensePreview() {
+      this.activeLicensePreview = null;
+    },
+    closeLicenseDocument() {
+      this.activeLicenseDocument = null;
       this.activeLicensePreview = null;
     },
     openCreateDialog(type) {
@@ -2276,7 +2277,7 @@ export default {
       <div v-if="profileStatus" class="settings-feedback border-primary/20 bg-primary/10 text-primary shadow-panel">{{ profileStatus }}</div>
       <div v-if="profileError" class="settings-feedback border-error/20 bg-error-container/20 text-on-error-container shadow-panel">{{ profileError }}</div>
 
-      <div class="settings-panel flex gap-3 overflow-x-auto p-3 md:hidden">
+      <div class="settings-mobile-nav settings-panel flex gap-3 overflow-x-auto p-3 md:hidden">
         <button
           v-for="section in settingsSections"
           :key="section.id"
@@ -2294,7 +2295,25 @@ export default {
         </button>
       </div>
 
-      <section class="settings-content">
+      <section class="settings-page-layout">
+        <aside class="settings-section-nav settings-panel">
+          <button
+            v-for="section in settingsSections"
+            :key="'desktop-settings-' + section.id"
+            type="button"
+            @click="selectSettingsSection(section.id)"
+            class="settings-section-nav-item"
+            :class="activeSettingsSection === section.id ? 'is-active' : ''"
+          >
+            <span class="material-symbols-outlined settings-section-nav-icon">{{ section.icon }}</span>
+            <span class="min-w-0">
+              <span class="settings-section-nav-label">{{ section.label }}</span>
+              <span class="settings-section-nav-description">{{ section.description }}</span>
+            </span>
+          </button>
+        </aside>
+
+        <section class="settings-content">
           <div v-if="profileLoading" class="settings-panel settings-card settings-loading-state">
             <div>
               <p class="font-label text-[10px] font-bold uppercase tracking-[0.24em] text-primary">Loading</p>
@@ -2335,7 +2354,7 @@ export default {
                 </div>
               </div>
 
-              <div class="mt-6 grid gap-4 xl:grid-cols-[minmax(0,24rem)_1fr] xl:items-start">
+              <div class="mt-6 grid gap-4 xl:grid-cols-[minmax(0,24rem)] xl:items-start">
                 <label class="space-y-2">
                   <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Language</span>
                   <select v-model="selectedLocale" @change="changePreferredLanguage" class="settings-input">
@@ -2344,11 +2363,6 @@ export default {
                     </option>
                   </select>
                 </label>
-
-                <div class="settings-side-panel">
-                  <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Translation Credit</p>
-                  <p class="mt-2 text-sm leading-6 text-on-surface">{{ selectedLanguageCredit || 'Unavailable' }}</p>
-                </div>
               </div>
             </div>
 
@@ -2498,6 +2512,13 @@ export default {
                   </div>
 
                   <div class="settings-toolbar">
+                    <button
+                      v-if="license.pdf"
+                      @click="viewLicensePdf(license)"
+                      class="settings-button settings-button-secondary"
+                    >
+                      View PDF
+                    </button>
                     <button
                       v-if="!isLicenseEditing(license.id)"
                       @click="editLicenseItem(license.id)"
@@ -3175,7 +3196,7 @@ export default {
                     <span class="material-symbols-outlined text-primary">archive</span>
                     <p class="font-headline text-xl font-bold text-on-surface">{{ dataManagementAction === 'Exporting Backup' ? 'Building Full Backup' : 'Download Full Backup' }}</p>
                   </div>
-                  <p class="mt-3 text-sm leading-6 text-secondary">Save your account data, saved lists, PDFs, and imported dive state into one archive.</p>
+                  <p class="mt-3 text-sm leading-6 text-secondary">Save your account data, saved lists, PDFs, and imported dive state into one ZIP archive.</p>
                 </div>
                 <span class="material-symbols-outlined text-secondary/60">download</span>
               </button>
@@ -3190,7 +3211,7 @@ export default {
                     <span class="material-symbols-outlined text-primary">upload_file</span>
                     <p class="font-headline text-xl font-bold text-on-surface">{{ dataManagementAction === 'Importing Backup' ? 'Importing Backup' : 'Import From Backup' }}</p>
                   </div>
-                  <p class="mt-3 text-sm leading-6 text-secondary">Restore from a previously exported backup when moving systems or recovering state.</p>
+                  <p class="mt-3 text-sm leading-6 text-secondary">Restore from a previously exported ZIP backup when moving systems or recovering state.</p>
                 </div>
                 <span class="material-symbols-outlined text-secondary/60">upload</span>
               </button>
@@ -3198,12 +3219,13 @@ export default {
             <input
               ref="backupImportInput"
               type="file"
-              accept=".json,application/json"
+              accept=".zip,application/zip,application/x-zip-compressed,.json,application/json"
               class="hidden"
               @change="handleBackupImportSelection"
             />
           </div>
           </template>
+        </section>
       </section>
 
       <div
@@ -3338,9 +3360,36 @@ export default {
       </div>
 
       <div
+        v-if="activeLicenseDocument"
+        @click.self="closeLicenseDocument"
+        class="fixed inset-0 z-50 flex items-center justify-center bg-background/90 px-6 py-8 backdrop-blur-sm"
+      >
+        <div class="relative max-h-full w-full max-w-5xl overflow-auto border border-primary/15 bg-surface-container-low p-4 shadow-panel">
+          <div class="mb-4 flex items-start justify-between gap-4">
+            <div>
+              <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-primary">License PDF</p>
+              <p class="mt-1 text-sm text-secondary">{{ activeLicenseDocument.pdf?.filename || 'License PDF' }}</p>
+            </div>
+            <button
+              type="button"
+              @click="closeLicenseDocument"
+              class="settings-button settings-button-secondary"
+            >
+              Close
+            </button>
+          </div>
+          <license-pdf-preview
+            :pdf="activeLicenseDocument.pdf"
+            :authenticated-fetch="authenticatedFetch"
+            @open-preview="openLicensePreview($event, activeLicenseDocument)"
+          />
+        </div>
+      </div>
+
+      <div
         v-if="activeLicensePreview"
         @click.self="closeLicensePreview"
-        class="fixed inset-0 z-50 flex items-center justify-center bg-background/90 px-6 py-8 backdrop-blur-sm"
+        class="fixed inset-0 z-[55] flex items-center justify-center bg-background/90 px-6 py-8 backdrop-blur-sm"
       >
         <div class="relative max-h-full w-full max-w-5xl overflow-auto border border-primary/15 bg-surface-container-low p-4 shadow-panel">
           <div class="mb-4 flex items-start justify-between gap-4">

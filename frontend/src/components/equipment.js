@@ -70,12 +70,6 @@ function equipmentPayload(item) {
   };
 }
 
-function serviceTone(status) {
-  if (status === "serviced") return "text-primary";
-  if (status === "due_soon") return "text-tertiary";
-  return "text-on-error-container";
-}
-
 function defaultMissingServiceData(item) {
   if (!item?.is_default) return false;
   return !item.last_service_date || !item.service_interval_months;
@@ -98,7 +92,7 @@ function clampPercent(value) {
 
 export default {
   name: "EquipmentView",
-  props: ["equipment", "searchText", "saving", "servicingId", "statusMessage", "errorMessage", "saveEquipment", "markServiced"],
+  props: ["equipment", "searchText", "setSearchText", "saving", "statusMessage", "errorMessage", "saveEquipment"],
   data() {
     return {
       drafts: normalizeEquipment(this.equipment),
@@ -161,7 +155,6 @@ export default {
     }
   },
   methods: {
-    serviceTone,
     defaultMissingServiceData,
     daysUntilService,
     beginEdit() {
@@ -190,6 +183,11 @@ export default {
       this.editingItemId = String(item.id);
       this.drafts = [item, ...this.drafts];
     },
+    updateSearch(value) {
+      if (typeof this.setSearchText === "function") {
+        this.setSearchText(value);
+      }
+    },
     removeItem(id) {
       this.drafts = this.drafts.filter((item) => item.id !== id);
     },
@@ -201,19 +199,12 @@ export default {
       this.drafts = this.drafts.map((item) => item.id === id ? { ...item, [key]: value } : item);
     },
     async save() {
-      const saved = await this.saveEquipment(this.drafts.map(equipmentPayload));
-      if (saved) {
-        this.drafts = normalizeEquipment(this.drafts.map(equipmentPayload));
+      const savedEquipment = await this.saveEquipment(this.drafts.map(equipmentPayload));
+      if (savedEquipment) {
+        this.drafts = normalizeEquipment(Array.isArray(savedEquipment) ? savedEquipment : this.equipment);
         this.editing = false;
         this.editingItemId = null;
       }
-    },
-    statusLabel(item) {
-      if (defaultMissingServiceData(item)) return "Default gear service data missing";
-      if (item.service_status === "serviced") return item.service_due_date ? `Serviced until ${item.service_due_date}` : "Serviced";
-      if (item.service_status === "due_soon") return item.service_due_date ? `Due soon: ${item.service_due_date}` : "Due soon";
-      if (item.service_status === "overdue") return item.service_due_date ? `Overdue since ${item.service_due_date}` : "Overdue";
-      return "Service data missing";
     },
     timelineMeta(item) {
       if (defaultMissingServiceData(item)) return "Service interval missing";
@@ -248,14 +239,31 @@ export default {
         : 0;
       return {
         "--days-progress": `${daysPercent}%`,
-        "--dives-progress": `${divesPercent}%`
+        "--dives-progress": `${divesPercent}%`,
+        "--days-progress-value": daysPercent,
+        "--dives-progress-value": divesPercent
       };
     }
   },
   template: `
     <section class="dashboard-command-center text-on-surface">
-      <div class="flex flex-wrap justify-end gap-3">
-        <button @click="addItem" class="settings-button settings-button-ghost">Add Equipment</button>
+      <div class="flex flex-col justify-end gap-3 lg:flex-row lg:items-center">
+        <div class="flex flex-col gap-3 sm:flex-row sm:items-center">
+          <div class="relative min-w-[18rem] flex-1 sm:w-[24rem] sm:flex-none">
+            <span class="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-lg text-on-surface-variant">search</span>
+            <input
+              :value="searchText"
+              @input="updateSearch($event.target.value)"
+              type="text"
+              class="w-full rounded-xl border border-primary/10 bg-surface-container-high/70 py-3 pl-12 pr-4 text-sm font-label tracking-[0.12em] text-on-surface placeholder:text-on-surface-variant/50 focus:ring-1 focus:ring-primary/20"
+              placeholder="Search equipment..."
+            />
+          </div>
+          <button @click="addItem" class="flex items-center gap-2 rounded-xl bg-primary px-6 py-3 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-on-primary">
+            <span class="material-symbols-outlined text-sm">add</span>
+            New Entry
+          </button>
+        </div>
       </div>
 
       <div v-if="statusMessage" class="settings-feedback border-primary/20 bg-primary/10 text-primary shadow-panel">{{ statusMessage }}</div>
@@ -316,27 +324,30 @@ export default {
                 <span v-if="item.is_default" class="settings-chip is-accent">Default</span>
                 <span v-if="item.service_tag" class="settings-chip is-accent">{{ item.service_tag }}</span>
                 <span v-if="item.track_service === false" class="settings-chip">Not tracked</span>
-                <span class="settings-chip" :class="defaultMissingServiceData(item) ? 'settings-chip-error' : serviceTone(item.service_status)">{{ statusLabel(item) }}</span>
-                <span v-if="item.dives_remaining_before_service !== null && item.dives_remaining_before_service !== undefined" class="settings-chip">{{ item.dives_remaining_before_service }} dives remaining</span>
-              </div>
-              <div v-if="item.track_service !== false" class="equipment-service-countdown">
-                <div class="equipment-service-countdown-ring" :style="countdownDonutStyle(item)" :class="item.service_status === 'overdue' || defaultMissingServiceData(item) ? 'is-urgent' : (item.service_status === 'due_soon' ? 'is-soon' : '')">
-                  <strong>{{ item.dives_remaining_before_service !== null && item.dives_remaining_before_service !== undefined ? item.dives_remaining_before_service : '--' }}</strong>
-                  <span>Dives</span>
-                </div>
-                <div class="min-w-0">
-                  <p class="font-label text-[10px] font-bold uppercase tracking-[0.16em] text-secondary">Service Countdown</p>
-                  <p class="font-headline font-bold text-on-surface">{{ serviceCountdownLabel(item) }}</p>
-                  <p class="mt-1 text-xs leading-5 text-on-surface-variant">{{ serviceCountdownDivesLabel(item) }}</p>
-                  <p class="text-xs leading-5 text-on-surface-variant">{{ serviceCountdownLastServiceLabel(item) }}</p>
-                </div>
               </div>
             </div>
             <div class="equipment-item-actions">
               <button v-if="!editing" @click="beginEditItem(item.id)" class="settings-button settings-button-secondary">Edit</button>
-              <button v-if="!editing" @click="markServiced(item.id)" :disabled="servicingId === String(item.id)" class="settings-button settings-button-secondary">
-                {{ servicingId === String(item.id) ? 'Updating' : 'Mark Serviced' }}
-              </button>
+            </div>
+          </div>
+          <div v-if="item.track_service !== false" class="equipment-service-countdown">
+            <div class="equipment-service-countdown-ring" :style="countdownDonutStyle(item)" :class="item.service_status === 'overdue' || defaultMissingServiceData(item) ? 'is-urgent' : (item.service_status === 'due_soon' ? 'is-soon' : '')">
+              <svg class="equipment-service-countdown-svg" viewBox="0 0 100 100" aria-hidden="true">
+                <circle class="equipment-service-countdown-track is-time" cx="50" cy="50" r="45" pathLength="100"></circle>
+                <circle class="equipment-service-countdown-progress is-time" cx="50" cy="50" r="45" pathLength="100"></circle>
+                <circle class="equipment-service-countdown-track is-dives" cx="50" cy="50" r="31" pathLength="100"></circle>
+                <circle class="equipment-service-countdown-progress is-dives" cx="50" cy="50" r="31" pathLength="100"></circle>
+              </svg>
+              <div class="equipment-service-countdown-center">
+                <strong>{{ item.dives_remaining_before_service !== null && item.dives_remaining_before_service !== undefined ? item.dives_remaining_before_service : '--' }}</strong>
+                <span>Dives</span>
+              </div>
+            </div>
+            <div class="equipment-service-countdown-copy">
+              <p class="font-label text-[10px] font-bold uppercase tracking-[0.16em] text-secondary">Service Countdown</p>
+              <p class="equipment-service-countdown-layer is-time"><span></span><strong>{{ serviceCountdownLabel(item) }}</strong></p>
+              <p class="equipment-service-countdown-layer is-dives"><span></span>{{ serviceCountdownDivesLabel(item) }}</p>
+              <p class="text-xs leading-5 text-on-surface-variant">{{ serviceCountdownLastServiceLabel(item) }}</p>
             </div>
           </div>
           </article>
@@ -386,10 +397,6 @@ export default {
             <label class="space-y-2">
               <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Warranty</span>
               <input :value="editingItem.warranty" @input="updateItem(editingItem.id, 'warranty', $event.target.value)" class="settings-input" placeholder="2 years, shop receipt, serial number..." />
-            </label>
-            <label class="space-y-2">
-              <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Next Service Due</span>
-              <input :value="editingItem.next_service_due" @input="updateItem(editingItem.id, 'next_service_due', $event.target.value)" type="date" class="settings-input" />
             </label>
             <label class="space-y-2">
               <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Max Dives Before Service</span>

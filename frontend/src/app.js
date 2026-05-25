@@ -82,6 +82,8 @@ function createManualDiveDraft() {
     maxDepthM: "",
     temperatureC: "",
     tankVolumeL: "",
+    beginPressureBar: "",
+    endPressureBar: "",
     site: "",
     buddy: "",
     guide: "",
@@ -170,7 +172,6 @@ export default {
       requestTimeoutMs: 15000,
       cliAuthCode: "",
       activeSettingsSection: DEFAULT_SETTINGS_SECTION,
-      settingsMenuExpanded: false,
       mobileAccountMenuOpen: false,
       desktopAccountMenuOpen: false,
       passwordDialogOpen: false,
@@ -320,9 +321,6 @@ export default {
     canManageUsers() {
       return Boolean(this.authUser?.isOwner);
     },
-    settingsSubnavItems() {
-      return SETTINGS_SECTIONS.filter((section) => section.id !== "manage-users" || this.canManageUsers);
-    },
     desktopNavItems() {
       return this.navItems.filter((item) => item.id !== "map");
     },
@@ -445,7 +443,6 @@ export default {
         bottomTimeProgress: 0
       };
       this.activeSettingsSection = DEFAULT_SETTINGS_SECTION;
-      this.settingsMenuExpanded = false;
       this.desktopAccountMenuOpen = false;
       this.lastAuthenticatedSessionId = null;
     },
@@ -637,15 +634,6 @@ export default {
       if (this.isDisabledNavItem(view)) {
         return;
       }
-      if (view === "settings") {
-        if (this.activeView === "settings") {
-          this.settingsMenuExpanded = !this.settingsMenuExpanded;
-          return;
-        }
-        this.settingsMenuExpanded = true;
-      } else {
-        this.settingsMenuExpanded = false;
-      }
       await this.setView(view);
     },
     async setView(view) {
@@ -696,7 +684,6 @@ export default {
       this.closeMobileAccountMenu();
       this.activeView = "settings";
       this.activeSettingsSection = this.normalizeSettingsSection(sectionId);
-      this.settingsMenuExpanded = true;
       this.selectedDiveId = null;
       this.selectedImportId = null;
       this.selectedEditDiveId = null;
@@ -855,8 +842,12 @@ export default {
       const maxDepthM = Number.parseFloat(this.manualDiveDraft.maxDepthM);
       const temperatureInput = String(this.manualDiveDraft.temperatureC || "").trim();
       const tankVolumeInput = String(this.manualDiveDraft.tankVolumeL || "").trim();
+      const beginPressureInput = String(this.manualDiveDraft.beginPressureBar || "").trim();
+      const endPressureInput = String(this.manualDiveDraft.endPressureBar || "").trim();
       const temperatureC = temperatureInput === "" ? null : Number.parseFloat(temperatureInput);
       const tankVolume = tankVolumeInput === "" ? null : Number.parseFloat(tankVolumeInput);
+      const beginPressure = beginPressureInput === "" ? null : Number.parseFloat(beginPressureInput);
+      const endPressure = endPressureInput === "" ? null : Number.parseFloat(endPressureInput);
 
       if (!site || !buddy || !guide) {
         this.manualDiveError = "Dive site, buddy, and guide are required for manual entries.";
@@ -876,6 +867,18 @@ export default {
       }
       if (tankVolumeInput && (!Number.isFinite(tankVolume) || tankVolume <= 0)) {
         this.manualDiveError = "Tank volume must be greater than zero.";
+        return;
+      }
+      if (beginPressureInput && (!Number.isFinite(beginPressure) || beginPressure < 0 || beginPressure > 400)) {
+        this.manualDiveError = "Entry tank pressure must be between 0 and 400 bar.";
+        return;
+      }
+      if (endPressureInput && (!Number.isFinite(endPressure) || endPressure < 0 || endPressure > 400)) {
+        this.manualDiveError = "Exit tank pressure must be between 0 and 400 bar.";
+        return;
+      }
+      if (beginPressure !== null && endPressure !== null && endPressure > beginPressure) {
+        this.manualDiveError = "Exit tank pressure cannot be higher than entry tank pressure.";
         return;
       }
 
@@ -917,8 +920,12 @@ export default {
         fields.temperature_maximum_c = temperatureC;
       }
 
-      if (Number.isFinite(tankVolume)) {
-        fields.tanks = [{ volume: tankVolume }];
+      if (Number.isFinite(tankVolume) || Number.isFinite(beginPressure) || Number.isFinite(endPressure)) {
+        const tank = {};
+        if (Number.isFinite(tankVolume)) tank.volume = tankVolume;
+        if (Number.isFinite(beginPressure)) tank.beginpressure_bar = Math.round(beginPressure);
+        if (Number.isFinite(endPressure)) tank.endpressure_bar = Math.round(endPressure);
+        fields.tanks = [tank];
       }
 
       this.manualDiveCreating = true;
@@ -961,12 +968,28 @@ export default {
       }
     },
     async persistImportDraft(diveId, draft, commit = false) {
+      const beginPressureInput = String(draft.begin_pressure_bar || "").trim();
+      const endPressureInput = String(draft.end_pressure_bar || "").trim();
+      const beginPressure = beginPressureInput === "" ? null : Number.parseFloat(beginPressureInput);
+      const endPressure = endPressureInput === "" ? null : Number.parseFloat(endPressureInput);
+      if (beginPressureInput && (!Number.isFinite(beginPressure) || beginPressure < 0 || beginPressure > 400)) {
+        throw new Error("Entry tank pressure must be between 0 and 400 bar.");
+      }
+      if (endPressureInput && (!Number.isFinite(endPressure) || endPressure < 0 || endPressure > 400)) {
+        throw new Error("Exit tank pressure must be between 0 and 400 bar.");
+      }
+      if (beginPressure !== null && endPressure !== null && endPressure > beginPressure) {
+        throw new Error("Exit tank pressure cannot be higher than entry tank pressure.");
+      }
+
       const response = await this.authenticatedFetch(`/api/dives/${diveId}/logbook`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           commit,
           tank_volume_l: draft.tank_volume_l || null,
+          begin_pressure_bar: draft.begin_pressure_bar || null,
+          end_pressure_bar: draft.end_pressure_bar || null,
           logbook: {
             site: draft.site,
             buddy: draft.buddy,
@@ -1271,7 +1294,6 @@ export default {
       }
       if (view === "settings") {
         this.activeView = "settings";
-        this.settingsMenuExpanded = true;
         this.selectedDiveId = null;
         this.selectedImportId = null;
         this.selectedEditDiveId = null;
@@ -1372,7 +1394,7 @@ export default {
         }
         this.equipment = Array.isArray(payload?.equipment) ? payload.equipment : [];
         this.equipmentStatusMessage = "Equipment inventory saved.";
-        return true;
+        return this.equipment;
       } catch (error) {
         this.equipmentError = error?.message || "Unable to save equipment.";
         return false;
@@ -1466,27 +1488,7 @@ export default {
                 <span>{{ item.label }}</span>
                 <span v-if="item.badge" class="rounded bg-tertiary px-2 py-0.5 text-[9px] font-black tracking-[0.18em] text-background">{{ item.badge }}</span>
               </span>
-              <span v-if="item.id === 'settings'" class="material-symbols-outlined ml-auto hidden text-base opacity-70 md:flex">
-                {{ activeView === 'settings' && settingsMenuExpanded ? 'keyboard_arrow_down' : 'keyboard_arrow_right' }}
-              </span>
             </button>
-            <div
-              v-if="item.id === 'settings' && activeView === 'settings' && settingsMenuExpanded"
-              class="ml-14 mr-4 flex flex-col gap-1 border-l border-primary/10 pl-4"
-            >
-              <button
-                v-for="section in settingsSubnavItems"
-                :key="section.id"
-                @click="setSettingsSection(section.id)"
-                class="flex items-start gap-3 rounded-xl px-3 py-2 text-left transition-colors"
-                :class="activeSettingsSection === section.id ? 'bg-surface-container-high/80 text-primary' : 'text-secondary opacity-80 hover:bg-surface-container-high/60 hover:text-primary hover:opacity-100'"
-              >
-                <span class="material-symbols-outlined mt-0.5 text-[18px]" :style="activeSettingsSection === section.id ? filledIconStyle : ''">{{ section.icon }}</span>
-                <div class="min-w-0">
-                  <p class="font-label text-[10px] font-bold">{{ section.label }}</p>
-                </div>
-              </button>
-            </div>
           </div>
         </nav>
         <div class="mt-auto p-6">
@@ -1653,9 +1655,9 @@ export default {
           <manual-dive-entry-view v-else-if="activeView === 'create'" :draft="manualDiveDraft" :dive-sites="profileDiveSites" :buddies="profileBuddies" :guides="profileGuides" :equipment="equipment" :default-equipment-ids="defaultEquipmentIds" :equipment-selection-enabled="profileEquipmentSelectionEnabled" :creating="manualDiveCreating" :error-message="manualDiveError" :update-draft="updateManualDiveDraft" :create-manual-dive="createManualDive" :close-creator="closeManualDiveCreator" :create-dive-site="createDiveSite" :search-dive-site-location="searchDiveSiteLocation"></manual-dive-entry-view>
           <dive-import-editor-view v-else-if="activeView === 'imports' && selectedImportDive" :dive="selectedImportDive" :draft="selectedImportDraft" :dive-sites="profileDiveSites" :buddies="profileBuddies" :guides="profileGuides" :equipment="equipment" :default-equipment-ids="defaultEquipmentIds" :equipment-selection-enabled="profileEquipmentSelectionEnabled" :saving-import-id="savingImportId" :bulk-import-save-pending="bulkImportSavePending" :deleting-dive-id="deletingDiveId" :import-error="importError" :import-status-message="importStatusMessage" :update-import-draft="updateImportDraft" :save-import-draft="saveImportDraft" :delete-dive="deleteDive" :apply-buddy-guide-to-pending-imports="applyBuddyGuideToPendingImports" :create-dive-site="createDiveSite" :back-to-queue="backToImportQueue"></dive-import-editor-view>
           <dive-import-view v-else-if="activeView === 'imports'" :dives="dives" :import-drafts="importDrafts" :selected-import-id="selectedImportId" :select-import-dive="selectImportDive" :deleting-dive-id="deletingDiveId" :import-error="importError" :import-status-message="importStatusMessage" :delete-dive="deleteDive" :set-view="setView" :fetch-dives="fetchDives"></dive-import-view>
-          <logbook-editor-view v-else-if="activeView === 'edit' && selectedEditDive" :dive="selectedEditDive" :all-dives="dives" :draft="selectedEditDraft" :dive-sites="profileDiveSites" :buddies="profileBuddies" :guides="profileGuides" :saving-import-id="savingImportId" :deleting-dive-id="deletingDiveId" :status-message="importStatusMessage" :error-message="importError" :update-dive-draft="updateImportDraft" :save-dive-logbook="saveExistingDiveLogbook" :delete-dive="deleteDive" :create-dive-site="createDiveSite" :close-editor="closeDiveEditor"></logbook-editor-view>
+          <logbook-editor-view v-else-if="activeView === 'edit' && selectedEditDive" :dive="selectedEditDive" :all-dives="dives" :draft="selectedEditDraft" :dive-sites="profileDiveSites" :buddies="profileBuddies" :guides="profileGuides" :equipment="equipment" :default-equipment-ids="defaultEquipmentIds" :equipment-selection-enabled="profileEquipmentSelectionEnabled" :saving-import-id="savingImportId" :deleting-dive-id="deletingDiveId" :status-message="importStatusMessage" :error-message="importError" :update-dive-draft="updateImportDraft" :save-dive-logbook="saveExistingDiveLogbook" :delete-dive="deleteDive" :create-dive-site="createDiveSite" :close-editor="closeDiveEditor"></logbook-editor-view>
           <dive-detail-view v-else-if="activeView === 'logs' && selectedDive" :dive="selectedDive" :all-dives="dives" :deleting-dive-id="deletingDiveId" :close-detail="closeDiveDetail" :open-dive-editor="openDiveEditor" :delete-dive="deleteDive"></dive-detail-view>
-          <equipment-view v-else-if="activeView === 'equipment'" :equipment="equipment" :search-text="searchText" :saving="equipmentSaving" :servicing-id="equipmentServicingId" :status-message="equipmentStatusMessage" :error-message="equipmentError" :save-equipment="saveEquipment" :mark-serviced="markEquipmentServiced"></equipment-view>
+          <equipment-view v-else-if="activeView === 'equipment'" :equipment="equipment" :search-text="searchText" :set-search-text="setSearchText" :saving="equipmentSaving" :status-message="equipmentStatusMessage" :error-message="equipmentError" :save-equipment="saveEquipment"></equipment-view>
           <settings-view v-else-if="activeView === 'settings'" :cli-auth-code="cliAuthCode" :active-section="activeSettingsSection" :set-active-section="setSettingsSection" :profile-updated="handleProfileUpdated" :refresh-dives="fetchDives" :current-locale="i18nLocale" :set-locale="setLocale" :theme-preference="themePreference" :resolved-theme="resolvedTheme" :set-theme-preference="setThemePreference"></settings-view>
         </div>
       </main>

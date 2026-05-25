@@ -15,6 +15,10 @@
 </p>
 
 <p align="center">
+  <a href="https://demo.divevault.dev">Public Demo Instance</a>
+</p>
+
+<p align="center">
   <a href="#quick-start">Quick Start</a> ·
   <a href="#docker">Docker</a> ·
   <a href="#screenshots">Screenshots</a> ·
@@ -34,6 +38,85 @@ DiveVault is a dive log backend and web UI built around a staged workflow:
 4. Completed dives move into the permanent logbook and analytics views.
 
 The result is a system that keeps raw telemetry, review state, and curated logbook records in one place.
+
+## What DiveVault Does
+
+- Stores imported dive telemetry and diver-completed logbook metadata in PostgreSQL
+- Separates imported drafts from committed dives so incomplete records do not pollute the main logbook
+- Tracks device sync state for importer workflows
+- Supports browser approval for desktop sync requests
+- Optionally exposes Prometheus metrics at `/metrics`
+- Serves a Vue frontend for dashboarding, imports, log review, settings, and public profile views
+- Supports Docker-first local and deployment workflows
+
+## Features
+
+- Import queue for incomplete dives waiting on metadata
+- Dive logbook with detail views and editing flows
+- Manual dive entry for dives without computer uploads
+- Dive map and dashboard stats
+- Saved dive sites, buddies, guides, and certification records
+- Public profile / public dive log sharing
+- Backup and restore flows
+- Optional Prometheus-scrapable backend monitoring endpoint
+- Backend schema migration entrypoint for multi-container or Kubernetes deployments
+- UI localization support with English, German, and French bundles
+
+## Screenshots
+
+### Dashboard
+
+![DiveVault dashboard](./docs/readme/dashboard.png)
+
+### Dive Logs, Imports, Equipment, And Settings
+
+<table>
+  <tr>
+    <td width="50%">
+      <img src="./docs/readme/logs.png" alt="DiveVault dive logs">
+    </td>
+    <td width="50%">
+      <img src="./docs/readme/imports.png" alt="DiveVault import queue">
+    </td>
+  </tr>
+  <tr>
+    <td width="50%">
+      <img src="./docs/readme/equipment.png" alt="DiveVault equipment">
+    </td>
+    <td width="50%">
+      <img src="./docs/readme/settings.png" alt="DiveVault settings">
+    </td>
+  </tr>
+</table>
+
+Screenshots above were generated from the local mocked development environment so the README stays reproducible.
+
+
+
+## Workflow Overview
+
+### Import Workflow
+
+- Desktop importer reads the dive computer and uploads payloads
+- DiveVault stores the raw and parsed dive data
+- Imported dives appear in the queue until required logbook fields are completed
+- Once completed, the dive is marked as committed and appears throughout the rest of the app
+
+### Backend Responsibilities
+
+- Authenticated dive ingestion
+- PostgreSQL persistence
+- Device sync checkpoint storage
+- Schema initialization and migrations
+- Public profile and backup APIs
+- Health checks at `/health` and `/api/health`; enable `/metrics` with `METRICS_ENABLED=enabled` or `--metrics enabled`
+
+### Frontend Responsibilities
+
+- Dashboard and map visualization
+- Import queue and logbook editing
+- Manual dive entry
+- Profile, data management, and backup settings
 
 ## Quick Start
 
@@ -101,83 +184,6 @@ At minimum, review and override:
 - ingress settings if you want external access
 
 Before using that chart, compare its values with this repo's current environment contract in [`.env.example`](./.env.example) and the Kubernetes manifest above. In particular, this repo's current backend expects values such as `AUTH_JWT_SECRET`, `AUTH_JWT_ISSUER`, `AUTH_JWT_AUDIENCE`, and `STARTUP_MIGRATIONS`, so keep migrations external for multi-replica deployments and run the schema job before rolling out backend pods.
-
-## Screenshots
-
-### Dashboard
-
-![DiveVault dashboard](./docs/readme/dashboard.png)
-
-### Dive Logs, Imports, Equipment, And Settings
-
-<table>
-  <tr>
-    <td width="50%">
-      <img src="./docs/readme/logs.png" alt="DiveVault dive logs">
-    </td>
-    <td width="50%">
-      <img src="./docs/readme/imports.png" alt="DiveVault import queue">
-    </td>
-  </tr>
-  <tr>
-    <td width="50%">
-      <img src="./docs/readme/equipment.png" alt="DiveVault equipment">
-    </td>
-    <td width="50%">
-      <img src="./docs/readme/settings.png" alt="DiveVault settings">
-    </td>
-  </tr>
-</table>
-
-Screenshots above were generated from the local mocked development environment so the README stays reproducible.
-
-## What DiveVault Does
-
-- Stores imported dive telemetry and diver-completed logbook metadata in PostgreSQL
-- Separates imported drafts from committed dives so incomplete records do not pollute the main logbook
-- Tracks device sync state for importer workflows
-- Supports browser approval for desktop sync requests
-- Optionally exposes Prometheus metrics at `/metrics`
-- Serves a Vue frontend for dashboarding, imports, log review, settings, and public profile views
-- Supports Docker-first local and deployment workflows
-
-## Features
-
-- Import queue for incomplete dives waiting on metadata
-- Dive logbook with detail views and editing flows
-- Manual dive entry for dives without computer uploads
-- Dive map and dashboard stats
-- Saved dive sites, buddies, guides, and certification records
-- Public profile / public dive log sharing
-- Backup and restore flows
-- Optional Prometheus-scrapable backend monitoring endpoint
-- Backend schema migration entrypoint for multi-container or Kubernetes deployments
-- UI localization support with English, German, and French bundles
-
-## Workflow Overview
-
-### Import Workflow
-
-- Desktop importer reads the dive computer and uploads payloads
-- DiveVault stores the raw and parsed dive data
-- Imported dives appear in the queue until required logbook fields are completed
-- Once completed, the dive is marked as committed and appears throughout the rest of the app
-
-### Backend Responsibilities
-
-- Authenticated dive ingestion
-- PostgreSQL persistence
-- Device sync checkpoint storage
-- Schema initialization and migrations
-- Public profile and backup APIs
-- Health checks at `/health` and `/api/health`; enable `/metrics` with `METRICS_ENABLED=enabled` or `--metrics enabled`
-
-### Frontend Responsibilities
-
-- Dashboard and map visualization
-- Import queue and logbook editing
-- Manual dive entry
-- Profile, data management, and backup settings
 
 ## Contribution
 

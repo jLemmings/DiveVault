@@ -1068,6 +1068,28 @@ def clean_tank_volume_value(value: object) -> float | None:
     return parsed
 
 
+def clean_tank_pressure_value(value: object) -> int | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        parsed = float(value)
+    elif isinstance(value, str):
+        stripped = value.strip()
+        if not stripped:
+            return None
+        try:
+            parsed = float(stripped)
+        except ValueError:
+            return None
+    else:
+        return None
+    if parsed != parsed or parsed in {float("inf"), float("-inf")}:
+        return None
+    if parsed < 0 or parsed > 400:
+        return None
+    return int(round(parsed))
+
+
 def normalize_profile_license(entry: dict | None) -> dict:
     source = entry if isinstance(entry, dict) else {}
     return {
@@ -2608,7 +2630,9 @@ def sanitize_logbook_payload(payload: dict | None, existing_logbook: dict | None
 def apply_tank_volume_update(fields: dict, payload: dict | None) -> dict:
     source = payload if isinstance(payload, dict) else {}
     tank_volume = clean_tank_volume_value(source.get("tank_volume_l"))
-    if tank_volume is None:
+    begin_pressure = clean_tank_pressure_value(source.get("begin_pressure_bar"))
+    end_pressure = clean_tank_pressure_value(source.get("end_pressure_bar"))
+    if tank_volume is None and begin_pressure is None and end_pressure is None:
         return fields
 
     next_fields = dict(fields)
@@ -2623,7 +2647,12 @@ def apply_tank_volume_update(fields: dict, payload: dict | None) -> dict:
             tanks[0] = primary_tank
         else:
             tanks = [primary_tank]
-    primary_tank["volume"] = tank_volume
+    if tank_volume is not None:
+        primary_tank["volume"] = tank_volume
+    if begin_pressure is not None:
+        primary_tank["beginpressure_bar"] = begin_pressure
+    if end_pressure is not None:
+        primary_tank["endpressure_bar"] = end_pressure
     next_fields["tanks"] = tanks
     return next_fields
 

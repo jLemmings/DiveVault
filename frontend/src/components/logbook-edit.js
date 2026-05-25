@@ -1,4 +1,4 @@
-import { buildDiveSequenceMap, canCompleteImport, diveDeviceLabel, formatDate, formatDateTime, formatDepthNumber, formatTemperature, importTemperature, missingImportFields, paddedDiveIndex, durationShort, numberOrZero } from "../core.js";
+import { buildDiveSequenceMap, canCompleteImport, diveDeviceLabel, formatDate, formatDateTime, formatDepthNumber, formatTemperature, hasRecordedPressureSamples, importTemperature, missingImportFields, paddedDiveIndex, durationShort, numberOrZero } from "../core.js";
 import MetadataAutocompleteField from "./metadata-autocomplete.js";
 
 function normalizeSiteName(value) {
@@ -16,6 +16,43 @@ function sortNamedCollection(collection) {
     .sort((left, right) => left.name.localeCompare(right.name, undefined, { sensitivity: "base", numeric: true }));
 }
 
+function parseDate(value) {
+  if (!value) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function addMonths(date, months) {
+  const next = new Date(date.getTime());
+  const targetMonth = next.getMonth() + months;
+  next.setMonth(targetMonth);
+  if (next.getMonth() !== ((targetMonth % 12) + 12) % 12) {
+    next.setDate(0);
+  }
+  return next;
+}
+
+function equipmentTitle(item) {
+  return item?.name || [item?.brand, item?.model, item?.category || item?.type].filter(Boolean).join(" ") || "Unnamed equipment";
+}
+
+function serviceStatusForDive(item, diveStartedAt) {
+  const diveDate = parseDate(diveStartedAt);
+  const serviceDate = parseDate(item?.last_service_date || item?.last_serviced_at);
+  const interval = Number.parseInt(item?.service_interval_months, 10);
+  if (!diveDate || !serviceDate || !Number.isFinite(interval) || interval <= 0) {
+    return { status: "unknown", label: "Service data missing" };
+  }
+  const dueDate = addMonths(serviceDate, interval);
+  if (serviceDate > diveDate) {
+    return { status: "unknown", label: "Service date after dive" };
+  }
+  if (diveDate > dueDate) {
+    return { status: "overdue", label: `Overdue ${dueDate.toISOString().slice(0, 10)}` };
+  }
+  return { status: dueDate <= addMonths(diveDate, 1) ? "due_soon" : "serviced", label: `OK until ${dueDate.toISOString().slice(0, 10)}` };
+}
+
 export default {
   name: "LogbookEditorView",
   components: {
@@ -28,6 +65,9 @@ export default {
     "diveSites",
     "buddies",
     "guides",
+    "equipment",
+    "defaultEquipmentIds",
+    "equipmentSelectionEnabled",
     "savingImportId",
     "deletingDiveId",
     "statusMessage",
@@ -68,6 +108,9 @@ export default {
     canSaveRecord() {
       return this.selectedDraft ? canCompleteImport(this.selectedDraft) : false;
     },
+    canEditTankPressure() {
+      return this.dive ? !hasRecordedPressureSamples(this.dive) : false;
+    },
     savedDiveSites() {
       return sortNamedCollection(this.diveSites);
     },
@@ -76,6 +119,32 @@ export default {
     },
     savedGuides() {
       return sortNamedCollection(this.guides);
+    },
+    selectedEquipmentIds() {
+      return Array.isArray(this.selectedDraft?.equipment_ids) ? this.selectedDraft.equipment_ids.map(String) : [];
+    },
+    equipmentGroups() {
+      const groups = new Map();
+      for (const item of Array.isArray(this.equipment) ? this.equipment : []) {
+        const category = item?.category || item?.type || "Other";
+        if (!groups.has(category)) groups.set(category, []);
+        groups.get(category).push(item);
+      }
+      return [...groups.entries()].map(([category, items]) => ({
+        category,
+        items: items.sort((left, right) => equipmentTitle(left).localeCompare(equipmentTitle(right), undefined, { sensitivity: "base" }))
+      }));
+    },
+    selectedEquipmentStatus() {
+      const lookup = new Map((Array.isArray(this.equipment) ? this.equipment : []).map((item) => [String(item.id), item]));
+      return this.selectedEquipmentIds.map((id) => {
+        const item = lookup.get(id);
+        const service = serviceStatusForDive(item, this.dive?.started_at);
+        return { id, item, name: equipmentTitle(item || { name: id }), ...service };
+      });
+    },
+    invalidSelectedEquipment() {
+      return this.selectedEquipmentStatus.filter((item) => item.status === "unknown" || item.status === "overdue");
     },
     selectedDiveSite() {
       const siteName = normalizeSiteName(this.selectedDraft?.site);
@@ -125,6 +194,27 @@ export default {
     },
     updateBuddy(value) {
       this.updateField("buddy", value);
+    },
+    equipmentTitle,
+    serviceStatusForDive,
+    equipmentChecked(equipmentId) {
+      return this.selectedEquipmentIds.includes(String(equipmentId));
+    },
+    equipmentWarning(item) {
+      return ["unknown", "overdue"].includes(serviceStatusForDive(item, this.dive?.started_at).status);
+    },
+    toggleEquipment(equipmentId) {
+      const id = String(equipmentId);
+      const nextIds = this.equipmentChecked(id)
+        ? this.selectedEquipmentIds.filter((entry) => entry !== id)
+        : [...this.selectedEquipmentIds, id];
+      this.updateField("equipment_ids", nextIds);
+    },
+    useDefaultEquipment() {
+      this.updateField("equipment_ids", Array.isArray(this.defaultEquipmentIds) ? [...this.defaultEquipmentIds] : []);
+    },
+    clearEquipment() {
+      this.updateField("equipment_ids", []);
     },
     clearDiveSiteCreateFeedback() {
       this.diveSiteCreateError = "";
@@ -288,6 +378,18 @@ export default {
             </select>
           </label>
 
+          <template v-if="canEditTankPressure">
+            <label class="space-y-2">
+              <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Entry Pressure</span>
+              <input :value="selectedDraft.begin_pressure_bar || ''" @input="updateField('begin_pressure_bar', $event.target.value)" type="number" min="0" max="400" step="1" placeholder="200" class="ui-number-input w-full border border-primary/10 bg-background/35 px-4 py-3 text-sm text-on-surface placeholder:text-secondary/50 focus:border-primary/30 focus:ring-1 focus:ring-primary" />
+            </label>
+
+            <label class="space-y-2">
+              <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Exit Pressure</span>
+              <input :value="selectedDraft.end_pressure_bar || ''" @input="updateField('end_pressure_bar', $event.target.value)" type="number" min="0" max="400" step="1" placeholder="70" class="ui-number-input w-full border border-primary/10 bg-background/35 px-4 py-3 text-sm text-on-surface placeholder:text-secondary/50 focus:border-primary/30 focus:ring-1 focus:ring-primary" />
+            </label>
+          </template>
+
           <label class="space-y-2">
             <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">{{ t('Weather', 'Weather') }}</span>
             <input :value="selectedDraft.weather_description" @input="updateField('weather_description', $event.target.value)" type="text" :placeholder="t('logbookEdit.weather.placeholder', 'Sunny, overcast, surge on entry')" class="w-full border border-primary/10 bg-background/35 px-4 py-3 text-sm text-on-surface placeholder:text-secondary/50 focus:border-primary/30 focus:ring-1 focus:ring-primary" />
@@ -303,6 +405,44 @@ export default {
             <input :value="selectedDraft.wetsuit_description" @input="updateField('wetsuit_description', $event.target.value)" type="text" :placeholder="t('logbookEdit.wetsuit.placeholder', '7mm semi-dry')" class="w-full border border-primary/10 bg-background/35 px-4 py-3 text-sm text-on-surface placeholder:text-secondary/50 focus:border-primary/30 focus:ring-1 focus:ring-primary" />
           </label>
         </div>
+
+        <section v-if="equipmentSelectionEnabled" class="space-y-4 border border-primary/10 bg-surface-container-high/18 p-5">
+          <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+              <p class="font-label text-[10px] font-bold uppercase tracking-[0.2em] text-secondary">Equipment Used</p>
+              <p class="mt-2 text-sm leading-6" :class="invalidSelectedEquipment.length ? 'text-tertiary' : 'text-primary'">
+                {{ invalidSelectedEquipment.length ? 'Selected gear has service warnings, but this dive can still be saved.' : selectedEquipmentIds.length ? 'Selected gear will be attached to this dive.' : 'No equipment selected for this dive.' }}
+              </p>
+            </div>
+            <div class="flex flex-wrap gap-2">
+              <button @click="useDefaultEquipment()" type="button" class="bg-surface-container-high px-3 py-2 font-label text-[10px] font-bold uppercase tracking-[0.16em] text-primary">Use Defaults</button>
+              <button @click="clearEquipment()" type="button" class="bg-background/30 px-3 py-2 font-label text-[10px] font-bold uppercase tracking-[0.16em] text-secondary">Clear</button>
+            </div>
+          </div>
+          <div v-if="equipmentGroups.length" class="grid gap-4 lg:grid-cols-2">
+            <div v-for="group in equipmentGroups" :key="'logbook-equipment-' + group.category" class="space-y-2">
+              <p class="font-label text-[10px] font-bold uppercase tracking-[0.16em] text-secondary">{{ group.category }}</p>
+              <button
+                v-for="item in group.items"
+                :key="'logbook-equipment-item-' + item.id"
+                type="button"
+                @click="toggleEquipment(item.id)"
+                class="flex w-full items-center justify-between gap-3 border px-4 py-3 text-left transition-colors"
+                :class="equipmentChecked(item.id) ? (equipmentWarning(item) ? 'border-tertiary/45 bg-tertiary/10 text-on-surface' : 'border-primary/35 bg-primary/10 text-on-surface') : 'border-primary/10 bg-background/20 text-secondary hover:border-primary/25'"
+              >
+                <span>
+                  <span class="block text-sm font-semibold">{{ equipmentTitle(item) }}</span>
+                  <span class="mt-1 block text-xs" :class="equipmentWarning(item) ? 'text-tertiary' : 'text-primary'">{{ serviceStatusForDive(item, dive.started_at).label }}</span>
+                </span>
+                <span class="material-symbols-outlined text-base">{{ equipmentChecked(item.id) ? 'check_circle' : 'radio_button_unchecked' }}</span>
+              </button>
+            </div>
+          </div>
+          <p v-else class="text-sm leading-6 text-on-surface-variant">Add equipment in the Equipment section to reuse it here.</p>
+          <div v-if="invalidSelectedEquipment.length" class="space-y-1 border border-tertiary/30 bg-tertiary/10 px-4 py-3 text-sm text-tertiary">
+            <p v-for="item in invalidSelectedEquipment" :key="'logbook-invalid-equipment-' + item.id">{{ item.name }}: {{ item.label }}</p>
+          </div>
+        </section>
 
         <label class="space-y-2">
           <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Dive Notes</span>
@@ -335,8 +475,8 @@ export default {
           <button @click="closeEditor()" class="bg-surface-container-high px-5 py-3 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-on-surface transition-colors hover:text-primary">
             Cancel
           </button>
-          <button @click="removeDive()" :disabled="isSaving || isDeleting" class="bg-error-container/20 px-5 py-3 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-on-error-container transition-colors hover:bg-error-container/30 disabled:opacity-50">
-            {{ isDeleting ? 'Removing...' : 'Remove Dive' }}
+          <button @click="removeDive()" :disabled="isSaving || isDeleting" aria-label="Remove dive" title="Remove dive" class="inline-flex h-11 w-11 items-center justify-center bg-surface-container-high text-on-error-container transition-colors hover:bg-error-container/30 disabled:opacity-50">
+            <span class="material-symbols-outlined text-[21px] leading-none">delete</span>
           </button>
           <button @click="saveChanges()" :disabled="isSaving || isDeleting || !canSaveRecord" class="bg-primary px-5 py-3 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-on-primary transition-all hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50">
             {{ isSaving ? 'Saving...' : 'Save Logbook Changes' }}
