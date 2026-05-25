@@ -66,7 +66,7 @@ test("covers dashboard, logs, dive detail, and logbook editing", async ({ page }
   await visibleLogRow.click();
   await expect(page.getByText("Back To Logs")).toBeVisible();
 
-  await page.getByRole("button", { name: "edit", exact: true }).click();
+  await page.getByRole("button", { name: "Edit dive" }).click();
   await expect(page.getByText("Logbook Entry")).toBeVisible();
   await page.locator("textarea[placeholder='Conditions, wildlife, route, incidents, visibility, buoyancy notes...']:visible").fill("Updated from Playwright coverage.");
   await page.getByRole("button", { name: "Save Logbook Changes" }).click();
