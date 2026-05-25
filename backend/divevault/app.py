@@ -26,10 +26,11 @@ import time
 import hashlib
 import hmac
 import uuid
+import zipfile
 from datetime import datetime, timezone
 from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from io import StringIO
+from io import BytesIO, StringIO
 from pathlib import Path
 from urllib import error as urlerror
 from urllib import request as urlrequest
@@ -826,6 +827,7 @@ def require_expected_schema_version(schema_version: int, *, expected_schema_vers
 
 
 BACKUP_EXPORT_VERSION = 1
+BACKUP_MANIFEST_FILENAME = "backup.json"
 PDF_PAGE_WIDTH = 612
 PDF_PAGE_HEIGHT = 792
 PDF_MARGIN_LEFT = 48
@@ -1169,6 +1171,104 @@ def build_backup_payload(conn, user_id: str) -> dict:
         "device_states": list_device_states(conn, user_id),
         "dives": list_all_dives(conn, user_id, include_samples=True, include_raw_data=True),
     }
+
+
+def backup_archive_license_path(license_id: str, filename: str, used_paths: set[str]) -> str:
+    safe_license_id = re.sub(r"[^A-Za-z0-9_-]+", "-", license_id).strip("-") or "license"
+    safe_filename = sanitize_profile_license_filename(filename)
+    base_path = f"licenses/{safe_license_id}/{safe_filename}"
+    path = base_path
+    suffix = 2
+    while path in used_paths:
+        stem = Path(safe_filename).stem or "license"
+        extension = Path(safe_filename).suffix or ".pdf"
+        path = f"licenses/{safe_license_id}/{stem}-{suffix}{extension}"
+        suffix += 1
+    used_paths.add(path)
+    return path
+
+
+def build_backup_archive(payload: dict) -> bytes:
+    manifest = dict(payload)
+    license_documents: list[dict] = []
+    files: list[tuple[str, bytes]] = []
+    used_paths: set[str] = set()
+
+    for entry in payload.get("license_documents") or []:
+        if not isinstance(entry, dict):
+            continue
+        data_b64 = entry.get("data_b64")
+        if not isinstance(data_b64, str) or not data_b64:
+            continue
+        try:
+            pdf_bytes = base64.b64decode(data_b64, validate=True)
+        except (ValueError, binascii.Error):
+            continue
+        license_id = str(entry.get("license_id") or "").strip()
+        if not license_id:
+            continue
+        file_path = backup_archive_license_path(license_id, entry.get("filename") or "license.pdf", used_paths)
+        document = {key: value for key, value in entry.items() if key != "data_b64"}
+        document["file_path"] = file_path
+        license_documents.append(document)
+        files.append((file_path, pdf_bytes))
+
+    manifest["license_documents"] = license_documents
+
+    output = BytesIO()
+    with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr(
+            BACKUP_MANIFEST_FILENAME,
+            json.dumps(manifest, indent=2, sort_keys=True).encode("utf-8"),
+        )
+        for file_path, pdf_bytes in files:
+            archive.writestr(file_path, pdf_bytes)
+    return output.getvalue()
+
+
+def is_safe_backup_member_path(path: str) -> bool:
+    if not isinstance(path, str) or not path or path.startswith(("/", "\\")):
+        return False
+    normalized = Path(path)
+    return not normalized.is_absolute() and ".." not in normalized.parts
+
+
+def parse_backup_archive(archive_bytes: bytes, *, max_uncompressed_bytes: int) -> dict:
+    try:
+        with zipfile.ZipFile(BytesIO(archive_bytes), "r") as archive:
+            infos = archive.infolist()
+            if sum(info.file_size for info in infos) > max_uncompressed_bytes:
+                raise ValueError(f"Backup archive exceeds {max_uncompressed_bytes} byte uncompressed limit")
+            names = {info.filename for info in infos}
+            if BACKUP_MANIFEST_FILENAME not in names:
+                raise ValueError(f"Backup archive is missing {BACKUP_MANIFEST_FILENAME}")
+            for name in names:
+                if not is_safe_backup_member_path(name):
+                    raise ValueError(f"Backup archive contains unsafe path {name!r}")
+            try:
+                manifest = json.loads(archive.read(BACKUP_MANIFEST_FILENAME).decode("utf-8"))
+            except json.JSONDecodeError as exc:
+                raise ValueError(f"Backup archive {BACKUP_MANIFEST_FILENAME} is invalid JSON") from exc
+            if not isinstance(manifest, dict):
+                raise ValueError(f"Backup archive {BACKUP_MANIFEST_FILENAME} must contain a JSON object")
+
+            license_documents: list[dict] = []
+            for index, entry in enumerate(manifest.get("license_documents") or [], start=1):
+                if not isinstance(entry, dict):
+                    raise ValueError(f"Backup license document #{index} must be an object")
+                if entry.get("data_b64"):
+                    license_documents.append(entry)
+                    continue
+                file_path = entry.get("file_path")
+                if not is_safe_backup_member_path(file_path) or file_path not in names:
+                    raise ValueError(f"Backup license document #{index} references a missing file")
+                document = {key: value for key, value in entry.items() if key != "file_path"}
+                document["data_b64"] = base64.b64encode(archive.read(file_path)).decode("ascii")
+                license_documents.append(document)
+            manifest["license_documents"] = license_documents
+            return manifest
+    except zipfile.BadZipFile as exc:
+        raise ValueError("Backup file must be a valid ZIP archive") from exc
 
 
 def parse_backup_payload(payload: dict | None) -> dict:
@@ -1555,7 +1655,8 @@ class DiveBackendHandler(BaseHTTPRequestHandler):
             finally:
                 conn.close()
 
-            filename = attachment_filename(f"divevault-backup-{timestamp_slug()}.json")
+            archive_bytes = build_backup_archive(payload)
+            filename = attachment_filename(f"divevault-backup-{timestamp_slug()}.zip")
             LOGGER.info(
                 "Returned backup export user_id=%s dives=%d device_states=%d licenses=%d filename=%s",
                 user_id,
@@ -1566,8 +1667,8 @@ class DiveBackendHandler(BaseHTTPRequestHandler):
             )
             self._send_bytes(
                 200,
-                json.dumps(payload, indent=2, sort_keys=True).encode("utf-8"),
-                "application/json; charset=utf-8",
+                archive_bytes,
+                "application/zip",
                 extra_headers={
                     "Content-Disposition": f'attachment; filename="{filename}"',
                     "Cache-Control": "no-store",
@@ -2047,8 +2148,22 @@ class DiveBackendHandler(BaseHTTPRequestHandler):
             if user_id is None:
                 return
 
-            payload = self._read_json_body(max_bytes=getattr(self.server, "max_backup_import_bytes", 25 * 1024 * 1024))
-            if payload is None:
+            max_backup_import_bytes = getattr(self.server, "max_backup_import_bytes", 25 * 1024 * 1024)
+            body = self._read_request_body(max_bytes=max_backup_import_bytes)
+            if body is None:
+                return
+            content_type = (self.headers.get("Content-Type") or "").split(";", 1)[0].strip().lower()
+            try:
+                if content_type in {"application/zip", "application/x-zip-compressed", "application/octet-stream"}:
+                    payload = parse_backup_archive(body, max_uncompressed_bytes=max_backup_import_bytes)
+                else:
+                    payload = json.loads(body.decode("utf-8")) if body else {}
+            except (UnicodeDecodeError, json.JSONDecodeError):
+                LOGGER.warning("Rejected invalid backup JSON path=%s", self.path)
+                self._send_json(400, {"error": "Invalid JSON"})
+                return
+            except ValueError as exc:
+                self._send_json(400, {"error": str(exc)})
                 return
 
             conn = self._open_db()
@@ -2528,8 +2643,8 @@ class DiveBackendHandler(BaseHTTPRequestHandler):
         self._send_json(403, {"error": "Authenticated identity is missing a stable user identifier"})
         return None
 
-    def _read_json_body(self, *, max_bytes: int | None = None) -> dict | None:
-        max_json_body_bytes = int(max_bytes if max_bytes is not None else getattr(self.server, "max_json_body_bytes", 1024 * 1024))
+    def _read_request_body(self, *, max_bytes: int) -> bytes | None:
+        max_body_bytes = int(max_bytes)
         content_length = self.headers.get("Content-Length", "0")
         try:
             length = int(content_length)
@@ -2539,10 +2654,16 @@ class DiveBackendHandler(BaseHTTPRequestHandler):
         if length < 0:
             self._send_json(400, {"error": "Invalid Content-Length header"})
             return None
-        if length > max_json_body_bytes:
-            self._send_json(413, {"error": f"Request body exceeds {max_json_body_bytes} byte limit"})
+        if length > max_body_bytes:
+            self._send_json(413, {"error": f"Request body exceeds {max_body_bytes} byte limit"})
             return None
-        body = self.rfile.read(length) if length > 0 else b""
+        return self.rfile.read(length) if length > 0 else b""
+
+    def _read_json_body(self, *, max_bytes: int | None = None) -> dict | None:
+        max_json_body_bytes = int(max_bytes if max_bytes is not None else getattr(self.server, "max_json_body_bytes", 1024 * 1024))
+        body = self._read_request_body(max_bytes=max_json_body_bytes)
+        if body is None:
+            return None
         try:
             return json.loads(body.decode("utf-8")) if body else {}
         except json.JSONDecodeError:
@@ -2732,7 +2853,7 @@ def main() -> None:
         help="Whether to run schema migrations at backend startup. Use disabled when migrations run externally (for example, a Kubernetes Job).",
     )
     parser.add_argument("--max-json-body-bytes", type=int, default=int(os.getenv("MAX_JSON_BODY_BYTES", str(1024 * 1024))), help="Maximum JSON request body size in bytes")
-    parser.add_argument("--max-backup-import-bytes", type=int, default=int(os.getenv("MAX_BACKUP_IMPORT_BYTES", str(25 * 1024 * 1024))), help="Maximum JSON body size accepted by /api/backup/import")
+    parser.add_argument("--max-backup-import-bytes", type=int, default=int(os.getenv("MAX_BACKUP_IMPORT_BYTES", str(25 * 1024 * 1024))), help="Maximum backup archive body size accepted by /api/backup/import")
     parser.add_argument("--max-list-limit", type=int, default=int(os.getenv("MAX_LIST_LIMIT", "200")), help="Maximum list endpoint page size")
     parser.add_argument("--rate-limit-window-seconds", type=int, default=int(os.getenv("RATE_LIMIT_WINDOW_SECONDS", "60")), help="Rate limit window in seconds")
     parser.add_argument("--rate-limit-cli-request-per-window", type=int, default=int(os.getenv("RATE_LIMIT_CLI_REQUEST_PER_WINDOW", "30")), help="Max CLI auth request create/status calls per IP and window")
