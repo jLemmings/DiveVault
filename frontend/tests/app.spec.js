@@ -62,9 +62,21 @@ test("covers dashboard, logs, dive detail, and logbook editing", async ({ page }
   await page.getByPlaceholder("Search dive logs...").fill("Blue Hole");
   const visibleLogRow = page.locator("article[role='button']:visible").filter({ hasText: "Blue Hole" }).first();
   await expect(visibleLogRow).toBeVisible();
+  await expect(visibleLogRow).toContainText("#0001");
+  await expect(visibleLogRow).not.toContainText("##0001");
+  await expect(visibleLogRow.locator(".material-symbols-outlined", { hasText: "checkroom" }).first()).toBeVisible();
+  await expect(visibleLogRow).toContainText("5mm full suit");
+  await expect(visibleLogRow.locator(".material-symbols-outlined", { hasText: "fitness_center" }).first()).toBeVisible();
+  await expect(visibleLogRow).toContainText("8 kg integrated");
 
   await visibleLogRow.click();
   await expect(page.getByText("Back To Logs")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Logbook Details" })).toBeVisible();
+  await expect(page.locator("article:visible", { hasText: "Suit" }).filter({ hasText: "5mm full suit" }).first()).toBeVisible();
+  await expect(page.locator("p:visible", { hasText: "18 m / excellent" }).first()).toBeVisible();
+  await expect(page.locator("p:visible", { hasText: "5mm full suit" }).first()).toBeVisible();
+  await expect(page.locator("p:visible", { hasText: "8 kg integrated" }).first()).toBeVisible();
+  await expect(page.locator("p:visible", { hasText: "Light current with scattered clouds." }).first()).toBeVisible();
   await expect(page.getByText("Samples", { exact: true })).toBeHidden();
 
   await page.getByRole("button", { name: "Edit dive" }).click();
@@ -114,6 +126,7 @@ test("creates a manual dive entry outside the importer workflow", async ({ page 
   await expect(page.getByText("Cathedral added to your saved dive sites.")).toBeVisible();
   await page.getByPlaceholder("Diver name").fill("Sage");
   await page.getByPlaceholder("Guide or instructor").fill("Noor");
+  await page.locator("input[placeholder='8 kg integrated + 1 kg trim']:visible").fill("6 kg belt");
   await page.getByPlaceholder("Conditions, wildlife, route, entry, navigation, visibility...").fill("Manual shore dive logged without dive computer telemetry.");
   await page.getByRole("button", { name: "Create Dive Log" }).click();
 
@@ -124,6 +137,7 @@ test("creates a manual dive entry outside the importer workflow", async ({ page 
   await expect(page.getByText("Avg Depth", { exact: true })).toBeHidden();
   await expect(page.getByText("Samples", { exact: true })).toBeHidden();
   await expect(page.getByText("0 telemetry points")).toBeHidden();
+  await expect(page.locator("p:visible", { hasText: "6 kg belt" }).first()).toBeVisible();
 
   await page.goto("/#imports");
   await expect(page.getByRole("heading", { name: "Imported Dives" })).toBeVisible();

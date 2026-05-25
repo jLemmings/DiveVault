@@ -431,7 +431,7 @@ export default {
             </label>
           </div>
 
-          <div class="grid gap-4 md:grid-cols-3">
+          <div class="grid gap-4 md:grid-cols-4">
             <label class="space-y-2">
               <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">{{ t('Weather', 'Weather') }}</span>
               <input :value="draft.weatherDescription" @input="updateField('weatherDescription', $event.target.value)" type="text" :placeholder="t('manualDive.weather.placeholder', 'Sunny, overcast, current building')" class="w-full border border-primary/10 bg-background/35 px-4 py-3 text-sm text-on-surface placeholder:text-secondary/50 focus:border-primary/30 focus:ring-1 focus:ring-primary" />
@@ -443,6 +443,10 @@ export default {
             <label class="space-y-2">
               <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">{{ t('Wetsuit', 'Wetsuit') }}</span>
               <input :value="draft.wetsuitDescription" @input="updateField('wetsuitDescription', $event.target.value)" type="text" :placeholder="t('manualDive.wetsuit.placeholder', '5mm full suit')" class="w-full border border-primary/10 bg-background/35 px-4 py-3 text-sm text-on-surface placeholder:text-secondary/50 focus:border-primary/30 focus:ring-1 focus:ring-primary" />
+            </label>
+            <label class="space-y-2">
+              <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">{{ t('Weights', 'Weights') }}</span>
+              <input :value="draft.weightDescription" @input="updateField('weightDescription', $event.target.value)" type="text" :placeholder="t('manualDive.weights.placeholder', '8 kg integrated + 1 kg trim')" class="w-full border border-primary/10 bg-background/35 px-4 py-3 text-sm text-on-surface placeholder:text-secondary/50 focus:border-primary/30 focus:ring-1 focus:ring-primary" />
             </label>
           </div>
 

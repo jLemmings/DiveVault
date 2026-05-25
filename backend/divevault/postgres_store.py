@@ -176,7 +176,7 @@ CREATE TABLE IF NOT EXISTS user_equipment (
 """
 
 LOGBOOK_REQUIRED_FIELDS = ("site", "buddy", "guide")
-LOGBOOK_OPTIONAL_FIELDS = ("weather_description", "visibility", "wetsuit_description")
+LOGBOOK_OPTIONAL_FIELDS = ("weather_description", "visibility", "wetsuit_description", "weight_description")
 LOGBOOK_DISPLAY_FIELD_OPTIONS = set(LOGBOOK_OPTIONAL_FIELDS)
 SAMPLE_TIME_UNIT_SECONDS = "seconds"
 SAMPLE_TIME_UNIT_MILLISECONDS = "milliseconds"
@@ -1638,6 +1638,7 @@ def normalize_logbook(logbook: dict | None) -> dict:
         "weather_description": clean_logbook_text(source.get("weather_description")),
         "visibility": clean_logbook_text(source.get("visibility")),
         "wetsuit_description": clean_logbook_text(source.get("wetsuit_description")),
+        "weight_description": clean_logbook_text(source.get("weight_description")),
         "notes": clean_logbook_text(source.get("notes")),
         "equipment_ids": equipment_ids,
         "equipment_snapshot": equipment_snapshot,
@@ -2612,6 +2613,7 @@ def sanitize_logbook_payload(payload: dict | None, existing_logbook: dict | None
         "weather_description": clean_logbook_text(source.get("weather_description")),
         "visibility": clean_logbook_text(source.get("visibility")),
         "wetsuit_description": clean_logbook_text(source.get("wetsuit_description")),
+        "weight_description": clean_logbook_text(source.get("weight_description")),
         "notes": clean_logbook_text(source.get("notes")),
         "equipment_ids": normalize_equipment_ids(source.get("equipment_ids")),
         "equipment_snapshot": normalize_logbook_equipment_snapshot(source.get("equipment_snapshot")),

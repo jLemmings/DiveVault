@@ -85,6 +85,10 @@ function buildDive(overrides = {}) {
         site: overrides.site || "Blue Hole",
         buddy: overrides.buddy || "Kai",
         guide: overrides.guide || "Mina",
+        weather_description: overrides.weather_description || "Light current with scattered clouds.",
+        visibility: overrides.visibility || "18 m / excellent",
+        wetsuit_description: overrides.wetsuit_description || "5mm full suit",
+        weight_description: overrides.weight_description || "8 kg integrated",
         notes: overrides.notes || "Calm drift dive with strong visibility.",
         status: overrides.status || "complete",
         completed_at: overrides.completed_at || "2026-03-15T12:00:00Z"
@@ -263,6 +267,10 @@ function createDiveFromPayload(data, payload) {
         site: logbook.site || "",
         buddy: logbook.buddy || "",
         guide: logbook.guide || "",
+        weather_description: logbook.weather_description || "",
+        visibility: logbook.visibility || "",
+        wetsuit_description: logbook.wetsuit_description || "",
+        weight_description: logbook.weight_description || "",
         notes: logbook.notes || "",
         status: logbook.status || "imported",
         completed_at: logbook.completed_at || undefined

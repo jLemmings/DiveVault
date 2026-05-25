@@ -887,7 +887,8 @@ export default {
       return [
         { key: "weather_description", label: this.t("settings.logLayout.weather", "Weather description"), detail: this.t("settings.logLayout.weather.detail", "Show sea state and weather conditions in log rows.") },
         { key: "visibility", label: this.t("Visibility", "Visibility"), detail: this.t("settings.logLayout.visibility.detail", "Show underwater visibility notes in log rows.") },
-        { key: "wetsuit_description", label: this.t("settings.logLayout.wetsuit", "Wetsuit description"), detail: this.t("settings.logLayout.wetsuit.detail", "Show exposure protection details in log rows.") }
+        { key: "wetsuit_description", label: this.t("settings.logLayout.wetsuit", "Wetsuit description"), detail: this.t("settings.logLayout.wetsuit.detail", "Show exposure protection details in log rows.") },
+        { key: "weight_description", label: this.t("settings.logLayout.weights", "Weights"), detail: this.t("settings.logLayout.weights.detail", "Show weight configuration notes in log rows.") }
       ];
     },
     logbookFieldEnabled(fieldKey) {

@@ -64,6 +64,25 @@ export default {
     equipmentTags() {
       return detailEquipmentTags(this.dive);
     },
+    logbookMetadata() {
+      const draft = importDraftSeed(this.dive);
+      const items = [
+        { key: "site", label: "Dive Site", value: draft.site },
+        { key: "buddy", label: "Buddy", value: draft.buddy },
+        { key: "guide", label: "Guide", value: draft.guide },
+        { key: "weather", label: "Weather", value: draft.weather_description },
+        { key: "visibility", label: "Visibility", value: draft.visibility },
+        { key: "wetsuit", label: "Suit", value: draft.wetsuit_description },
+        { key: "weights", label: "Weights", value: draft.weight_description },
+        { key: "notes", label: "Notes", value: draft.notes }
+      ];
+      return items
+        .map((item) => ({ ...item, value: typeof item.value === "string" ? item.value.trim() : "" }))
+        .filter((item) => item.value);
+    },
+    hasLogbookMetadata() {
+      return this.logbookMetadata.length > 0;
+    },
     pressureRangeText() {
       return pressureRangeLabel(this.dive);
     },
@@ -332,6 +351,16 @@ export default {
             </div>
           </section>
 
+          <section v-if="hasLogbookMetadata" class="space-y-4">
+            <h4 class="font-headline text-xs font-bold uppercase tracking-[0.2em] text-on-surface-variant">Logbook Details</h4>
+            <div class="space-y-3">
+              <article v-for="item in logbookMetadata" :key="'mobile-logbook-' + item.key" class="rounded-xl bg-surface-container-high/70 p-4">
+                <p class="font-label text-[10px] font-bold uppercase tracking-[0.16em] text-secondary">{{ item.label }}</p>
+                <p class="mt-2 text-sm leading-6 text-on-surface">{{ item.value }}</p>
+              </article>
+            </div>
+          </section>
+
           <section v-if="hasCheckpoints" class="space-y-4">
             <div class="flex items-center justify-between">
               <h4 class="font-headline text-xs font-bold uppercase tracking-[0.2em] text-on-surface-variant">Dive Checkpoints</h4>
@@ -412,6 +441,19 @@ export default {
         </div>
 
         <div class="grid grid-cols-12 gap-6">
+          <section v-if="hasLogbookMetadata" class="col-span-12 rounded-[1.5rem] bg-surface-container-low p-6">
+            <div class="mb-5 flex items-center justify-between gap-4">
+              <h4 class="font-headline text-lg font-bold">Logbook Details</h4>
+              <span class="text-[10px] font-black uppercase tracking-[0.22em] text-secondary">{{ logbookMetadata.length }} fields</span>
+            </div>
+            <div class="grid grid-cols-[repeat(auto-fit,minmax(13rem,1fr))] gap-4">
+              <article v-for="item in logbookMetadata" :key="'desktop-logbook-' + item.key" class="rounded-[1rem] bg-surface-container-high/70 p-4">
+                <p class="font-label text-[10px] font-bold uppercase tracking-[0.2em] text-secondary">{{ item.label }}</p>
+                <p class="mt-2 text-sm leading-6 text-on-surface">{{ item.value }}</p>
+              </article>
+            </div>
+          </section>
+
           <section v-if="hasDepthProfile" class="col-span-12 rounded-[1.5rem] bg-surface-container-high p-6">
             <div class="mb-8 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
               <h4 class="font-headline text-lg font-bold">Dive Profile</h4>
