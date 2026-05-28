@@ -82,9 +82,9 @@ function buildDive(overrides = {}) {
         endpressure_bar: 90
       }],
       logbook: {
-        site: overrides.site || "Blue Hole",
-        buddy: overrides.buddy || "Kai",
-        guide: overrides.guide || "Mina",
+        site: overrides.site ?? "Blue Hole",
+        buddy: overrides.buddy ?? "Kai",
+        guide: overrides.guide ?? "Mina",
         weather_description: overrides.weather_description || "Light current with scattered clouds.",
         visibility: overrides.visibility || "18 m / excellent",
         wetsuit_description: overrides.wetsuit_description || "5mm full suit",
@@ -138,6 +138,9 @@ function baseData() {
       email: "avery@example.com",
       public_dives_enabled: false,
       public_slug: "avery-marlow",
+      logbook_display_fields: [],
+      required_logbook_fields: ["site"],
+      equipment_selection_enabled: true,
       licenses: [],
       dive_sites: [
         {

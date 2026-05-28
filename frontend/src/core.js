@@ -152,10 +152,16 @@ function monthShort(value) {
   return date ? date.toLocaleDateString(undefined, { month: "short" }).toUpperCase() : "---";
 }
 
-const importRequirementFields = [
+const defaultRequiredLogbookFields = ["site"];
+const logbookRequirementFieldOptions = [
   { key: "site", label: "Dive Site", missingLabel: "Missing Dive Site", icon: "location_off" },
   { key: "buddy", label: "Buddy", missingLabel: "Missing Buddy", icon: "person_off" },
-  { key: "guide", label: "Guide", missingLabel: "Missing Guide", icon: "badge" }
+  { key: "guide", label: "Guide", missingLabel: "Missing Guide", icon: "badge" },
+  { key: "weather_description", label: "Weather", missingLabel: "Missing Weather", icon: "thunderstorm" },
+  { key: "visibility", label: "Visibility", missingLabel: "Missing Visibility", icon: "visibility_off" },
+  { key: "wetsuit_description", label: "Wetsuit", missingLabel: "Missing Wetsuit", icon: "checkroom" },
+  { key: "weight_description", label: "Weights", missingLabel: "Missing Weights", icon: "fitness_center" },
+  { key: "notes", label: "Notes", missingLabel: "Missing Notes", icon: "notes" }
 ];
 
 function compactDateStamp(value) {
@@ -251,12 +257,29 @@ function normalizedImportValue(value) {
   return typeof value === "string" ? value.trim() : "";
 }
 
-function missingImportFields(logbook) {
-  return importRequirementFields.filter((field) => !normalizedImportValue(logbook?.[field.key]));
+function normalizeRequiredLogbookFields(fields) {
+  if (!Array.isArray(fields)) return [...defaultRequiredLogbookFields];
+  const supported = new Set(logbookRequirementFieldOptions.map((field) => field.key));
+  const normalized = [];
+  for (const field of fields) {
+    const key = typeof field === "string" ? field.trim() : "";
+    if (!supported.has(key) || normalized.includes(key)) continue;
+    normalized.push(key);
+  }
+  return normalized.length ? normalized : [...defaultRequiredLogbookFields];
 }
 
-function canCompleteImport(logbook) {
-  return missingImportFields(logbook).length === 0;
+function requirementFields(requiredFields) {
+  const required = new Set(normalizeRequiredLogbookFields(requiredFields));
+  return logbookRequirementFieldOptions.filter((field) => required.has(field.key));
+}
+
+function missingImportFields(logbook, requiredFields) {
+  return requirementFields(requiredFields).filter((field) => !normalizedImportValue(logbook?.[field.key]));
+}
+
+function canCompleteImport(logbook, requiredFields) {
+  return missingImportFields(logbook, requiredFields).length === 0;
 }
 
 function isImportComplete(logbook) {
@@ -271,8 +294,9 @@ function isImportedDive(dive) {
   return !isCommittedDive(dive);
 }
 
-function importCompletionPercent(logbook) {
-  return Math.round(((importRequirementFields.length - missingImportFields(logbook).length) / importRequirementFields.length) * 100);
+function importCompletionPercent(logbook, requiredFields) {
+  const fields = requirementFields(requiredFields);
+  return Math.round(((fields.length - missingImportFields(logbook, requiredFields).length) / fields.length) * 100);
 }
 
 function gasSummary(dive) {
@@ -292,9 +316,9 @@ function isNightDive(dive) {
   return hour >= 19 || hour < 6;
 }
 
-function averageImportCompletion(dives, draftsById) {
+function averageImportCompletion(dives, draftsById, requiredFields) {
   if (!dives.length) return 0;
-  const total = dives.reduce((sum, dive) => sum + importCompletionPercent(effectiveImportDraft(dive, draftsById[String(dive.id)])), 0);
+  const total = dives.reduce((sum, dive) => sum + importCompletionPercent(effectiveImportDraft(dive, draftsById[String(dive.id)]), requiredFields), 0);
   return Math.round(total / dives.length);
 }
 
@@ -722,6 +746,8 @@ export {
   logbookStatus,
   missingImportFields,
   canCompleteImport,
+  normalizeRequiredLogbookFields,
+  logbookRequirementFieldOptions,
   isImportComplete,
   isCommittedDive,
   isImportedDive,

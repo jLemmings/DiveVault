@@ -5,6 +5,7 @@ export default {
   props: [
     "dives",
     "importDrafts",
+    "requiredLogbookFields",
     "selectImportDive",
     "deleteDive",
     "deletingDiveId",
@@ -24,7 +25,7 @@ export default {
         });
     },
     averageCompletion() {
-      return averageImportCompletion(this.pendingDives, this.importDrafts);
+      return averageImportCompletion(this.pendingDives, this.importDrafts, this.requiredLogbookFields);
     },
     nextPendingDive() {
       return this.pendingDives[0] || null;
@@ -44,10 +45,10 @@ export default {
     importTemperature,
     isNightDive,
     missingFields(dive) {
-      return missingImportFields(effectiveImportDraft(dive, this.importDrafts[String(dive.id)]));
+      return missingImportFields(effectiveImportDraft(dive, this.importDrafts[String(dive.id)]), this.requiredLogbookFields);
     },
     completionForDive(dive) {
-      return importCompletionPercent(effectiveImportDraft(dive, this.importDrafts[String(dive.id)]));
+      return importCompletionPercent(effectiveImportDraft(dive, this.importDrafts[String(dive.id)]), this.requiredLogbookFields);
     },
     durationMinutes(dive) {
       return Math.round(numberOrZero(dive?.duration_seconds) / 60);
@@ -183,7 +184,7 @@ export default {
               <div class="space-y-5">
                 <p class="max-w-3xl text-sm leading-7 text-on-surface-variant">
                   Imported dives from the DiveVault importer stay in the staging queue until the diver completes the required registry metadata.
-                  Open a record to add the dive site, buddy, guide, and notes before it enters the permanent logbook.
+                  Open a record to add the dive site before it enters the permanent logbook. Buddy, guide, and notes can be added when useful.
                 </p>
                 <div class="flex flex-wrap items-center gap-3">
                   <span class="inline-flex items-center gap-2 bg-background/40 px-3 py-2 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-primary">

@@ -94,8 +94,6 @@ test("covers the import queue and import completion flow", async ({ page }) => {
   await page.getByRole("button", { name: "Edit Imported Dive" }).first().click();
 
   await page.locator("input[placeholder='Blue Hole / House Reef']:visible").fill("House Reef");
-  await page.locator("input[placeholder='Diver name']:visible").fill("Sage");
-  await page.locator("input[placeholder='Guide or instructor']:visible").fill("Noor");
   await page.locator("select:visible").selectOption("15");
   await page.getByRole("button", { name: "Complete Record" }).click();
 
@@ -124,8 +122,6 @@ test("creates a manual dive entry outside the importer workflow", async ({ page 
   await page.getByRole("textbox", { name: "Country" }).fill("Egypt");
   await page.getByRole("button", { name: "Save Dive Site" }).click();
   await expect(page.getByText("Cathedral added to your saved dive sites.")).toBeVisible();
-  await page.getByPlaceholder("Diver name").fill("Sage");
-  await page.getByPlaceholder("Guide or instructor").fill("Noor");
   await page.locator("input[placeholder='8 kg integrated + 1 kg trim']:visible").fill("6 kg belt");
   await page.getByPlaceholder("Conditions, wildlife, route, entry, navigation, visibility...").fill("Manual shore dive logged without dive computer telemetry.");
   await page.getByRole("button", { name: "Create Dive Log" }).click();

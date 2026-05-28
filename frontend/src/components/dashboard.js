@@ -666,7 +666,7 @@ export default {
           <div>
             <p class="dashboard-micro-label text-tertiary">Attention Required</p>
             <h4 class="mt-2 font-headline text-2xl font-bold text-primary">{{ importedDiveLabel }}</h4>
-            <p class="mt-2 text-sm leading-6 text-on-surface-variant">Complete site, buddy, and guide details before these imported dives enter the logbook.</p>
+            <p class="mt-2 text-sm leading-6 text-on-surface-variant">Complete the dive site before these imported dives enter the logbook. Buddy and guide can stay blank.</p>
           </div>
           <button @click="openImportQueue()" class="rounded-xl bg-tertiary px-5 py-3 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-background transition-transform hover:scale-[0.98]">
             Review Imported Dives
