@@ -67,14 +67,14 @@ export default {
     logbookMetadata() {
       const draft = importDraftSeed(this.dive);
       const items = [
-        { key: "site", label: "Dive Site", value: draft.site },
-        { key: "buddy", label: "Buddy", value: draft.buddy },
-        { key: "guide", label: "Guide", value: draft.guide },
-        { key: "weather", label: "Weather", value: draft.weather_description },
-        { key: "visibility", label: "Visibility", value: draft.visibility },
-        { key: "wetsuit", label: "Suit", value: draft.wetsuit_description },
-        { key: "weights", label: "Weights", value: draft.weight_description },
-        { key: "notes", label: "Notes", value: draft.notes }
+        { key: "site", label: "Dive Site", value: draft.site, icon: "location_on" },
+        { key: "buddy", label: "Buddy", value: draft.buddy, icon: "diversity_3" },
+        { key: "guide", label: "Guide", value: draft.guide, icon: "badge" },
+        { key: "weather", label: "Weather", value: draft.weather_description, icon: "partly_cloudy_day" },
+        { key: "visibility", label: "Visibility", value: draft.visibility, icon: "visibility" },
+        { key: "wetsuit", label: "Suit", value: draft.wetsuit_description, icon: "checkroom" },
+        { key: "weights", label: "Weights", value: draft.weight_description, icon: "fitness_center" },
+        { key: "notes", label: "Notes", value: draft.notes, icon: "notes" }
       ];
       return items
         .map((item) => ({ ...item, value: typeof item.value === "string" ? item.value.trim() : "" }))
@@ -355,8 +355,13 @@ export default {
             <h4 class="font-headline text-xs font-bold uppercase tracking-[0.2em] text-on-surface-variant">Logbook Details</h4>
             <div class="space-y-3">
               <article v-for="item in logbookMetadata" :key="'mobile-logbook-' + item.key" class="rounded-xl bg-surface-container-high/70 p-4">
-                <p class="font-label text-[10px] font-bold uppercase tracking-[0.16em] text-secondary">{{ item.label }}</p>
-                <p class="mt-2 text-sm leading-6 text-on-surface">{{ item.value }}</p>
+                <div class="flex items-start gap-3">
+                  <span class="material-symbols-outlined mt-0.5 text-lg text-primary">{{ item.icon }}</span>
+                  <div class="min-w-0">
+                    <p class="font-label text-[10px] font-bold uppercase tracking-[0.16em] text-secondary">{{ item.label }}</p>
+                    <p class="mt-2 text-sm leading-6 text-on-surface">{{ item.value }}</p>
+                  </div>
+                </div>
               </article>
             </div>
           </section>
@@ -446,10 +451,15 @@ export default {
               <h4 class="font-headline text-lg font-bold">Logbook Details</h4>
               <span class="text-[10px] font-black uppercase tracking-[0.22em] text-secondary">{{ logbookMetadata.length }} fields</span>
             </div>
-            <div class="grid grid-cols-[repeat(auto-fit,minmax(13rem,1fr))] gap-4">
-              <article v-for="item in logbookMetadata" :key="'desktop-logbook-' + item.key" class="rounded-[1rem] bg-surface-container-high/70 p-4">
-                <p class="font-label text-[10px] font-bold uppercase tracking-[0.2em] text-secondary">{{ item.label }}</p>
-                <p class="mt-2 text-sm leading-6 text-on-surface">{{ item.value }}</p>
+            <div class="grid grid-cols-[repeat(auto-fit,minmax(15rem,1fr))] gap-4">
+              <article v-for="item in logbookMetadata" :key="'desktop-logbook-' + item.key" class="rounded-[1rem] bg-surface-container-high/70 p-4" :class="item.key === 'notes' ? 'md:col-span-2' : ''">
+                <div class="flex items-start gap-3">
+                  <span class="material-symbols-outlined mt-0.5 text-xl text-primary">{{ item.icon }}</span>
+                  <div class="min-w-0">
+                    <p class="font-label text-[10px] font-bold uppercase tracking-[0.2em] text-secondary">{{ item.label }}</p>
+                    <p class="mt-2 text-sm leading-6 text-on-surface">{{ item.value }}</p>
+                  </div>
+                </div>
               </article>
             </div>
           </section>
