@@ -970,6 +970,63 @@ export default {
         this.manualDiveCreating = false;
       }
     },
+    async uploadCsvImport(file, options = {}) {
+      if (!file) return false;
+      const navigateToQueue = options.navigateToQueue !== false;
+      const setImportFeedback = options.setImportFeedback !== false;
+      if (setImportFeedback) {
+        this.importError = "";
+        this.importStatusMessage = "";
+      }
+      const refreshAfterImport = options.refreshDives !== false;
+      try {
+        const csvText = await file.text();
+        const response = await this.authenticatedFetch("/api/imports/csv", {
+          method: "POST",
+          headers: { "Content-Type": "text/csv; charset=utf-8" },
+          body: csvText
+        }, { timeoutMs: 30000 });
+        const payload = await response.json().catch(() => null);
+        if (!response.ok) {
+          throw new Error(payload?.error || `API returned ${response.status}`);
+        }
+        if (refreshAfterImport) {
+          await this.fetchDives();
+        }
+        if (setImportFeedback) {
+          this.importStatusMessage = `CSV import processed ${payload.rows || 0} row(s): ${payload.inserted || 0} new, ${payload.duplicates || 0} duplicate.`;
+        }
+        if (navigateToQueue) {
+          this.activeView = "imports";
+          this.selectedImportId = this.resolvePendingImportId(this.dives, this.importDrafts, null);
+          window.location.hash = this.selectedImportId ? `imports/${this.selectedImportId}` : "imports";
+        }
+        return payload;
+      } catch (error) {
+        if (setImportFeedback) {
+          this.importError = error?.message || "Unable to import CSV file.";
+        }
+        throw error;
+      }
+    },
+    async uploadSubsurfaceImport(file, options = {}) {
+      if (!file) return false;
+      const dryRun = options.dryRun === true;
+      const refreshAfterImport = options.refreshDives !== false;
+      const response = await this.authenticatedFetch(`/api/imports/subsurface${dryRun ? '?dry_run=1' : ''}`, {
+        method: "POST",
+        headers: { "Content-Type": file.type || "application/xml" },
+        body: file
+      }, { timeoutMs: 30000 });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(payload?.error || `API returned ${response.status}`);
+      }
+      if (!dryRun && refreshAfterImport) {
+        await this.fetchDives();
+      }
+      return payload;
+    },
     async persistImportDraft(diveId, draft, commit = false) {
       const beginPressureInput = String(draft.begin_pressure_bar || "").trim();
       const endPressureInput = String(draft.end_pressure_bar || "").trim();
@@ -1662,7 +1719,7 @@ export default {
           <logbook-editor-view v-else-if="activeView === 'edit' && selectedEditDive" :dive="selectedEditDive" :all-dives="dives" :draft="selectedEditDraft" :dive-sites="profileDiveSites" :buddies="profileBuddies" :guides="profileGuides" :equipment="equipment" :default-equipment-ids="defaultEquipmentIds" :equipment-selection-enabled="profileEquipmentSelectionEnabled" :saving-import-id="savingImportId" :deleting-dive-id="deletingDiveId" :status-message="importStatusMessage" :error-message="importError" :update-dive-draft="updateImportDraft" :save-dive-logbook="saveExistingDiveLogbook" :delete-dive="deleteDive" :create-dive-site="createDiveSite" :close-editor="closeDiveEditor"></logbook-editor-view>
           <dive-detail-view v-else-if="activeView === 'logs' && selectedDive" :dive="selectedDive" :all-dives="dives" :deleting-dive-id="deletingDiveId" :close-detail="closeDiveDetail" :open-dive-editor="openDiveEditor" :delete-dive="deleteDive"></dive-detail-view>
           <equipment-view v-else-if="activeView === 'equipment'" :equipment="equipment" :search-text="searchText" :set-search-text="setSearchText" :saving="equipmentSaving" :status-message="equipmentStatusMessage" :error-message="equipmentError" :save-equipment="saveEquipment"></equipment-view>
-          <settings-view v-else-if="activeView === 'settings'" :cli-auth-code="cliAuthCode" :active-section="activeSettingsSection" :set-active-section="setSettingsSection" :profile-updated="handleProfileUpdated" :refresh-dives="fetchDives" :current-locale="i18nLocale" :set-locale="setLocale" :theme-preference="themePreference" :resolved-theme="resolvedTheme" :set-theme-preference="setThemePreference"></settings-view>
+          <settings-view v-else-if="activeView === 'settings'" :cli-auth-code="cliAuthCode" :active-section="activeSettingsSection" :set-active-section="setSettingsSection" :profile-updated="handleProfileUpdated" :refresh-dives="fetchDives" :open-import-queue="openImportQueue" :upload-csv-import="uploadCsvImport" :upload-subsurface-import="uploadSubsurfaceImport" :current-locale="i18nLocale" :set-locale="setLocale" :theme-preference="themePreference" :resolved-theme="resolvedTheme" :set-theme-preference="setThemePreference"></settings-view>
         </div>
       </main>
       <nav class="fixed bottom-0 left-0 right-0 z-40 flex items-center justify-around border-t border-primary/10 bg-surface-container-low/80 px-4 pb-6 pt-3 backdrop-blur-xl md:hidden">
