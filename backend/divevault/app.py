@@ -1319,18 +1319,56 @@ def parse_subsurface_gps(value: object) -> dict | None:
     return None
 
 
-def decode_subsurface_export(body: bytes) -> str:
+def read_limited_stream(stream, *, max_bytes: int, label: str) -> bytes:
+    output = BytesIO()
+    remaining = max(max_bytes, 0)
+    while True:
+        chunk_size = min(1024 * 1024, remaining + 1)
+        chunk = stream.read(chunk_size)
+        if not chunk:
+            break
+        output.write(chunk)
+        remaining -= len(chunk)
+        if remaining < 0:
+            raise ValueError(f"{label} exceeds {max_bytes} byte uncompressed limit")
+    return output.getvalue()
+
+
+def decompress_gzip_limited(source: bytes, *, max_bytes: int, label: str) -> bytes:
+    try:
+        with gzip.GzipFile(fileobj=BytesIO(source)) as stream:
+            return read_limited_stream(stream, max_bytes=max_bytes, label=label)
+    except (OSError, EOFError) as exc:
+        raise ValueError(f"{label} must be a valid gzip file") from exc
+
+
+def read_zip_member_limited(archive: zipfile.ZipFile, member: str, *, max_bytes: int, label: str) -> bytes:
+    try:
+        with archive.open(member, "r") as stream:
+            return read_limited_stream(stream, max_bytes=max_bytes, label=label)
+    except zipfile.BadZipFile as exc:
+        raise ValueError(f"{label} must be a valid ZIP entry") from exc
+
+
+def decode_subsurface_export(body: bytes, *, max_uncompressed_bytes: int) -> str:
     source = body or b""
     if source.startswith(b"\xef\xbb\xbf"):
         source = source[3:]
     if source.startswith(b"\x1f\x8b"):
-        source = gzip.decompress(source)
+        source = decompress_gzip_limited(source, max_bytes=max_uncompressed_bytes, label="Subsurface export")
     elif zipfile.is_zipfile(BytesIO(source)):
         with zipfile.ZipFile(BytesIO(source), "r") as archive:
             names = [name for name in archive.namelist() if name.lower().endswith((".xml", ".ssrf"))]
             if not names:
                 raise ValueError("Subsurface archive does not contain an XML export")
-            source = archive.read(names[0])
+            source = read_zip_member_limited(
+                archive,
+                names[0],
+                max_bytes=max_uncompressed_bytes,
+                label="Subsurface archive XML export",
+            )
+    elif len(source) > max_uncompressed_bytes:
+        raise ValueError(f"Subsurface export exceeds {max_uncompressed_bytes} byte uncompressed limit")
     try:
         return source.decode("utf-8-sig")
     except UnicodeDecodeError:
@@ -1757,7 +1795,15 @@ def parse_backup_archive(archive_bytes: bytes, *, max_uncompressed_bytes: int) -
                 if not is_safe_backup_member_path(name):
                     raise ValueError(f"Backup archive contains unsafe path {name!r}")
             try:
-                manifest = json.loads(archive.read(BACKUP_MANIFEST_FILENAME).decode("utf-8"))
+                remaining_uncompressed_bytes = max_uncompressed_bytes
+                manifest_bytes = read_zip_member_limited(
+                    archive,
+                    BACKUP_MANIFEST_FILENAME,
+                    max_bytes=remaining_uncompressed_bytes,
+                    label=f"Backup archive {BACKUP_MANIFEST_FILENAME}",
+                )
+                remaining_uncompressed_bytes -= len(manifest_bytes)
+                manifest = json.loads(manifest_bytes.decode("utf-8"))
             except json.JSONDecodeError as exc:
                 raise ValueError(f"Backup archive {BACKUP_MANIFEST_FILENAME} is invalid JSON") from exc
             if not isinstance(manifest, dict):
@@ -1774,7 +1820,14 @@ def parse_backup_archive(archive_bytes: bytes, *, max_uncompressed_bytes: int) -
                 if not is_safe_backup_member_path(file_path) or file_path not in names:
                     raise ValueError(f"Backup license document #{index} references a missing file")
                 document = {key: value for key, value in entry.items() if key != "file_path"}
-                document["data_b64"] = base64.b64encode(archive.read(file_path)).decode("ascii")
+                document_bytes = read_zip_member_limited(
+                    archive,
+                    file_path,
+                    max_bytes=remaining_uncompressed_bytes,
+                    label=f"Backup archive {file_path}",
+                )
+                remaining_uncompressed_bytes -= len(document_bytes)
+                document["data_b64"] = base64.b64encode(document_bytes).decode("ascii")
                 license_documents.append(document)
             manifest["license_documents"] = license_documents
             return manifest
@@ -2775,7 +2828,7 @@ class DiveBackendHandler(BaseHTTPRequestHandler):
             if body is None:
                 return
             try:
-                export_text = decode_subsurface_export(body)
+                export_text = decode_subsurface_export(body, max_uncompressed_bytes=max_subsurface_import_bytes)
                 dive_payloads = subsurface_import_payloads(export_text)
             except (OSError, ValueError) as exc:
                 self._send_json(400, {"error": str(exc)})

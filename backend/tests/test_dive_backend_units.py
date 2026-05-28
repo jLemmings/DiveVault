@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import argparse
 import base64
+import gzip
+import zipfile
+from io import BytesIO
 from pathlib import Path
 
 import pytest
@@ -212,6 +215,22 @@ def test_subsurface_import_payloads_parse_xml_export():
     assert payload["fields"]["tanks"][0]["beginpressure_bar"] == 240
     assert payload["samples"][1]["time_seconds"] == 60
     assert payload["samples"][1]["depth_m"] == 3.0
+
+
+def test_decode_subsurface_export_rejects_gzip_over_uncompressed_limit():
+    compressed = gzip.compress(b"<divelog>" + (b"x" * 128) + b"</divelog>")
+
+    with pytest.raises(ValueError, match="Subsurface export exceeds 32 byte uncompressed limit"):
+        dive_backend.decode_subsurface_export(compressed, max_uncompressed_bytes=32)
+
+
+def test_decode_subsurface_export_rejects_archive_xml_over_uncompressed_limit():
+    output = BytesIO()
+    with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr("export.xml", b"<divelog>" + (b"x" * 128) + b"</divelog>")
+
+    with pytest.raises(ValueError, match="Subsurface archive XML export exceeds 32 byte uncompressed limit"):
+        dive_backend.decode_subsurface_export(output.getvalue(), max_uncompressed_bytes=32)
 
 
 def test_resolve_frontend_dir_uses_existing_directory(tmp_path: Path):
