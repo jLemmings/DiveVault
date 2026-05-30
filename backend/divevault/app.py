@@ -73,6 +73,7 @@ from divevault.postgres_store import (
     list_user_equipment,
     mark_equipment_serviced,
     list_dives,
+    normalize_required_logbook_fields,
     now_iso,
     open_db,
     save_user_profile,
@@ -1099,8 +1100,9 @@ def parse_csv_samples(row: dict) -> list:
     return samples
 
 
-def complete_logbook_if_ready(logbook: dict) -> dict:
-    ready = all(isinstance(logbook.get(key), str) and logbook[key].strip() for key in ("site", "buddy", "guide"))
+def complete_logbook_if_ready(logbook: dict, *, required_fields: object = None) -> dict:
+    required = normalize_required_logbook_fields(required_fields)
+    ready = all(isinstance(logbook.get(key), str) and logbook[key].strip() for key in required)
     if ready:
         logbook["status"] = "complete"
         logbook.setdefault("completed_at", now_iso())
@@ -1110,7 +1112,7 @@ def complete_logbook_if_ready(logbook: dict) -> dict:
     return logbook
 
 
-def build_csv_import_fields(row: dict) -> dict:
+def build_csv_import_fields(row: dict, *, required_fields: object = None) -> dict:
     logbook = {
         "site": clean_csv_value(row, "site"),
         "buddy": clean_csv_value(row, "buddy"),
@@ -1120,7 +1122,7 @@ def build_csv_import_fields(row: dict) -> dict:
         "wetsuit_description": clean_csv_value(row, "wetsuit_description"),
         "notes": clean_csv_value(row, "notes"),
     }
-    complete_logbook_if_ready(logbook)
+    complete_logbook_if_ready(logbook, required_fields=required_fields)
     fields: dict = {"source": "csv", "csv_import": True, "logbook": logbook}
 
     for csv_key, field_key in (
@@ -1154,7 +1156,7 @@ def build_csv_import_fields(row: dict) -> dict:
     return fields
 
 
-def csv_import_payloads(csv_text: str) -> list[dict]:
+def csv_import_payloads(csv_text: str, *, required_fields: object = None) -> list[dict]:
     if not csv_text.strip():
         raise ValueError("CSV import file is empty")
 
@@ -1174,7 +1176,7 @@ def csv_import_payloads(csv_text: str) -> list[dict]:
                 raise ValueError("max_depth_m is required")
             avg_depth_m = parse_csv_float(row, "avg_depth_m")
             samples = parse_csv_samples(row)
-            fields = build_csv_import_fields(row)
+            fields = build_csv_import_fields(row, required_fields=required_fields)
         except ValueError as exc:
             raise ValueError(f"CSV row {row_number}: {exc}") from exc
 
@@ -1432,7 +1434,7 @@ def parse_subsurface_samples(divecomputer) -> list[dict]:
     return samples
 
 
-def build_subsurface_fields(dive_element, divecomputer, *, site: str, gps: dict | None) -> dict:
+def build_subsurface_fields(dive_element, divecomputer, *, site: str, gps: dict | None, required_fields: object = None) -> dict:
     logbook = {
         "site": site,
         "buddy": child_text(dive_element, "buddy"),
@@ -1442,7 +1444,7 @@ def build_subsurface_fields(dive_element, divecomputer, *, site: str, gps: dict 
         "wetsuit_description": child_text(dive_element, "suit"),
         "notes": child_text(dive_element, "notes"),
     }
-    complete_logbook_if_ready(logbook)
+    complete_logbook_if_ready(logbook, required_fields=required_fields)
     fields: dict = {"source": "subsurface", "subsurface_import": True, "logbook": logbook}
     if gps:
         fields["location"] = gps
@@ -1477,7 +1479,7 @@ def build_subsurface_fields(dive_element, divecomputer, *, site: str, gps: dict 
     return fields
 
 
-def subsurface_import_payloads(export_text: str) -> list[dict]:
+def subsurface_import_payloads(export_text: str, *, required_fields: object = None) -> list[dict]:
     if not export_text.strip():
         raise ValueError("Subsurface import file is empty")
     try:
@@ -1506,7 +1508,7 @@ def subsurface_import_payloads(export_text: str) -> list[dict]:
                 raise ValueError("missing max depth")
             site, gps = parse_subsurface_location(dive_element, site_lookup)
             samples = parse_subsurface_samples(divecomputer) if divecomputer is not None else []
-            fields = build_subsurface_fields(dive_element, divecomputer, site=site, gps=gps)
+            fields = build_subsurface_fields(dive_element, divecomputer, site=site, gps=gps, required_fields=required_fields)
         except ValueError as exc:
             raise ValueError(f"Subsurface dive {index}: {exc}") from exc
 
@@ -2790,6 +2792,16 @@ class DiveBackendHandler(BaseHTTPRequestHandler):
             body = self._read_request_body(max_bytes=max_csv_import_bytes)
             if body is None:
                 return
+            conn = self._open_db()
+            if conn is None:
+                return
+            try:
+                profile = get_user_profile(conn, user_id)
+                required_fields = profile.get("required_logbook_fields")
+            except ValueError as exc:
+                conn.close()
+                self._send_json(400, {"error": str(exc)})
+                return
             content_type = (self.headers.get("Content-Type") or "").split(";", 1)[0].strip().lower()
             try:
                 if content_type == "application/json":
@@ -2797,17 +2809,16 @@ class DiveBackendHandler(BaseHTTPRequestHandler):
                     csv_text = str(payload.get("csv") or "")
                 else:
                     csv_text = body.decode("utf-8-sig")
-                dive_payloads = csv_import_payloads(csv_text)
+                dive_payloads = csv_import_payloads(csv_text, required_fields=required_fields)
             except (UnicodeDecodeError, json.JSONDecodeError):
+                conn.close()
                 self._send_json(400, {"error": "Invalid CSV import request body"})
                 return
             except ValueError as exc:
+                conn.close()
                 self._send_json(400, {"error": str(exc)})
                 return
 
-            conn = self._open_db()
-            if conn is None:
-                return
             inserted_count = 0
             ids: list[int] = []
             try:
@@ -2849,10 +2860,21 @@ class DiveBackendHandler(BaseHTTPRequestHandler):
             body = self._read_request_body(max_bytes=max_subsurface_import_bytes)
             if body is None:
                 return
+            conn = self._open_db()
+            if conn is None:
+                return
+            try:
+                profile = get_user_profile(conn, user_id)
+                required_fields = profile.get("required_logbook_fields")
+            except ValueError as exc:
+                conn.close()
+                self._send_json(400, {"error": str(exc)})
+                return
             try:
                 export_text = decode_subsurface_export(body, max_uncompressed_bytes=max_subsurface_import_bytes)
-                dive_payloads = subsurface_import_payloads(export_text)
+                dive_payloads = subsurface_import_payloads(export_text, required_fields=required_fields)
             except (OSError, ValueError) as exc:
+                conn.close()
                 self._send_json(400, {"error": str(exc)})
                 return
 
@@ -2860,12 +2882,10 @@ class DiveBackendHandler(BaseHTTPRequestHandler):
             dry_run = self._is_truthy(query.get("dry_run", ["0"])[0])
             summary = import_payload_summary(dive_payloads)
             if dry_run:
+                conn.close()
                 self._send_json(200, {"dry_run": True, "summary": summary})
                 return
 
-            conn = self._open_db()
-            if conn is None:
-                return
             inserted_count = 0
             ids: list[int] = []
             try:

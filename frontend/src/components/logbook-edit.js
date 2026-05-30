@@ -62,6 +62,7 @@ export default {
     "dive",
     "allDives",
     "draft",
+    "requiredLogbookFields",
     "diveSites",
     "buddies",
     "guides",
@@ -97,7 +98,7 @@ export default {
       return this.draft || null;
     },
     missingFields() {
-      return this.selectedDraft ? missingImportFields(this.selectedDraft) : [];
+      return this.selectedDraft ? missingImportFields(this.selectedDraft, this.requiredLogbookFields) : [];
     },
     isSaving() {
       return String(this.savingImportId) === String(this.dive?.id);
@@ -106,7 +107,7 @@ export default {
       return String(this.deletingDiveId) === String(this.dive?.id);
     },
     canSaveRecord() {
-      return this.selectedDraft ? canCompleteImport(this.selectedDraft) : false;
+      return this.selectedDraft ? canCompleteImport(this.selectedDraft, this.requiredLogbookFields) : false;
     },
     canEditTankPressure() {
       return this.dive ? !hasRecordedPressureSamples(this.dive) : false;

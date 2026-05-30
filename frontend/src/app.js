@@ -1,5 +1,5 @@
 import { useAuth, useUser } from "./auth.js";
-import { filledIconStyle, importDraftSeed, isImportComplete, effectiveImportDraft, missingImportFields, paddedDiveIndex, isCommittedDive } from "./core.js";
+import { filledIconStyle, importDraftSeed, isImportComplete, effectiveImportDraft, missingImportFields, normalizeRequiredLogbookFields, paddedDiveIndex, isCommittedDive } from "./core.js";
 import DashboardView from "./components/dashboard.js";
 import DiveDetailView from "./components/dive-detail.js";
 import DiveImportEditorView from "./components/import-edit.js";
@@ -144,6 +144,7 @@ export default {
       profileBuddies: [],
       profileGuides: [],
       profileLogbookDisplayFields: [],
+      profileRequiredLogbookFields: ["site"],
       profileEquipmentSelectionEnabled: true,
       equipment: [],
       equipmentSaving: false,
@@ -330,10 +331,11 @@ export default {
     },
     loadingViewKey() {
       if (this.activeView === "edit") return "edit";
-      if (this.activeView === "create") return "edit";
+      if (this.activeView === "create") return "create";
       if (this.activeView === "imports") return "imports";
-      if (this.activeView === "map") return "dashboard";
+      if (this.activeView === "map") return "map";
       if (this.activeView === "settings") return "settings";
+      if (this.activeView === "equipment") return "equipment";
       if (this.activeView === "logs" && this.selectedDiveId) return "detail";
       if (this.activeView === "logs") return "logs";
       return "dashboard";
@@ -409,6 +411,7 @@ export default {
       this.profileBuddies = [];
       this.profileGuides = [];
       this.profileLogbookDisplayFields = [];
+      this.profileRequiredLogbookFields = ["site"];
       this.profileEquipmentSelectionEnabled = true;
       this.equipment = [];
       this.equipmentSaving = false;
@@ -851,8 +854,18 @@ export default {
       const beginPressure = beginPressureInput === "" ? null : Number.parseFloat(beginPressureInput);
       const endPressure = endPressureInput === "" ? null : Number.parseFloat(endPressureInput);
 
-      if (!site || !buddy || !guide) {
-        this.manualDiveError = "Dive site, buddy, and guide are required for manual entries.";
+      const missingRequired = missingImportFields({
+        site,
+        buddy,
+        guide,
+        weather_description: weatherDescription,
+        visibility,
+        wetsuit_description: wetsuitDescription,
+        weight_description: weightDescription,
+        notes
+      }, this.profileRequiredLogbookFields);
+      if (missingRequired.length) {
+        this.manualDiveError = `${missingRequired[0].label} is required for manual entries.`;
         return;
       }
       if (!Number.isFinite(durationMinutes) || durationMinutes <= 0) {
@@ -1080,7 +1093,7 @@ export default {
 
       const wasCommitted = isCommittedDive(dive);
       const draft = effectiveImportDraft(dive, this.importDrafts[id]);
-      const missing = missingImportFields(draft);
+      const missing = missingImportFields(draft, this.profileRequiredLogbookFields);
       if ((commit || wasCommitted) && missing.length) {
         this.importError = `${missing[0].label} is required before completing this record.`;
         return false;
@@ -1495,6 +1508,7 @@ export default {
       this.profileBuddies = Array.isArray(payload?.buddies) ? payload.buddies : [];
       this.profileGuides = Array.isArray(payload?.guides) ? payload.guides : [];
       this.profileLogbookDisplayFields = Array.isArray(payload?.logbook_display_fields) ? payload.logbook_display_fields : [];
+      this.profileRequiredLogbookFields = normalizeRequiredLogbookFields(payload?.required_logbook_fields);
       this.profileEquipmentSelectionEnabled = payload?.equipment_selection_enabled !== false;
     }
   },
@@ -1632,10 +1646,13 @@ export default {
             <div class="border border-primary/10 bg-surface-container-low p-6 shadow-panel animate-pulse">
               <p class="font-label text-[10px] font-bold uppercase tracking-[0.22em] text-primary">
                 {{ loadingViewKey === 'dashboard' ? 'Loading Dashboard'
+                  : loadingViewKey === 'map' ? 'Loading Dive Map'
                   : loadingViewKey === 'logs' ? 'Loading Dive Log'
                   : loadingViewKey === 'detail' ? 'Loading Dive Detail'
                   : loadingViewKey === 'imports' ? 'Loading Imports'
                   : loadingViewKey === 'edit' ? 'Loading Dive Editor'
+                  : loadingViewKey === 'create' ? 'Loading Manual Entry'
+                  : loadingViewKey === 'equipment' ? 'Loading Equipment'
                   : 'Loading Settings' }}
               </p>
               <div class="mt-4 h-9 w-56 bg-surface-container-high"></div>
@@ -1643,66 +1660,180 @@ export default {
             </div>
 
             <div v-if="loadingViewKey === 'dashboard'" class="space-y-6 animate-pulse">
-              <div class="grid grid-cols-2 gap-4 md:grid-cols-4">
-                <div v-for="index in 4" :key="'dashboard-stat-' + index" class="h-32 bg-surface-container-low shadow-panel"></div>
+              <div class="dashboard-command-center space-y-6">
+                <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                  <div v-for="index in 4" :key="'dashboard-stat-' + index" class="h-36 rounded-2xl bg-surface-container-low shadow-panel"></div>
+                </div>
+                <div class="grid gap-6 xl:grid-cols-[minmax(0,1fr)_22rem]">
+                  <div class="space-y-6">
+                    <div class="h-[28rem] rounded-[1.5rem] bg-surface-container-low shadow-panel"></div>
+                    <div class="grid gap-4 md:grid-cols-3">
+                      <div v-for="index in 3" :key="'dashboard-recent-' + index" class="h-28 rounded-2xl bg-surface-container-low shadow-panel"></div>
+                    </div>
+                  </div>
+                  <div class="space-y-4">
+                    <div class="h-44 rounded-[1.5rem] bg-surface-container-low shadow-panel"></div>
+                    <div class="h-44 rounded-[1.5rem] bg-surface-container-low shadow-panel"></div>
+                  </div>
+                </div>
               </div>
-              <div class="grid gap-6 xl:grid-cols-[minmax(0,1fr)_19rem]">
-                <div class="h-[28rem] bg-surface-container-low shadow-panel"></div>
-                <div class="h-[28rem] bg-surface-container-low shadow-panel"></div>
+            </div>
+
+            <div v-else-if="loadingViewKey === 'map'" class="dashboard-command-center dashboard-map-only animate-pulse">
+              <section class="dashboard-section dashboard-map-section relative min-h-[calc(100vh-10rem)]">
+                <div class="dashboard-glass-card dashboard-map-panel relative h-full min-h-[calc(100vh-10rem)] overflow-hidden rounded-[1.5rem] bg-surface-container-low shadow-panel">
+                  <div class="absolute left-6 top-6 z-10 space-y-3">
+                    <div class="h-4 w-40 rounded bg-surface-container-high"></div>
+                    <div class="h-9 w-72 rounded bg-surface-container-high"></div>
+                    <div class="h-4 w-96 max-w-full rounded bg-surface-container-high"></div>
+                  </div>
+                  <div class="absolute inset-0 bg-surface-container-high/60"></div>
+                  <div class="absolute inset-0 technical-grid opacity-[0.12]"></div>
+                  <div class="absolute bottom-8 left-8 flex gap-3">
+                    <div v-for="index in 4" :key="'map-site-chip-' + index" class="h-14 w-44 rounded-xl bg-surface-container-low"></div>
+                  </div>
+                </div>
+              </section>
+            </div>
+
+            <div v-else-if="loadingViewKey === 'equipment'" class="dashboard-command-center animate-pulse">
+              <div class="flex justify-end">
+                <div class="h-12 w-[24rem] rounded-xl bg-surface-container-low shadow-panel"></div>
+              </div>
+              <div class="settings-stat-strip">
+                <div v-for="index in 2" :key="'equipment-stat-' + index" class="h-20 rounded-2xl bg-surface-container-low shadow-panel"></div>
+              </div>
+              <div class="equipment-page-layout">
+                <aside class="settings-panel settings-card equipment-service-sidebar h-[34rem] bg-surface-container-low shadow-panel"></aside>
+                <section class="min-w-0">
+                  <div class="equipment-items-grid">
+                    <div v-for="index in 6" :key="'equipment-card-' + index" class="h-64 rounded-2xl bg-surface-container-low shadow-panel"></div>
+                  </div>
+                </section>
               </div>
             </div>
 
             <div v-else-if="loadingViewKey === 'logs'" class="space-y-6 animate-pulse">
-              <div class="grid grid-cols-1 gap-4 md:grid-cols-4">
-                <div v-for="index in 4" :key="'logs-stat-' + index" class="h-28 bg-surface-container-low shadow-panel"></div>
-              </div>
-              <div class="grid grid-cols-1 gap-6 lg:grid-cols-[1.35fr_0.65fr]">
-                <div class="h-24 bg-surface-container-low shadow-panel"></div>
-                <div class="h-24 bg-surface-container-low shadow-panel"></div>
-              </div>
-              <div class="overflow-hidden bg-surface-container-low shadow-panel">
-                <div class="h-14 bg-surface-container-high/60"></div>
-                <div class="space-y-px bg-outline-variant/10">
-                  <div v-for="index in 6" :key="'logs-row-' + index" class="h-20 bg-surface-container-low"></div>
+              <div class="dashboard-command-center space-y-6">
+                <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                  <div v-for="index in 4" :key="'logs-stat-' + index" class="h-32 rounded-2xl bg-surface-container-low shadow-panel"></div>
+                </div>
+                <div class="grid grid-cols-1 gap-6 lg:grid-cols-[1.35fr_0.65fr]">
+                  <div class="h-24 rounded-2xl bg-surface-container-low shadow-panel"></div>
+                  <div class="h-24 rounded-2xl bg-surface-container-low shadow-panel"></div>
+                </div>
+                <div class="space-y-4">
+                  <div v-for="index in 5" :key="'logs-card-' + index" class="h-36 rounded-2xl bg-surface-container-low shadow-panel"></div>
                 </div>
               </div>
             </div>
 
             <div v-else-if="loadingViewKey === 'detail'" class="space-y-6 animate-pulse">
-              <div class="h-28 bg-surface-container-low shadow-panel"></div>
-              <div class="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-6">
-                <div v-for="index in 6" :key="'detail-stat-' + index" class="h-28 bg-surface-container-high shadow-panel"></div>
+              <div class="relative h-[19rem] overflow-hidden rounded-[2rem] bg-surface-container-low shadow-panel">
+                <div class="absolute left-8 top-8 h-11 w-36 rounded-xl bg-surface-container-high"></div>
+                <div class="absolute bottom-8 left-8 right-8 space-y-5">
+                  <div class="h-5 w-80 rounded bg-surface-container-high"></div>
+                  <div class="h-14 max-w-3xl rounded bg-surface-container-high"></div>
+                  <div class="flex flex-wrap gap-10">
+                    <div v-for="index in 4" :key="'detail-hero-metric-' + index" class="space-y-2">
+                      <div class="h-3 w-24 rounded bg-surface-container-high"></div>
+                      <div class="h-8 w-20 rounded bg-surface-container-high"></div>
+                    </div>
+                  </div>
+                </div>
               </div>
-              <div class="h-[26rem] bg-surface-container-high shadow-panel"></div>
-              <div class="grid grid-cols-1 gap-6 lg:grid-cols-3">
-                <div v-for="index in 3" :key="'detail-panel-' + index" class="h-56 bg-surface-container-low shadow-panel"></div>
+              <div class="grid grid-cols-12 gap-6">
+                <div class="col-span-12 space-y-6 xl:col-span-8">
+                  <div class="rounded-[1.5rem] bg-surface-container-low p-6 shadow-panel">
+                    <div class="mb-6 flex items-center justify-between">
+                      <div class="h-6 w-52 rounded bg-surface-container-high"></div>
+                      <div class="h-7 w-24 rounded-full bg-surface-container-high"></div>
+                    </div>
+                    <div class="grid grid-cols-3 gap-4">
+                      <div v-for="index in 6" :key="'detail-logbook-' + index" class="h-24 rounded-xl bg-surface-container-high"></div>
+                    </div>
+                  </div>
+                  <div class="h-[20rem] rounded-[1.5rem] bg-surface-container-low shadow-panel"></div>
+                </div>
+                <div class="col-span-12 xl:col-span-4">
+                  <div class="rounded-[1.5rem] bg-surface-container-low p-6 shadow-panel">
+                    <div class="mb-5 h-5 w-56 rounded bg-surface-container-high"></div>
+                    <div class="divide-y divide-primary/10">
+                      <div v-for="index in 4" :key="'detail-telemetry-' + index" class="space-y-3 py-5 first:pt-0 last:pb-0">
+                        <div class="h-5 w-5 rounded bg-surface-container-high"></div>
+                        <div class="h-3 w-32 rounded bg-surface-container-high"></div>
+                        <div class="h-7 w-28 rounded bg-surface-container-high"></div>
+                        <div class="h-3 w-40 rounded bg-surface-container-high"></div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div class="col-span-12 pt-8">
+                  <div class="mb-5 h-6 w-44 rounded bg-surface-container-high"></div>
+                  <div class="grid grid-cols-[repeat(auto-fit,minmax(12rem,1fr))] gap-4">
+                    <div v-for="index in 5" :key="'detail-equipment-' + index" class="h-20 rounded-xl bg-surface-container-low shadow-panel"></div>
+                  </div>
+                </div>
               </div>
             </div>
 
             <div v-else-if="loadingViewKey === 'imports'" class="space-y-6 animate-pulse">
-              <div class="h-32 bg-surface-container-low shadow-panel"></div>
+              <div class="h-36 rounded-[1.5rem] bg-surface-container-low shadow-panel"></div>
               <div class="grid gap-6 xl:grid-cols-[minmax(0,1.65fr)_minmax(260px,0.82fr)]">
-                <div class="h-[30rem] bg-surface-container-low shadow-panel"></div>
-                <div class="h-[30rem] bg-surface-container-low shadow-panel"></div>
+                <div class="space-y-4">
+                  <div v-for="index in 5" :key="'imports-row-' + index" class="h-28 rounded-2xl bg-surface-container-low shadow-panel"></div>
+                </div>
+                <div class="space-y-4">
+                  <div class="h-48 rounded-[1.5rem] bg-surface-container-low shadow-panel"></div>
+                  <div class="h-48 rounded-[1.5rem] bg-surface-container-low shadow-panel"></div>
+                </div>
               </div>
             </div>
 
             <div v-else-if="loadingViewKey === 'edit'" class="space-y-6 animate-pulse">
-              <div class="grid gap-4 xl:grid-cols-[minmax(0,1.45fr)_320px]">
-                <div class="h-56 bg-surface-container-low shadow-panel"></div>
-                <div class="h-56 bg-surface-container-low shadow-panel"></div>
-              </div>
-              <div class="grid gap-6 xl:grid-cols-[minmax(0,1.25fr)_360px]">
-                <div class="h-[34rem] bg-surface-container-low shadow-panel"></div>
-                <div class="h-[34rem] bg-surface-container-low shadow-panel"></div>
+              <div class="grid gap-6 xl:grid-cols-[minmax(0,1.35fr)_22rem]">
+                <div class="space-y-6">
+                  <div class="h-48 rounded-[1.5rem] bg-surface-container-low shadow-panel"></div>
+                  <div class="rounded-[1.5rem] bg-surface-container-low p-6 shadow-panel">
+                    <div class="grid gap-4 md:grid-cols-2">
+                      <div v-for="index in 10" :key="'edit-field-' + index" class="h-16 rounded-xl bg-surface-container-high"></div>
+                    </div>
+                  </div>
+                </div>
+                <div class="space-y-4">
+                  <div class="h-64 rounded-[1.5rem] bg-surface-container-low shadow-panel"></div>
+                  <div class="h-40 rounded-[1.5rem] bg-surface-container-low shadow-panel"></div>
+                </div>
               </div>
             </div>
 
-            <div v-else class="space-y-6 animate-pulse">
-              <div class="h-24 bg-surface-container-low shadow-panel"></div>
-              <div class="grid gap-6 md:grid-cols-2">
-                <div v-for="index in 4" :key="'settings-panel-' + index" class="h-56 bg-surface-container-low shadow-panel"></div>
+            <div v-else-if="loadingViewKey === 'create'" class="space-y-6 animate-pulse">
+              <div class="h-40 rounded-[1.5rem] bg-surface-container-low shadow-panel"></div>
+              <div class="grid gap-6 xl:grid-cols-[minmax(0,1.35fr)_22rem]">
+                <div class="rounded-[1.5rem] bg-surface-container-low p-6 shadow-panel">
+                  <div class="grid gap-4 md:grid-cols-2">
+                    <div v-for="index in 12" :key="'create-field-' + index" class="h-16 rounded-xl bg-surface-container-high"></div>
+                  </div>
+                </div>
+                <div class="space-y-4">
+                  <div class="h-56 rounded-[1.5rem] bg-surface-container-low shadow-panel"></div>
+                  <div class="h-56 rounded-[1.5rem] bg-surface-container-low shadow-panel"></div>
+                </div>
               </div>
+            </div>
+
+            <div v-else class="settings-layout animate-pulse">
+              <aside class="settings-section-nav h-[42rem] bg-surface-container-low shadow-panel">
+                <div class="space-y-3 p-4">
+                  <div v-for="index in 8" :key="'settings-nav-' + index" class="h-14 rounded-xl bg-surface-container-high"></div>
+                </div>
+              </aside>
+              <section class="min-w-0 space-y-6">
+                <div class="h-40 rounded-[1.5rem] bg-surface-container-low shadow-panel"></div>
+                <div class="grid gap-6 md:grid-cols-2">
+                  <div v-for="index in 4" :key="'settings-panel-' + index" class="h-56 rounded-[1.5rem] bg-surface-container-low shadow-panel"></div>
+                </div>
+              </section>
             </div>
           </section>
           <section v-else-if="error" class="bg-error-container/25 p-10 shadow-panel">
@@ -1713,11 +1844,11 @@ export default {
           <dashboard-view v-else-if="activeView === 'dashboard'" display-mode="dashboard" :dives="committedDives" :all-dives="dives" :dive-sites="profileDiveSites" :stats="stats" :set-view="setView" :backend-healthy="backendHealthy" :open-dive="openDive" :current-user-name="currentUserName" :imported-dive-count="importedDiveCount" :open-import-queue="openImportQueue"></dashboard-view>
           <dashboard-view v-else-if="activeView === 'map'" display-mode="map" :dives="committedDives" :all-dives="dives" :dive-sites="profileDiveSites" :stats="stats" :set-view="setView" :backend-healthy="backendHealthy" :open-dive="openDive" :current-user-name="currentUserName" :imported-dive-count="importedDiveCount" :open-import-queue="openImportQueue"></dashboard-view>
           <logs-view v-else-if="activeView === 'logs' && !selectedDive" :dives="committedDives" :dive-sites="profileDiveSites" :logbook-display-fields="profileLogbookDisplayFields" :search-text="searchText" :open-dive="openDive" :open-import-queue="openImportQueue" :open-manual-dive="openManualDiveCreator" :set-search-text="setSearchText" :delete-dive="deleteDive" :deleting-dive-id="deletingDiveId" :status-message="importStatusMessage" :error-message="importError"></logs-view>
-          <manual-dive-entry-view v-else-if="activeView === 'create'" :draft="manualDiveDraft" :dive-sites="profileDiveSites" :buddies="profileBuddies" :guides="profileGuides" :equipment="equipment" :default-equipment-ids="defaultEquipmentIds" :equipment-selection-enabled="profileEquipmentSelectionEnabled" :creating="manualDiveCreating" :error-message="manualDiveError" :update-draft="updateManualDiveDraft" :create-manual-dive="createManualDive" :close-creator="closeManualDiveCreator" :create-dive-site="createDiveSite" :search-dive-site-location="searchDiveSiteLocation"></manual-dive-entry-view>
-          <dive-import-editor-view v-else-if="activeView === 'imports' && selectedImportDive" :dive="selectedImportDive" :draft="selectedImportDraft" :dive-sites="profileDiveSites" :buddies="profileBuddies" :guides="profileGuides" :equipment="equipment" :default-equipment-ids="defaultEquipmentIds" :equipment-selection-enabled="profileEquipmentSelectionEnabled" :saving-import-id="savingImportId" :bulk-import-save-pending="bulkImportSavePending" :deleting-dive-id="deletingDiveId" :import-error="importError" :import-status-message="importStatusMessage" :update-import-draft="updateImportDraft" :save-import-draft="saveImportDraft" :delete-dive="deleteDive" :apply-buddy-guide-to-pending-imports="applyBuddyGuideToPendingImports" :create-dive-site="createDiveSite" :back-to-queue="backToImportQueue"></dive-import-editor-view>
-          <dive-import-view v-else-if="activeView === 'imports'" :dives="dives" :import-drafts="importDrafts" :selected-import-id="selectedImportId" :select-import-dive="selectImportDive" :deleting-dive-id="deletingDiveId" :import-error="importError" :import-status-message="importStatusMessage" :delete-dive="deleteDive" :set-view="setView" :fetch-dives="fetchDives"></dive-import-view>
-          <logbook-editor-view v-else-if="activeView === 'edit' && selectedEditDive" :dive="selectedEditDive" :all-dives="dives" :draft="selectedEditDraft" :dive-sites="profileDiveSites" :buddies="profileBuddies" :guides="profileGuides" :equipment="equipment" :default-equipment-ids="defaultEquipmentIds" :equipment-selection-enabled="profileEquipmentSelectionEnabled" :saving-import-id="savingImportId" :deleting-dive-id="deletingDiveId" :status-message="importStatusMessage" :error-message="importError" :update-dive-draft="updateImportDraft" :save-dive-logbook="saveExistingDiveLogbook" :delete-dive="deleteDive" :create-dive-site="createDiveSite" :close-editor="closeDiveEditor"></logbook-editor-view>
-          <dive-detail-view v-else-if="activeView === 'logs' && selectedDive" :dive="selectedDive" :all-dives="dives" :deleting-dive-id="deletingDiveId" :close-detail="closeDiveDetail" :open-dive-editor="openDiveEditor" :delete-dive="deleteDive"></dive-detail-view>
+          <manual-dive-entry-view v-else-if="activeView === 'create'" :draft="manualDiveDraft" :required-logbook-fields="profileRequiredLogbookFields" :dive-sites="profileDiveSites" :buddies="profileBuddies" :guides="profileGuides" :equipment="equipment" :default-equipment-ids="defaultEquipmentIds" :equipment-selection-enabled="profileEquipmentSelectionEnabled" :creating="manualDiveCreating" :error-message="manualDiveError" :update-draft="updateManualDiveDraft" :create-manual-dive="createManualDive" :close-creator="closeManualDiveCreator" :create-dive-site="createDiveSite" :search-dive-site-location="searchDiveSiteLocation"></manual-dive-entry-view>
+          <dive-import-editor-view v-else-if="activeView === 'imports' && selectedImportDive" :dive="selectedImportDive" :draft="selectedImportDraft" :required-logbook-fields="profileRequiredLogbookFields" :dive-sites="profileDiveSites" :buddies="profileBuddies" :guides="profileGuides" :equipment="equipment" :default-equipment-ids="defaultEquipmentIds" :equipment-selection-enabled="profileEquipmentSelectionEnabled" :saving-import-id="savingImportId" :bulk-import-save-pending="bulkImportSavePending" :deleting-dive-id="deletingDiveId" :import-error="importError" :import-status-message="importStatusMessage" :update-import-draft="updateImportDraft" :save-import-draft="saveImportDraft" :delete-dive="deleteDive" :apply-buddy-guide-to-pending-imports="applyBuddyGuideToPendingImports" :create-dive-site="createDiveSite" :back-to-queue="backToImportQueue"></dive-import-editor-view>
+          <dive-import-view v-else-if="activeView === 'imports'" :dives="dives" :import-drafts="importDrafts" :required-logbook-fields="profileRequiredLogbookFields" :selected-import-id="selectedImportId" :select-import-dive="selectImportDive" :deleting-dive-id="deletingDiveId" :import-error="importError" :import-status-message="importStatusMessage" :delete-dive="deleteDive" :set-view="setView" :fetch-dives="fetchDives"></dive-import-view>
+          <logbook-editor-view v-else-if="activeView === 'edit' && selectedEditDive" :dive="selectedEditDive" :all-dives="dives" :draft="selectedEditDraft" :required-logbook-fields="profileRequiredLogbookFields" :dive-sites="profileDiveSites" :buddies="profileBuddies" :guides="profileGuides" :equipment="equipment" :default-equipment-ids="defaultEquipmentIds" :equipment-selection-enabled="profileEquipmentSelectionEnabled" :saving-import-id="savingImportId" :deleting-dive-id="deletingDiveId" :status-message="importStatusMessage" :error-message="importError" :update-dive-draft="updateImportDraft" :save-dive-logbook="saveExistingDiveLogbook" :delete-dive="deleteDive" :create-dive-site="createDiveSite" :close-editor="closeDiveEditor"></logbook-editor-view>
+          <dive-detail-view v-else-if="activeView === 'logs' && selectedDive" :dive="selectedDive" :all-dives="dives" :dive-sites="profileDiveSites" :deleting-dive-id="deletingDiveId" :close-detail="closeDiveDetail" :open-dive-editor="openDiveEditor" :delete-dive="deleteDive"></dive-detail-view>
           <equipment-view v-else-if="activeView === 'equipment'" :equipment="equipment" :search-text="searchText" :set-search-text="setSearchText" :saving="equipmentSaving" :status-message="equipmentStatusMessage" :error-message="equipmentError" :save-equipment="saveEquipment"></equipment-view>
           <settings-view v-else-if="activeView === 'settings'" :cli-auth-code="cliAuthCode" :active-section="activeSettingsSection" :set-active-section="setSettingsSection" :profile-updated="handleProfileUpdated" :refresh-dives="fetchDives" :open-import-queue="openImportQueue" :upload-csv-import="uploadCsvImport" :upload-subsurface-import="uploadSubsurfaceImport" :current-locale="i18nLocale" :set-locale="setLocale" :theme-preference="themePreference" :resolved-theme="resolvedTheme" :set-theme-preference="setThemePreference"></settings-view>
         </div>

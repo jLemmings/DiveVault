@@ -153,18 +153,20 @@ def test_csv_import_payloads_builds_pending_import_payloads():
     assert payload["raw_sha256"]
 
 
-def test_csv_import_payloads_keep_incomplete_rows_imported():
+def test_csv_import_payloads_allow_blank_buddy_and_guide_when_site_present():
     csv_text = "\n".join(
         [
             "started_at,duration_minutes,max_depth_m,site,buddy,guide",
-            "2026-05-01T08:30:00Z,42,18.6,House Reef,,Kai",
+            "2026-05-01T08:30:00Z,42,18.6,House Reef,,",
         ]
     )
 
     payloads = dive_backend.csv_import_payloads(csv_text)
 
-    assert payloads[0]["fields"]["logbook"]["status"] == "imported"
-    assert "completed_at" not in payloads[0]["fields"]["logbook"]
+    assert payloads[0]["fields"]["logbook"]["status"] == "complete"
+    assert payloads[0]["fields"]["logbook"]["completed_at"]
+    assert payloads[0]["fields"]["logbook"]["buddy"] == ""
+    assert payloads[0]["fields"]["logbook"]["guide"] == ""
 
 
 def test_csv_import_payloads_reports_row_errors():

@@ -2,11 +2,27 @@ function createEquipmentId() {
   return `equipment-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
+const EQUIPMENT_ICON_OPTIONS = [
+  { icon: "scuba_diving", label: "Diver" },
+  { icon: "air", label: "Regulator" },
+  { icon: "watch", label: "Computer" },
+  { icon: "water", label: "Fins" },
+  { icon: "backpack", label: "BCD" },
+  { icon: "opacity", label: "Tank" },
+  { icon: "visibility", label: "Mask" },
+  { icon: "fitness_center", label: "Weights" },
+  { icon: "flashlight_on", label: "Torch" },
+  { icon: "photo_camera", label: "Camera" },
+  { icon: "waves", label: "Exposure" },
+  { icon: "build", label: "Tools" }
+];
+
 function emptyEquipment() {
   return {
     id: createEquipmentId(),
     name: "",
     category: "Regulator",
+    icon: "scuba_diving",
     year_bought: "",
     vendor: "",
     brand: "",
@@ -29,6 +45,7 @@ function normalizeEquipment(items) {
     id: item?.id || `equipment-${index + 1}`,
     name: item?.name || [item?.brand, item?.vendor, item?.model, item?.category || item?.type].filter(Boolean).join(" "),
     category: item?.category || item?.type || "",
+    icon: item?.icon || "scuba_diving",
     year_bought: item?.year_bought ? String(item.year_bought) : "",
     vendor: item?.vendor || "",
     brand: item?.brand || "",
@@ -53,6 +70,7 @@ function equipmentPayload(item) {
     id: item.id,
     name: item.name.trim(),
     category: item.category.trim(),
+    icon: item.icon || "scuba_diving",
     type: item.category.trim(),
     year_bought: item.year_bought ? Number.parseInt(item.year_bought, 10) : null,
     vendor: item.vendor.trim(),
@@ -152,6 +170,9 @@ export default {
           return String(left.name || left.category || "").localeCompare(String(right.name || right.category || ""));
         })
         .slice(0, 6);
+    },
+    equipmentIconOptions() {
+      return EQUIPMENT_ICON_OPTIONS;
     }
   },
   methods: {
@@ -374,6 +395,24 @@ export default {
               <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Category</span>
               <input :value="editingItem.category" @input="updateItem(editingItem.id, 'category', $event.target.value)" class="settings-input" placeholder="Regulator" />
             </label>
+            <fieldset class="space-y-3 md:col-span-2">
+              <legend class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Icon</legend>
+              <div class="grid grid-cols-4 gap-2 md:grid-cols-6">
+                <button
+                  v-for="option in equipmentIconOptions"
+                  :key="'equipment-icon-' + option.icon"
+                  type="button"
+                  @click="updateItem(editingItem.id, 'icon', option.icon)"
+                  class="flex items-center gap-2 rounded-xl border px-3 py-2 text-left transition-colors"
+                  :class="editingItem.icon === option.icon ? 'border-primary bg-primary/15 text-primary' : 'border-primary/10 bg-background/20 text-on-surface-variant hover:border-primary/30 hover:text-primary'"
+                  :aria-pressed="editingItem.icon === option.icon"
+                  :title="option.label"
+                >
+                  <span class="material-symbols-outlined text-xl">{{ option.icon }}</span>
+                  <span class="truncate text-xs font-bold">{{ option.label }}</span>
+                </button>
+              </div>
+            </fieldset>
             <label class="space-y-2">
               <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Year Bought</span>
               <input :value="editingItem.year_bought" @input="updateItem(editingItem.id, 'year_bought', $event.target.value)" class="settings-input" placeholder="2024" />

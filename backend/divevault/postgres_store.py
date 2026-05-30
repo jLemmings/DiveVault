@@ -52,6 +52,7 @@ CREATE TABLE IF NOT EXISTS user_profile (
     public_dives_enabled BOOLEAN NOT NULL DEFAULT FALSE,
     public_slug TEXT NOT NULL DEFAULT '',
     logbook_display_fields_json JSONB NOT NULL DEFAULT '[]'::jsonb,
+    required_logbook_fields_json JSONB NOT NULL DEFAULT '["site"]'::jsonb,
     equipment_selection_enabled BOOLEAN NOT NULL DEFAULT TRUE,
     updated_at TEXT NOT NULL
 );
@@ -153,6 +154,7 @@ CREATE TABLE IF NOT EXISTS user_equipment (
     equipment_id TEXT NOT NULL,
     name TEXT NOT NULL DEFAULT '',
     category TEXT NOT NULL DEFAULT '',
+    icon TEXT NOT NULL DEFAULT '',
     type TEXT NOT NULL DEFAULT '',
     year_bought INTEGER,
     vendor TEXT NOT NULL DEFAULT '',
@@ -175,12 +177,22 @@ CREATE TABLE IF NOT EXISTS user_equipment (
 );
 """
 
-LOGBOOK_REQUIRED_FIELDS = ("site", "buddy", "guide")
+DEFAULT_LOGBOOK_REQUIRED_FIELDS = ("site",)
+LOGBOOK_REQUIRED_FIELD_OPTIONS = (
+    "site",
+    "buddy",
+    "guide",
+    "weather_description",
+    "visibility",
+    "wetsuit_description",
+    "weight_description",
+    "notes",
+)
 LOGBOOK_OPTIONAL_FIELDS = ("weather_description", "visibility", "wetsuit_description", "weight_description")
 LOGBOOK_DISPLAY_FIELD_OPTIONS = set(LOGBOOK_OPTIONAL_FIELDS)
 SAMPLE_TIME_UNIT_SECONDS = "seconds"
 SAMPLE_TIME_UNIT_MILLISECONDS = "milliseconds"
-CURRENT_SCHEMA_VERSION = 12
+CURRENT_SCHEMA_VERSION = 14
 SCHEMA_VERSION_SQL = """
 CREATE TABLE IF NOT EXISTS app_schema_version (
     singleton BOOLEAN PRIMARY KEY DEFAULT TRUE CHECK (singleton),
@@ -609,6 +621,7 @@ def apply_schema_migration_v9(cur: psycopg.Cursor) -> None:
             equipment_id TEXT NOT NULL,
             name TEXT NOT NULL DEFAULT '',
             category TEXT NOT NULL DEFAULT '',
+            icon TEXT NOT NULL DEFAULT '',
             type TEXT NOT NULL DEFAULT '',
             year_bought INTEGER,
             vendor TEXT NOT NULL DEFAULT '',
@@ -658,6 +671,16 @@ def apply_schema_migration_v12(cur: psycopg.Cursor) -> None:
     cur.execute("UPDATE user_equipment SET service_tag='' WHERE service_tag IS NULL")
 
 
+def apply_schema_migration_v13(cur: psycopg.Cursor) -> None:
+    cur.execute("ALTER TABLE user_profile ADD COLUMN IF NOT EXISTS required_logbook_fields_json JSONB NOT NULL DEFAULT '[\"site\"]'::jsonb")
+    cur.execute("UPDATE user_profile SET required_logbook_fields_json='[\"site\"]'::jsonb WHERE required_logbook_fields_json IS NULL")
+
+
+def apply_schema_migration_v14(cur: psycopg.Cursor) -> None:
+    cur.execute("ALTER TABLE user_equipment ADD COLUMN IF NOT EXISTS icon TEXT NOT NULL DEFAULT ''")
+    cur.execute("UPDATE user_equipment SET icon='' WHERE icon IS NULL")
+
+
 def _run_schema_migrations(conn: psycopg.Connection, cur: psycopg.Cursor, current_version: int) -> int:
     migrations: tuple[tuple[int, Callable[[psycopg.Connection, psycopg.Cursor], None]], ...] = (
         (1, lambda _conn, migration_cur: apply_schema_migration_v1(migration_cur)),
@@ -672,6 +695,8 @@ def _run_schema_migrations(conn: psycopg.Connection, cur: psycopg.Cursor, curren
         (10, lambda _conn, migration_cur: apply_schema_migration_v10(migration_cur)),
         (11, lambda _conn, migration_cur: apply_schema_migration_v11(migration_cur)),
         (12, lambda _conn, migration_cur: apply_schema_migration_v12(migration_cur)),
+        (13, lambda _conn, migration_cur: apply_schema_migration_v13(migration_cur)),
+        (14, lambda _conn, migration_cur: apply_schema_migration_v14(migration_cur)),
     )
     target_schema_version = min(CURRENT_SCHEMA_VERSION, max(version for version, _ in migrations))
 
@@ -925,6 +950,7 @@ def normalize_equipment_item(entry: dict | None) -> dict:
         "id": clean_profile_text(source.get("id") or source.get("equipment_id")),
         "name": name,
         "category": category,
+        "icon": clean_profile_text(source.get("icon")),
         "type": category,
         "year_bought": clean_optional_int(source.get("year_bought"), minimum=1900, maximum=2200),
         "vendor": clean_profile_text(source.get("vendor")),
@@ -964,6 +990,7 @@ def equipment_has_values(entry: dict | None) -> bool:
             "service_interval_months",
             "max_dives_before_service",
             "service_tag",
+            "icon",
         )
     ) or normalized.get("is_default")
 
@@ -1292,6 +1319,26 @@ def normalize_logbook_display_fields(entries: object) -> list[str]:
     return normalized
 
 
+def normalize_required_logbook_fields(entries: object) -> list[str]:
+    if isinstance(entries, str):
+        try:
+            entries = json.loads(entries)
+        except json.JSONDecodeError:
+            return list(DEFAULT_LOGBOOK_REQUIRED_FIELDS)
+    if not isinstance(entries, list):
+        return list(DEFAULT_LOGBOOK_REQUIRED_FIELDS)
+
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for entry in entries:
+        value = clean_profile_text(entry)
+        if value not in LOGBOOK_REQUIRED_FIELD_OPTIONS or value in seen:
+            continue
+        seen.add(value)
+        normalized.append(value)
+    return normalized or list(DEFAULT_LOGBOOK_REQUIRED_FIELDS)
+
+
 def decode_profile_collection(value: object) -> list[dict]:
     if isinstance(value, str):
         try:
@@ -1618,6 +1665,7 @@ def normalize_logbook_equipment_snapshot(entries: object) -> list[dict]:
                 "id": equipment_id,
                 "name": clean_profile_text(entry.get("name")),
                 "category": clean_profile_text(entry.get("category") or entry.get("type")),
+                "icon": clean_profile_text(entry.get("icon")),
                 "service_status": clean_profile_text(entry.get("service_status")),
                 "service_due_date": clean_profile_text(entry.get("service_due_date")),
                 "last_service_date": clean_profile_text(entry.get("last_service_date")),
@@ -1811,6 +1859,15 @@ def insert_dive_record(conn: psycopg.Connection, user_id: str, payload: dict) ->
     equipment = list_user_equipment(conn, user_id)
     fields_source = apply_default_equipment_to_fields(fields_source, equipment)
     fields = normalize_dive_fields(fields_source, samples=samples, duration_seconds=duration_seconds)
+    with conn.cursor() as cur:
+        cur.execute("SELECT required_logbook_fields_json FROM user_profile WHERE user_id=%s", (user_id,))
+        profile_row = cur.fetchone() or {}
+    required_fields = normalize_required_logbook_fields(profile_row.get("required_logbook_fields_json"))
+    logbook = fields.get("logbook") if isinstance(fields.get("logbook"), dict) else {}
+    if logbook.get("status") == "complete" and any(not clean_logbook_text(logbook.get(key)) for key in required_fields):
+        logbook["status"] = "imported"
+        logbook.pop("completed_at", None)
+        fields["logbook"] = logbook
     if fields.get("logbook", {}).get("status") == "complete":
         equipment_snapshot, _invalid_equipment = equipment_snapshot_for_dive(
             equipment,
@@ -1968,6 +2025,7 @@ def equipment_snapshot_for_dive(equipment: list[dict], equipment_ids: list[str],
             "id": equipment_id,
             "name": clean_profile_text(item.get("name")) or clean_profile_text(item.get("brand")) or clean_profile_text(item.get("category")) or equipment_id,
             "category": clean_profile_text(item.get("category") or item.get("type")),
+            "icon": clean_profile_text(item.get("icon")),
             "last_service_date": clean_profile_text(item.get("last_service_date") or item.get("last_serviced_at")),
             **service,
         }
@@ -1982,7 +2040,7 @@ def list_user_equipment(conn: psycopg.Connection, user_id: str) -> list[dict]:
     with conn.cursor() as cur:
         cur.execute(
             """
-            SELECT equipment_id, name, category, type, year_bought, vendor, brand, model, serial, warranty, next_service_due,
+            SELECT equipment_id, name, category, icon, type, year_bought, vendor, brand, model, serial, warranty, next_service_due,
                    service_interval_months, last_service_date, max_dives_before_service, track_service, service_tag, is_default, is_standard,
                    last_serviced_at, last_service_dive_count, updated_at
             FROM user_equipment
@@ -1999,6 +2057,7 @@ def list_user_equipment(conn: psycopg.Connection, user_id: str) -> list[dict]:
                 "id": row.get("equipment_id"),
                 "name": row.get("name"),
                 "category": row.get("category"),
+                "icon": row.get("icon"),
                 "type": row.get("type"),
                 "year_bought": row.get("year_bought"),
                 "vendor": row.get("vendor"),
@@ -2041,17 +2100,18 @@ def save_user_equipment(conn: psycopg.Connection, user_id: str, entries: object)
             cur.execute(
                 """
                 INSERT INTO user_equipment(
-                    user_id, equipment_id, name, category, type, year_bought, vendor, brand, model, serial, warranty,
+                    user_id, equipment_id, name, category, icon, type, year_bought, vendor, brand, model, serial, warranty,
                     next_service_due, service_interval_months, last_service_date, max_dives_before_service, track_service, service_tag,
                     is_default, is_standard, last_serviced_at, last_service_dive_count, updated_at
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """,
                 (
                     user_id,
                     item["id"],
                     item["name"],
                     item["category"],
+                    item["icon"],
                     item["type"],
                     item["year_bought"],
                     item["vendor"],
@@ -2338,6 +2398,7 @@ def empty_user_profile() -> dict:
         "public_dives_enabled": False,
         "public_slug": "",
         "logbook_display_fields": [],
+        "required_logbook_fields": list(DEFAULT_LOGBOOK_REQUIRED_FIELDS),
         "equipment_selection_enabled": True,
         "licenses": [],
         "dive_sites": [],
@@ -2388,6 +2449,7 @@ def decode_user_profile_row(
         "public_dives_enabled": clean_profile_bool(row.get("public_dives_enabled")),
         "public_slug": clean_profile_text(row.get("public_slug")),
         "logbook_display_fields": normalize_logbook_display_fields(row.get("logbook_display_fields_json")),
+        "required_logbook_fields": normalize_required_logbook_fields(row.get("required_logbook_fields_json")),
         "equipment_selection_enabled": clean_profile_bool(row.get("equipment_selection_enabled")) if row.get("equipment_selection_enabled") is not None else True,
         "licenses": hydrated_licenses,
         "dive_sites": normalized_dive_sites,
@@ -2451,6 +2513,7 @@ def save_user_profile(conn: psycopg.Connection, user_id: str, payload: dict | No
         existing_public_dives_enabled = clean_profile_bool(existing.get("public_dives_enabled"))
         existing_public_slug = clean_profile_text(existing.get("public_slug"))
         existing_logbook_display_fields = normalize_logbook_display_fields(existing.get("logbook_display_fields_json"))
+        existing_required_logbook_fields = normalize_required_logbook_fields(existing.get("required_logbook_fields_json"))
         existing_equipment_selection_enabled = clean_profile_bool(existing.get("equipment_selection_enabled")) if existing.get("equipment_selection_enabled") is not None else True
         existing_licenses, existing_dive_sites, existing_buddies, existing_guides = resolve_user_profile_collections(
             conn, user_id, existing
@@ -2459,6 +2522,11 @@ def save_user_profile(conn: psycopg.Connection, user_id: str, payload: dict | No
             normalize_logbook_display_fields(source.get("logbook_display_fields"))
             if "logbook_display_fields" in source
             else existing_logbook_display_fields
+        )
+        required_logbook_fields = (
+            normalize_required_logbook_fields(source.get("required_logbook_fields"))
+            if "required_logbook_fields" in source
+            else existing_required_logbook_fields
         )
         licenses = normalize_profile_licenses(source.get("licenses")) if "licenses" in source else existing_licenses
         dive_sites = normalize_profile_dive_sites(source.get("dive_sites")) if "dive_sites" in source else existing_dive_sites
@@ -2472,9 +2540,9 @@ def save_user_profile(conn: psycopg.Connection, user_id: str, payload: dict | No
         cur.execute(
             """
             INSERT INTO user_profile(
-                user_id, name, email, public_dives_enabled, public_slug, logbook_display_fields_json, equipment_selection_enabled, updated_at
+                user_id, name, email, public_dives_enabled, public_slug, logbook_display_fields_json, required_logbook_fields_json, equipment_selection_enabled, updated_at
             )
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT (user_id)
             DO UPDATE SET
                 name=excluded.name,
@@ -2482,6 +2550,7 @@ def save_user_profile(conn: psycopg.Connection, user_id: str, payload: dict | No
                 public_dives_enabled=excluded.public_dives_enabled,
                 public_slug=excluded.public_slug,
                 logbook_display_fields_json=excluded.logbook_display_fields_json,
+                required_logbook_fields_json=excluded.required_logbook_fields_json,
                 equipment_selection_enabled=excluded.equipment_selection_enabled,
                 updated_at=excluded.updated_at
             """,
@@ -2492,6 +2561,7 @@ def save_user_profile(conn: psycopg.Connection, user_id: str, payload: dict | No
                 public_dives_enabled,
                 public_slug,
                 Jsonb(logbook_display_fields),
+                Jsonb(required_logbook_fields),
                 equipment_selection_enabled,
                 updated_at,
             ),
@@ -2599,12 +2669,18 @@ def delete_dive(conn: psycopg.Connection, user_id: str, dive_id: int) -> bool:
     return deleted
 
 
-def sanitize_logbook_payload(payload: dict | None, existing_logbook: dict | None = None) -> dict:
+def sanitize_logbook_payload(
+    payload: dict | None,
+    existing_logbook: dict | None = None,
+    *,
+    required_fields: object = None,
+) -> dict:
     source = payload or {}
     if isinstance(source.get("logbook"), dict):
         source = source["logbook"]
     commit = bool((payload or {}).get("commit"))
     existing = normalize_logbook(existing_logbook)
+    normalized_required_fields = normalize_required_logbook_fields(required_fields)
 
     logbook = {
         "site": clean_logbook_text(source.get("site")),
@@ -2621,7 +2697,7 @@ def sanitize_logbook_payload(payload: dict | None, existing_logbook: dict | None
         "status": "imported",
     }
 
-    if all(logbook[key] for key in LOGBOOK_REQUIRED_FIELDS) and (commit or existing.get("status") == "complete"):
+    if all(logbook[key] for key in normalized_required_fields) and (commit or existing.get("status") == "complete"):
         logbook["status"] = "complete"
         existing_completed_at = existing.get("completed_at") or source.get("completed_at")
         logbook["completed_at"] = existing_completed_at if isinstance(existing_completed_at, str) and existing_completed_at else now_iso()
@@ -2673,7 +2749,10 @@ def update_dive_logbook(conn: psycopg.Connection, user_id: str, dive_id: int, pa
         if isinstance(samples, str):
             samples = json.loads(samples)
         fields = normalize_dive_fields(fields, samples=samples, duration_seconds=resolve_duration_seconds(row))
-        fields["logbook"] = sanitize_logbook_payload(payload, fields.get("logbook"))
+        cur.execute("SELECT required_logbook_fields_json FROM user_profile WHERE user_id=%s", (user_id,))
+        profile_row = cur.fetchone() or {}
+        required_fields = normalize_required_logbook_fields(profile_row.get("required_logbook_fields_json"))
+        fields["logbook"] = sanitize_logbook_payload(payload, fields.get("logbook"), required_fields=required_fields)
         equipment_ids = fields["logbook"].get("equipment_ids") or []
         equipment_snapshot, _invalid_equipment = equipment_snapshot_for_dive(list_user_equipment(conn, user_id), equipment_ids, row.get("started_at"))
         fields["logbook"]["equipment_snapshot"] = equipment_snapshot

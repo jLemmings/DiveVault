@@ -61,6 +61,7 @@ export default {
   props: [
     "dive",
     "draft",
+    "requiredLogbookFields",
     "diveSites",
     "buddies",
     "guides",
@@ -98,13 +99,13 @@ export default {
       return this.draft || null;
     },
     completionPercent() {
-      return this.selectedDraft ? importCompletionPercent(this.selectedDraft) : 0;
+      return this.selectedDraft ? importCompletionPercent(this.selectedDraft, this.requiredLogbookFields) : 0;
     },
     isCommittedRecord() {
       return this.dive ? isCommittedDive(this.dive) : false;
     },
     missingFields() {
-      return this.selectedDraft ? missingImportFields(this.selectedDraft) : [];
+      return this.selectedDraft ? missingImportFields(this.selectedDraft, this.requiredLogbookFields) : [];
     },
     canEditTankPressure() {
       return this.dive ? !hasRecordedPressureSamples(this.dive) : false;
@@ -185,7 +186,9 @@ export default {
     formatDurationShort: durationShort,
     formatTemperature,
     importTemperature,
-    canCompleteImport,
+    canCompleteImport(logbook) {
+      return canCompleteImport(logbook, this.requiredLogbookFields);
+    },
     updateField(key, value) {
       if (!this.dive) return;
       this.updateImportDraft(this.dive.id, key, value);
@@ -257,11 +260,11 @@ export default {
     },
     requiredChecklist(logbook) {
       const draft = logbook || {};
-      const missingKeys = new Set(missingImportFields(draft).map((field) => field.key));
+      const missingKeys = new Set(missingImportFields(draft, this.requiredLogbookFields).map((field) => field.key));
       return [
         { key: "site", label: this.t("Dive Site", "Dive Site"), value: draft.site || this.t("importEdit.required.site", "Required before logbook entry"), complete: !missingKeys.has("site"), icon: missingKeys.has("site") ? "location_off" : "task_alt" },
-        { key: "buddy", label: this.t("Buddy", "Buddy"), value: draft.buddy || this.t("importEdit.required.buddy", "Buddy name required"), complete: !missingKeys.has("buddy"), icon: missingKeys.has("buddy") ? "person_off" : "task_alt" },
-        { key: "guide", label: this.t("Guide", "Guide"), value: draft.guide || this.t("importEdit.required.guide", "Guide or instructor required"), complete: !missingKeys.has("guide"), icon: missingKeys.has("guide") ? "badge" : "task_alt" }
+        { key: "buddy", label: this.t("Buddy", "Buddy"), value: draft.buddy || this.t("Optional", "Optional"), complete: true, icon: "task_alt" },
+        { key: "guide", label: this.t("Guide", "Guide"), value: draft.guide || this.t("Optional", "Optional"), complete: true, icon: "task_alt" }
       ];
     },
     summaryCards(dive) {
@@ -591,7 +594,7 @@ export default {
             <section class="space-y-6 bg-surface-container-low p-8 shadow-panel">
               <div class="space-y-2">
                 <p class="font-label text-[10px] font-bold uppercase tracking-[0.2em] text-primary">Metadata Fields</p>
-                <p class="text-sm leading-7 text-on-surface-variant">Save partial progress at any time. Commit becomes available once dive site, buddy, and guide are complete.</p>
+                <p class="text-sm leading-7 text-on-surface-variant">Save partial progress at any time. Commit becomes available once the dive site is complete. Buddy and guide can stay blank.</p>
               </div>
 
               <label class="block space-y-2">

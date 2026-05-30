@@ -154,6 +154,9 @@ def server_fixture(monkeypatch):
             "email": "diver@example.com",
             "public_dives_enabled": True,
             "public_slug": "elias-thorne",
+            "logbook_display_fields": [],
+            "required_logbook_fields": ["site"],
+            "equipment_selection_enabled": True,
             "dive_sites": [
                 {
                     "id": "site-1",
@@ -344,6 +347,12 @@ def server_fixture(monkeypatch):
                 next_profile[key] = payload[key]
         if "public_dives_enabled" in (payload or {}):
             next_profile["public_dives_enabled"] = bool(payload["public_dives_enabled"])
+        if isinstance((payload or {}).get("logbook_display_fields"), list):
+            next_profile["logbook_display_fields"] = payload["logbook_display_fields"]
+        if isinstance((payload or {}).get("required_logbook_fields"), list):
+            next_profile["required_logbook_fields"] = payload["required_logbook_fields"]
+        if "equipment_selection_enabled" in (payload or {}):
+            next_profile["equipment_selection_enabled"] = bool(payload["equipment_selection_enabled"])
         if isinstance((payload or {}).get("dive_sites"), list):
             next_profile["dive_sites"] = payload["dive_sites"]
         if isinstance((payload or {}).get("buddies"), list):
@@ -1174,10 +1183,12 @@ def test_post_and_put_endpoints(server_fixture):
         "PUT",
         "/api/dives/1/logbook",
         token="session",
-        payload={"site": "Blue Hole", "buddy": "Sam", "guide": "Kai", "tank_volume_l": 12},
+        payload={"commit": True, "site": "Blue Hole", "buddy": "", "guide": "", "tank_volume_l": 12},
     )
     assert update_logbook.status == 200
     assert update_logbook.json()["fields"]["logbook"]["site"] == "Blue Hole"
+    assert update_logbook.json()["fields"]["logbook"]["buddy"] == ""
+    assert update_logbook.json()["fields"]["logbook"]["guide"] == ""
     assert update_logbook.json()["fields"]["tanks"][0]["volume"] == 12.0
 
     missing_logbook_dive = request(server, "PUT", "/api/dives/999/logbook", token="session", payload={"site": "X"})
@@ -1202,6 +1213,7 @@ def test_post_and_put_endpoints(server_fixture):
         "/api/profile",
         token="session",
         payload={
+            "required_logbook_fields": ["site", "buddy"],
             "dive_sites": [
                 {
                     "id": "site-1",
@@ -1261,6 +1273,7 @@ def test_post_and_put_endpoints(server_fixture):
         },
     )
     assert update_profile.status == 200
+    assert update_profile.json()["required_logbook_fields"] == ["site", "buddy"]
     assert len(update_profile.json()["dive_sites"]) == 2
     assert update_profile.json()["dive_sites"][1]["name"] == "House Reef"
     assert update_profile.json()["dive_sites"][1]["location"] == "House Reef, Marsa Alam, Egypt"

@@ -1,3 +1,4 @@
+import { logbookRequirementFieldOptions, missingImportFields } from "../core.js";
 import MetadataAutocompleteField from "./metadata-autocomplete.js";
 
 function emptyDiveSiteDraft(name = "") {
@@ -65,6 +66,7 @@ export default {
   },
   props: [
     "draft",
+    "requiredLogbookFields",
     "diveSites",
     "buddies",
     "guides",
@@ -136,9 +138,19 @@ export default {
       if (beginPressureValue && (!Number.isFinite(beginPressure) || beginPressure < 0 || beginPressure > 400)) issues.push("Entry tank pressure must be between 0 and 400 bar.");
       if (endPressureValue && (!Number.isFinite(endPressure) || endPressure < 0 || endPressure > 400)) issues.push("Exit tank pressure must be between 0 and 400 bar.");
       if (beginPressure !== null && endPressure !== null && endPressure > beginPressure) issues.push("Exit tank pressure cannot be higher than entry tank pressure.");
-      if (!String(this.draft?.site || "").trim()) issues.push("Dive site is required.");
-      if (!String(this.draft?.buddy || "").trim()) issues.push("Buddy is required.");
-      if (!String(this.draft?.guide || "").trim()) issues.push("Guide is required.");
+      for (const field of missingImportFields({
+        site: this.draft?.site,
+        buddy: this.draft?.buddy,
+        guide: this.draft?.guide,
+        weather_description: this.draft?.weatherDescription,
+        visibility: this.draft?.visibility,
+        wetsuit_description: this.draft?.wetsuitDescription,
+        weight_description: this.draft?.weightDescription,
+        notes: this.draft?.notes
+      }, this.requiredLogbookFields)) {
+        const option = logbookRequirementFieldOptions.find((entry) => entry.key === field.key) || field;
+        issues.push(`${option.label} is required.`);
+      }
       return issues;
     },
     canSubmit() {

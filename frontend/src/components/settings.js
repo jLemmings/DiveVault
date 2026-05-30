@@ -1,4 +1,5 @@
 import { useAuth, useUser } from "../auth.js";
+import { logbookRequirementFieldOptions, normalizeRequiredLogbookFields } from "../core.js";
 import { getDocument, GlobalWorkerOptions } from "pdfjs-dist";
 import pdfWorkerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 import { MESSAGES } from "../i18n/index.js";
@@ -175,6 +176,7 @@ function emptyProfile() {
     public_dives_enabled: false,
     public_slug: "",
     logbook_display_fields: [],
+    required_logbook_fields: ["site"],
     equipment_selection_enabled: true,
     licenses: [],
     dive_sites: [],
@@ -190,6 +192,7 @@ function cloneProfile(profile = {}) {
     public_dives_enabled: Boolean(profile?.public_dives_enabled),
     public_slug: profile?.public_slug || "",
     logbook_display_fields: Array.isArray(profile?.logbook_display_fields) ? [...profile.logbook_display_fields] : [],
+    required_logbook_fields: normalizeRequiredLogbookFields(profile?.required_logbook_fields),
     equipment_selection_enabled: profile?.equipment_selection_enabled !== false,
     licenses: cloneLicenses(profile?.licenses),
     dive_sites: cloneDiveSites(profile?.dive_sites),
@@ -855,6 +858,7 @@ export default {
         public_dives_enabled: Boolean(payload?.public_dives_enabled),
         public_slug: payload?.public_slug || "",
         logbook_display_fields: Array.isArray(payload?.logbook_display_fields) ? payload.logbook_display_fields : [],
+        required_logbook_fields: normalizeRequiredLogbookFields(payload?.required_logbook_fields),
         equipment_selection_enabled: payload?.equipment_selection_enabled !== false,
         licenses: normalizeLicenses(payload?.licenses),
         dive_sites: normalizeDiveSites(payload?.dive_sites),
@@ -919,6 +923,23 @@ export default {
         { key: "weight_description", label: this.t("settings.logLayout.weights", "Weights"), detail: this.t("settings.logLayout.weights.detail", "Show weight configuration notes in log rows.") }
       ];
     },
+    requiredLogbookFieldOptions() {
+      const detailByKey = {
+        site: this.t("settings.requiredLogbook.site.detail", "Require a dive site before a log entry can be completed."),
+        buddy: this.t("settings.requiredLogbook.buddy.detail", "Require a named buddy before a log entry can be completed."),
+        guide: this.t("settings.requiredLogbook.guide.detail", "Require a guide or instructor before a log entry can be completed."),
+        weather_description: this.t("settings.requiredLogbook.weather.detail", "Require weather notes before a log entry can be completed."),
+        visibility: this.t("settings.requiredLogbook.visibility.detail", "Require visibility notes before a log entry can be completed."),
+        wetsuit_description: this.t("settings.requiredLogbook.wetsuit.detail", "Require exposure protection notes before a log entry can be completed."),
+        weight_description: this.t("settings.requiredLogbook.weights.detail", "Require weight configuration notes before a log entry can be completed."),
+        notes: this.t("settings.requiredLogbook.notes.detail", "Require general dive notes before a log entry can be completed.")
+      };
+      return logbookRequirementFieldOptions.map((field) => ({
+        ...field,
+        label: this.t(`settings.requiredLogbook.${field.key}`, field.label),
+        detail: detailByKey[field.key] || ""
+      }));
+    },
     logbookFieldEnabled(fieldKey) {
       return Array.isArray(this.settingsProfile.logbook_display_fields)
         && this.settingsProfile.logbook_display_fields.includes(fieldKey);
@@ -931,6 +952,25 @@ export default {
       this.settingsProfile = this.hydrateProfile({
         ...this.settingsProfile,
         logbook_display_fields: ordered
+      });
+    },
+    requiredLogbookFieldEnabled(fieldKey) {
+      return Array.isArray(this.settingsProfile.required_logbook_fields)
+        && this.settingsProfile.required_logbook_fields.includes(fieldKey);
+    },
+    toggleRequiredLogbookField(fieldKey) {
+      const active = new Set(normalizeRequiredLogbookFields(this.settingsProfile.required_logbook_fields));
+      if (fieldKey === "site") {
+        active.add("site");
+      } else if (active.has(fieldKey)) {
+        active.delete(fieldKey);
+      } else {
+        active.add(fieldKey);
+      }
+      const ordered = this.requiredLogbookFieldOptions().map((option) => option.key).filter((key) => active.has(key));
+      this.settingsProfile = this.hydrateProfile({
+        ...this.settingsProfile,
+        required_logbook_fields: ordered
       });
     },
     toggleEquipmentSelectionEnabled() {
@@ -1473,6 +1513,7 @@ export default {
             name: this.profileDraft.name,
             email: this.profileDraft.email,
             logbook_display_fields: this.settingsProfile.logbook_display_fields,
+            required_logbook_fields: this.settingsProfile.required_logbook_fields,
             equipment_selection_enabled: this.settingsProfile.equipment_selection_enabled,
             licenses: this.settingsProfile.licenses.map(editableLicensePayload),
             dive_sites: this.settingsProfile.dive_sites.map(editableDiveSitePayload),
@@ -2575,6 +2616,28 @@ export default {
                   <p class="mt-1 text-sm leading-6 text-secondary">{{ t('settings.logLayout.equipmentSelector.detail', 'Show an optional equipment area when creating or completing dive logs. Service warnings are informational and do not block saving.') }}</p>
                 </div>
               </label>
+
+              <div class="mt-8 border-t border-primary/10 pt-6">
+                <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                  <div>
+                    <h5 class="font-headline text-2xl font-bold tracking-tight text-on-surface">{{ t('settings.requiredLogbook.heading', 'Mandatory Logbook Fields') }}</h5>
+                    <p class="mt-2 max-w-3xl text-sm leading-7 text-secondary">{{ t('settings.requiredLogbook.copy', 'Choose which logbook fields must be filled before manual dives, imported dives, or existing dive edits can be completed.') }}</p>
+                  </div>
+                  <div class="settings-chip is-accent">
+                    {{ settingsProfile.required_logbook_fields.length }} {{ t('Required', 'Required') }}
+                  </div>
+                </div>
+
+                <div class="mt-6 grid gap-4 lg:grid-cols-4">
+                  <label v-for="option in requiredLogbookFieldOptions()" :key="'required-logbook-field-' + option.key" class="flex items-start gap-4 rounded-2xl border border-primary/10 bg-background/20 px-4 py-4">
+                    <input :checked="requiredLogbookFieldEnabled(option.key)" :disabled="option.key === 'site'" @change="toggleRequiredLogbookField(option.key)" type="checkbox" class="mt-1 h-5 w-5 rounded border-primary/20 bg-surface-container-high text-primary focus:ring-primary/30 disabled:opacity-60" />
+                    <div>
+                      <p class="text-sm font-semibold text-on-surface">{{ option.label }}</p>
+                      <p class="mt-1 text-sm leading-6 text-secondary">{{ option.detail }}</p>
+                    </div>
+                  </label>
+                </div>
+              </div>
 
               <div class="mt-5 flex justify-end">
                 <button @click="saveProfile" :disabled="profileSaving" class="settings-button settings-button-primary">

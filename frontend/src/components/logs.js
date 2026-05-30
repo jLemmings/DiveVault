@@ -10,6 +10,12 @@ export default {
       sortDirection: "desc",
       mobileControlsOpen: false,
       currentPage: 1,
+      siteFilters: [],
+      buddyFilters: [],
+      guideFilters: [],
+      siteFilterOpen: false,
+      buddyFilterOpen: false,
+      guideFilterOpen: false,
       pageSize: 10,
       pageSizeOptions: [5, 10, 20, 50]
     };
@@ -24,6 +30,24 @@ export default {
     sortDirection() {
       this.currentPage = 1;
     },
+    siteFilters: {
+      deep: true,
+      handler() {
+        this.currentPage = 1;
+      }
+    },
+    buddyFilters: {
+      deep: true,
+      handler() {
+        this.currentPage = 1;
+      }
+    },
+    guideFilters: {
+      deep: true,
+      handler() {
+        this.currentPage = 1;
+      }
+    },
     pageSize() {
       this.currentPage = 1;
     }
@@ -37,15 +61,23 @@ export default {
       const filtered = this.dives.filter((dive) => {
         const device = diveDeviceLabel(dive);
         const site = this.diveSiteLabel(dive);
+        const draft = importDraftSeed(dive);
+        const buddy = typeof draft.buddy === "string" ? draft.buddy.trim() : "";
+        const guide = typeof draft.guide === "string" ? draft.guide.trim() : "";
         const matchesSearch = !search || [
           device,
           site,
+          buddy,
+          guide,
           dive.vendor,
           dive.product,
           dive.raw_sha256,
           formatDate(dive.started_at)
         ].join(" ").toLowerCase().includes(search);
-        return matchesSearch;
+        const matchesSite = !this.siteFilters.length || this.siteFilters.includes(site);
+        const matchesBuddy = !this.buddyFilters.length || this.buddyFilters.includes(buddy);
+        const matchesGuide = !this.guideFilters.length || this.guideFilters.includes(guide);
+        return matchesSearch && matchesSite && matchesBuddy && matchesGuide;
       });
       const sorted = [...filtered];
       sorted.sort((left, right) => {
@@ -77,11 +109,30 @@ export default {
         { key: "date", label: "Date" },
         { key: "id", label: "Dive Number" },
         { key: "depth", label: "Max Depth" },
+        { key: "duration", label: "Duration" },
         { key: "barUsed", label: "Bar Used" }
       ];
     },
     activeSortLabel() {
       return this.mobileSortOptions.find((option) => option.key === this.sortKey)?.label || "Date";
+    },
+    siteFilterOptions() {
+      const seen = new Set();
+      return this.dives
+        .map((dive) => this.diveSiteLabel(dive))
+        .filter((value) => {
+          const normalized = value.toLowerCase();
+          if (!normalized || value === "Site pending" || seen.has(normalized)) return false;
+          seen.add(normalized);
+          return true;
+        })
+        .sort((left, right) => left.localeCompare(right, undefined, { sensitivity: "base", numeric: true }));
+    },
+    buddyFilterOptions() {
+      return this.namedLogbookOptions("buddy");
+    },
+    guideFilterOptions() {
+      return this.namedLogbookOptions("guide");
     }
   },
   methods: {
@@ -92,11 +143,8 @@ export default {
       return [
         { key: "buddy", label: this.t("Buddy", "Buddy"), icon: "diversity_3" },
         { key: "guide", label: this.t("Guide", "Guide"), icon: "badge" },
-        { key: "weather_description", label: this.t("Weather", "Weather"), icon: "partly_cloudy_day" },
-        { key: "visibility", label: this.t("Visibility", "Visibility"), icon: "visibility" },
         { key: "wetsuit_description", label: this.t("Suit", "Suit"), icon: "checkroom" },
-        { key: "weight_description", label: this.t("Weights", "Weights"), icon: "fitness_center" },
-        { key: "notes", label: this.t("Notes", "Notes"), icon: "notes" }
+        { key: "weight_description", label: this.t("Weights", "Weights"), icon: "fitness_center" }
       ];
     },
     compareDives(left, right) {
@@ -110,6 +158,8 @@ export default {
       if (this.sortKey === "barUsed") return this.barUsedValue(left) - this.barUsedValue(right);
       if (this.sortKey === "temp") return this.temperatureValue(left) - this.temperatureValue(right);
       if (this.sortKey === "site") return this.compareText(this.diveSiteLabel(left), this.diveSiteLabel(right));
+      if (this.sortKey === "buddy") return this.compareText(importDraftSeed(left).buddy, importDraftSeed(right).buddy);
+      if (this.sortKey === "guide") return this.compareText(importDraftSeed(left).guide, importDraftSeed(right).guide);
       if (this.sortKey === "device") return this.compareText(this.diveDeviceLabel(left), this.diveDeviceLabel(right));
       if (this.sortKey === "computer") return this.compareText(this.diveComputerLabel(left), this.diveComputerLabel(right));
       const leftTime = parseDate(left.started_at)?.getTime() || 0;
@@ -119,6 +169,30 @@ export default {
     compareText(left, right) {
       return String(left || "").localeCompare(String(right || ""), undefined, { sensitivity: "base" });
     },
+    namedLogbookOptions(key) {
+      const seen = new Set();
+      return this.dives
+        .map((dive) => {
+          const value = importDraftSeed(dive)?.[key];
+          return typeof value === "string" ? value.trim() : "";
+        })
+        .filter((value) => {
+          const normalized = value.toLowerCase();
+          if (!normalized || seen.has(normalized)) return false;
+          seen.add(normalized);
+          return true;
+        })
+        .sort((left, right) => left.localeCompare(right, undefined, { sensitivity: "base", numeric: true }));
+    },
+    toggleNamedFilter(filterKey, value) {
+      const current = Array.isArray(this[filterKey]) ? this[filterKey] : [];
+      this[filterKey] = current.includes(value)
+        ? current.filter((entry) => entry !== value)
+        : [...current, value];
+    },
+    clearNamedFilter(filterKey) {
+      this[filterKey] = [];
+    },
     barUsedValue(dive) {
       const label = pressureUsedLabel(dive);
       const match = /(\d+)/.exec(label);
@@ -126,6 +200,9 @@ export default {
     },
     pressureUsedTableLabel(dive) {
       return pressureUsedLabel(dive).replace(/\s+used$/i, "");
+    },
+    hasAirConsumption(dive) {
+      return this.pressureUsedTableLabel(dive) !== "--";
     },
     temperatureValue(dive) {
       return numberOrZero(surfaceTemperature(dive));
@@ -179,11 +256,19 @@ export default {
       return product || "Unknown computer";
     },
     diveDeviceLabel,
-    configuredLogbookMeta(dive) {
+    logbookMeta(dive, keys) {
       const draft = importDraftSeed(dive);
+      const allowed = new Set(keys);
       return this.optionalFieldConfig()
+        .filter((item) => allowed.has(item.key))
         .map((item) => ({ ...item, value: typeof draft?.[item.key] === "string" ? draft[item.key].trim() : "" }))
         .filter((item) => item.value);
+    },
+    upperLogbookMeta(dive) {
+      return this.logbookMeta(dive, ["wetsuit_description", "weight_description"]);
+    },
+    lowerLogbookMeta(dive) {
+      return this.logbookMeta(dive, ["buddy", "guide"]);
     },
     diveMapPreview(dive) {
       return diveMapPreview(dive, this.diveSites);
@@ -213,6 +298,43 @@ export default {
           <button @click="openImportQueue()" class="rounded-lg bg-surface-container-high px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-primary">
             Imported Queue
           </button>
+        </div>
+        <div class="mt-3 grid gap-2">
+          <label class="rounded-lg border border-primary/10 bg-surface-container-high/70 px-3 py-2">
+            <span class="block font-label text-[9px] font-bold uppercase tracking-[0.14em] text-on-surface-variant">Location</span>
+            <div class="mt-2 max-h-36 space-y-1 overflow-y-auto">
+              <label v-for="site in siteFilterOptions" :key="'mobile-site-filter-' + site" class="flex items-center gap-2 text-sm font-semibold text-on-surface">
+                <input :checked="siteFilters.includes(site)" @change="toggleNamedFilter('siteFilters', site)" type="checkbox" class="h-4 w-4 rounded border-primary/20 bg-surface-container-high text-primary focus:ring-primary/30" />
+                <span class="truncate">{{ site }}</span>
+              </label>
+            </div>
+            <button v-if="siteFilters.length" type="button" @click="clearNamedFilter('siteFilters')" class="mt-2 text-[10px] font-bold uppercase tracking-[0.14em] text-primary">Clear locations</button>
+            <span v-else class="mt-1 block text-[10px] text-on-surface-variant">All locations</span>
+          </label>
+        </div>
+        <div class="mt-2 grid grid-cols-2 gap-2">
+          <label class="rounded-lg border border-primary/10 bg-surface-container-high/70 px-3 py-2">
+            <span class="block font-label text-[9px] font-bold uppercase tracking-[0.14em] text-on-surface-variant">Buddy</span>
+            <div class="mt-2 max-h-36 space-y-1 overflow-y-auto">
+              <label v-for="buddy in buddyFilterOptions" :key="'mobile-buddy-filter-' + buddy" class="flex items-center gap-2 text-sm font-semibold text-on-surface">
+                <input :checked="buddyFilters.includes(buddy)" @change="toggleNamedFilter('buddyFilters', buddy)" type="checkbox" class="h-4 w-4 rounded border-primary/20 bg-surface-container-high text-primary focus:ring-primary/30" />
+                <span class="truncate">{{ buddy }}</span>
+              </label>
+            </div>
+            <button v-if="buddyFilters.length" type="button" @click="clearNamedFilter('buddyFilters')" class="mt-2 text-[10px] font-bold uppercase tracking-[0.14em] text-primary">Clear buddies</button>
+            <span v-else class="mt-1 block text-[10px] text-on-surface-variant">All buddies</span>
+          </label>
+          <label class="rounded-lg border border-primary/10 bg-surface-container-high/70 px-3 py-2">
+            <span class="block font-label text-[9px] font-bold uppercase tracking-[0.14em] text-on-surface-variant">Guide</span>
+            <div class="mt-2 max-h-36 space-y-1 overflow-y-auto">
+              <label v-for="guide in guideFilterOptions" :key="'mobile-guide-filter-' + guide" class="flex items-center gap-2 text-sm font-semibold text-on-surface">
+                <input :checked="guideFilters.includes(guide)" @change="toggleNamedFilter('guideFilters', guide)" type="checkbox" class="h-4 w-4 rounded border-primary/20 bg-surface-container-high text-primary focus:ring-primary/30" />
+                <span class="truncate">{{ guide }}</span>
+              </label>
+            </div>
+            <button v-if="guideFilters.length" type="button" @click="clearNamedFilter('guideFilters')" class="mt-2 text-[10px] font-bold uppercase tracking-[0.14em] text-primary">Clear guides</button>
+            <span v-else class="mt-1 block text-[10px] text-on-surface-variant">All guides</span>
+          </label>
         </div>
         </div>
 
@@ -255,12 +377,6 @@ export default {
                     <h3 class="truncate font-headline text-lg font-bold tracking-tight">{{ diveSiteLabel(dive) }}</h3>
                     <p class="font-label text-[10px] font-bold uppercase tracking-[0.16em] text-on-surface-variant">{{ formatDate(dive.started_at) }} | {{ formatTime(dive.started_at) }}</p>
                     <p class="mt-1 truncate text-sm text-secondary">{{ diveDeviceLabel(dive) }} / {{ diveComputerLabel(dive) }}</p>
-                    <div v-if="configuredLogbookMeta(dive).length" class="mt-2 flex flex-wrap gap-2">
-                      <span v-for="item in configuredLogbookMeta(dive)" :key="'mobile-meta-' + dive.id + '-' + item.key" class="inline-flex max-w-full items-center gap-1.5 rounded-full bg-surface-container-high px-2.5 py-1 font-label text-[9px] font-bold uppercase tracking-[0.12em] text-primary">
-                        <span class="material-symbols-outlined text-[13px] leading-none">{{ item.icon }}</span>
-                        <span class="truncate">{{ item.label }}: {{ item.value }}</span>
-                      </span>
-                    </div>
                   </div>
                   <span class="material-symbols-outlined text-sm text-on-surface-variant">chevron_right</span>
                 </div>
@@ -273,9 +389,16 @@ export default {
                     <span class="font-label text-[9px] font-bold uppercase tracking-[0.14em] text-on-surface-variant/60">Duration</span>
                     <span class="font-headline text-sm font-semibold">{{ formatDurationShort(dive.duration_seconds) }}</span>
                   </div>
-                  <div class="flex flex-col">
+                  <div v-if="hasAirConsumption(dive)" class="flex flex-col">
                     <span class="font-label text-[9px] font-bold uppercase tracking-[0.14em] text-on-surface-variant/60">Bar Used</span>
                     <span class="font-headline text-sm font-semibold">{{ pressureUsedTableLabel(dive) }}</span>
+                  </div>
+                  <div v-for="item in upperLogbookMeta(dive)" :key="'mobile-metric-meta-' + dive.id + '-' + item.key" class="flex min-w-0 flex-col">
+                    <span class="inline-flex items-center gap-1 font-label text-[9px] font-bold uppercase tracking-[0.14em] text-on-surface-variant/60">
+                      <span class="material-symbols-outlined text-[13px] leading-none">{{ item.icon }}</span>
+                      {{ item.label }}
+                    </span>
+                    <span class="truncate font-headline text-sm font-semibold text-primary">{{ item.value }}</span>
                   </div>
                 </div>
               </div>
@@ -343,7 +466,7 @@ export default {
       </div>
 
       <div class="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-        <div class="flex flex-wrap gap-3">
+        <div class="flex flex-wrap items-center gap-3">
           <button type="button" @click="toggleSort('date')" class="log-filter-chip" :class="sortHeaderClass('date')">
             <span class="material-symbols-outlined text-base">calendar_month</span>
             Date
@@ -354,11 +477,62 @@ export default {
             {{ t("Depth", "Depth") }}
             <span class="material-symbols-outlined text-sm">{{ sortIndicator('depth') }}</span>
           </button>
-          <button type="button" @click="toggleSort('site')" class="log-filter-chip" :class="sortHeaderClass('site')">
-            <span class="material-symbols-outlined text-base">location_on</span>
-            Location
-            <span class="material-symbols-outlined text-sm">{{ sortIndicator('site') }}</span>
+          <button type="button" @click="toggleSort('duration')" class="log-filter-chip" :class="sortHeaderClass('duration')">
+            <span class="material-symbols-outlined text-base">timer</span>
+            {{ t("Duration", "Duration") }}
+            <span class="material-symbols-outlined text-sm">{{ sortIndicator('duration') }}</span>
           </button>
+          <div class="relative">
+            <button type="button" @click="siteFilterOpen = !siteFilterOpen; buddyFilterOpen = false; guideFilterOpen = false" class="log-filter-chip">
+              <span class="material-symbols-outlined text-base">location_on</span>
+              Locations
+              <span class="font-label text-[10px] font-bold uppercase tracking-[0.14em] text-secondary">{{ siteFilters.length ? siteFilters.length + ' selected' : 'All' }}</span>
+              <span class="material-symbols-outlined text-sm">{{ siteFilterOpen ? 'expand_less' : 'expand_more' }}</span>
+            </button>
+            <div v-if="siteFilterOpen" class="absolute left-0 z-20 mt-2 w-72 rounded-xl border border-primary/15 bg-surface-container-low p-3 shadow-panel">
+              <div class="max-h-64 space-y-2 overflow-y-auto">
+                <label v-for="site in siteFilterOptions" :key="'desktop-site-filter-' + site" class="flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm font-semibold text-on-surface hover:bg-surface-container-high">
+                  <input :checked="siteFilters.includes(site)" @change="toggleNamedFilter('siteFilters', site)" type="checkbox" class="h-4 w-4 rounded border-primary/20 bg-surface-container-high text-primary focus:ring-primary/30" />
+                  <span class="truncate">{{ site }}</span>
+                </label>
+              </div>
+              <button v-if="siteFilters.length" type="button" @click="clearNamedFilter('siteFilters')" class="mt-3 text-[10px] font-bold uppercase tracking-[0.14em] text-primary">Clear locations</button>
+            </div>
+          </div>
+          <div class="relative">
+            <button type="button" @click="buddyFilterOpen = !buddyFilterOpen; siteFilterOpen = false; guideFilterOpen = false" class="log-filter-chip">
+              <span class="material-symbols-outlined text-base">diversity_3</span>
+              Buddy
+              <span class="font-label text-[10px] font-bold uppercase tracking-[0.14em] text-secondary">{{ buddyFilters.length ? buddyFilters.length + ' selected' : 'All' }}</span>
+              <span class="material-symbols-outlined text-sm">{{ buddyFilterOpen ? 'expand_less' : 'expand_more' }}</span>
+            </button>
+            <div v-if="buddyFilterOpen" class="absolute left-0 z-20 mt-2 w-64 rounded-xl border border-primary/15 bg-surface-container-low p-3 shadow-panel">
+              <div class="max-h-64 space-y-2 overflow-y-auto">
+                <label v-for="buddy in buddyFilterOptions" :key="'desktop-buddy-filter-' + buddy" class="flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm font-semibold text-on-surface hover:bg-surface-container-high">
+                  <input :checked="buddyFilters.includes(buddy)" @change="toggleNamedFilter('buddyFilters', buddy)" type="checkbox" class="h-4 w-4 rounded border-primary/20 bg-surface-container-high text-primary focus:ring-primary/30" />
+                  <span class="truncate">{{ buddy }}</span>
+                </label>
+              </div>
+              <button v-if="buddyFilters.length" type="button" @click="clearNamedFilter('buddyFilters')" class="mt-3 text-[10px] font-bold uppercase tracking-[0.14em] text-primary">Clear buddies</button>
+            </div>
+          </div>
+          <div class="relative">
+            <button type="button" @click="guideFilterOpen = !guideFilterOpen; siteFilterOpen = false; buddyFilterOpen = false" class="log-filter-chip">
+              <span class="material-symbols-outlined text-base">badge</span>
+              Guide
+              <span class="font-label text-[10px] font-bold uppercase tracking-[0.14em] text-secondary">{{ guideFilters.length ? guideFilters.length + ' selected' : 'All' }}</span>
+              <span class="material-symbols-outlined text-sm">{{ guideFilterOpen ? 'expand_less' : 'expand_more' }}</span>
+            </button>
+            <div v-if="guideFilterOpen" class="absolute left-0 z-20 mt-2 w-64 rounded-xl border border-primary/15 bg-surface-container-low p-3 shadow-panel">
+              <div class="max-h-64 space-y-2 overflow-y-auto">
+                <label v-for="guide in guideFilterOptions" :key="'desktop-guide-filter-' + guide" class="flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm font-semibold text-on-surface hover:bg-surface-container-high">
+                  <input :checked="guideFilters.includes(guide)" @change="toggleNamedFilter('guideFilters', guide)" type="checkbox" class="h-4 w-4 rounded border-primary/20 bg-surface-container-high text-primary focus:ring-primary/30" />
+                  <span class="truncate">{{ guide }}</span>
+                </label>
+              </div>
+              <button v-if="guideFilters.length" type="button" @click="clearNamedFilter('guideFilters')" class="mt-3 text-[10px] font-bold uppercase tracking-[0.14em] text-primary">Clear guides</button>
+            </div>
+          </div>
         </div>
         <p class="font-label text-sm font-bold tracking-[0.08em] text-on-surface-variant">Displaying {{ paginationLabel }}</p>
       </div>
@@ -371,7 +545,7 @@ export default {
           @keyup.enter="openDive(dive.id)"
           tabindex="0"
           role="button"
-          class="log-dive-card cursor-pointer p-5 transition-all hover:-translate-y-0.5 focus:-translate-y-0.5 focus:outline-none"
+          class="log-dive-card flex h-full cursor-pointer flex-col p-5 transition-all hover:-translate-y-0.5 focus:-translate-y-0.5 focus:outline-none"
         >
           <div class="flex items-start justify-between gap-4">
             <div class="min-w-0">
@@ -381,8 +555,8 @@ export default {
             <p class="font-label text-[11px] font-bold tracking-[0.14em] text-on-surface">{{ displayDiveIndex(dive) }}</p>
           </div>
 
-          <div class="mt-4 border-t border-outline-variant/18 pt-4">
-            <div class="grid grid-cols-2 gap-x-6 gap-y-4">
+          <div class="mt-5 flex-1 border-t border-outline-variant/18 py-5">
+            <div class="grid grid-cols-2 gap-x-7 gap-y-5">
               <div class="log-card-metric">
                 <span class="material-symbols-outlined text-lg text-primary">straighten</span>
                 <div>
@@ -404,23 +578,30 @@ export default {
                   <strong class="text-secondary">{{ formatTemperature(surfaceTemperature(dive)) }}</strong>
                 </div>
               </div>
-              <div class="log-card-metric">
+              <div v-if="hasAirConsumption(dive)" class="log-card-metric">
                 <span class="material-symbols-outlined text-lg" :class="barUsedValue(dive) > 180 ? 'text-tertiary' : 'text-primary'">air</span>
                 <div>
                   <p>{{ t("Air", "Air") }}</p>
                   <strong :class="barUsedValue(dive) > 180 ? 'text-tertiary' : ''">{{ pressureUsedTableLabel(dive) }}</strong>
                 </div>
               </div>
+              <div v-for="item in upperLogbookMeta(dive)" :key="'desktop-metric-meta-' + dive.id + '-' + item.key" class="log-card-metric">
+                <span class="material-symbols-outlined text-lg text-primary">{{ item.icon }}</span>
+                <div class="min-w-0">
+                  <p>{{ item.label }}</p>
+                  <strong class="block truncate text-primary">{{ item.value }}</strong>
+                </div>
+              </div>
             </div>
           </div>
 
-          <div class="mt-4 flex items-center justify-between border-t border-outline-variant/18 pt-4">
+          <div class="mt-auto flex items-end justify-between gap-4 border-t border-outline-variant/18 pt-4">
             <div class="flex min-w-0 items-center gap-2 text-xs text-on-surface-variant">
               <span class="material-symbols-outlined text-base">computer</span>
               <span class="truncate">{{ diveComputerLabel(dive) }}</span>
             </div>
-            <div class="flex flex-wrap justify-end gap-1.5">
-              <span v-for="item in configuredLogbookMeta(dive)" :key="'desktop-card-meta-' + dive.id + '-' + item.key" :title="item.label + ': ' + item.value" class="inline-flex max-w-[12rem] items-center gap-1 rounded bg-surface-container-high px-2 py-1 font-label text-[9px] font-bold uppercase tracking-[0.12em] text-secondary">
+            <div class="flex flex-wrap items-end justify-end gap-1.5">
+              <span v-for="item in lowerLogbookMeta(dive)" :key="'desktop-card-meta-' + dive.id + '-' + item.key" :title="item.label + ': ' + item.value" class="inline-flex max-w-[12rem] items-center gap-1 rounded bg-surface-container-high px-2 py-1 font-label text-[9px] font-bold uppercase tracking-[0.12em] text-secondary">
                 <span class="material-symbols-outlined text-[13px] leading-none">{{ item.icon }}</span>
                 <span class="truncate">{{ item.value }}</span>
               </span>

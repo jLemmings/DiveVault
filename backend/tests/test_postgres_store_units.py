@@ -220,10 +220,21 @@ def test_sanitize_logbook_payload_preserves_existing_completed_at_from_nested_lo
     assert payload["completed_at"] == "2026-03-20T08:00:00+00:00"
 
 
-def test_sanitize_logbook_payload_stays_imported_without_commit_or_required_fields(monkeypatch):
+def test_sanitize_logbook_payload_allows_complete_without_buddy_or_guide(monkeypatch):
     monkeypatch.setattr(postgres_store, "now_iso", lambda: "2026-03-24T12:00:00+00:00")
 
-    payload = postgres_store.sanitize_logbook_payload({"site": "Blue Hole", "buddy": "", "guide": "Kai"})
+    payload = postgres_store.sanitize_logbook_payload({"commit": True, "site": "Blue Hole", "buddy": "", "guide": ""})
+
+    assert payload["status"] == "complete"
+    assert payload["completed_at"] == "2026-03-24T12:00:00+00:00"
+    assert payload["buddy"] == ""
+    assert payload["guide"] == ""
+
+
+def test_sanitize_logbook_payload_stays_imported_without_site(monkeypatch):
+    monkeypatch.setattr(postgres_store, "now_iso", lambda: "2026-03-24T12:00:00+00:00")
+
+    payload = postgres_store.sanitize_logbook_payload({"commit": True, "site": "", "buddy": "Sam", "guide": "Kai"})
 
     assert payload["status"] == "imported"
     assert "completed_at" not in payload
@@ -263,6 +274,7 @@ def test_decode_user_profile_row_includes_license_metadata():
             "public_dives_enabled": True,
             "public_slug": " elias-thorne ",
             "logbook_display_fields_json": ["weather_description", "visibility", "weight_description", "visibility", "invalid"],
+            "required_logbook_fields_json": ["site", "buddy", "invalid", "buddy"],
             "updated_at": "2026-03-29T10:00:00+00:00",
         },
         {
@@ -312,6 +324,7 @@ def test_decode_user_profile_row_includes_license_metadata():
     assert profile["name"] == "Elias Thorne"
     assert profile["email"] == "diver@example.com"
     assert profile["logbook_display_fields"] == ["weather_description", "visibility", "weight_description"]
+    assert profile["required_logbook_fields"] == ["site", "buddy"]
     assert profile["public_dives_enabled"] is True
     assert profile["public_slug"] == "elias-thorne"
     assert profile["dive_sites"][0]["name"] == "Blue Hole"
@@ -588,6 +601,7 @@ def test_normalize_equipment_items_accepts_optional_fields_and_dedupes_ids():
                 "year_bought": "2024",
                 "vendor": " Blue Shop ",
                 "brand": " Aqualung ",
+                "icon": " regulator ",
                 "waranty": " 2 years ",
                 "next_service_due": "2026-05-01",
                 "max_dives_before_service": "100",
@@ -605,6 +619,7 @@ def test_normalize_equipment_items_accepts_optional_fields_and_dedupes_ids():
         "id": "gear-1",
         "name": "Aqualung Regulator",
         "category": "Regulator",
+        "icon": "regulator",
         "type": "Regulator",
         "year_bought": 2024,
         "vendor": "Blue Shop",

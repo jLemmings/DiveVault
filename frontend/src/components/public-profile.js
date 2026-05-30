@@ -523,6 +523,7 @@ export default {
             v-if="selectedDive"
             :dive="selectedDive"
             :all-dives="dives"
+            :dive-sites="[]"
             :public-view="true"
             :close-detail="closeDive"
           ></dive-detail-view>
