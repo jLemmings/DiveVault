@@ -1,3 +1,4 @@
+<script>
 import { loginWithPassword, registerUser } from "../composables/auth.js";
 import { MESSAGES } from "../i18n/index.js";
 
@@ -169,7 +170,10 @@ export default {
       }
     }
   },
-  template: `
+}
+</script>
+
+<template>
     <div class="abyssal-auth-shell auth-stage relative min-h-screen overflow-hidden bg-surface text-on-surface">
       <div class="auth-stage-orb auth-stage-orb-left"></div>
       <div class="auth-stage-orb auth-stage-orb-right"></div>
@@ -318,5 +322,4 @@ export default {
         </div>
       </div>
     </div>
-  `
-};
+</template>

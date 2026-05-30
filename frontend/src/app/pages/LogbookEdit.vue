@@ -1,5 +1,6 @@
+<script>
 import { buildDiveSequenceMap, canCompleteImport, diveDeviceLabel, formatDate, formatDateTime, formatDepthNumber, formatTemperature, hasRecordedPressureSamples, importTemperature, missingImportFields, paddedDiveIndex, durationShort, numberOrZero } from "../utils/core.js";
-import MetadataAutocompleteField from "../components/metadata-autocomplete.js";
+import MetadataAutocompleteField from "../components/MetadataAutocomplete.vue";
 import { equipmentTitle, normalizeName as normalizeBuddyName, normalizeName as normalizeSiteName, serviceStatusForDive, sortNamedCollection } from "../utils/equipment-dive.js";
 
 export default {
@@ -229,7 +230,10 @@ export default {
       return Math.round(numberOrZero(dive?.duration_seconds) / 60);
     }
   },
-  template: `
+}
+</script>
+
+<template>
     <section v-if="dive && selectedDraft" class="space-y-8 text-on-surface">
       <header class="space-y-5">
         <button @click="closeEditor()" class="inline-flex items-center gap-2 bg-surface-container-high px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-on-surface transition-colors hover:text-primary">
@@ -439,5 +443,4 @@ export default {
         </div>
       </section>
     </section>
-  `
-};
+</template>

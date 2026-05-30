@@ -1,3 +1,4 @@
+<script>
 import { getDocument, GlobalWorkerOptions } from "pdfjs-dist";
 import pdfWorkerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 import { PDF_PREVIEW_SCALE } from "../utils/settings-profile.js";
@@ -81,7 +82,10 @@ export default {
       }
     }
   },
-  template: `
+}
+</script>
+
+<template>
     <div>
       <div v-if="loading" class="rounded border border-primary/10 bg-surface-container-lowest px-4 py-4 text-sm text-secondary">
         Rendering PDF preview...
@@ -99,11 +103,10 @@ export default {
         >
           <img
             :src="page.image"
-            :alt="\`License PDF page \${page.pageNumber}\`"
+            :alt="`License PDF page ${page.pageNumber}`"
             class="w-full cursor-zoom-in"
           />
         </button>
       </div>
     </div>
-  `
-}
+</template>

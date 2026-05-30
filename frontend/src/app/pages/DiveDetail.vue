@@ -1,3 +1,4 @@
+<script>
 import { buildDiveSequenceMap, depthChartPath, pressureChartPath, numberOrZero, depthSeries, axisTicks, pressureRange, pressureSeries, profileTimeLabels, checkpointCards, detailEquipmentTags, pressureRangeLabel, pressureUsedLabel, diveModeLabel, diveTitle, formatDate, formatTime, formatDepth, formatDepthNumber, formatTemperature, durationShort, gasMixLabel, primaryGasMix, primaryTank, tankLabel, surfaceTemperature, depthParts, durationParts, temperatureParts, averageDepthValue, importDraftSeed, paddedDiveIndex, diveNarrative, sacRate } from "../utils/core.js";
 import { diveMapPreview } from "../utils/map-preview.js";
 
@@ -293,7 +294,10 @@ export default {
       return Math.round(numberOrZero(dive?.duration_seconds) / 60);
     }
   },
-  template: `
+}
+</script>
+
+<template>
     <section v-if="dive" class="relative overflow-hidden bg-surface-container-low p-6 shadow-panel md:p-8">
       <div class="absolute inset-0 technical-grid pointer-events-none"></div>
       <div class="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(156,240,255,0.35),transparent_22rem)] pointer-events-none"></div>
@@ -616,5 +620,4 @@ export default {
       <p class="font-headline text-2xl font-bold">Selected dive is unavailable</p>
       <button @click="closeDetail" class="mt-5 bg-primary px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-on-primary">Return to dive logs</button>
     </section>
-  `
-};
+</template>

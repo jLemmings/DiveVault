@@ -1,5 +1,6 @@
+<script>
 import { logbookRequirementFieldOptions, missingImportFields } from "../utils/core.js";
-import MetadataAutocompleteField from "../components/metadata-autocomplete.js";
+import MetadataAutocompleteField from "../components/MetadataAutocomplete.vue";
 import { equipmentTitle, normalizeName, serviceStatusForDive, sortNamedCollection } from "../utils/equipment-dive.js";
 
 function emptyDiveSiteDraft(name = "") {
@@ -293,7 +294,10 @@ export default {
       this.createManualDive();
     }
   },
-  template: `
+}
+</script>
+
+<template>
     <section class="space-y-8 text-on-surface">
       <header class="space-y-5">
         <button @click="closeCreator()" class="inline-flex items-center gap-2 bg-surface-container-high px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-on-surface transition-colors hover:text-primary">
@@ -612,5 +616,4 @@ export default {
         </div>
       </div>
     </section>
-  `
-};
+</template>

@@ -1,3 +1,4 @@
+<script>
 import L from "leaflet";
 import { buildDiveSequenceMap, dayOfMonth, monthShort, formatDate, formatTime, diveTitle, diveSubtitle, diveDeviceLabel, formatDepth, formatDepthNumber, formatDateTime, durationShort, formatTemperature, surfaceTemperature, diveModeLabel, pressureUsedLabel, decoStatusLabel, formatBarTotal, filledIconStyle, numberOrZero, parseDate, paddedDiveIndex } from "../utils/core.js";
 import { coordinateLabel, diveCoordinates, diveSiteName, escapeHtml, markerDiameter, normalizeSiteName, savedSiteCoordinates } from "../utils/dive-map.js";
@@ -585,7 +586,10 @@ export default {
       );
     }
   },
-  template: `
+}
+</script>
+
+<template>
     <section :class="['dashboard-command-center text-on-surface', isMapView ? 'dashboard-map-only' : '']">
       <section v-if="hasImportedDives && !isMapView" class="dashboard-glass-card border-l-4 border-tertiary p-5">
         <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
@@ -742,5 +746,4 @@ export default {
         </section>
       </div>
     </section>
-  `
-};
+</template>

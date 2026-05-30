@@ -1,5 +1,6 @@
+<script>
 import { canCompleteImport, filledIconStyle, formatDate, formatDateTime, formatDepthNumber, formatTemperature, gasSummary, hasRecordedPressureSamples, importCompletionPercent, importTemperature, isCommittedDive, missingImportFields, paddedDiveIndex, durationShort, numberOrZero } from "../utils/core.js";
-import MetadataAutocompleteField from "../components/metadata-autocomplete.js";
+import MetadataAutocompleteField from "../components/MetadataAutocomplete.vue";
 import { equipmentTitle, normalizeName as normalizeBuddyName, normalizeName as normalizeSiteName, serviceStatusForDive, sortNamedCollection } from "../utils/equipment-dive.js";
 
 export default {
@@ -254,7 +255,10 @@ export default {
       return Math.round(numberOrZero(dive?.duration_seconds) / 60);
     }
   },
-  template: `
+}
+</script>
+
+<template>
     <section class="space-y-8 text-on-surface">
       <section v-if="!dive || !selectedDraft" class="space-y-4 bg-surface-container-low p-8 shadow-panel">
         <p class="font-label text-[10px] font-bold uppercase tracking-[0.2em] text-primary">Imported Dive Missing</p>
@@ -759,5 +763,4 @@ export default {
         </section>
       </template>
     </section>
-  `
-};
+</template>

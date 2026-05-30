@@ -1,3 +1,4 @@
+<script>
 function normalizeOptionName(option) {
   return typeof option?.name === "string" ? option.name.trim() : "";
 }
@@ -173,7 +174,10 @@ export default {
       });
     }
   },
-  template: `
+}
+</script>
+
+<template>
     <div class="metadata-autocomplete" @focusout="scheduleClose">
       <div class="metadata-autocomplete-input-shell">
         <input
@@ -223,5 +227,4 @@ export default {
         </div>
       </transition>
     </div>
-  `
-};
+</template>

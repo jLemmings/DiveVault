@@ -1,5 +1,6 @@
+<script>
 import L from "leaflet";
-import DiveDetailView from "./dive-detail.js";
+import DiveDetailView from "./DiveDetail.vue";
 import { buildDiveSequenceMap, diveTitle, diveDeviceLabel, formatDate, formatDepth, durationShort, numberOrZero, parseDate, paddedDiveIndex } from "../utils/core.js";
 import { coordinateLabel, diveCoordinates, diveSiteName, escapeHtml, markerDiameter, normalizeSiteName } from "../utils/dive-map.js";
 
@@ -400,7 +401,10 @@ export default {
       this.handleMapResize();
     }
   },
-  template: `
+}
+</script>
+
+<template>
     <div class="min-h-screen bg-background px-4 py-6 text-on-background md:px-8 md:py-8">
       <div class="mx-auto max-w-7xl">
         <section v-if="loading" class="bg-surface-container-low p-10 shadow-panel">
@@ -514,5 +518,4 @@ export default {
         </section>
       </div>
     </div>
-  `
-};
+</template>

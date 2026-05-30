@@ -1,3 +1,4 @@
+<script>
 import { effectiveImportDraft, averageImportCompletion, isImportComplete, missingImportFields, filledIconStyle, compactDateStamp, paddedDiveIndex, formatDate, formatTime, formatDepthNumber, durationShort, formatTemperature, importTemperature, isNightDive, importCompletionPercent, numberOrZero, parseDate } from "../utils/core.js";
 
 export default {
@@ -60,7 +61,10 @@ export default {
       return String(this.deletingDiveId) === String(diveId);
     }
   },
-  template: `
+}
+</script>
+
+<template>
     <section class="space-y-10 text-on-surface">
       <section class="space-y-6 md:hidden">
         <div class="flex items-end justify-between">
@@ -339,5 +343,4 @@ export default {
         </section>
       </section>
     </section>
-  `
-};
+</template>
