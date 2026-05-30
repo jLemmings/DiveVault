@@ -176,12 +176,11 @@ export default {
 
       L.control.zoom({ position: "bottomright" }).addTo(map);
 
-      this.diveTileLayer = L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      this.diveTileLayer = L.tileLayer("https://server.arcgisonline.com/arcgis/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", {
         maxZoom: 16,
         className: "dive-theme-map-tiles",
         referrerPolicy: "origin"
       });
-      this.diveTileLayer.setUrl("https://server.arcgisonline.com/arcgis/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}");
       this.diveTileLayer.addTo(map);
       this.diveMarkerLayer = L.layerGroup().addTo(map);
       map.on("zoomend", () => this.syncDiveMap({ preserveViewport: true }));

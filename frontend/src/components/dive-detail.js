@@ -1,4 +1,5 @@
-import { buildDiveSequenceMap, depthChartPath, pressureChartPath, numberOrZero, depthSeries, axisTicks, pressureRange, pressureSeries, profileTimeLabels, checkpointCards, detailEquipmentTags, pressureRangeLabel, pressureUsedLabel, diveModeLabel, diveTitle, formatDate, formatTime, formatDepth, formatDepthNumber, formatTemperature, durationShort, gasMixLabel, primaryGasMix, primaryTank, tankLabel, surfaceTemperature, depthParts, durationParts, temperatureParts, averageDepthValue, importDraftSeed, paddedDiveIndex } from "../core.js";
+import { buildDiveSequenceMap, depthChartPath, pressureChartPath, numberOrZero, depthSeries, axisTicks, pressureRange, pressureSeries, profileTimeLabels, checkpointCards, detailEquipmentTags, pressureRangeLabel, pressureUsedLabel, diveModeLabel, diveTitle, formatDate, formatTime, formatDepth, formatDepthNumber, formatTemperature, durationShort, gasMixLabel, primaryGasMix, primaryTank, tankLabel, surfaceTemperature, depthParts, durationParts, temperatureParts, averageDepthValue, importDraftSeed, paddedDiveIndex, diveNarrative, sacRate } from "../core.js";
+import { diveMapPreview } from "../map-preview.js";
 
 const PROFILE_CHART_WIDTH = 800;
 const PROFILE_CHART_HEIGHT = 250;
@@ -6,7 +7,7 @@ const PROFILE_CHART_PADDING = 10;
 
 export default {
   name: "DiveDetailView",
-  props: ["dive", "allDives", "deletingDiveId", "closeDetail", "openDiveEditor", "deleteDive", "publicView"],
+  props: ["dive", "allDives", "diveSites", "deletingDiveId", "closeDetail", "openDiveEditor", "deleteDive", "publicView"],
   data() {
     return {
       profileHover: null
@@ -64,24 +65,43 @@ export default {
     equipmentTags() {
       return detailEquipmentTags(this.dive);
     },
+    equipmentItems() {
+      const snapshot = importDraftSeed(this.dive)?.equipment_snapshot;
+      if (Array.isArray(snapshot) && snapshot.length) {
+        return snapshot
+          .map((item) => ({
+            label: item?.name || item?.category || "Equipment",
+            category: item?.category || "Gear",
+            icon: this.equipmentIcon(item)
+          }))
+          .filter((item) => item.label);
+      }
+      return this.equipmentTags.map((tag) => ({ label: tag, category: "Gear", icon: "scuba_diving" }));
+    },
     logbookMetadata() {
       const draft = importDraftSeed(this.dive);
       const items = [
         { key: "site", label: "Dive Site", value: draft.site, icon: "location_on" },
-        { key: "buddy", label: "Buddy", value: draft.buddy, icon: "diversity_3" },
-        { key: "guide", label: "Guide", value: draft.guide, icon: "badge" },
         { key: "weather", label: "Weather", value: draft.weather_description, icon: "partly_cloudy_day" },
         { key: "visibility", label: "Visibility", value: draft.visibility, icon: "visibility" },
+        { key: "buddy", label: "Buddy", value: draft.buddy, icon: "diversity_3" },
+        { key: "guide", label: "Guide", value: draft.guide, icon: "badge" },
         { key: "wetsuit", label: "Suit", value: draft.wetsuit_description, icon: "checkroom" },
-        { key: "weights", label: "Weights", value: draft.weight_description, icon: "fitness_center" },
         { key: "notes", label: "Notes", value: draft.notes, icon: "notes" }
       ];
       return items
-        .map((item) => ({ ...item, value: typeof item.value === "string" ? item.value.trim() : "" }))
+        .map((item) => {
+          const value = typeof item.value === "string" ? item.value.trim() : "";
+          return { ...item, value: this.logbookDisplayValue(item.key, value) };
+        })
         .filter((item) => item.value);
     },
     hasLogbookMetadata() {
       return this.logbookMetadata.length > 0;
+    },
+    weatherSummary() {
+      const value = importDraftSeed(this.dive)?.weather_description;
+      return typeof value === "string" && value.trim() ? value.trim() : "";
     },
     pressureRangeText() {
       return pressureRangeLabel(this.dive);
@@ -109,6 +129,38 @@ export default {
     },
     displayDiveIndex() {
       return paddedDiveIndex(this.dive, this.diveSequenceMap);
+    },
+    diveNarrativeLines() {
+      return diveNarrative(this.dive);
+    },
+    mapPreview() {
+      return diveMapPreview(this.dive, this.diveSites, 12);
+    },
+    weightTelemetry() {
+      const weight = importDraftSeed(this.dive)?.weight_description;
+      return typeof weight === "string" && weight.trim() ? weight.trim() : "Not logged";
+    },
+    importSourceLabel() {
+      const product = typeof this.dive?.product === "string" ? this.dive.product.trim() : "";
+      return product ? `Imported from ${product}` : `Imported ${formatDate(this.dive?.imported_at)}`;
+    },
+    heroMetricTiles() {
+      const metrics = [
+        { label: "Duration", icon: "timer", value: durationParts(this.dive?.duration_seconds).value, unit: durationParts(this.dive?.duration_seconds).unit, tone: "text-primary" },
+        { label: "Max Depth", icon: "south", value: depthParts(this.dive?.max_depth_m).value, unit: depthParts(this.dive?.max_depth_m).unit, tone: "text-primary" },
+        { label: "Avg Temp", icon: "thermostat", value: temperatureParts(surfaceTemperature(this.dive)).value, unit: temperatureParts(surfaceTemperature(this.dive)).unit, tone: "text-tertiary" },
+        { label: "Air Consumed", icon: "air", value: this.pressureUsedText.replace(" used", ""), unit: "", tone: "text-tertiary" }
+      ];
+      return metrics;
+    },
+    diveSystemCards() {
+      const sac = sacRate(this.dive);
+      return [
+        { label: "Breathing Mix", value: gasMixLabel(primaryGasMix(this.dive)), detail: "Air (Standard)", icon: "air" },
+        { label: "Pressure", value: this.pressureRangeText, detail: this.pressureUsedText, icon: "speed" },
+        { label: "Weight", value: this.weightTelemetry, detail: "Weight carried", icon: "fitness_center" },
+        { label: "SAC Rate", value: typeof sac === "number" ? `${sac.toFixed(1)} L/min` : "No SAC", detail: "Surface air consumption", icon: "speed" }
+      ];
     },
     profileHoverTooltipStyle() {
       if (!this.profileHover) return {};
@@ -141,6 +193,39 @@ export default {
     depthParts,
     durationParts,
     temperatureParts,
+    equipmentIcon(item) {
+      const icon = typeof item?.icon === "string" ? item.icon.trim() : "";
+      if (icon) return icon;
+      const category = String(item?.category || item?.type || item?.name || "").toLowerCase();
+      if (category.includes("regulator")) return "air";
+      if (category.includes("computer") || category.includes("watch")) return "watch";
+      if (category.includes("fin")) return "water";
+      if (category.includes("mask")) return "visibility";
+      if (category.includes("weight")) return "fitness_center";
+      if (category.includes("tank") || category.includes("cylinder")) return "opacity";
+      if (category.includes("bcd") || category.includes("bc")) return "backpack";
+      if (category.includes("camera")) return "photo_camera";
+      if (category.includes("torch") || category.includes("light")) return "flashlight_on";
+      if (category.includes("suit") || category.includes("exposure")) return "waves";
+      return "scuba_diving";
+    },
+    logbookDisplayValue(key, value) {
+      if (!value) return "";
+      if (key !== "weather") return value;
+      const normalized = value.toLowerCase();
+      const weatherLabels = {
+        sun: "Sunny",
+        sunny: "Sunny",
+        clouds: "Cloudy",
+        cloudy: "Cloudy",
+        rain: "Rain",
+        rainy: "Rain",
+        wind: "Windy",
+        windy: "Windy"
+      };
+      if (weatherLabels[normalized]) return weatherLabels[normalized];
+      return value.replace(/[-_]+/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+    },
     diveSiteTitle(dive) {
       const site = importDraftSeed(dive)?.site;
       return typeof site === "string" && site.trim() ? site.trim() : diveTitle(dive);
@@ -395,199 +480,135 @@ export default {
         </section>
 
         <section class="hidden space-y-8 md:block">
-        <header class="space-y-6">
-          <div class="flex flex-wrap items-center gap-3">
-            <button @click="closeDetail" class="inline-flex items-center gap-2 bg-surface-container-high px-4 py-2 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-primary shadow-panel">
-              <span class="material-symbols-outlined text-base">arrow_back</span>
-              Back To Logs
-            </button>
-            <span class="bg-surface-container-high px-3 py-1 font-label text-[10px] font-bold uppercase tracking-[0.22em] text-primary">Dive: {{ displayDiveIndex }}</span>
-            <span class="font-label text-[10px] font-bold uppercase tracking-[0.22em] text-secondary">{{ formatDate(dive.started_at) }} | {{ formatTime(dive.started_at) }}</span>
-            </div>
-            <div class="flex flex-col gap-6 xl:flex-row xl:items-end xl:justify-between">
-              <div>
-                <h3 class="font-headline text-4xl font-bold tracking-tight text-on-surface md:text-5xl">{{ diveSiteTitle(dive) }}</h3>
-              <div class="mt-3 flex flex-wrap items-center gap-3 text-sm text-secondary">
-                <span class="bg-surface-container-high px-3 py-1 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-secondary">Imported {{ formatDate(dive.imported_at) }}</span>
+          <header class="relative min-h-[19rem] overflow-hidden rounded-[2rem] border border-primary/10 bg-surface-container-low shadow-panel">
+            <div class="absolute inset-0 bg-[radial-gradient(circle_at_55%_12%,rgba(42,160,178,0.38),transparent_18rem),linear-gradient(120deg,rgba(0,21,37,0.88),rgba(0,21,37,0.48)_45%,rgba(0,21,37,0.9)),linear-gradient(165deg,transparent_0_28%,rgba(156,202,255,0.16)_29%,transparent_31%_42%,rgba(156,202,255,0.1)_43%,transparent_45%)]"></div>
+            <div class="absolute inset-0 technical-grid opacity-[0.1]"></div>
+            <div class="absolute inset-x-0 bottom-0 h-36 bg-[linear-gradient(180deg,transparent,rgb(var(--color-background)_/_0.82))]"></div>
+            <div class="relative z-10 flex items-start justify-between gap-5 p-8">
+              <button @click="closeDetail" class="inline-flex items-center gap-2 rounded-xl border border-primary/20 bg-background/35 px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-primary shadow-panel transition-colors hover:bg-primary/10">
+                <span class="material-symbols-outlined text-base">arrow_back</span>
+                Back To Logs
+              </button>
+              <div v-if="!publicView" class="flex gap-2">
+                <button @click="openDiveEditor(dive.id)" aria-label="Edit dive" title="Edit dive" class="group inline-flex h-11 w-11 items-center justify-center rounded-xl border border-primary/20 bg-background/35 text-secondary transition-colors hover:bg-primary/10 hover:text-primary">
+                  <span class="material-symbols-outlined text-[21px] leading-none transition-transform group-hover:-rotate-6 group-hover:scale-110">edit</span>
+                </button>
+                <button @click="removeDive()" :disabled="isDeleting" aria-label="Remove dive" title="Remove dive" class="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-error/20 bg-error-container/15 text-on-error-container transition-colors hover:bg-error-container/30 disabled:opacity-50">
+                  <span class="material-symbols-outlined text-[21px] leading-none">delete</span>
+                </button>
               </div>
             </div>
-            <div v-if="!publicView" class="flex flex-wrap gap-3">
-              <button @click="openDiveEditor(dive.id)" aria-label="Edit dive" title="Edit dive" class="group inline-flex h-11 w-11 items-center justify-center bg-surface-container-high text-secondary transition-colors hover:bg-primary/10 hover:text-primary">
-                <span class="material-symbols-outlined text-[21px] leading-none transition-transform group-hover:-rotate-6 group-hover:scale-110">edit</span>
-              </button>
-              <button @click="removeDive()" :disabled="isDeleting" aria-label="Remove dive" title="Remove dive" class="inline-flex h-11 w-11 items-center justify-center bg-surface-container-high text-on-error-container transition-colors hover:bg-error-container/30 disabled:opacity-50">
-                <span class="material-symbols-outlined text-[21px] leading-none">delete</span>
-              </button>
-            </div>
-          </div>
-        </header>
 
-        <div class="grid grid-cols-[repeat(auto-fit,minmax(13rem,1fr))] gap-4">
-          <div class="rounded-[1.2rem] border border-primary/10 bg-surface-container-high p-5 shadow-[inset_0_1px_0_rgba(205,229,255,0.03)]">
-            <p class="font-label text-[10px] font-bold uppercase tracking-[0.24em] text-secondary">Duration</p>
-            <p class="mt-2 font-headline text-3xl font-bold text-on-surface">{{ durationParts(dive.duration_seconds).value }}<span class="ml-0.5 text-on-surface">{{ durationParts(dive.duration_seconds).unit }}</span></p>
-          </div>
-          <div class="rounded-[1.2rem] border border-primary/10 bg-surface-container-high p-5 shadow-[inset_0_1px_0_rgba(205,229,255,0.03)]">
-            <p class="font-label text-[10px] font-bold uppercase tracking-[0.24em] text-secondary">Max Depth</p>
-            <p class="mt-2 font-headline text-3xl font-bold text-on-surface">{{ depthParts(dive.max_depth_m).value }}<span class="ml-0.5 text-on-surface">{{ depthParts(dive.max_depth_m).unit }}</span></p>
-          </div>
-          <div v-if="hasDepthProfile" class="rounded-[1.2rem] border border-primary/10 bg-surface-container-high p-5 shadow-[inset_0_1px_0_rgba(205,229,255,0.03)]">
-            <p class="font-label text-[10px] font-bold uppercase tracking-[0.24em] text-secondary">Avg Depth</p>
-            <p class="mt-2 font-headline text-3xl font-bold text-on-surface">{{ depthParts(averageDepth).value }}<span class="ml-0.5 text-on-surface">{{ depthParts(averageDepth).unit }}</span></p>
-          </div>
-          <div class="rounded-[1.2rem] border border-primary/10 bg-surface-container-high p-5 shadow-[inset_0_1px_0_rgba(205,229,255,0.03)]">
-            <p class="font-label text-[10px] font-bold uppercase tracking-[0.24em] text-secondary">Temperature</p>
-            <p class="mt-2 font-headline text-3xl font-bold text-on-surface">{{ temperatureParts(surfaceTemperature(dive)).value }}<span class="ml-0.5 text-on-surface">{{ temperatureParts(surfaceTemperature(dive)).unit }}</span></p>
-          </div>
-          <div class="rounded-[1.2rem] border border-primary/10 bg-surface-container-high p-5 shadow-[inset_0_1px_0_rgba(205,229,255,0.03)]">
-            <p class="font-label text-[10px] font-bold uppercase tracking-[0.24em] text-secondary">Pressure</p>
-            <p class="mt-2 font-headline text-3xl font-bold text-on-surface">{{ pressureUsedText.replace(' used', '') }}</p>
-          </div>
-        </div>
-
-        <div class="grid grid-cols-12 gap-6">
-          <section v-if="hasLogbookMetadata" class="col-span-12 rounded-[1.5rem] bg-surface-container-low p-6">
-            <div class="mb-5 flex items-center justify-between gap-4">
-              <h4 class="font-headline text-lg font-bold">Logbook Details</h4>
-              <span class="text-[10px] font-black uppercase tracking-[0.22em] text-secondary">{{ logbookMetadata.length }} fields</span>
+            <div class="absolute bottom-8 left-8 right-8 z-10">
+              <div class="flex flex-wrap items-center gap-3 font-label text-[11px] font-bold uppercase tracking-[0.18em] text-on-surface-variant">
+                <span class="rounded bg-background/55 px-2 py-1 text-on-surface">{{ formatDate(dive.started_at) }}</span>
+                <span class="h-1 w-1 rounded-full bg-tertiary"></span>
+                <span>{{ formatTime(dive.started_at) }}</span>
+                <span class="h-1 w-1 rounded-full bg-tertiary"></span>
+                <span>{{ importSourceLabel }}</span>
+              </div>
+              <h3 class="mt-3 max-w-5xl font-headline text-5xl font-bold leading-[0.95] tracking-tight text-on-surface xl:text-6xl">{{ diveSiteTitle(dive) }}</h3>
+              <div class="mt-5 flex flex-wrap gap-10">
+                <div v-for="metric in heroMetricTiles" :key="'hero-metric-' + metric.label" class="min-w-[7rem]">
+                  <p class="font-label text-[11px] font-bold uppercase tracking-[0.18em] text-on-surface-variant">{{ metric.label }}</p>
+                  <p class="mt-1 font-headline text-2xl font-bold text-on-surface">{{ metric.value }}<span class="ml-1 text-sm text-on-surface-variant">{{ metric.unit }}</span></p>
+                </div>
+              </div>
             </div>
-            <div class="grid grid-cols-[repeat(auto-fit,minmax(15rem,1fr))] gap-4">
-              <article v-for="item in logbookMetadata" :key="'desktop-logbook-' + item.key" class="rounded-[1rem] bg-surface-container-high/70 p-4" :class="item.key === 'notes' ? 'md:col-span-2' : ''">
-                <div class="flex items-start gap-3">
-                  <span class="material-symbols-outlined mt-0.5 text-xl text-primary">{{ item.icon }}</span>
+          </header>
+
+          <div class="grid grid-cols-12 gap-6">
+            <main class="col-span-12 space-y-6 xl:col-span-8">
+              <section v-if="hasLogbookMetadata" class="rounded-[1.5rem] border border-primary/10 bg-surface-container-low/82 p-6 shadow-panel">
+                <div class="mb-6 flex items-center justify-between gap-4">
+                  <h4 class="flex items-center gap-3 font-headline text-xl font-bold">
+                    <span class="material-symbols-outlined text-primary">assignment</span>
+                    Logbook Details
+                  </h4>
+                  <p v-if="weatherSummary" class="max-w-sm truncate text-xs text-on-surface-variant">{{ weatherSummary }}</p>
+                  <span class="rounded-full bg-surface-container-high px-3 py-1 text-[10px] font-black uppercase tracking-[0.2em] text-primary">{{ logbookMetadata.length }} fields</span>
+                </div>
+                <div class="grid grid-cols-3 gap-4">
+                  <article v-for="item in logbookMetadata" :key="'desktop-logbook-' + item.key" class="rounded-xl bg-surface-container-high/70 p-4">
+                    <div class="flex items-center gap-3">
+                      <span class="material-symbols-outlined text-2xl text-primary">{{ item.icon }}</span>
+                      <div class="min-w-0">
+                        <p class="font-label text-[9px] font-bold uppercase tracking-[0.18em] text-secondary">{{ item.label }}</p>
+                        <p class="mt-1 block min-h-5 text-sm font-bold leading-5 text-on-surface">{{ item.value }}</p>
+                      </div>
+                    </div>
+                  </article>
+                </div>
+              </section>
+
+              <section class="overflow-hidden rounded-[1.5rem] border border-primary/10 bg-surface-container-low/80 shadow-panel">
+                <div v-if="mapPreview" class="relative min-h-[20rem]">
+                  <img :src="mapPreview.imageUrl" alt="" class="absolute inset-0 h-full w-full object-cover opacity-95" />
+                  <div class="absolute inset-0 bg-[linear-gradient(180deg,rgba(0,21,37,0.06)_0%,rgba(0,21,37,0.08)_38%,rgb(var(--color-background)_/_0.82)_100%),radial-gradient(circle_at_center,rgb(var(--color-primary)_/_0.16),transparent_17rem)]"></div>
+                  <div class="absolute -translate-x-1/2 -translate-y-1/2" :style="{ left: mapPreview.imageMarkerLeft, top: mapPreview.imageMarkerTop }">
+                    <span class="relative flex h-16 w-16 items-center justify-center">
+                      <span class="absolute h-full w-full rounded-full bg-tertiary/20 ring-1 ring-tertiary/40"></span>
+                      <span class="relative flex h-5 w-5 items-center justify-center rounded-full bg-tertiary shadow-[0_0_22px_rgb(var(--color-tertiary)_/_0.7)]">
+                        <span class="h-2 w-2 rounded-full bg-on-tertiary"></span>
+                      </span>
+                    </span>
+                  </div>
+                  <div class="absolute bottom-6 left-6 right-6">
+                    <p class="flex items-center gap-2 text-lg font-bold text-on-surface">
+                      <span class="material-symbols-outlined text-primary">explore</span>
+                      {{ diveSiteTitle(dive) }}
+                    </p>
+                    <p class="mt-2 text-sm text-on-surface-variant">Dive site navigation grid</p>
+                  </div>
+                </div>
+                <div v-else class="relative flex min-h-[20rem] flex-col justify-end overflow-hidden p-6">
+                  <div class="absolute inset-0 bg-[linear-gradient(135deg,rgb(var(--color-surface-container-high)_/_0.7),rgb(var(--color-surface-container-low)_/_0.9)),radial-gradient(circle_at_70%_25%,rgb(var(--color-primary)_/_0.18),transparent_18rem)]"></div>
+                  <div class="absolute inset-0 technical-grid opacity-[0.12]"></div>
+                  <div class="relative">
+                    <p class="flex items-center gap-2 text-lg font-bold text-on-surface">
+                      <span class="material-symbols-outlined text-primary">explore</span>
+                      {{ diveSiteTitle(dive) }}
+                    </p>
+                    <p class="mt-2 text-sm text-on-surface-variant">No coordinates are available for this dive or its saved dive site yet.</p>
+                  </div>
+                </div>
+              </section>
+            </main>
+
+            <aside class="col-span-12 space-y-6 xl:col-span-4">
+              <section class="rounded-[1.5rem] border border-primary/10 bg-surface-container-low/82 p-6 shadow-panel">
+                <h4 class="font-label text-sm font-bold uppercase tracking-[0.22em] text-on-surface">Technical Telemetry</h4>
+                <div class="mt-5 divide-y divide-primary/10">
+                  <article v-for="card in diveSystemCards" :key="'system-' + card.label" class="py-5 first:pt-0 last:pb-0">
+                    <div class="mb-3 flex items-center justify-between gap-4">
+                      <span class="material-symbols-outlined text-xl text-primary">{{ card.icon }}</span>
+                      <span class="material-symbols-outlined text-xl text-on-surface-variant/35">tune</span>
+                    </div>
+                    <p class="font-label text-[11px] font-bold uppercase tracking-[0.16em] text-on-surface-variant">{{ card.label }}</p>
+                    <p class="mt-2 font-headline text-2xl font-bold text-on-surface">{{ card.value }}</p>
+                    <p class="mt-1 text-xs text-on-surface-variant">{{ card.detail }}</p>
+                  </article>
+                </div>
+              </section>
+
+            </aside>
+
+            <section class="col-span-12 pt-8">
+              <div class="mb-5 flex items-center justify-between">
+                <h4 class="font-headline text-xl font-bold">Equipment Setup</h4>
+                <span class="font-label text-xs font-bold uppercase tracking-[0.16em] text-primary">View Config</span>
+              </div>
+              <div class="grid grid-cols-[repeat(auto-fit,minmax(12rem,1fr))] gap-4">
+                <article v-for="item in equipmentItems" :key="item.category + '-' + item.label" class="flex items-center gap-4 rounded-xl border border-primary/10 bg-surface-container-low/75 p-4">
+                  <span class="material-symbols-outlined flex h-11 w-11 items-center justify-center rounded-lg bg-surface-container-high text-primary">{{ item.icon }}</span>
                   <div class="min-w-0">
-                    <p class="font-label text-[10px] font-bold uppercase tracking-[0.2em] text-secondary">{{ item.label }}</p>
-                    <p class="mt-2 text-sm leading-6 text-on-surface">{{ item.value }}</p>
+                    <p class="font-label text-[9px] font-bold uppercase tracking-[0.16em] text-secondary">{{ item.category }}</p>
+                    <p class="truncate text-sm font-bold text-on-surface">{{ item.label }}</p>
                   </div>
-                </div>
-              </article>
-            </div>
-          </section>
-
-          <section v-if="hasDepthProfile" class="col-span-12 rounded-[1.5rem] bg-surface-container-high p-6">
-            <div class="mb-8 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-              <h4 class="font-headline text-lg font-bold">Dive Profile</h4>
-              <div class="flex flex-wrap gap-4">
-                <div class="flex items-center gap-2"><span class="h-3 w-3 rounded-full bg-primary"></span><span class="font-label text-[10px] font-bold uppercase tracking-[0.22em] text-secondary">Depth (m)</span></div>
-                <div v-if="hasPressureProfile" class="flex items-center gap-2"><span class="h-3 w-3 rounded-full bg-tertiary"></span><span class="font-label text-[10px] font-bold uppercase tracking-[0.22em] text-secondary">Air (bar)</span></div>
-              </div>
-            </div>
-            <div class="min-h-[360px]">
-              <div class="grid grid-cols-[auto_1fr_auto] gap-4">
-                <div class="relative h-[320px] w-12 text-right">
-                  <span
-                    v-for="(label, index) in depthAxisLabels"
-                    :key="'depth-' + label"
-                    class="absolute right-0 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary -translate-y-1/2"
-                    :style="profileAxisTickStyle(index)"
-                  >{{ label }}</span>
-                </div>
-                <div class="relative h-[320px]">
-                  <svg class="h-[320px] w-full" viewBox="0 0 800 250" preserveAspectRatio="none">
-                    <line x1="0" x2="800" y1="10" y2="10" stroke="#c1c7d1" stroke-width="1" stroke-dasharray="4" opacity="0.25"></line>
-                    <line x1="0" x2="800" y1="56" y2="56" stroke="#c1c7d1" stroke-width="1" stroke-dasharray="4" opacity="0.25"></line>
-                    <line x1="0" x2="800" y1="102" y2="102" stroke="#c1c7d1" stroke-width="1" stroke-dasharray="4" opacity="0.25"></line>
-                    <line x1="0" x2="800" y1="148" y2="148" stroke="#c1c7d1" stroke-width="1" stroke-dasharray="4" opacity="0.25"></line>
-                    <line x1="0" x2="800" y1="194" y2="194" stroke="#c1c7d1" stroke-width="1" stroke-dasharray="4" opacity="0.25"></line>
-                    <line x1="0" x2="800" y1="240" y2="240" stroke="#c1c7d1" stroke-width="1" stroke-dasharray="4" opacity="0.25"></line>
-                    <path :d="depthProfile.area" :fill="'url(#' + gradientId + ')'" opacity="0.95"></path>
-                    <path :d="depthProfile.line" fill="none" stroke="#12629d" stroke-width="3" stroke-linejoin="round"></path>
-                    <path v-if="hasPressureProfile" :d="pressureProfile" fill="none" stroke="#FFB77D" stroke-width="2.5" stroke-dasharray="6"></path>
-                    <line v-if="profileHover" :x1="profileHover.x" :x2="profileHover.x" y1="10" y2="240" stroke="#d9ecff" stroke-width="1.5" stroke-dasharray="4" opacity="0.5"></line>
-                    <circle v-if="profileHover" :cx="profileHover.x" :cy="profileHover.depthY" r="5" fill="#9CCAFF" stroke="#0b2940" stroke-width="2.5"></circle>
-                    <circle v-if="hasPressureProfile && profileHover && profileHover.pressureY !== null" :cx="profileHover.x" :cy="profileHover.pressureY" r="5" fill="#FFB77D" stroke="#0b2940" stroke-width="2.5"></circle>
-                    <rect
-                      x="0"
-                      y="0"
-                      width="800"
-                      height="250"
-                      fill="transparent"
-                      @mousemove="updateProfileHover"
-                      @mouseleave="clearProfileHover"
-                    ></rect>
-                    <defs>
-                      <linearGradient :id="gradientId" x1="0" x2="0" y1="0" y2="1">
-                        <stop offset="0%" stop-color="#80bdfe" stop-opacity="0.36"></stop>
-                        <stop offset="100%" stop-color="#80bdfe" stop-opacity="0"></stop>
-                      </linearGradient>
-                    </defs>
-                  </svg>
-                  <div
-                    v-if="profileHover"
-                    class="pointer-events-none absolute z-10 min-w-[9.5rem] rounded-xl border border-primary/18 bg-background/92 px-3 py-2 text-left shadow-[0_16px_34px_rgba(0,0,0,0.34)] backdrop-blur-sm"
-                    :style="profileHoverTooltipStyle"
-                  >
-                    <p class="font-label text-[8px] font-bold uppercase tracking-[0.16em] text-secondary">{{ profileHover.timeLabel }}</p>
-                    <p class="mt-1 text-sm font-semibold text-primary">Depth: {{ profileHover.depthLabel }}</p>
-                    <p v-if="profileHover.pressureLabel" class="mt-1 text-sm font-semibold text-tertiary">Air: {{ profileHover.pressureLabel }}</p>
-                  </div>
-                </div>
-                <div class="relative h-[320px] w-14">
-                  <span
-                    v-if="hasPressureProfile"
-                    v-for="(label, index) in pressureAxisLabels"
-                    :key="'pressure-' + label"
-                    class="absolute left-0 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary -translate-y-1/2"
-                    :style="profileAxisTickStyle(index)"
-                  >{{ label }}</span>
-                </div>
-              </div>
-              <div class="mt-4 grid grid-cols-6 gap-2 font-label text-[10px] font-bold uppercase tracking-[0.22em] text-secondary">
-                <span v-for="label in timeLabels" :key="label" class="text-center">{{ label }}</span>
-              </div>
-              <div class="mt-2 text-center font-label text-[10px] font-bold uppercase tracking-[0.22em] text-secondary">
-                Time
-              </div>
-            </div>
-          </section>
-
-          <section class="col-span-12 grid grid-cols-1 gap-6 lg:grid-cols-3">
-            <section class="rounded-[1.5rem] bg-surface-container-low p-6">
-              <h4 class="text-[10px] font-black uppercase tracking-[0.22em] text-secondary">Gas Configuration</h4>
-              <div class="mt-5 space-y-4">
-                <div class="flex items-center justify-between gap-4">
-                  <span class="text-sm text-secondary">Primary Mix</span>
-                  <span class="rounded-full bg-secondary-fixed px-3 py-1 text-[10px] font-black uppercase tracking-[0.2em] text-on-secondary-container">{{ gasMixLabel(primaryGasMix(dive)) }}</span>
-                </div>
-                <div class="flex items-center justify-between gap-4">
-                  <span class="text-sm text-secondary">Tank Volume</span>
-                  <span class="text-sm font-bold">{{ tankLabel(primaryTank(dive)) }}</span>
-                </div>
-                <div class="flex items-center justify-between gap-4">
-                  <span class="text-sm text-secondary">Start/End Pressure</span>
-                  <span class="text-sm font-bold">{{ pressureRangeText }}</span>
-                </div>
+                </article>
               </div>
             </section>
-
-            <section class="rounded-[1.5rem] bg-surface-container-low p-6">
-              <h4 class="text-[10px] font-black uppercase tracking-[0.22em] text-on-surface">Equipment Set</h4>
-              <div class="mt-5 flex flex-wrap gap-2">
-                <span v-for="tag in equipmentTags" :key="tag" class="rounded bg-surface-container-highest px-3 py-2 text-xs font-semibold text-secondary">{{ tag }}</span>
-              </div>
-            </section>
-
-            <section v-if="hasCheckpoints" class="rounded-[1.5rem] bg-surface-container-low p-6">
-            <div class="mb-6 flex items-center justify-between gap-4">
-              <h4 class="flex items-center gap-2 font-headline text-lg font-bold">
-                <span class="material-symbols-outlined text-secondary">photo_library</span>
-                Dive Checkpoints
-              </h4>
-              <span class="text-[10px] font-black uppercase tracking-[0.22em] text-secondary">{{ checkpoints.length }} telemetry moments</span>
-            </div>
-            <div class="grid grid-cols-2 gap-3">
-              <article v-for="card in checkpoints" :key="card.title" class="aspect-square rounded-[1rem] bg-surface-container-high/70 p-4">
-                <p class="text-[10px] font-black uppercase tracking-[0.22em] text-secondary">{{ card.title }}</p>
-                <div class="mt-6 space-y-3">
-                  <div><p class="text-[10px] font-bold uppercase tracking-[0.2em] text-secondary">Time</p><p class="mt-1 font-headline text-2xl font-bold">{{ card.time }}</p></div>
-                  <div><p class="text-[10px] font-bold uppercase tracking-[0.2em] text-secondary">Depth</p><p class="mt-1 text-sm font-bold">{{ card.depth }}</p></div>
-                  <div><p class="text-[10px] font-bold uppercase tracking-[0.2em] text-secondary">Pressure</p><p class="mt-1 text-sm font-bold">{{ card.pressure }}</p></div>
-                </div>
-              </article>
-            </div>
-          </section>
-          </section>
-        </div>
+          </div>
         </section>
       </div>
     </section>

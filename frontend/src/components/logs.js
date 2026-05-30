@@ -10,9 +10,10 @@ export default {
       sortDirection: "desc",
       mobileControlsOpen: false,
       currentPage: 1,
-      siteFilter: "",
+      siteFilters: [],
       buddyFilters: [],
       guideFilters: [],
+      siteFilterOpen: false,
       buddyFilterOpen: false,
       guideFilterOpen: false,
       pageSize: 10,
@@ -29,8 +30,11 @@ export default {
     sortDirection() {
       this.currentPage = 1;
     },
-    siteFilter() {
-      this.currentPage = 1;
+    siteFilters: {
+      deep: true,
+      handler() {
+        this.currentPage = 1;
+      }
     },
     buddyFilters: {
       deep: true,
@@ -70,7 +74,7 @@ export default {
           dive.raw_sha256,
           formatDate(dive.started_at)
         ].join(" ").toLowerCase().includes(search);
-        const matchesSite = !this.siteFilter || site === this.siteFilter;
+        const matchesSite = !this.siteFilters.length || this.siteFilters.includes(site);
         const matchesBuddy = !this.buddyFilters.length || this.buddyFilters.includes(buddy);
         const matchesGuide = !this.guideFilters.length || this.guideFilters.includes(guide);
         return matchesSearch && matchesSite && matchesBuddy && matchesGuide;
@@ -298,10 +302,14 @@ export default {
         <div class="mt-3 grid gap-2">
           <label class="rounded-lg border border-primary/10 bg-surface-container-high/70 px-3 py-2">
             <span class="block font-label text-[9px] font-bold uppercase tracking-[0.14em] text-on-surface-variant">Location</span>
-            <select v-model="siteFilter" class="mt-1 w-full border-none bg-transparent p-0 pr-6 text-sm font-semibold text-on-surface focus:ring-0">
-              <option value="">All locations</option>
-              <option v-for="site in siteFilterOptions" :key="'mobile-site-filter-' + site" :value="site">{{ site }}</option>
-            </select>
+            <div class="mt-2 max-h-36 space-y-1 overflow-y-auto">
+              <label v-for="site in siteFilterOptions" :key="'mobile-site-filter-' + site" class="flex items-center gap-2 text-sm font-semibold text-on-surface">
+                <input :checked="siteFilters.includes(site)" @change="toggleNamedFilter('siteFilters', site)" type="checkbox" class="h-4 w-4 rounded border-primary/20 bg-surface-container-high text-primary focus:ring-primary/30" />
+                <span class="truncate">{{ site }}</span>
+              </label>
+            </div>
+            <button v-if="siteFilters.length" type="button" @click="clearNamedFilter('siteFilters')" class="mt-2 text-[10px] font-bold uppercase tracking-[0.14em] text-primary">Clear locations</button>
+            <span v-else class="mt-1 block text-[10px] text-on-surface-variant">All locations</span>
           </label>
         </div>
         <div class="mt-2 grid grid-cols-2 gap-2">
@@ -474,15 +482,25 @@ export default {
             {{ t("Duration", "Duration") }}
             <span class="material-symbols-outlined text-sm">{{ sortIndicator('duration') }}</span>
           </button>
-          <label class="log-filter-chip">
-            <span class="material-symbols-outlined text-base">location_on</span>
-            <select v-model="siteFilter" class="min-w-[9rem] border-none bg-transparent p-0 pr-7 font-label text-sm font-bold text-on-surface focus:ring-0">
-              <option value="">All locations</option>
-              <option v-for="site in siteFilterOptions" :key="'desktop-site-filter-' + site" :value="site">{{ site }}</option>
-            </select>
-          </label>
           <div class="relative">
-            <button type="button" @click="buddyFilterOpen = !buddyFilterOpen; guideFilterOpen = false" class="log-filter-chip">
+            <button type="button" @click="siteFilterOpen = !siteFilterOpen; buddyFilterOpen = false; guideFilterOpen = false" class="log-filter-chip">
+              <span class="material-symbols-outlined text-base">location_on</span>
+              Locations
+              <span class="font-label text-[10px] font-bold uppercase tracking-[0.14em] text-secondary">{{ siteFilters.length ? siteFilters.length + ' selected' : 'All' }}</span>
+              <span class="material-symbols-outlined text-sm">{{ siteFilterOpen ? 'expand_less' : 'expand_more' }}</span>
+            </button>
+            <div v-if="siteFilterOpen" class="absolute left-0 z-20 mt-2 w-72 rounded-xl border border-primary/15 bg-surface-container-low p-3 shadow-panel">
+              <div class="max-h-64 space-y-2 overflow-y-auto">
+                <label v-for="site in siteFilterOptions" :key="'desktop-site-filter-' + site" class="flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm font-semibold text-on-surface hover:bg-surface-container-high">
+                  <input :checked="siteFilters.includes(site)" @change="toggleNamedFilter('siteFilters', site)" type="checkbox" class="h-4 w-4 rounded border-primary/20 bg-surface-container-high text-primary focus:ring-primary/30" />
+                  <span class="truncate">{{ site }}</span>
+                </label>
+              </div>
+              <button v-if="siteFilters.length" type="button" @click="clearNamedFilter('siteFilters')" class="mt-3 text-[10px] font-bold uppercase tracking-[0.14em] text-primary">Clear locations</button>
+            </div>
+          </div>
+          <div class="relative">
+            <button type="button" @click="buddyFilterOpen = !buddyFilterOpen; siteFilterOpen = false; guideFilterOpen = false" class="log-filter-chip">
               <span class="material-symbols-outlined text-base">diversity_3</span>
               Buddy
               <span class="font-label text-[10px] font-bold uppercase tracking-[0.14em] text-secondary">{{ buddyFilters.length ? buddyFilters.length + ' selected' : 'All' }}</span>
@@ -499,7 +517,7 @@ export default {
             </div>
           </div>
           <div class="relative">
-            <button type="button" @click="guideFilterOpen = !guideFilterOpen; buddyFilterOpen = false" class="log-filter-chip">
+            <button type="button" @click="guideFilterOpen = !guideFilterOpen; siteFilterOpen = false; buddyFilterOpen = false" class="log-filter-chip">
               <span class="material-symbols-outlined text-base">badge</span>
               Guide
               <span class="font-label text-[10px] font-bold uppercase tracking-[0.14em] text-secondary">{{ guideFilters.length ? guideFilters.length + ' selected' : 'All' }}</span>
