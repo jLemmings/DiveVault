@@ -1,5 +1,5 @@
-import { buildDiveSequenceMap, formatDate, numberOrZero, parseDate, formatTime, formatDepth, formatTemperature, durationShort, surfaceTemperature, diveTitle, diveDeviceLabel, pressureUsedLabel, importDraftSeed, paddedDiveIndex } from "../core.js";
-import { diveMapPreview } from "../map-preview.js";
+import { buildDiveSequenceMap, formatDate, numberOrZero, parseDate, formatTime, formatDepth, formatTemperature, durationShort, surfaceTemperature, diveTitle, diveDeviceLabel, pressureUsedLabel, importDraftSeed, paddedDiveIndex } from "../utils/core.js";
+import { diveMapPreview } from "../utils/map-preview.js";
 
 export default {
   name: "LogsView",

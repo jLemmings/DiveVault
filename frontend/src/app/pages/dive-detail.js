@@ -1,5 +1,5 @@
-import { buildDiveSequenceMap, depthChartPath, pressureChartPath, numberOrZero, depthSeries, axisTicks, pressureRange, pressureSeries, profileTimeLabels, checkpointCards, detailEquipmentTags, pressureRangeLabel, pressureUsedLabel, diveModeLabel, diveTitle, formatDate, formatTime, formatDepth, formatDepthNumber, formatTemperature, durationShort, gasMixLabel, primaryGasMix, primaryTank, tankLabel, surfaceTemperature, depthParts, durationParts, temperatureParts, averageDepthValue, importDraftSeed, paddedDiveIndex, diveNarrative, sacRate } from "../core.js";
-import { diveMapPreview } from "../map-preview.js";
+import { buildDiveSequenceMap, depthChartPath, pressureChartPath, numberOrZero, depthSeries, axisTicks, pressureRange, pressureSeries, profileTimeLabels, checkpointCards, detailEquipmentTags, pressureRangeLabel, pressureUsedLabel, diveModeLabel, diveTitle, formatDate, formatTime, formatDepth, formatDepthNumber, formatTemperature, durationShort, gasMixLabel, primaryGasMix, primaryTank, tankLabel, surfaceTemperature, depthParts, durationParts, temperatureParts, averageDepthValue, importDraftSeed, paddedDiveIndex, diveNarrative, sacRate } from "../utils/core.js";
+import { diveMapPreview } from "../utils/map-preview.js";
 
 const PROFILE_CHART_WIDTH = 800;
 const PROFILE_CHART_HEIGHT = 250;

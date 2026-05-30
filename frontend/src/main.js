@@ -1,10 +1,10 @@
 import { createApp } from "vue";
 import "leaflet/dist/leaflet.css";
 
-import App from "./app.js";
-import { initializeAuth } from "./auth.js";
-import { installI18n } from "./i18n/index.js";
-import "./styles.css";
+import App from "./app/app.js";
+import { initializeAuth } from "./app/composables/auth.js";
+import { installI18n } from "./app/i18n/index.js";
+import "./app/assets/styles.css";
 
 async function loadAppConfig() {
   if (window.__APP_CONFIG__) return;

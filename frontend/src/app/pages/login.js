@@ -1,4 +1,4 @@
-import { loginWithPassword, registerUser } from "../auth.js";
+import { loginWithPassword, registerUser } from "../composables/auth.js";
 import { MESSAGES } from "../i18n/index.js";
 
 const AUTH_VIEW_SIGNIN = "signin";
