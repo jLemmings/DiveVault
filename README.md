@@ -3,12 +3,6 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/jLemmings/DiveVault/actions/workflows/docker-image.yml"><img alt="Docker Image CI" src="https://github.com/jLemmings/DiveVault/actions/workflows/docker-image.yml/badge.svg"></a>
-  <a href="https://github.com/jLemmings/DiveVault/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/jLemmings/DiveVault?sort=semver"></a>
-  <a href="https://demo.divevault.dev"><img alt="Demo" src="https://img.shields.io/badge/demo-online-2aa6b3"></a>
-</p>
-
-<p align="center">
   <a href="https://demo.divevault.dev">Try the demo</a>
   |
   <a href="#quick-start">Quick Start</a>
