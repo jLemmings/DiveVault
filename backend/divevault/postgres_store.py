@@ -154,6 +154,7 @@ CREATE TABLE IF NOT EXISTS user_equipment (
     equipment_id TEXT NOT NULL,
     name TEXT NOT NULL DEFAULT '',
     category TEXT NOT NULL DEFAULT '',
+    icon TEXT NOT NULL DEFAULT '',
     type TEXT NOT NULL DEFAULT '',
     year_bought INTEGER,
     vendor TEXT NOT NULL DEFAULT '',
@@ -191,7 +192,7 @@ LOGBOOK_OPTIONAL_FIELDS = ("weather_description", "visibility", "wetsuit_descrip
 LOGBOOK_DISPLAY_FIELD_OPTIONS = set(LOGBOOK_OPTIONAL_FIELDS)
 SAMPLE_TIME_UNIT_SECONDS = "seconds"
 SAMPLE_TIME_UNIT_MILLISECONDS = "milliseconds"
-CURRENT_SCHEMA_VERSION = 13
+CURRENT_SCHEMA_VERSION = 14
 SCHEMA_VERSION_SQL = """
 CREATE TABLE IF NOT EXISTS app_schema_version (
     singleton BOOLEAN PRIMARY KEY DEFAULT TRUE CHECK (singleton),
@@ -620,6 +621,7 @@ def apply_schema_migration_v9(cur: psycopg.Cursor) -> None:
             equipment_id TEXT NOT NULL,
             name TEXT NOT NULL DEFAULT '',
             category TEXT NOT NULL DEFAULT '',
+            icon TEXT NOT NULL DEFAULT '',
             type TEXT NOT NULL DEFAULT '',
             year_bought INTEGER,
             vendor TEXT NOT NULL DEFAULT '',
@@ -674,6 +676,11 @@ def apply_schema_migration_v13(cur: psycopg.Cursor) -> None:
     cur.execute("UPDATE user_profile SET required_logbook_fields_json='[\"site\"]'::jsonb WHERE required_logbook_fields_json IS NULL")
 
 
+def apply_schema_migration_v14(cur: psycopg.Cursor) -> None:
+    cur.execute("ALTER TABLE user_equipment ADD COLUMN IF NOT EXISTS icon TEXT NOT NULL DEFAULT ''")
+    cur.execute("UPDATE user_equipment SET icon='' WHERE icon IS NULL")
+
+
 def _run_schema_migrations(conn: psycopg.Connection, cur: psycopg.Cursor, current_version: int) -> int:
     migrations: tuple[tuple[int, Callable[[psycopg.Connection, psycopg.Cursor], None]], ...] = (
         (1, lambda _conn, migration_cur: apply_schema_migration_v1(migration_cur)),
@@ -689,6 +696,7 @@ def _run_schema_migrations(conn: psycopg.Connection, cur: psycopg.Cursor, curren
         (11, lambda _conn, migration_cur: apply_schema_migration_v11(migration_cur)),
         (12, lambda _conn, migration_cur: apply_schema_migration_v12(migration_cur)),
         (13, lambda _conn, migration_cur: apply_schema_migration_v13(migration_cur)),
+        (14, lambda _conn, migration_cur: apply_schema_migration_v14(migration_cur)),
     )
     target_schema_version = min(CURRENT_SCHEMA_VERSION, max(version for version, _ in migrations))
 
@@ -942,6 +950,7 @@ def normalize_equipment_item(entry: dict | None) -> dict:
         "id": clean_profile_text(source.get("id") or source.get("equipment_id")),
         "name": name,
         "category": category,
+        "icon": clean_profile_text(source.get("icon")),
         "type": category,
         "year_bought": clean_optional_int(source.get("year_bought"), minimum=1900, maximum=2200),
         "vendor": clean_profile_text(source.get("vendor")),
@@ -981,6 +990,7 @@ def equipment_has_values(entry: dict | None) -> bool:
             "service_interval_months",
             "max_dives_before_service",
             "service_tag",
+            "icon",
         )
     ) or normalized.get("is_default")
 
@@ -1655,6 +1665,7 @@ def normalize_logbook_equipment_snapshot(entries: object) -> list[dict]:
                 "id": equipment_id,
                 "name": clean_profile_text(entry.get("name")),
                 "category": clean_profile_text(entry.get("category") or entry.get("type")),
+                "icon": clean_profile_text(entry.get("icon")),
                 "service_status": clean_profile_text(entry.get("service_status")),
                 "service_due_date": clean_profile_text(entry.get("service_due_date")),
                 "last_service_date": clean_profile_text(entry.get("last_service_date")),
@@ -2014,6 +2025,7 @@ def equipment_snapshot_for_dive(equipment: list[dict], equipment_ids: list[str],
             "id": equipment_id,
             "name": clean_profile_text(item.get("name")) or clean_profile_text(item.get("brand")) or clean_profile_text(item.get("category")) or equipment_id,
             "category": clean_profile_text(item.get("category") or item.get("type")),
+            "icon": clean_profile_text(item.get("icon")),
             "last_service_date": clean_profile_text(item.get("last_service_date") or item.get("last_serviced_at")),
             **service,
         }
@@ -2028,7 +2040,7 @@ def list_user_equipment(conn: psycopg.Connection, user_id: str) -> list[dict]:
     with conn.cursor() as cur:
         cur.execute(
             """
-            SELECT equipment_id, name, category, type, year_bought, vendor, brand, model, serial, warranty, next_service_due,
+            SELECT equipment_id, name, category, icon, type, year_bought, vendor, brand, model, serial, warranty, next_service_due,
                    service_interval_months, last_service_date, max_dives_before_service, track_service, service_tag, is_default, is_standard,
                    last_serviced_at, last_service_dive_count, updated_at
             FROM user_equipment
@@ -2045,6 +2057,7 @@ def list_user_equipment(conn: psycopg.Connection, user_id: str) -> list[dict]:
                 "id": row.get("equipment_id"),
                 "name": row.get("name"),
                 "category": row.get("category"),
+                "icon": row.get("icon"),
                 "type": row.get("type"),
                 "year_bought": row.get("year_bought"),
                 "vendor": row.get("vendor"),
@@ -2087,17 +2100,18 @@ def save_user_equipment(conn: psycopg.Connection, user_id: str, entries: object)
             cur.execute(
                 """
                 INSERT INTO user_equipment(
-                    user_id, equipment_id, name, category, type, year_bought, vendor, brand, model, serial, warranty,
+                    user_id, equipment_id, name, category, icon, type, year_bought, vendor, brand, model, serial, warranty,
                     next_service_due, service_interval_months, last_service_date, max_dives_before_service, track_service, service_tag,
                     is_default, is_standard, last_serviced_at, last_service_dive_count, updated_at
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """,
                 (
                     user_id,
                     item["id"],
                     item["name"],
                     item["category"],
+                    item["icon"],
                     item["type"],
                     item["year_bought"],
                     item["vendor"],
