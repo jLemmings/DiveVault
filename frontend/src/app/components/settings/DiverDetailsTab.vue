@@ -1,12 +1,8 @@
 <script>
-import LicensePdfPreview from "../LicensePdfPreview.vue";
 import { settingsContextComputed, settingsContextMethods } from "./settings-context.js";
 
 export default {
   name: "DiverDetailsTab",
-  components: {
-    LicensePdfPreview
-  },
   inject: ["settingsContext"],
   computed: {
     ...settingsContextComputed([
@@ -29,7 +25,6 @@ export default {
   methods: {
     ...settingsContextMethods([
       "addLicenseEntry",
-      "authenticatedFetch",
       "beginProfileEdit",
       "cancelLicensesEdit",
       "cancelProfileEdit",
@@ -44,7 +39,6 @@ export default {
       "isUploadingLicense",
       "licenseExistsOnServer",
       "licenseTitle",
-      "openLicensePreview",
       "saveLicenses",
       "saveProfile",
       "viewLicensePdf"
@@ -264,7 +258,13 @@ export default {
                 <p class="font-semibold text-on-surface">{{ license.pdf.filename }}</p>
                 <p class="mt-1 text-sm text-secondary">{{ formatBytes(license.pdf.size_bytes) }} &middot; Uploaded {{ formatDateTime(license.pdf.uploaded_at) }}</p>
               </div>
-              <license-pdf-preview :pdf="license.pdf" :authenticated-fetch="authenticatedFetch" @open-preview="openLicensePreview($event, license)" />
+              <button
+                type="button"
+                @click="viewLicensePdf(license)"
+                class="settings-button settings-button-secondary"
+              >
+                Open PDF Preview
+              </button>
             </div>
 
             <div v-else class="settings-empty-state">

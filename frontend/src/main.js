@@ -1,5 +1,4 @@
 import { createApp } from "vue";
-import "leaflet/dist/leaflet.css";
 
 import App from "./app/App.vue";
 import { initializeAuth } from "./app/composables/auth.js";

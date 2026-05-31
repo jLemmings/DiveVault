@@ -1,9 +1,18 @@
-import L from "leaflet";
-
 import { numericCoordinate, validCoordinates } from "../utils/dive-map.js";
+import { loadLeaflet } from "../utils/leaflet-loader.js";
 
 export function createSettingsDiveSiteMapOptions() {
   return {
+    async ensureDiveSiteMapLeaflet() {
+      if (this._diveSiteMapLeaflet) return this._diveSiteMapLeaflet;
+      if (!this._diveSiteMapLeafletPromise) {
+        this._diveSiteMapLeafletPromise = loadLeaflet().then((leaflet) => {
+          this._diveSiteMapLeaflet = leaflet;
+          return leaflet;
+        });
+      }
+      return this._diveSiteMapLeafletPromise;
+    },
     ensureDiveSiteMapStores() {
       if (!this._diveSiteMapEditors) {
         this._diveSiteMapEditors = new Map();
@@ -66,6 +75,8 @@ export function createSettingsDiveSiteMapOptions() {
       this.syncDiveSiteMapFromFields(siteId, { preserveViewport: true });
     },
     diveSiteMapMarkerIcon() {
+      const L = this._diveSiteMapLeaflet;
+      if (!L) return null;
       const size = 32;
       return L.divIcon({
         className: "dive-map-marker-shell",
@@ -81,6 +92,8 @@ export function createSettingsDiveSiteMapOptions() {
       });
     },
     ensureDiveSiteMapMarker(siteId, editor, position) {
+      const L = this._diveSiteMapLeaflet;
+      if (!L) return null;
       if (editor.marker) {
         editor.marker.setLatLng(position);
         return editor.marker;
@@ -97,7 +110,7 @@ export function createSettingsDiveSiteMapOptions() {
       });
       return editor.marker;
     },
-    initializeDiveSiteMap(siteId) {
+    async initializeDiveSiteMap(siteId) {
       this.ensureDiveSiteMapStores();
       const container = this._diveSiteMapRefs.get(siteId);
       if (!container) return;
@@ -112,9 +125,14 @@ export function createSettingsDiveSiteMapOptions() {
         return;
       }
 
+      const L = await this.ensureDiveSiteMapLeaflet();
+      if (!this.diveSiteMapOpen(siteId)) return;
+      const currentContainer = this._diveSiteMapRefs.get(siteId);
+      if (!currentContainer) return;
+
       const coordinates = this.diveSiteCoordinatePair(site);
       const center = coordinates ? [coordinates.lat, coordinates.lon] : [20, 0];
-      const map = L.map(container, {
+      const map = L.map(currentContainer, {
         zoomControl: false,
         attributionControl: false,
         scrollWheelZoom: true,

@@ -1,7 +1,7 @@
 <script>
-import L from "leaflet";
 import { buildDiveSequenceMap, dayOfMonth, monthShort, formatDate, formatTime, diveTitle, diveSubtitle, diveDeviceLabel, formatDepth, formatDepthNumber, formatDateTime, durationShort, formatTemperature, surfaceTemperature, diveModeLabel, pressureUsedLabel, decoStatusLabel, formatBarTotal, filledIconStyle, numberOrZero, parseDate, paddedDiveIndex } from "../utils/core.js";
 import { coordinateLabel, diveCoordinates, diveSiteName, escapeHtml, markerDiameter, normalizeSiteName, savedSiteCoordinates } from "../utils/dive-map.js";
+import { loadLeaflet } from "../utils/leaflet-loader.js";
 import { diveMapPreview } from "../utils/map-preview.js";
 
 function matchingSavedSite(dive, diveSites) {
@@ -19,15 +19,17 @@ export default {
       diveTileLayer: null,
       diveLabelLayer: null,
       diveMarkerLayer: null,
+      leaflet: null,
+      leafletLoadPromise: null,
       showMissingCoordinateDives: false,
       isMapExpanded: false,
       mapViewportInitialized: false
     };
   },
   mounted() {
-    this.$nextTick(() => {
-      this.initializeDiveMap();
-      this.syncDiveMap({ reframe: true });
+    this.$nextTick(async () => {
+      await this.initializeDiveMap();
+      await this.syncDiveMap({ reframe: true });
     });
     window.addEventListener("resize", this.handleMapResize);
   },
@@ -84,11 +86,23 @@ export default {
     diveMapPreview(dive) {
       return diveMapPreview(dive, this.diveSites);
     },
+    async ensureLeaflet() {
+      if (this.leaflet) return this.leaflet;
+      if (!this.leafletLoadPromise) {
+        this.leafletLoadPromise = loadLeaflet().then((leaflet) => {
+          this.leaflet = leaflet;
+          return leaflet;
+        });
+      }
+      return this.leafletLoadPromise;
+    },
     handleMapResize() {
       if (!this.diveMap) return;
       this.diveMap.invalidateSize(false);
     },
-    initializeDiveMap() {
+    async initializeDiveMap() {
+      if (this.diveMap || !this.$refs.diveMapCanvas) return;
+      const L = await this.ensureLeaflet();
       if (this.diveMap || !this.$refs.diveMapCanvas) return;
 
       const map = L.map(this.$refs.diveMapCanvas, {
@@ -115,6 +129,8 @@ export default {
       this.diveMap = map;
     },
     diveMarkerIcon(marker) {
+      const L = this.leaflet;
+      if (!L) return null;
       const size = markerDiameter(marker.count) + 10;
       const countLabel = `<span class="dive-map-marker-count">${marker.count}</span>`;
 
@@ -171,8 +187,9 @@ export default {
 
       const zoom = this.diveMap?.getZoom?.() ?? 4.25;
       const clusterRadius = this.clusterRadiusForZoom(zoom);
+      const L = this.leaflet;
 
-      if (!this.diveMap || clusterRadius <= 0) {
+      if (!this.diveMap || !L || clusterRadius <= 0) {
         return this.diveMapMarkers
           .map((marker) => this.baseDisplayMarker(marker))
           .sort((left, right) => {
@@ -255,7 +272,8 @@ export default {
         });
     },
     zoomIntoMarkerSector(marker) {
-      if (!this.diveMap) return;
+      const L = this.leaflet;
+      if (!this.diveMap || !L) return;
 
       const sourceMarkers = Array.isArray(marker?.sourceMarkers) ? marker.sourceMarkers : [];
       const positions = sourceMarkers.map((entry) => L.latLng(entry.latitude, entry.longitude));
@@ -276,10 +294,12 @@ export default {
         duration: 0.45
       });
     },
-    syncDiveMap(options = {}) {
+    async syncDiveMap(options = {}) {
       if (!this.$refs.diveMapCanvas) return;
-      this.initializeDiveMap();
+      await this.initializeDiveMap();
       if (!this.diveMap || !this.diveMarkerLayer) return;
+      const L = this.leaflet;
+      if (!L) return;
 
       const { preserveViewport = false, reframe = false } = options;
       this.diveMarkerLayer.clearLayers();
