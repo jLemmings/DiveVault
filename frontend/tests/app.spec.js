@@ -174,6 +174,79 @@ test("covers settings profile loading and public sharing updates", async ({ page
   await expect(page.getByRole("heading", { name: "Backup And Restore" })).toBeVisible();
 });
 
+test("covers extracted settings lists and user management", async ({ page }) => {
+  const ownerUser = {
+    id: "owner_avery",
+    firstName: "Avery",
+    lastName: "Marlow",
+    role: "admin",
+    isOwner: true,
+    primaryEmailAddress: {
+      emailAddress: "avery@example.com"
+    },
+    emailAddresses: [
+      {
+        emailAddress: "avery@example.com"
+      }
+    ]
+  };
+  await installAppMocks(page, {
+    user: ownerUser,
+    authUsers: [
+      {
+        id: "owner_avery",
+        email: "avery@example.com",
+        first_name: "Avery",
+        last_name: "Marlow",
+        role: "admin",
+        is_active: true,
+        created_at: "2026-04-01T09:00:00Z",
+        updated_at: "2026-04-01T09:00:00Z",
+        last_login_at: "2026-04-07T10:00:00Z"
+      },
+      {
+        id: "user_kai",
+        email: "kai@example.com",
+        first_name: "Kai",
+        last_name: "Reef",
+        role: "user",
+        is_active: true,
+        created_at: "2026-04-02T09:00:00Z",
+        updated_at: "2026-04-02T09:00:00Z",
+        last_login_at: "2026-04-07T11:00:00Z"
+      }
+    ]
+  });
+  await gotoAndWait(page, "/#settings/buddies");
+
+  const settingsRail = page.locator(".settings-section-nav");
+  await expect(page.getByRole("heading", { name: "Saved Dive Buddy List" })).toBeVisible();
+  await page.getByPlaceholder("Filter buddies").fill("Kai");
+  await expect(page.getByRole("heading", { name: "Kai" })).toBeVisible();
+  await page.getByRole("button", { name: "Edit Buddy" }).click();
+  await page.getByRole("textbox", { name: "Buddy Name" }).fill("Kai Reef");
+  await page.getByRole("button", { name: "Save Buddy" }).click();
+  await expect(page.getByText("Buddies updated.")).toBeVisible();
+
+  await settingsRail.getByRole("button", { name: /Dive Guide/ }).click();
+  await expect(page.getByRole("heading", { name: "Saved Guide List" })).toBeVisible();
+  await page.getByPlaceholder("Filter guides").fill("Mina");
+  await page.getByRole("button", { name: "Edit Guide" }).click();
+  await page.getByRole("textbox", { name: "Guide Name" }).fill("Mina Reef");
+  await page.getByRole("button", { name: "Save Guide" }).click();
+  await expect(page.getByText("Guides updated.")).toBeVisible();
+
+  await settingsRail.getByRole("button", { name: /Manage Users/ }).click();
+  await expect(page.getByRole("heading", { name: "Invites And Access Control" })).toBeVisible();
+  await page.getByLabel("Allow direct account creation").check();
+  await page.getByRole("button", { name: "Save Access Policy" }).click();
+  await expect(page.getByText("Public registration enabled.")).toBeVisible();
+  await page.getByPlaceholder("second-user@example.com").fill("buddy@example.com");
+  await page.getByRole("button", { name: "Create Invite" }).click();
+  await expect(page.getByText("Invitation created for buddy@example.com.")).toBeVisible();
+  await expect(page.getByText("kai@example.com")).toBeVisible();
+});
+
 test("manages equipment inventory and service schedule", async ({ page }) => {
   await installAppMocks(page);
   await gotoAndWait(page, "/#equipment");

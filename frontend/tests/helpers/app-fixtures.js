@@ -477,6 +477,28 @@ async function installAppMocks(page, options = {}) {
       return;
     }
 
+    if (pathname === "/api/auth/settings" && request.method() === "GET") {
+      await fulfillJson(route, {
+        initialized: authStatus.initialized,
+        public_registration_enabled: authStatus.public_registration_enabled,
+        owner_user_id: authUsers[0]?.id || "",
+        user_count: authUsers.length
+      });
+      return;
+    }
+
+    if (pathname === "/api/auth/settings" && request.method() === "PUT") {
+      const payload = request.postDataJSON ? request.postDataJSON() : JSON.parse(request.postData() || "{}");
+      authStatus.public_registration_enabled = Boolean(payload.public_registration_enabled);
+      await fulfillJson(route, {
+        initialized: authStatus.initialized,
+        public_registration_enabled: authStatus.public_registration_enabled,
+        owner_user_id: authUsers[0]?.id || "",
+        user_count: authUsers.length
+      });
+      return;
+    }
+
     if (pathname === "/api/users" && request.method() === "GET") {
       await fulfillJson(route, {
         settings: {
