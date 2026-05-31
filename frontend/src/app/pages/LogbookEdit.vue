@@ -1,57 +1,7 @@
-import { buildDiveSequenceMap, canCompleteImport, diveDeviceLabel, formatDate, formatDateTime, formatDepthNumber, formatTemperature, hasRecordedPressureSamples, importTemperature, missingImportFields, paddedDiveIndex, durationShort, numberOrZero } from "../core.js";
-import MetadataAutocompleteField from "./metadata-autocomplete.js";
-
-function normalizeSiteName(value) {
-  return typeof value === "string" ? value.trim().toLowerCase() : "";
-}
-
-function normalizeBuddyName(value) {
-  return typeof value === "string" ? value.trim().toLowerCase() : "";
-}
-
-function sortNamedCollection(collection) {
-  if (!Array.isArray(collection)) return [];
-  return [...collection]
-    .filter((item) => typeof item?.name === "string" && item.name.trim())
-    .sort((left, right) => left.name.localeCompare(right.name, undefined, { sensitivity: "base", numeric: true }));
-}
-
-function parseDate(value) {
-  if (!value) return null;
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? null : date;
-}
-
-function addMonths(date, months) {
-  const next = new Date(date.getTime());
-  const targetMonth = next.getMonth() + months;
-  next.setMonth(targetMonth);
-  if (next.getMonth() !== ((targetMonth % 12) + 12) % 12) {
-    next.setDate(0);
-  }
-  return next;
-}
-
-function equipmentTitle(item) {
-  return item?.name || [item?.brand, item?.model, item?.category || item?.type].filter(Boolean).join(" ") || "Unnamed equipment";
-}
-
-function serviceStatusForDive(item, diveStartedAt) {
-  const diveDate = parseDate(diveStartedAt);
-  const serviceDate = parseDate(item?.last_service_date || item?.last_serviced_at);
-  const interval = Number.parseInt(item?.service_interval_months, 10);
-  if (!diveDate || !serviceDate || !Number.isFinite(interval) || interval <= 0) {
-    return { status: "unknown", label: "Service data missing" };
-  }
-  const dueDate = addMonths(serviceDate, interval);
-  if (serviceDate > diveDate) {
-    return { status: "unknown", label: "Service date after dive" };
-  }
-  if (diveDate > dueDate) {
-    return { status: "overdue", label: `Overdue ${dueDate.toISOString().slice(0, 10)}` };
-  }
-  return { status: dueDate <= addMonths(diveDate, 1) ? "due_soon" : "serviced", label: `OK until ${dueDate.toISOString().slice(0, 10)}` };
-}
+<script>
+import { buildDiveSequenceMap, canCompleteImport, diveDeviceLabel, formatDate, formatDateTime, formatDepthNumber, formatTemperature, hasRecordedPressureSamples, importTemperature, missingImportFields, paddedDiveIndex, durationShort, numberOrZero } from "../utils/core.js";
+import MetadataAutocompleteField from "../components/MetadataAutocomplete.vue";
+import { equipmentTitle, normalizeName as normalizeBuddyName, normalizeName as normalizeSiteName, serviceStatusForDive, sortNamedCollection } from "../utils/equipment-dive.js";
 
 export default {
   name: "LogbookEditorView",
@@ -280,7 +230,10 @@ export default {
       return Math.round(numberOrZero(dive?.duration_seconds) / 60);
     }
   },
-  template: `
+}
+</script>
+
+<template>
     <section v-if="dive && selectedDraft" class="space-y-8 text-on-surface">
       <header class="space-y-5">
         <button @click="closeEditor()" class="inline-flex items-center gap-2 bg-surface-container-high px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-on-surface transition-colors hover:text-primary">
@@ -490,5 +443,4 @@ export default {
         </div>
       </section>
     </section>
-  `
-};
+</template>

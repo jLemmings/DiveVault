@@ -1,291 +1,43 @@
-import { useAuth, useUser } from "../auth.js";
-import { logbookRequirementFieldOptions, normalizeRequiredLogbookFields } from "../core.js";
-import { getDocument, GlobalWorkerOptions } from "pdfjs-dist";
-import pdfWorkerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
+<script>
+import { useAuth, useUser } from "../composables/auth.js";
+import { logbookRequirementFieldOptions, normalizeRequiredLogbookFields } from "../utils/core.js";
+import LicensePdfPreview from "../components/LicensePdfPreview.vue";
 import { MESSAGES } from "../i18n/index.js";
 
-const MAX_LICENSE_BYTES = 10 * 1024 * 1024;
-const PDF_PREVIEW_SCALE = 1.35;
-const THEME_OPTIONS = [
-  { value: "system", label: "System Default", icon: "desktop_windows" },
-  { value: "light", label: "Light", icon: "light_mode" },
-  { value: "dark", label: "Dark", icon: "dark_mode" }
-];
-
-GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
-
-const LANGUAGE_LABELS = {
-  en: "English",
-  de: "Deutsch",
-  fr: "Français"
-};
-
-function formatBytes(bytes) {
-  if (typeof bytes !== "number" || !Number.isFinite(bytes) || bytes <= 0) return "0 B";
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-
-function formatDateTime(value) {
-  if (!value) return "Unavailable";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "Unavailable";
-  return date.toLocaleString(undefined, {
-    year: "numeric",
-    month: "short",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit"
-  });
-}
-
-function bytesToBase64(bytes) {
-  let binary = "";
-  const chunkSize = 0x8000;
-  for (let index = 0; index < bytes.length; index += chunkSize) {
-    const chunk = bytes.subarray(index, index + chunkSize);
-    binary += String.fromCharCode(...chunk);
-  }
-  return window.btoa(binary);
-}
-
-function createLicenseId() {
-  return `license-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-}
-
-function createDiveSiteId() {
-  return `site-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-}
-
-function createBuddyId() {
-  return `buddy-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-}
-
-function createGuideId() {
-  return `guide-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-}
-
-function emptyLicense() {
-  return {
-    id: createLicenseId(),
-    company: "",
-    certification_name: "",
-    student_number: "",
-    certification_date: "",
-    instructor_number: "",
-    pdf: null
-  };
-}
-
-function emptyDiveSite() {
-  return {
-    id: createDiveSiteId(),
-    name: "",
-    location: "",
-    country: "",
-    latitude: "",
-    longitude: ""
-  };
-}
-
-function emptyBuddy() {
-  return {
-    id: createBuddyId(),
-    name: ""
-  };
-}
-
-function emptyGuide() {
-  return {
-    id: createGuideId(),
-    name: ""
-  };
-}
-
-function normalizeLicenses(licenses) {
-  if (!Array.isArray(licenses)) return [];
-  return licenses.map((license, index) => ({
-    id: license?.id || `license-${index + 1}`,
-    company: license?.company || "",
-    certification_name: license?.certification_name || "",
-    student_number: license?.student_number || "",
-    certification_date: license?.certification_date || "",
-    instructor_number: license?.instructor_number || "",
-    pdf: license?.pdf || null
-  }));
-}
-
-function normalizeDiveSites(diveSites) {
-  if (!Array.isArray(diveSites)) return [];
-  return diveSites
-    .map((site, index) => ({
-      id: site?.id || `site-${index + 1}`,
-      name: typeof site?.name === "string" ? site.name : "",
-      location: typeof site?.location === "string" ? site.location : "",
-      country: typeof site?.country === "string" ? site.country : "",
-      latitude: site?.latitude ?? site?.lat ?? "",
-      longitude: site?.longitude ?? site?.lon ?? ""
-    }))
-    .filter((site) => site.name.trim());
-}
-
-function cloneLicenses(licenses) {
-  return normalizeLicenses(licenses).map((license) => ({
-    ...license,
-    pdf: license.pdf ? { ...license.pdf } : null
-  }));
-}
-
-function cloneDiveSites(diveSites) {
-  return normalizeDiveSites(diveSites).map((site) => ({ ...site }));
-}
-
-function normalizeBuddies(buddies) {
-  if (!Array.isArray(buddies)) return [];
-  return buddies
-    .map((buddy, index) => ({
-      id: buddy?.id || `buddy-${index + 1}`,
-      name: typeof buddy?.name === "string" ? buddy.name : ""
-    }))
-    .filter((buddy) => buddy.name.trim());
-}
-
-function cloneBuddies(buddies) {
-  return normalizeBuddies(buddies).map((buddy) => ({ ...buddy }));
-}
-
-function normalizeGuides(guides) {
-  if (!Array.isArray(guides)) return [];
-  return guides
-    .map((guide, index) => ({
-      id: guide?.id || `guide-${index + 1}`,
-      name: typeof guide?.name === "string" ? guide.name : ""
-    }))
-    .filter((guide) => guide.name.trim());
-}
-
-function cloneGuides(guides) {
-  return normalizeGuides(guides).map((guide) => ({ ...guide }));
-}
-
-function emptyProfile() {
-  return {
-    name: "",
-    email: "",
-    public_dives_enabled: false,
-    public_slug: "",
-    logbook_display_fields: [],
-    required_logbook_fields: ["site"],
-    equipment_selection_enabled: true,
-    licenses: [],
-    dive_sites: [],
-    buddies: [],
-    guides: []
-  };
-}
-
-function cloneProfile(profile = {}) {
-  return {
-    name: profile?.name || "",
-    email: profile?.email || "",
-    public_dives_enabled: Boolean(profile?.public_dives_enabled),
-    public_slug: profile?.public_slug || "",
-    logbook_display_fields: Array.isArray(profile?.logbook_display_fields) ? [...profile.logbook_display_fields] : [],
-    required_logbook_fields: normalizeRequiredLogbookFields(profile?.required_logbook_fields),
-    equipment_selection_enabled: profile?.equipment_selection_enabled !== false,
-    licenses: cloneLicenses(profile?.licenses),
-    dive_sites: cloneDiveSites(profile?.dive_sites),
-    buddies: cloneBuddies(profile?.buddies),
-    guides: cloneGuides(profile?.guides)
-  };
-}
-
-function emptyInviteDraft() {
-  return {
-    email: "",
-    first_name: "",
-    last_name: "",
-    role: "user",
-    expires_in_days: 7
-  };
-}
-
-function editableLicensePayload(license) {
-  return {
-    id: license.id,
-    company: license.company,
-    certification_name: license.certification_name,
-    student_number: license.student_number,
-    certification_date: license.certification_date,
-    instructor_number: license.instructor_number
-  };
-}
-
-function comparableLicenses(licenses) {
-  return cloneLicenses(licenses).map(editableLicensePayload);
-}
-
-function editableDiveSitePayload(site) {
-  return {
-    id: site.id,
-    name: site.name.trim(),
-    location: site.location.trim(),
-    country: site.country.trim(),
-    latitude: site.latitude === "" ? null : Number.parseFloat(site.latitude),
-    longitude: site.longitude === "" ? null : Number.parseFloat(site.longitude)
-  };
-}
-
-function comparableDiveSites(diveSites) {
-  return cloneDiveSites(diveSites).map((site) => ({
-    id: site.id,
-    name: site.name.trim(),
-    location: site.location.trim(),
-    country: site.country.trim(),
-    latitude: site.latitude === "" ? "" : String(site.latitude).trim(),
-    longitude: site.longitude === "" ? "" : String(site.longitude).trim()
-  }));
-}
-
-function editableBuddyPayload(buddy) {
-  return {
-    id: buddy.id,
-    name: buddy.name.trim()
-  };
-}
-
-function comparableBuddies(buddies) {
-  return cloneBuddies(buddies).map((buddy) => ({
-    id: buddy.id,
-    name: buddy.name.trim()
-  }));
-}
-
-function editableGuidePayload(guide) {
-  return {
-    id: guide.id,
-    name: guide.name.trim()
-  };
-}
-
-function comparableGuides(guides) {
-  return cloneGuides(guides).map((guide) => ({
-    id: guide.id,
-    name: guide.name.trim()
-  }));
-}
-
-function normalizeSettingsText(value) {
-  return typeof value === "string" ? value.trim() : "";
-}
-
-function compareSettingsText(left, right) {
-  return normalizeSettingsText(left).localeCompare(normalizeSettingsText(right), undefined, {
-    sensitivity: "base",
-    numeric: true
-  });
-}
+import {
+  MAX_LICENSE_BYTES,
+  THEME_OPTIONS,
+  LANGUAGE_LABELS,
+  formatBytes,
+  formatDateTime,
+  bytesToBase64,
+  emptyProfile,
+  emptyLicense,
+  emptyDiveSite,
+  emptyBuddy,
+  emptyGuide,
+  cloneBuddies,
+  cloneDiveSites,
+  cloneGuides,
+  cloneLicenses,
+  cloneProfile,
+  emptyInviteDraft,
+  editableLicensePayload,
+  comparableLicenses,
+  editableDiveSitePayload,
+  comparableDiveSites,
+  editableBuddyPayload,
+  comparableBuddies,
+  editableGuidePayload,
+  comparableGuides,
+  compareSettingsText,
+  normalizeBuddies,
+  normalizeDiveSites,
+  normalizeGuides,
+  normalizeLicenses,
+  normalizeSettingsText,
+  duplicateImportWarning
+} from "../utils/settings-profile.js";
 
 export const SETTINGS_SECTIONS = [
   { id: "diver-details", label: "Diver Details", icon: "badge", description: "Profile and certifications" },
@@ -296,110 +48,6 @@ export const SETTINGS_SECTIONS = [
   { id: "manage-users", label: "Manage Users", icon: "admin_panel_settings", description: "Invites and access control" },
   { id: "backup", label: "Backup", icon: "archive", description: "Full backup import and export" }
 ];
-
-const LicensePdfPreview = {
-  name: "LicensePdfPreview",
-  emits: ["open-preview"],
-  props: {
-    pdf: {
-      type: Object,
-      default: null
-    },
-    authenticatedFetch: {
-      type: Function,
-      required: true
-    }
-  },
-  data() {
-    return {
-      loading: false,
-      error: "",
-      pages: []
-    };
-  },
-  watch: {
-    "pdf.preview_url": {
-      handler() {
-        this.loadPreview();
-      },
-      immediate: true
-    }
-  },
-  methods: {
-    async loadPreview() {
-      if (!this.pdf?.preview_url) {
-        this.pages = [];
-        this.error = "";
-        this.loading = false;
-        return;
-      }
-
-      this.loading = true;
-      this.error = "";
-      this.pages = [];
-
-      try {
-        const response = await this.authenticatedFetch(this.pdf.preview_url);
-        if (!response.ok) {
-          throw new Error(`Preview request failed with ${response.status}`);
-        }
-
-        const bytes = new Uint8Array(await response.arrayBuffer());
-        const pdfDocument = await getDocument({ data: bytes }).promise;
-        const pages = [];
-
-        for (let pageNumber = 1; pageNumber <= pdfDocument.numPages; pageNumber += 1) {
-          const page = await pdfDocument.getPage(pageNumber);
-          const viewport = page.getViewport({ scale: PDF_PREVIEW_SCALE });
-          const canvas = document.createElement("canvas");
-          const context = canvas.getContext("2d");
-          if (!context) {
-            throw new Error("Canvas rendering is unavailable in this browser");
-          }
-
-          canvas.width = Math.ceil(viewport.width);
-          canvas.height = Math.ceil(viewport.height);
-          await page.render({ canvasContext: context, viewport }).promise;
-          pages.push({
-            pageNumber,
-            image: canvas.toDataURL("image/png")
-          });
-        }
-
-        this.pages = pages;
-      } catch (error) {
-        this.error = error?.message || "Could not render the PDF preview.";
-      } finally {
-        this.loading = false;
-      }
-    }
-  },
-  template: `
-    <div>
-      <div v-if="loading" class="rounded border border-primary/10 bg-surface-container-lowest px-4 py-4 text-sm text-secondary">
-        Rendering PDF preview...
-      </div>
-      <div v-else-if="error" class="rounded border border-error/20 bg-error-container/20 px-4 py-4 text-sm text-on-error-container">
-        {{ error }}
-      </div>
-      <div v-else class="space-y-3">
-        <button
-          v-for="page in pages"
-          :key="page.pageNumber"
-          type="button"
-          @click="$emit('open-preview', page)"
-          class="block w-full overflow-hidden border border-primary/10 bg-white transition-transform hover:scale-[1.01]"
-        >
-          <img
-            :src="page.image"
-            :alt="\`License PDF page \${page.pageNumber}\`"
-            class="w-full cursor-zoom-in"
-          />
-        </button>
-      </div>
-    </div>
-  `
-};
 
 export default {
   name: "SettingsView",
@@ -2419,7 +2067,10 @@ export default {
     formatBytes,
     formatDateTime
   },
-  template: `
+};
+</script>
+
+<template>
     <section class="dashboard-command-center text-on-surface">
       <header class="settings-stat-strip">
         <article v-for="stat in settingsOverviewStats" :key="stat.id" class="settings-stat-pill">
@@ -3714,16 +3365,4 @@ export default {
         </div>
       </div>
     </section>
-  `
-};
-
-function duplicateImportWarning(payload, label) {
-  const duplicates = Number(payload?.duplicates ?? 0);
-  if (!Number.isFinite(duplicates) || duplicates <= 0) return "";
-  const rows = Number(payload?.rows ?? 0);
-  const inserted = Number(payload?.inserted ?? 0);
-  if (inserted <= 0) {
-    return `Warning: this ${label} appears to have already been imported. No new dives were added.`;
-  }
-  return `Warning: ${duplicates} of ${rows} ${rows === 1 ? 'dive was' : 'dives were'} already imported and skipped.`;
-}
+</template>

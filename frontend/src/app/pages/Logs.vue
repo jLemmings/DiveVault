@@ -1,5 +1,6 @@
-import { buildDiveSequenceMap, formatDate, numberOrZero, parseDate, formatTime, formatDepth, formatTemperature, durationShort, surfaceTemperature, diveTitle, diveDeviceLabel, pressureUsedLabel, importDraftSeed, paddedDiveIndex } from "../core.js";
-import { diveMapPreview } from "../map-preview.js";
+<script>
+import { buildDiveSequenceMap, formatDate, numberOrZero, parseDate, formatTime, formatDepth, formatTemperature, durationShort, surfaceTemperature, diveTitle, diveDeviceLabel, pressureUsedLabel, importDraftSeed, paddedDiveIndex } from "../utils/core.js";
+import { diveMapPreview } from "../utils/map-preview.js";
 
 export default {
   name: "LogsView",
@@ -274,7 +275,10 @@ export default {
       return diveMapPreview(dive, this.diveSites);
     }
   },
-  template: `
+}
+</script>
+
+<template>
     <section class="dashboard-command-center text-on-surface">
       <section class="space-y-6 md:hidden">
         <div v-if="statusMessage" class="rounded-xl bg-primary/10 px-4 py-3 text-sm text-primary">{{ statusMessage }}</div>
@@ -632,5 +636,4 @@ export default {
       </div>
       </section>
     </section>
-  `
-};
+</template>

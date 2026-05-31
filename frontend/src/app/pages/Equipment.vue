@@ -1,3 +1,4 @@
+<script>
 function createEquipmentId() {
   return `equipment-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
@@ -266,7 +267,10 @@ export default {
       };
     }
   },
-  template: `
+}
+</script>
+
+<template>
     <section class="dashboard-command-center text-on-surface">
       <div class="flex flex-col justify-end gap-3 lg:flex-row lg:items-center">
         <div class="flex flex-col gap-3 sm:flex-row sm:items-center">
@@ -477,5 +481,4 @@ export default {
         </section>
       </div>
     </section>
-  `
-};
+</template>

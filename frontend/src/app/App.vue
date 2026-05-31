@@ -1,100 +1,35 @@
-import { useAuth, useUser } from "./auth.js";
-import { filledIconStyle, importDraftSeed, isImportComplete, effectiveImportDraft, missingImportFields, normalizeRequiredLogbookFields, paddedDiveIndex, isCommittedDive } from "./core.js";
-import DashboardView from "./components/dashboard.js";
-import DiveDetailView from "./components/dive-detail.js";
-import DiveImportEditorView from "./components/import-edit.js";
-import DiveImportView from "./components/imports.js";
-import EquipmentView from "./components/equipment.js";
-import LogbookEditorView from "./components/logbook-edit.js";
-import LoginView from "./components/login.js";
-import LogsView from "./components/logs.js";
-import ManualDiveEntryView from "./components/manual-dive.js";
-import PublicProfileView from "./components/public-profile.js";
-import SettingsView, { SETTINGS_SECTIONS } from "./components/settings.js";
+<script>
+import { useAuth, useUser } from "./composables/auth.js";
+import { filledIconStyle, importDraftSeed, isImportComplete, effectiveImportDraft, missingImportFields, normalizeRequiredLogbookFields, paddedDiveIndex, isCommittedDive } from "./utils/core.js";
+import DashboardView from "./pages/Dashboard.vue";
+import DiveDetailView from "./pages/DiveDetail.vue";
+import DiveImportEditorView from "./pages/ImportEdit.vue";
+import DiveImportView from "./pages/Imports.vue";
+import EquipmentView from "./pages/Equipment.vue";
+import LogbookEditorView from "./pages/LogbookEdit.vue";
+import LoginView from "./pages/Login.vue";
+import LogsView from "./pages/Logs.vue";
+import ManualDiveEntryView from "./pages/ManualDive.vue";
+import PublicProfileView from "./pages/PublicProfile.vue";
+import SettingsView, { SETTINGS_SECTIONS } from "./pages/Settings.vue";
 import { i18n, MESSAGES } from "./i18n/index.js";
+import { NAV_ITEMS } from "./navigation.js";
+import { createManualDiveDraft } from "./utils/dive-drafts.js";
+import {
+  applyDocumentTheme,
+  getBrowserLocale,
+  getStoredLocale,
+  getStoredThemePreference,
+  LOCALE_STORAGE_KEY,
+  normalizeLocale,
+  normalizeThemePreference,
+  resolveThemePreference,
+  THEME_STORAGE_KEY
+} from "./utils/preferences.js";
 
 const DEFAULT_SETTINGS_SECTION = SETTINGS_SECTIONS[0]?.id || "diver-details";
 const SETTINGS_SECTION_IDS = new Set(SETTINGS_SECTIONS.map((section) => section.id));
-const LOCALE_STORAGE_KEY = "divevault.preferredLocale";
 const SUPPORTED_LOCALES = new Set(Object.keys(MESSAGES));
-const THEME_STORAGE_KEY = "divevault.preferredTheme";
-const SUPPORTED_THEMES = new Set(["system", "light", "dark"]);
-
-function normalizeLocale(locale) {
-  const normalized = typeof locale === "string" ? locale.trim().slice(0, 2).toLowerCase() : "";
-  return SUPPORTED_LOCALES.has(normalized) ? normalized : "en";
-}
-
-function getStoredLocale() {
-  if (typeof window === "undefined") return "";
-  try {
-    const storedLocale = window.localStorage.getItem(LOCALE_STORAGE_KEY) || "";
-    return SUPPORTED_LOCALES.has(storedLocale) ? storedLocale : "";
-  } catch (_error) {
-    return "";
-  }
-}
-
-function getBrowserLocale() {
-  if (typeof navigator === "undefined") return "en";
-  return normalizeLocale(navigator.language);
-}
-
-function normalizeThemePreference(theme) {
-  const normalized = typeof theme === "string" ? theme.trim().toLowerCase() : "";
-  return SUPPORTED_THEMES.has(normalized) ? normalized : "system";
-}
-
-function getStoredThemePreference() {
-  if (typeof window === "undefined") return "system";
-  try {
-    return normalizeThemePreference(window.localStorage.getItem(THEME_STORAGE_KEY) || "system");
-  } catch (_error) {
-    return "system";
-  }
-}
-
-function systemTheme() {
-  if (typeof window === "undefined" || typeof window.matchMedia !== "function") return "dark";
-  return window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
-}
-
-function resolveThemePreference(themePreference) {
-  return normalizeThemePreference(themePreference) === "system" ? systemTheme() : normalizeThemePreference(themePreference);
-}
-
-function applyDocumentTheme(themePreference) {
-  if (typeof document === "undefined") return resolveThemePreference(themePreference);
-  const normalizedPreference = normalizeThemePreference(themePreference);
-  const resolvedTheme = resolveThemePreference(normalizedPreference);
-  document.documentElement.dataset.themePreference = normalizedPreference;
-  document.documentElement.dataset.theme = resolvedTheme;
-  return resolvedTheme;
-}
-
-function createManualDiveDraft() {
-  const now = new Date();
-  const localDate = new Date(now.getTime() - (now.getTimezoneOffset() * 60000));
-  return {
-    date: localDate.toISOString().slice(0, 10),
-    time: localDate.toISOString().slice(11, 16),
-    durationMinutes: "45",
-    maxDepthM: "",
-    temperatureC: "",
-    tankVolumeL: "",
-    beginPressureBar: "",
-    endPressureBar: "",
-    site: "",
-    buddy: "",
-    guide: "",
-    weatherDescription: "",
-    visibility: "",
-    wetsuitDescription: "",
-    weightDescription: "",
-    notes: "",
-    equipment_ids: []
-  };
-}
 
 export default {
   name: "DiveVaultApp",
@@ -186,14 +121,8 @@ export default {
       passwordError: "",
       passwordStatus: "",
       filledIconStyle,
-      navItems: [
-        { id: "dashboard", label: "Dashboard", mobileLabel: "Dashboard", icon: "dashboard", mobileIcon: "dashboard", eyebrow: "Dive Overview", title: "Logbook" },
-        { id: "logs", label: "Dive Logs", mobileLabel: "Logs", icon: "waves", mobileIcon: "sailing", eyebrow: "Dive Logs", title: "Dive Log Database" },
-        { id: "map", label: "Map", mobileLabel: "Map", icon: "map", mobileIcon: "map", eyebrow: "Dive Map", title: "Map" },
-        { id: "equipment", label: "Equipment", mobileLabel: "Gear", icon: "scuba_diving", mobileIcon: "scuba_diving", eyebrow: "Gear Locker", title: "Equipment" },
-        { id: "settings", label: "Settings", mobileLabel: "Settings", icon: "settings", mobileIcon: "settings", eyebrow: "System Configuration", title: "System Config" }
-      ],
-      i18nLocale: getStoredLocale() || "en",
+      navItems: NAV_ITEMS,
+      i18nLocale: getStoredLocale(SUPPORTED_LOCALES) || "en",
       themePreference: getStoredThemePreference(),
       resolvedTheme: applyDocumentTheme(getStoredThemePreference()),
       themeMediaQuery: null
@@ -346,7 +275,7 @@ export default {
       return i18n.t(key, fallback, params);
     },
     setLocale(locale) {
-      const normalizedLocale = normalizeLocale(locale);
+      const normalizedLocale = normalizeLocale(locale, SUPPORTED_LOCALES);
       i18n.setLocale(normalizedLocale);
       this.i18nLocale = i18n.locale;
       if (typeof window !== "undefined") {
@@ -1515,7 +1444,7 @@ export default {
   mounted() {
     window.addEventListener("hashchange", this.handleBrowserNavigation);
     window.addEventListener("popstate", this.handleBrowserNavigation);
-    this.setLocale(getStoredLocale() || getBrowserLocale());
+    this.setLocale(getStoredLocale(SUPPORTED_LOCALES) || getBrowserLocale(SUPPORTED_LOCALES));
     this.setThemePreference(getStoredThemePreference());
     if (typeof window.matchMedia === "function") {
       this.themeMediaQuery = window.matchMedia("(prefers-color-scheme: light)");
@@ -1537,7 +1466,10 @@ export default {
       this.themeMediaQuery?.removeListener?.(this.syncSystemTheme);
     }
   },
-  template: `
+};
+</script>
+
+<template>
     <public-profile-view v-if="isPublicRoute" :slug="publicRouteSlug"></public-profile-view>
     <div v-else-if="!authLoaded" class="flex min-h-screen items-center justify-center bg-background px-6 text-on-background">
       <section class="bg-surface-container-low p-10 shadow-panel">
@@ -1912,5 +1844,4 @@ export default {
         </div>
       </div>
     </div>
-  `
-};
+</template>
