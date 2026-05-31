@@ -1373,6 +1373,98 @@ def test_post_and_put_endpoints(server_fixture):
     assert put_not_found.status == 404
 
 
+def test_request_body_limits_and_content_types(server_fixture):
+    server = server_fixture
+
+    wrong_json_type = request(
+        server,
+        "POST",
+        "/api/dives",
+        token="session",
+        body=json.dumps(
+            {
+                "vendor": "Mares",
+                "product": "Smart Air",
+                "dive_uid": "uid-wrong-type",
+                "raw_sha256": "sha-wrong-type",
+                "raw_data_b64": base64.b64encode(b"123").decode("ascii"),
+            }
+        ).encode("utf-8"),
+        content_type="text/plain",
+    )
+    assert wrong_json_type.status == 415
+    assert wrong_json_type.json()["error"] == "Content-Type must be application/json"
+
+    server.max_csv_import_bytes = 16
+    oversized_csv = request(
+        server,
+        "POST",
+        "/api/imports/csv",
+        token="session",
+        body=b"started_at,duration_minutes,max_depth_m\n2026-05-01T08:30:00Z,42,18.6\n",
+        content_type="text/csv",
+    )
+    assert oversized_csv.status == 413
+    server.max_csv_import_bytes = 5 * 1024 * 1024
+
+    wrong_csv_type = request(
+        server,
+        "POST",
+        "/api/imports/csv",
+        token="session",
+        body=b"started_at,duration_minutes,max_depth_m\n2026-05-01T08:30:00Z,42,18.6\n",
+        content_type="application/xml",
+    )
+    assert wrong_csv_type.status == 415
+    assert wrong_csv_type.json()["error"] == "Content-Type must be text/csv or application/json"
+
+    server.max_subsurface_import_bytes = 16
+    oversized_subsurface = request(
+        server,
+        "POST",
+        "/api/imports/subsurface",
+        token="session",
+        body=b"<divelog><dives></dives></divelog>",
+        content_type="application/xml",
+    )
+    assert oversized_subsurface.status == 413
+    server.max_subsurface_import_bytes = 15 * 1024 * 1024
+
+    wrong_subsurface_type = request(
+        server,
+        "POST",
+        "/api/imports/subsurface",
+        token="session",
+        body=b"<divelog><dives></dives></divelog>",
+        content_type="text/csv",
+    )
+    assert wrong_subsurface_type.status == 415
+    assert wrong_subsurface_type.json()["error"] == "Content-Type must be application/xml, text/xml, application/gzip, or application/zip"
+
+    server.max_backup_import_bytes = 16
+    oversized_backup = request(
+        server,
+        "POST",
+        "/api/backup/import",
+        token="session",
+        body=json.dumps({"version": 1, "profile": {"name": "A" * 64}}).encode("utf-8"),
+        content_type="application/json",
+    )
+    assert oversized_backup.status == 413
+    server.max_backup_import_bytes = 25 * 1024 * 1024
+
+    wrong_backup_type = request(
+        server,
+        "POST",
+        "/api/backup/import",
+        token="session",
+        body=b"{}",
+        content_type="text/plain",
+    )
+    assert wrong_backup_type.status == 415
+    assert wrong_backup_type.json()["error"] == "Content-Type must be application/json or application/zip"
+
+
 def test_export_and_backup_endpoints(server_fixture):
     server = server_fixture
 
@@ -1573,7 +1665,9 @@ def test_delete_endpoints(server_fixture):
 
 def test_route_manifest_requires_test_updates_for_new_endpoints():
     """Guardrail: when route literals change, this test fails and forces test updates."""
-    source = (Path(__file__).resolve().parents[1] / "divevault" / "app.py").read_text(encoding="utf-8")
+    backend_root = Path(__file__).resolve().parents[1] / "divevault"
+    source_paths = [backend_root / "app.py", *sorted((backend_root / "handlers").glob("*.py"))]
+    source = "\n".join(path.read_text(encoding="utf-8") for path in source_paths)
 
     discovered_literals = set(re.findall(r'if (?:path|self\.path) == "([^"]+)"', source))
     discovered_regex = {f"regex:{pattern}" for pattern in re.findall(r're\.fullmatch\(r"([^"]+)"', source)}

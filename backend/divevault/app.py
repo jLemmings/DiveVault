@@ -22,6 +22,7 @@ import os
 import re
 import secrets
 import signal
+import sys
 import threading
 import time
 import hashlib
@@ -43,6 +44,24 @@ import psycopg
 from dotenv import load_dotenv
 from jwt import InvalidTokenError
 
+from divevault.handlers import auth_users as auth_user_handlers
+from divevault.handlers import backup as backup_handlers
+from divevault.handlers import geocode as geocode_handlers
+from divevault.handlers import imports as import_handlers
+from divevault.handlers import metrics as metrics_handlers
+from divevault.handlers import profile as profile_handlers
+from divevault.handlers.metrics import PrometheusMetrics
+from divevault.handlers.request_utils import (
+    AuthError,
+    is_admin_claims,
+    principal_id_from_claims,
+    read_json_body,
+    read_request_body,
+    require_auth,
+    require_browser_session_auth,
+    require_owner_auth,
+    require_principal_id,
+)
 from divevault.postgres_store import (
     CURRENT_SCHEMA_VERSION,
     approve_cli_sync_request,
@@ -104,13 +123,6 @@ DEMO_ADMIN_PASSWORD_HASH = (
 load_dotenv(REPO_ROOT / ".env")
 
 
-class AuthError(Exception):
-    def __init__(self, status: int, message: str) -> None:
-        super().__init__(message)
-        self.status = status
-        self.message = message
-
-
 class FixedWindowRateLimiter:
     def __init__(self) -> None:
         self._lock = threading.Lock()
@@ -141,120 +153,6 @@ class FixedWindowRateLimiter:
             entry["count"] += 1
             entry["expires_at"] = expires_at
             return True, max(expires_at - now_ts, 1)
-
-
-class PrometheusMetrics:
-    ROUTE_LABEL_PATTERNS = (
-        (re.compile(r"/api/dives/\d+"), "/api/dives/{id}"),
-        (re.compile(r"/api/dives/\d+/logbook"), "/api/dives/{id}/logbook"),
-        (re.compile(r"/api/equipment/[A-Za-z0-9_-]+/service"), "/api/equipment/{id}/service"),
-        (re.compile(r"/api/profile/licenses/[A-Za-z0-9_-]+/pdf"), "/api/profile/licenses/{id}/pdf"),
-        (re.compile(r"/api/public/divers/[a-z0-9-]+"), "/api/public/divers/{slug}"),
-        (re.compile(r"/api/users/user_[A-Za-z0-9]+"), "/api/users/{id}"),
-    )
-
-    def __init__(self, *, started_at: float | None = None) -> None:
-        self.started_at = float(started_at if started_at is not None else time.time())
-        self._lock = threading.Lock()
-        self._requests: dict[tuple[str, str, str], int] = {}
-        self._duration_count: dict[tuple[str, str], int] = {}
-        self._duration_sum: dict[tuple[str, str], float] = {}
-
-    @staticmethod
-    def route_label(path: str) -> str:
-        if path in {
-            "/health",
-            "/api/health",
-            "/metrics",
-            "/config.js",
-            "/api/dives",
-            "/api/equipment",
-            "/api/profile",
-            "/api/users",
-            "/api/device-state",
-            "/api/backup/export",
-            "/api/backup/import",
-            "/api/cli-auth/approve",
-            "/api/cli-auth/request",
-            "/api/auth/invitations",
-            "/api/auth/login",
-            "/api/auth/me",
-            "/api/auth/password",
-            "/api/auth/register",
-            "/api/auth/settings",
-            "/api/auth/status",
-            "/api/exports/dives.csv",
-            "/api/exports/dives.pdf",
-            "/api/imports/csv",
-            "/api/imports/subsurface",
-            "/api/geocode/search",
-        }:
-            return path
-        for pattern, label in PrometheusMetrics.ROUTE_LABEL_PATTERNS:
-            if pattern.fullmatch(path):
-                return label
-        if path.startswith("/api/"):
-            return "/api/*"
-        return "frontend"
-
-    def observe_request(self, *, method: str, path: str, status: int, duration_seconds: float) -> None:
-        route = self.route_label(path)
-        status_class = f"{int(status) // 100}xx"
-        with self._lock:
-            self._requests[(method, route, status_class)] = self._requests.get((method, route, status_class), 0) + 1
-            self._duration_count[(method, route)] = self._duration_count.get((method, route), 0) + 1
-            self._duration_sum[(method, route)] = self._duration_sum.get((method, route), 0.0) + max(duration_seconds, 0.0)
-
-    @staticmethod
-    def _labels(labels: dict[str, str]) -> str:
-        def escape(value: str) -> str:
-            return value.replace("\\", "\\\\").replace('"', '\\"')
-
-        return ",".join(f'{key}="{escape(value)}"' for key, value in labels.items())
-
-    def render(self, *, database_ready: bool, schema_version: object) -> bytes:
-        with self._lock:
-            requests = dict(self._requests)
-            duration_count = dict(self._duration_count)
-            duration_sum = dict(self._duration_sum)
-        lines = [
-            "# HELP divevault_up Whether the DiveVault backend process is running.",
-            "# TYPE divevault_up gauge",
-            "divevault_up 1",
-            "# HELP divevault_database_ready Whether startup database checks and migrations completed.",
-            "# TYPE divevault_database_ready gauge",
-            f"divevault_database_ready {1 if database_ready else 0}",
-            "# HELP divevault_schema_version Current application schema version observed at startup.",
-            "# TYPE divevault_schema_version gauge",
-            f"divevault_schema_version {int(schema_version or 0)}",
-            "# HELP divevault_process_start_time_seconds Unix timestamp when the backend process started.",
-            "# TYPE divevault_process_start_time_seconds gauge",
-            f"divevault_process_start_time_seconds {self.started_at:.3f}",
-            "# HELP divevault_http_requests_total HTTP requests by method, route, and status class.",
-            "# TYPE divevault_http_requests_total counter",
-        ]
-        for (method, route, status_class), value in sorted(requests.items()):
-            labels = self._labels({"method": method, "route": route, "status_class": status_class})
-            lines.append(f"divevault_http_requests_total{{{labels}}} {value}")
-        lines.extend(
-            [
-                "# HELP divevault_http_request_duration_seconds_count HTTP request duration count by method and route.",
-                "# TYPE divevault_http_request_duration_seconds_count counter",
-            ]
-        )
-        for (method, route), value in sorted(duration_count.items()):
-            labels = self._labels({"method": method, "route": route})
-            lines.append(f"divevault_http_request_duration_seconds_count{{{labels}}} {value}")
-        lines.extend(
-            [
-                "# HELP divevault_http_request_duration_seconds_sum HTTP request duration sum by method and route.",
-                "# TYPE divevault_http_request_duration_seconds_sum counter",
-            ]
-        )
-        for (method, route), value in sorted(duration_sum.items()):
-            labels = self._labels({"method": method, "route": route})
-            lines.append(f"divevault_http_request_duration_seconds_sum{{{labels}}} {value:.6f}")
-        return ("\n".join(lines) + "\n").encode("utf-8")
 
 
 def normalize_bearer_token(value: str | None) -> str | None:
@@ -2153,23 +2051,7 @@ class DiveBackendHandler(BaseHTTPRequestHandler):
         else:
             LOGGER.info("GET %s query=%s", path, dict(query))
 
-        if path == "/metrics":
-            if not bool(getattr(self.server, "metrics_enabled", False)):
-                self._send_json(404, {"error": "Not found"})
-                return
-            metrics = getattr(self.server, "metrics", None)
-            if metrics is None:
-                self._send_json(503, {"error": "Metrics collector is not configured"})
-                return
-            self._send_bytes(
-                200,
-                metrics.render(
-                    database_ready=bool(getattr(self.server, "database_ready", False)),
-                    schema_version=getattr(self.server, "database_schema_version", 0),
-                ),
-                "text/plain; version=0.0.4; charset=utf-8",
-                extra_headers={"Cache-Control": "no-store"},
-            )
+        if metrics_handlers.handle_get(self, path):
             return
 
         if path in {"/health", "/api/health"}:
@@ -2191,34 +2073,8 @@ class DiveBackendHandler(BaseHTTPRequestHandler):
             self._send_config_js()
             return
 
-        match = re.fullmatch(r"/api/public/divers/([a-z0-9-]+)", path)
-        if match:
-            public_slug = match.group(1)
-            conn = self._open_db()
-            if conn is None:
-                return
-            try:
-                public_profile, dives, stats = get_public_profile_dives(conn, public_slug)
-            finally:
-                conn.close()
-
-            if not public_profile:
-                self._send_json(404, {"error": "Public dive profile not found"})
-                return
-
-            LOGGER.info(
-                "Returned public dive profile slug=%s dives=%d",
-                public_slug,
-                len(dives),
-            )
-            self._send_json(
-                200,
-                {
-                    "diver": public_profile,
-                    "dives": dives,
-                    "stats": stats,
-                },
-            )
+        deps = sys.modules[__name__]
+        if profile_handlers.handle_get(self, path, query, deps=deps):
             return
 
         if path == "/api/device-state":
@@ -2246,28 +2102,6 @@ class DiveBackendHandler(BaseHTTPRequestHandler):
                 self._send_json(200, state)
             finally:
                 conn.close()
-            return
-
-        if path == "/api/profile":
-            user_id = self._require_principal_id()
-            if user_id is None:
-                return
-
-            conn = self._open_db()
-            if conn is None:
-                return
-            try:
-                profile = get_user_profile(conn, user_id)
-            finally:
-                conn.close()
-
-            LOGGER.info(
-                "Returned profile user_id=%s license_count=%d licenses_with_pdf=%d",
-                user_id,
-                len(profile.get("licenses") or []),
-                sum(1 for license_entry in profile.get("licenses") or [] if license_entry.get("pdf")),
-            )
-            self._send_json(200, profile)
             return
 
         if path == "/api/equipment":
@@ -2336,187 +2170,13 @@ class DiveBackendHandler(BaseHTTPRequestHandler):
             )
             return
 
-        if path == "/api/backup/export":
-            user_id = self._require_principal_id()
-            if user_id is None:
-                return
-
-            conn = self._open_db()
-            if conn is None:
-                return
-            try:
-                payload = build_backup_payload(conn, user_id)
-            finally:
-                conn.close()
-
-            archive_bytes = build_backup_archive(payload)
-            filename = attachment_filename(f"divevault-backup-{timestamp_slug()}.zip")
-            LOGGER.info(
-                "Returned backup export user_id=%s dives=%d device_states=%d licenses=%d filename=%s",
-                user_id,
-                len(payload.get("dives") or []),
-                len(payload.get("device_states") or []),
-                len(payload.get("license_documents") or []),
-                filename,
-            )
-            self._send_bytes(
-                200,
-                archive_bytes,
-                "application/zip",
-                extra_headers={
-                    "Content-Disposition": f'attachment; filename="{filename}"',
-                    "Cache-Control": "no-store",
-                },
-            )
+        if backup_handlers.handle_get(self, path, deps=deps):
             return
 
-        if path == "/api/geocode/search":
-            user_id = self._require_principal_id()
-            if user_id is None:
-                return
-
-            query_value = self._single_query_arg(query, "q")
-            if not query_value or not query_value.strip():
-                self._send_json(400, {"error": "Missing q query parameter"})
-                return
-
-            try:
-                result = self.server.nominatim_client.search(query_value)
-            except ValueError as exc:
-                self._send_json(400, {"error": str(exc)})
-                return
-            except RuntimeError as exc:
-                self._send_json(503, {"error": str(exc)})
-                return
-
-            LOGGER.info("Completed geocode lookup user_id=%s query=%s found=%s", user_id, query_value, result.get("found"))
-            self._send_json(200, result)
+        if geocode_handlers.handle_get(self, path, query):
             return
 
-        match = re.fullmatch(r"/api/profile/licenses/([A-Za-z0-9_-]+)/pdf", path)
-        if match:
-            user_id = self._require_principal_id()
-            if user_id is None:
-                return
-            license_id = match.group(1)
-
-            conn = self._open_db()
-            if conn is None:
-                return
-            try:
-                license_pdf = get_user_profile_license_pdf(conn, user_id, license_id)
-            finally:
-                conn.close()
-
-            if not license_pdf:
-                self._send_json(404, {"error": "License PDF not found"})
-                return
-
-            LOGGER.info("Returned profile license user_id=%s license_id=%s filename=%s", user_id, license_id, license_pdf["filename"])
-            self._send_bytes(
-                200,
-                license_pdf["data"],
-                license_pdf["content_type"],
-                extra_headers={
-                    "Content-Disposition": f'inline; filename="{license_pdf["filename"]}"',
-                    "Cache-Control": "no-store",
-                },
-            )
-            return
-
-        if path == "/api/auth/status":
-            invite_token = (self._single_query_arg(query, "invite_token") or "").strip()
-            conn = self._open_db()
-            if conn is None:
-                return
-            try:
-                settings = get_auth_instance_settings(conn)
-                invite = None
-                if invite_token:
-                    invite = get_auth_invite_by_token(conn, invite_token, now_timestamp=int(time.time()))
-            finally:
-                conn.close()
-            self._send_json(
-                200,
-                {
-                    "initialized": settings.get("initialized", False),
-                    "user_count": settings.get("user_count", 0),
-                    "bootstrap_registration_open": settings.get("bootstrap_registration_open", False),
-                    "public_registration_enabled": settings.get("public_registration_enabled", False),
-                    "public_registration_open": settings.get("public_registration_open", False),
-                    "invite": invite,
-                },
-            )
-            return
-
-        if path == "/api/auth/me":
-            claims = self._require_auth()
-            if claims is None:
-                return
-            conn = self._open_db()
-            if conn is None:
-                return
-            try:
-                auth_user = get_auth_user_by_id(conn, claims.get("sub") or "")
-                auth_settings = get_auth_instance_settings(conn)
-            finally:
-                conn.close()
-            self._send_json(
-                200,
-                {
-                    "token_type": claims.get("token_type", "session_token"),
-                    "session_id": claims.get("sid"),
-                    "user_id": claims.get("sub"),
-                    "email": (auth_user or {}).get("email") or claims.get("email"),
-                    "first_name": (auth_user or {}).get("first_name", ""),
-                    "last_name": (auth_user or {}).get("last_name", ""),
-                    "role": (auth_user or {}).get("role") or claims.get("role", "user"),
-                    "is_active": bool((auth_user or {}).get("is_active", True)),
-                    "is_owner": self._principal_id_from_claims(claims) == auth_settings.get("owner_user_id"),
-                },
-            )
-            return
-
-        if path == "/api/auth/settings":
-            claims = self._require_owner_auth()
-            if claims is None:
-                return
-            conn = self._open_db()
-            if conn is None:
-                return
-            try:
-                settings = get_auth_instance_settings(conn)
-            finally:
-                conn.close()
-            self._send_json(200, settings)
-            return
-
-        if path == "/api/users":
-            claims = self._require_owner_auth()
-            if claims is None:
-                return
-            conn = self._open_db()
-            if conn is None:
-                return
-            try:
-                users = list_auth_users(conn)
-            finally:
-                conn.close()
-            self._send_json(200, {"users": users})
-            return
-
-        if path == "/api/cli-auth/request":
-            if not self._enforce_rate_limit("cli_auth_request_status"):
-                return
-            code = self._single_query_arg(query, "code")
-            if not code:
-                self._send_json(400, {"error": "Missing code query parameter"})
-                return
-            payload = self.server.cli_auth_manager.get_request_status(code)
-            if payload is None:
-                self._send_json(404, {"error": "CLI auth request not found or expired"})
-                return
-            self._send_json(200, payload)
+        if auth_user_handlers.handle_get(self, path, query, deps=deps):
             return
 
         if path == "/api/dives":
@@ -2605,6 +2265,7 @@ class DiveBackendHandler(BaseHTTPRequestHandler):
         LOGGER.info("POST %s", self.path)
         parsed_request = urlparse(self.path)
         path = parsed_request.path
+        deps = sys.modules[__name__]
         match = re.fullmatch(r"/api/equipment/([A-Za-z0-9_-]+)/service", self.path)
         if match:
             user_id = self._require_principal_id()
@@ -2624,484 +2285,13 @@ class DiveBackendHandler(BaseHTTPRequestHandler):
             self._send_json(200, {"equipment": equipment})
             return
 
-        if self.path == "/api/auth/register":
-            payload = self._read_json_body()
-            if payload is None:
-                return
-            email = str(payload.get("email") or "").strip().lower()
-            password = str(payload.get("password") or "")
-            invite_token = str(payload.get("invite_token") or "").strip()
-            if not invite_token and (not email or "@" not in email):
-                self._send_json(400, {"error": "Valid email is required"})
-                return
-            if len(password) < 8:
-                self._send_json(400, {"error": "Password must be at least 8 characters"})
-                return
-            conn = self._open_db()
-            if conn is None:
-                return
-            try:
-                if invite_token:
-                    invite = get_auth_invite_by_token(conn, invite_token, now_timestamp=int(time.time()))
-                    if not invite:
-                        self._send_json(400, {"error": "Invitation is invalid or expired"})
-                        return
-                    invite_email = str(invite.get("email") or "").strip().lower()
-                    if email and email != invite_email:
-                        self._send_json(400, {"error": "Invitation email does not match the submitted email"})
-                        return
-                    try:
-                        user = create_auth_user_from_invite(
-                            conn,
-                            invite_token=invite_token,
-                            user_id=f"user_{uuid.uuid4().hex}",
-                            password_hash=hash_password(password),
-                        )
-                    except ValueError as exc:
-                        message = str(exc)
-                        if message == "Email already registered":
-                            self._send_json(409, {"error": message})
-                            return
-                        self._send_json(400, {"error": message})
-                        return
-                else:
-                    settings = get_auth_instance_settings(conn)
-                    if get_auth_user_by_email(conn, email):
-                        self._send_json(409, {"error": "Email already registered"})
-                        return
-                    if settings.get("bootstrap_registration_open"):
-                        try:
-                            user = create_bootstrap_auth_user(
-                                conn,
-                                user_id=f"user_{uuid.uuid4().hex}",
-                                email=email,
-                                password_hash=hash_password(password),
-                                first_name=str(payload.get("first_name") or "").strip(),
-                                last_name=str(payload.get("last_name") or "").strip(),
-                            )
-                        except ValueError as exc:
-                            message = str(exc)
-                            if message == "Email already registered":
-                                self._send_json(409, {"error": message})
-                                return
-                            self._send_json(403, {"error": message})
-                            return
-                    elif settings.get("public_registration_enabled"):
-                        user = create_auth_user(
-                            conn,
-                            user_id=f"user_{uuid.uuid4().hex}",
-                            email=email,
-                            password_hash=hash_password(password),
-                            first_name=str(payload.get("first_name") or "").strip(),
-                            last_name=str(payload.get("last_name") or "").strip(),
-                            role="user",
-                        )
-                    else:
-                        self._send_json(403, {"error": "Public registration is closed"})
-                        return
-            finally:
-                conn.close()
-            self._send_json(
-                201,
-                {
-                    "user_id": user.get("id"),
-                    "email": user.get("email"),
-                    "role": user.get("role"),
-                    "is_owner": bool(invite_token) is False and user.get("role") == "admin",
-                },
-            )
+        if auth_user_handlers.handle_post(self, path, deps=deps):
             return
 
-        if self.path == "/api/auth/login":
-            payload = self._read_json_body()
-            if payload is None:
-                return
-            email = str(payload.get("email") or "").strip().lower()
-            password = str(payload.get("password") or "")
-            conn = self._open_db()
-            if conn is None:
-                return
-            try:
-                user = get_auth_user_by_email(conn, email)
-                if not user or not verify_password(password, user.get("password_hash") or ""):
-                    self._send_json(401, {"error": "Invalid email or password"})
-                    return
-                if not bool(user.get("is_active", True)):
-                    self._send_json(403, {"error": "User account is inactive"})
-                    return
-                update_auth_user_last_login(conn, user.get("id"))
-            finally:
-                conn.close()
-            token = issue_session_token(
-                user_id=user.get("id"),
-                email=user.get("email"),
-                role=user.get("role") or "user",
-                jwt_secret=self.server.auth_jwt_secret,
-                issuer=self.server.auth_jwt_issuer,
-                audience=self.server.auth_jwt_audience,
-                ttl_seconds=self.server.auth_token_ttl_seconds,
-            )
-            self._send_json(200, {"token": token})
+        if backup_handlers.handle_post(self, path, deps=deps):
             return
 
-        if self.path == "/api/cli-auth/request":
-            if not self._enforce_rate_limit("cli_auth_request_create"):
-                return
-            payload = self.server.cli_auth_manager.create_request()
-            self._send_json(201, payload)
-            return
-
-        if self.path == "/api/auth/invitations":
-            claims = self._require_owner_auth()
-            if claims is None:
-                return
-            payload = self._read_json_body()
-            if payload is None:
-                return
-            email = str(payload.get("email") or "").strip().lower()
-            if not email or "@" not in email:
-                self._send_json(400, {"error": "Valid email is required"})
-                return
-            role = self._normalize_user_role(payload.get("role"))
-            if role is None:
-                self._send_json(400, {"error": "Role must be either 'user' or 'admin'"})
-                return
-            expires_in_days = self._parse_int(str(payload.get("expires_in_days") or "7"), default=7, max_value=30)
-            now_timestamp = int(time.time())
-            expires_at = now_timestamp + max(expires_in_days, 1) * 24 * 60 * 60
-            invite_token = secrets.token_urlsafe(24)
-            conn = self._open_db()
-            if conn is None:
-                return
-            try:
-                if get_auth_user_by_email(conn, email):
-                    self._send_json(409, {"error": "Email already registered"})
-                    return
-                invite = create_auth_invite(
-                    conn,
-                    token=invite_token,
-                    email=email,
-                    first_name=str(payload.get("first_name") or "").strip(),
-                    last_name=str(payload.get("last_name") or "").strip(),
-                    role=role,
-                    invited_by_user_id=self._principal_id_from_claims(claims) or "",
-                    expires_at=expires_at,
-                    now_timestamp=now_timestamp,
-                )
-            finally:
-                conn.close()
-            invite_query = urlencode({"invite_token": invite_token})
-            self._send_json(
-                201,
-                {
-                    "invite": invite,
-                    "invite_url": f"/?{invite_query}",
-                },
-            )
-            return
-
-        if self.path == "/api/users":
-            claims = self._require_owner_auth()
-            if claims is None:
-                return
-            payload = self._read_json_body()
-            if payload is None:
-                return
-            email = str(payload.get("email") or "").strip().lower()
-            password = str(payload.get("password") or "")
-            if not email or not password:
-                self._send_json(400, {"error": "email and password are required"})
-                return
-            role = self._normalize_user_role(payload.get("role"))
-            if role is None:
-                self._send_json(400, {"error": "Role must be either 'user' or 'admin'"})
-                return
-            conn = self._open_db()
-            if conn is None:
-                return
-            try:
-                if get_auth_user_by_email(conn, email):
-                    self._send_json(409, {"error": "Email already registered"})
-                    return
-                created = create_auth_user(
-                    conn,
-                    user_id=f"user_{uuid.uuid4().hex}",
-                    email=email,
-                    password_hash=hash_password(password),
-                    first_name=str(payload.get("first_name") or "").strip(),
-                    last_name=str(payload.get("last_name") or "").strip(),
-                    role=role,
-                )
-            finally:
-                conn.close()
-            self._send_json(201, {"user": created})
-            return
-
-        if self.path == "/api/backup/import":
-            if not self._enforce_rate_limit("backup_import"):
-                return
-            user_id = self._require_principal_id()
-            if user_id is None:
-                return
-
-            max_backup_import_bytes = getattr(self.server, "max_backup_import_bytes", 25 * 1024 * 1024)
-            body = self._read_request_body(max_bytes=max_backup_import_bytes)
-            if body is None:
-                return
-            content_type = (self.headers.get("Content-Type") or "").split(";", 1)[0].strip().lower()
-            try:
-                if content_type in {"application/zip", "application/x-zip-compressed", "application/octet-stream"}:
-                    payload = parse_backup_archive(body, max_uncompressed_bytes=max_backup_import_bytes)
-                else:
-                    payload = json.loads(body.decode("utf-8")) if body else {}
-            except (UnicodeDecodeError, json.JSONDecodeError):
-                LOGGER.warning("Rejected invalid backup JSON path=%s", self.path)
-                self._send_json(400, {"error": "Invalid JSON"})
-                return
-            except ValueError as exc:
-                self._send_json(400, {"error": str(exc)})
-                return
-
-            conn = self._open_db()
-            if conn is None:
-                return
-            try:
-                try:
-                    result = import_backup_payload(conn, user_id, payload)
-                except ValueError as exc:
-                    self._send_json(400, {"error": str(exc)})
-                    return
-            finally:
-                conn.close()
-
-            LOGGER.info(
-                "Imported backup user_id=%s dives_inserted=%d device_states=%d license_documents=%d",
-                user_id,
-                result["summary"]["dives_inserted"],
-                result["summary"]["device_states_imported"],
-                result["summary"]["license_documents_imported"],
-            )
-            self._send_json(200, result)
-            return
-
-        if path == "/api/imports/csv":
-            if not self._enforce_rate_limit("dive_upload"):
-                return
-            user_id = self._require_principal_id()
-            if user_id is None:
-                return
-
-            max_csv_import_bytes = getattr(self.server, "max_csv_import_bytes", 5 * 1024 * 1024)
-            body = self._read_request_body(max_bytes=max_csv_import_bytes)
-            if body is None:
-                return
-            conn = self._open_db()
-            if conn is None:
-                return
-            try:
-                profile = get_user_profile(conn, user_id)
-                required_fields = profile.get("required_logbook_fields")
-            except ValueError as exc:
-                conn.close()
-                self._send_json(400, {"error": str(exc)})
-                return
-            content_type = (self.headers.get("Content-Type") or "").split(";", 1)[0].strip().lower()
-            try:
-                if content_type == "application/json":
-                    payload = json.loads(body.decode("utf-8")) if body else {}
-                    csv_text = str(payload.get("csv") or "")
-                else:
-                    csv_text = body.decode("utf-8-sig")
-                preview = csv_import_preview(csv_text, required_fields=required_fields)
-                dive_payloads = preview["payloads"]
-            except (UnicodeDecodeError, json.JSONDecodeError):
-                conn.close()
-                self._send_json(400, {"error": "Invalid CSV import request body"})
-                return
-            except ValueError as exc:
-                conn.close()
-                self._send_json(400, {"error": str(exc)})
-                return
-
-            query = parse_qs(parsed_request.query)
-            dry_run = self._is_truthy(query.get("dry_run", ["0"])[0])
-            duplicate_uids = {
-                row.get("dive_uid")
-                for row in preview["rows"]
-                if row.get("valid") and row.get("dive_uid") and get_dive_id_by_uid(conn, user_id, row["dive_uid"]) is not None
-            }
-            validation_rows = mark_import_preview_duplicates(preview["rows"], duplicate_uids)
-            summary = import_validation_summary(validation_rows)
-            if dry_run:
-                conn.close()
-                self._send_json(200, {"dry_run": True, "summary": summary})
-                return
-            invalid_row = next((row for row in validation_rows if not row.get("valid")), None)
-            if invalid_row:
-                row_number = invalid_row.get("row_number")
-                error_message = (invalid_row.get("errors") or ["Invalid row"])[0]
-                conn.close()
-                self._send_json(400, {"error": f"CSV row {row_number}: {error_message}", "summary": summary})
-                return
-
-            inserted_count = 0
-            ids: list[int] = []
-            payload_iter = iter(dive_payloads)
-            try:
-                for row in validation_rows:
-                    if not row.get("valid"):
-                        continue
-                    dive_payload = next(payload_iter)
-                    inserted = insert_dive_record(conn, user_id, dive_payload)
-                    if inserted:
-                        inserted_count += 1
-                        row["status"] = "inserted"
-                        row["duplicate"] = False
-                    else:
-                        row["status"] = "duplicate"
-                        row["duplicate"] = True
-                    dive_id = get_dive_id_by_uid(conn, user_id, dive_payload["dive_uid"])
-                    if dive_id is not None:
-                        ids.append(dive_id)
-            finally:
-                conn.close()
-
-            LOGGER.info(
-                "Imported CSV dives user_id=%s rows=%d inserted=%d",
-                user_id,
-                len(dive_payloads),
-                inserted_count,
-            )
-            summary = import_validation_summary(validation_rows, inserted=inserted_count, ids=ids)
-            self._send_json(
-                200,
-                {
-                    "rows": len(dive_payloads),
-                    "inserted": inserted_count,
-                    "duplicates": len(dive_payloads) - inserted_count,
-                    "ids": ids,
-                    "summary": summary,
-                },
-            )
-            return
-
-        if path == "/api/imports/subsurface":
-            if not self._enforce_rate_limit("dive_upload"):
-                return
-            user_id = self._require_principal_id()
-            if user_id is None:
-                return
-
-            max_subsurface_import_bytes = getattr(self.server, "max_subsurface_import_bytes", 15 * 1024 * 1024)
-            body = self._read_request_body(max_bytes=max_subsurface_import_bytes)
-            if body is None:
-                return
-            conn = self._open_db()
-            if conn is None:
-                return
-            try:
-                profile = get_user_profile(conn, user_id)
-                required_fields = profile.get("required_logbook_fields")
-            except ValueError as exc:
-                conn.close()
-                self._send_json(400, {"error": str(exc)})
-                return
-            try:
-                export_text = decode_subsurface_export(body, max_uncompressed_bytes=max_subsurface_import_bytes)
-                preview = subsurface_import_preview(export_text, required_fields=required_fields)
-                dive_payloads = preview["payloads"]
-            except (OSError, ValueError) as exc:
-                conn.close()
-                self._send_json(400, {"error": str(exc)})
-                return
-
-            query = parse_qs(parsed_request.query)
-            dry_run = self._is_truthy(query.get("dry_run", ["0"])[0])
-            duplicate_uids = {
-                row.get("dive_uid")
-                for row in preview["rows"]
-                if row.get("valid") and row.get("dive_uid") and get_dive_id_by_uid(conn, user_id, row["dive_uid"]) is not None
-            }
-            validation_rows = mark_import_preview_duplicates(preview["rows"], duplicate_uids)
-            summary = import_validation_summary(validation_rows)
-            if dry_run:
-                conn.close()
-                self._send_json(200, {"dry_run": True, "summary": summary})
-                return
-            invalid_row = next((row for row in validation_rows if not row.get("valid")), None)
-            if invalid_row:
-                row_number = invalid_row.get("row_number")
-                error_message = (invalid_row.get("errors") or ["Invalid dive"])[0]
-                conn.close()
-                self._send_json(400, {"error": f"Subsurface dive {row_number}: {error_message}", "summary": summary})
-                return
-
-            inserted_count = 0
-            ids: list[int] = []
-            payload_iter = iter(dive_payloads)
-            try:
-                for row in validation_rows:
-                    if not row.get("valid"):
-                        continue
-                    dive_payload = next(payload_iter)
-                    inserted = insert_dive_record(conn, user_id, dive_payload)
-                    if inserted:
-                        inserted_count += 1
-                        row["status"] = "inserted"
-                        row["duplicate"] = False
-                    else:
-                        row["status"] = "duplicate"
-                        row["duplicate"] = True
-                    dive_id = get_dive_id_by_uid(conn, user_id, dive_payload["dive_uid"])
-                    if dive_id is not None:
-                        ids.append(dive_id)
-            finally:
-                conn.close()
-
-            LOGGER.info(
-                "Imported Subsurface dives user_id=%s rows=%d inserted=%d",
-                user_id,
-                len(dive_payloads),
-                inserted_count,
-            )
-            summary = import_validation_summary(validation_rows, inserted=inserted_count, ids=ids)
-            self._send_json(
-                200,
-                {
-                    "rows": len(dive_payloads),
-                    "inserted": inserted_count,
-                    "duplicates": len(dive_payloads) - inserted_count,
-                    "ids": ids,
-                    "summary": summary,
-                },
-            )
-            return
-
-        if self.path == "/api/cli-auth/approve":
-            if not self._enforce_rate_limit("cli_auth_approve"):
-                return
-            claims = self._require_browser_session_auth()
-            if claims is None:
-                return
-            payload = self._read_json_body()
-            if payload is None:
-                return
-            code = (payload.get("code") or "").strip()
-            if not code:
-                self._send_json(400, {"error": "Missing CLI auth code"})
-                return
-            approval = self.server.cli_auth_manager.approve_request(code, claims)
-            if approval is None:
-                self._send_json(404, {"error": "CLI auth request not found or expired"})
-                return
-            self._send_json(
-                200,
-                {
-                    "status": approval["status"],
-                    "email": approval.get("email"),
-                    "token_expires_at": approval.get("token_expires_at"),
-                },
-            )
+        if import_handlers.handle_post(self, path, parsed_request, deps=deps):
             return
 
         if self.path != "/api/dives":
@@ -3154,115 +2344,11 @@ class DiveBackendHandler(BaseHTTPRequestHandler):
     def do_PUT(self) -> None:
         self._mark_request_started()
         LOGGER.info("PUT %s", self.path)
-        if self.path == "/api/auth/settings":
-            claims = self._require_owner_auth()
-            if claims is None:
-                return
-            payload = self._read_json_body()
-            if payload is None:
-                return
-            if "public_registration_enabled" not in payload:
-                self._send_json(400, {"error": "public_registration_enabled is required"})
-                return
-            conn = self._open_db()
-            if conn is None:
-                return
-            try:
-                settings = update_auth_instance_settings(
-                    conn,
-                    public_registration_enabled=bool(payload.get("public_registration_enabled")),
-                )
-            finally:
-                conn.close()
-            self._send_json(200, settings)
+        deps = sys.modules[__name__]
+        if auth_user_handlers.handle_put(self, self.path, deps=deps):
             return
 
-        if self.path == "/api/auth/password":
-            claims = self._require_auth()
-            if claims is None:
-                return
-            payload = self._read_json_body()
-            if payload is None:
-                return
-            current_password = str(payload.get("current_password") or "")
-            new_password = str(payload.get("new_password") or "")
-            if len(new_password) < 8:
-                self._send_json(400, {"error": "New password must be at least 8 characters"})
-                return
-            conn = self._open_db()
-            if conn is None:
-                return
-            try:
-                user = get_auth_user_by_id(conn, claims.get("sub") or "")
-                if not user or not verify_password(current_password, user.get("password_hash") or ""):
-                    self._send_json(401, {"error": "Current password is incorrect"})
-                    return
-                update_auth_user(conn, user.get("id"), {"password_hash": hash_password(new_password)})
-            finally:
-                conn.close()
-            self._send_json(200, {"updated": True})
-            return
-
-        match = re.fullmatch(r"/api/users/(user_[A-Za-z0-9]+)", self.path)
-        if match:
-            claims = self._require_owner_auth()
-            if claims is None:
-                return
-            payload = self._read_json_body()
-            if payload is None:
-                return
-            user_id = match.group(1)
-            if "role" in payload:
-                role = self._normalize_user_role(payload.get("role"))
-                if role is None:
-                    self._send_json(400, {"error": "Role must be either 'user' or 'admin'"})
-                    return
-                payload = dict(payload)
-                payload["role"] = role
-            conn = self._open_db()
-            if conn is None:
-                return
-            try:
-                settings = get_auth_instance_settings(conn)
-                if user_id == settings.get("owner_user_id"):
-                    if "is_active" in payload and not bool(payload.get("is_active")):
-                        self._send_json(400, {"error": "The instance owner cannot be deactivated"})
-                        return
-                    if payload.get("role") == "user":
-                        self._send_json(400, {"error": "The instance owner must retain the admin role"})
-                        return
-                updated = update_auth_user(conn, user_id, payload)
-            finally:
-                conn.close()
-            if not updated:
-                self._send_json(404, {"error": "User not found"})
-                return
-            self._send_json(200, {"user": updated})
-            return
-
-        if self.path == "/api/profile":
-            user_id = self._require_principal_id()
-            if user_id is None:
-                return
-            payload = self._read_json_body()
-            if payload is None:
-                return
-
-            conn = self._open_db()
-            if conn is None:
-                return
-            try:
-                profile = save_user_profile(conn, user_id, payload)
-            finally:
-                conn.close()
-
-            LOGGER.info(
-                "Updated profile user_id=%s license_count=%d licenses_with_pdf=%d",
-                user_id,
-                len(profile.get("licenses") or []),
-                sum(1 for license_entry in profile.get("licenses") or [] if license_entry.get("pdf")),
-            )
-            self._send_json(200, profile)
+        if profile_handlers.handle_put(self, self.path, deps=deps):
             return
 
         if self.path == "/api/equipment":
@@ -3281,51 +2367,6 @@ class DiveBackendHandler(BaseHTTPRequestHandler):
             finally:
                 conn.close()
             self._send_json(200, {"equipment": equipment})
-            return
-
-        match = re.fullmatch(r"/api/profile/licenses/([A-Za-z0-9_-]+)/pdf", self.path)
-        if match:
-            user_id = self._require_principal_id()
-            if user_id is None:
-                return
-            license_id = match.group(1)
-            payload = self._read_json_body()
-            if payload is None:
-                return
-
-            try:
-                filename, content_type, pdf_bytes = decode_profile_license_payload(payload)
-            except ValueError as exc:
-                self._send_json(400, {"error": str(exc)})
-                return
-
-            conn = self._open_db()
-            if conn is None:
-                return
-            try:
-                profile = save_user_profile_license_pdf(
-                    conn,
-                    user_id,
-                    license_id=license_id,
-                    filename=filename,
-                    content_type=content_type,
-                    pdf_bytes=pdf_bytes,
-                )
-            finally:
-                conn.close()
-
-            if profile is None:
-                self._send_json(404, {"error": "License entry not found"})
-                return
-
-            LOGGER.info(
-                "Updated profile license user_id=%s license_id=%s filename=%s size_bytes=%d",
-                user_id,
-                license_id,
-                filename,
-                len(pdf_bytes),
-            )
-            self._send_json(200, profile)
             return
 
         match = re.fullmatch(r"/api/dives/(\d+)/logbook", self.path)
@@ -3404,27 +2445,8 @@ class DiveBackendHandler(BaseHTTPRequestHandler):
     def do_DELETE(self) -> None:
         self._mark_request_started()
         LOGGER.info("DELETE %s", self.path)
-        match = re.fullmatch(r"/api/users/(user_[A-Za-z0-9]+)", self.path)
-        if match:
-            claims = self._require_owner_auth()
-            if claims is None:
-                return
-            target_user_id = match.group(1)
-            conn = self._open_db()
-            if conn is None:
-                return
-            try:
-                settings = get_auth_instance_settings(conn)
-                if target_user_id == settings.get("owner_user_id"):
-                    self._send_json(400, {"error": "The instance owner cannot be deleted"})
-                    return
-                deleted = delete_auth_user(conn, target_user_id)
-            finally:
-                conn.close()
-            if not deleted:
-                self._send_json(404, {"error": "User not found"})
-                return
-            self._send_json(200, {"deleted": True, "user_id": target_user_id})
+        deps = sys.modules[__name__]
+        if auth_user_handlers.handle_delete(self, self.path, deps=deps):
             return
 
         match = re.fullmatch(r"/api/dives/(\d+)", self.path)
@@ -3465,40 +2487,14 @@ class DiveBackendHandler(BaseHTTPRequestHandler):
             return None
 
     def _require_auth(self) -> dict | None:
-        verifier = getattr(self.server, "auth_verifier", None)
-        if verifier is None:
-            self._send_json(503, {"error": "Authentication is not configured on the backend"})
-            return None
-
-        try:
-            return verifier.verify_request(self.headers)
-        except AuthError as exc:
-            self._send_json(exc.status, {"error": exc.message})
-            return None
+        return require_auth(self)
 
     @staticmethod
     def _is_admin_claims(claims: dict | None) -> bool:
-        return bool(isinstance(claims, dict) and str(claims.get("role") or "").lower() == "admin")
+        return is_admin_claims(claims)
 
     def _require_owner_auth(self) -> dict | None:
-        claims = self._require_auth()
-        if claims is None:
-            return None
-        principal_id = self._principal_id_from_claims(claims)
-        if not principal_id:
-            self._send_json(403, {"error": "Authenticated identity is missing a stable user identifier"})
-            return None
-        conn = self._open_db()
-        if conn is None:
-            return None
-        try:
-            settings = get_auth_instance_settings(conn)
-        finally:
-            conn.close()
-        if principal_id != settings.get("owner_user_id"):
-            self._send_json(403, {"error": "Instance owner required"})
-            return None
-        return claims
+        return require_owner_auth(self, get_auth_instance_settings=get_auth_instance_settings)
 
     @staticmethod
     def _normalize_user_role(value: object) -> str | None:
@@ -3508,57 +2504,20 @@ class DiveBackendHandler(BaseHTTPRequestHandler):
         return normalized
 
     def _require_browser_session_auth(self) -> dict | None:
-        claims = self._require_auth()
-        if claims is None:
-            return None
-        if claims.get("token_type") != "session_token":
-            self._send_json(403, {"error": "Desktop sync approval requires an authenticated browser session"})
-            return None
-        return claims
+        return require_browser_session_auth(self)
 
     @staticmethod
     def _principal_id_from_claims(claims: dict | None) -> str | None:
-        if not isinstance(claims, dict):
-            return None
-        return claims.get("sub") or claims.get("user_id") or claims.get("subject")
+        return principal_id_from_claims(claims)
 
     def _require_principal_id(self) -> str | None:
-        claims = self._require_auth()
-        if claims is None:
-            return None
-        principal_id = self._principal_id_from_claims(claims)
-        if principal_id:
-            return principal_id
-        self._send_json(403, {"error": "Authenticated identity is missing a stable user identifier"})
-        return None
+        return require_principal_id(self)
 
     def _read_request_body(self, *, max_bytes: int) -> bytes | None:
-        max_body_bytes = int(max_bytes)
-        content_length = self.headers.get("Content-Length", "0")
-        try:
-            length = int(content_length)
-        except ValueError:
-            self._send_json(400, {"error": "Invalid Content-Length header"})
-            return None
-        if length < 0:
-            self._send_json(400, {"error": "Invalid Content-Length header"})
-            return None
-        if length > max_body_bytes:
-            self._send_json(413, {"error": f"Request body exceeds {max_body_bytes} byte limit"})
-            return None
-        return self.rfile.read(length) if length > 0 else b""
+        return read_request_body(self, max_bytes=max_bytes)
 
     def _read_json_body(self, *, max_bytes: int | None = None) -> dict | None:
-        max_json_body_bytes = int(max_bytes if max_bytes is not None else getattr(self.server, "max_json_body_bytes", 1024 * 1024))
-        body = self._read_request_body(max_bytes=max_json_body_bytes)
-        if body is None:
-            return None
-        try:
-            return json.loads(body.decode("utf-8")) if body else {}
-        except json.JSONDecodeError:
-            LOGGER.warning("Rejected invalid JSON path=%s", self.path)
-            self._send_json(400, {"error": "Invalid JSON"})
-            return None
+        return read_json_body(self, max_bytes=max_bytes)
 
     def _send_security_headers(self) -> None:
         self.send_header("X-Content-Type-Options", "nosniff")
