@@ -29,6 +29,7 @@ import hashlib
 import hmac
 import uuid
 import zipfile
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -44,23 +45,37 @@ import psycopg
 from dotenv import load_dotenv
 from jwt import InvalidTokenError
 
-from divevault.handlers import auth_users as auth_user_handlers
-from divevault.handlers import backup as backup_handlers
-from divevault.handlers import geocode as geocode_handlers
-from divevault.handlers import imports as import_handlers
-from divevault.handlers import metrics as metrics_handlers
-from divevault.handlers import profile as profile_handlers
+from divevault.database import PooledConnectionProxy
+from divevault.handlers.errors import AppError, MethodNotAllowed, NotFound, PayloadTooLarge, UnsupportedMediaType, send_error
+from divevault.handlers.manifest import (
+    API_ROUTE_MANIFEST,
+    BACKUP_IMPORT_TYPES,
+    CSV_IMPORT_TYPES,
+    JSON_TYPES,
+    ROUTES,
+    SUBSURFACE_IMPORT_TYPES,
+)
 from divevault.handlers.metrics import PrometheusMetrics
 from divevault.handlers.request_utils import (
     AuthError,
     is_admin_claims,
     principal_id_from_claims,
+    request_content_type,
     read_json_body,
     read_request_body,
     require_auth,
     require_browser_session_auth,
     require_owner_auth,
     require_principal_id,
+)
+from divevault.handlers.routes import (
+    AUTH_ANY,
+    AUTH_BROWSER_SESSION,
+    AUTH_OWNER,
+    AUTH_PRINCIPAL,
+    RoutePolicy,
+    allowed_methods_for_path,
+    match_route,
 )
 from divevault.postgres_store import (
     CURRENT_SCHEMA_VERSION,
@@ -107,6 +122,17 @@ from divevault.postgres_store import (
     update_dive_logbook,
     verify_cli_sync_token,
 )
+from divevault.rate_limit import FixedWindowRateLimiter
+from divevault.static_assets import (
+    frontend_asset_path,
+    resolve_frontend_dir as resolve_frontend_dir_for_repo,
+    resolve_repo_path as resolve_repo_path_for_repo,
+)
+
+try:  # pragma: no cover - exercised only when the optional runtime extra is installed
+    from psycopg_pool import ConnectionPool
+except ImportError:  # pragma: no cover - development environments may not install pool extras immediately
+    ConnectionPool = None
 
 
 LOGGER = logging.getLogger("dive_backend")
@@ -121,38 +147,6 @@ DEMO_ADMIN_PASSWORD_HASH = (
 )
 
 load_dotenv(REPO_ROOT / ".env")
-
-
-class FixedWindowRateLimiter:
-    def __init__(self) -> None:
-        self._lock = threading.Lock()
-        self._windows: dict[str, dict[str, int]] = {}
-
-    def allow(self, key: str, *, limit: int, window_seconds: int, now: int | None = None) -> tuple[bool, int]:
-        if limit <= 0:
-            return True, 0
-        now_ts = int(now if now is not None else time.time())
-        window = max(int(window_seconds), 1)
-        current_window_start = now_ts - (now_ts % window)
-        expires_at = current_window_start + window
-        with self._lock:
-            stale_keys = [
-                existing_key
-                for existing_key, existing_entry in self._windows.items()
-                if int(existing_entry.get("expires_at", 0)) <= now_ts
-            ]
-            for stale_key in stale_keys:
-                self._windows.pop(stale_key, None)
-
-            entry = self._windows.get(key)
-            if entry is None or entry["window_start"] != current_window_start:
-                entry = {"window_start": current_window_start, "expires_at": expires_at, "count": 0}
-                self._windows[key] = entry
-            if entry["count"] >= limit:
-                return False, max(expires_at - now_ts, 1)
-            entry["count"] += 1
-            entry["expires_at"] = expires_at
-            return True, max(expires_at - now_ts, 1)
 
 
 def normalize_bearer_token(value: str | None) -> str | None:
@@ -555,38 +549,20 @@ def build_auth_verifier(args: argparse.Namespace, *, sync_token_manager: CliSync
 
 
 def resolve_repo_path(path_value: str | Path) -> Path:
-    candidate = Path(path_value)
-    if not candidate.is_absolute():
-        candidate = REPO_ROOT / candidate
-    return candidate.resolve()
+    return resolve_repo_path_for_repo(REPO_ROOT, path_value)
 
 
 def resolve_frontend_dir(frontend_dir: str | Path) -> Path:
-    resolved = resolve_repo_path(frontend_dir)
-    if resolved.exists():
-        return resolved
-
-    legacy_dir = resolved.parent if resolved.name == "dist" else None
-    if legacy_dir and (legacy_dir / "index.html").is_file():
+    resolved = resolve_frontend_dir_for_repo(REPO_ROOT, frontend_dir)
+    configured = resolve_repo_path(frontend_dir)
+    legacy_dir = configured.parent if configured.name == "dist" else None
+    if resolved != configured and legacy_dir is not None:
         LOGGER.warning(
             "Configured frontend_dir=%s is missing; falling back to legacy frontend assets at %s",
+            configured,
             resolved,
-            legacy_dir,
         )
-        return legacy_dir
-
     return resolved
-
-
-def frontend_asset_path(frontend_dir: Path, request_path: str) -> Path:
-    relative = request_path.lstrip("/") or "index.html"
-    candidate = (frontend_dir / relative).resolve()
-    frontend_root = frontend_dir.resolve()
-    if frontend_root not in candidate.parents and candidate != frontend_root:
-        return frontend_root / "index.html"
-    if candidate.is_file():
-        return candidate
-    return frontend_root / "index.html"
 
 
 def redact_database_url(database_url: str) -> str:
@@ -2042,445 +2018,130 @@ class DiveBackendHandler(BaseHTTPRequestHandler):
         self._observe_response(204)
 
     def do_GET(self) -> None:
+        self._handle_method("GET")
+
+    def do_POST(self) -> None:
+        self._handle_method("POST")
+
+    def do_PUT(self) -> None:
+        self._handle_method("PUT")
+
+    def do_DELETE(self) -> None:
+        self._handle_method("DELETE")
+
+    def log_message(self, fmt: str, *args) -> None:
+        LOGGER.debug("HTTP %s - %s", self.address_string(), fmt % args)
+
+    def _handle_method(self, method: str) -> None:
         self._mark_request_started()
         parsed = urlparse(self.path)
         path = parsed.path
         query = parse_qs(parsed.query)
         if path in {"/health", "/api/health"}:
-            LOGGER.debug("GET %s query=%s", path, dict(query))
+            LOGGER.debug("%s %s query=%s request_id=%s", method, path, dict(query), self._request_id)
         else:
-            LOGGER.info("GET %s query=%s", path, dict(query))
+            LOGGER.info("%s %s query=%s request_id=%s", method, path, dict(query), self._request_id)
 
-        if metrics_handlers.handle_get(self, path):
-            return
-
-        if path in {"/health", "/api/health"}:
-            database_ready = bool(getattr(self.server, "database_ready", False))
-            database_ready_error = getattr(self.server, "database_ready_error", "")
-            if not database_ready:
-                payload = {
-                    "status": "starting",
-                    "database": "migrating",
-                }
-                if database_ready_error:
-                    payload["error"] = database_ready_error
-                self._send_json(503, payload)
-                return
-            self._send_json(200, {"status": "ok"})
-            return
-
-        if path == "/config.js":
-            self._send_config_js()
-            return
-
-        deps = sys.modules[__name__]
-        if profile_handlers.handle_get(self, path, query, deps=deps):
-            return
-
-        if path == "/api/device-state":
-            user_id = self._require_principal_id()
-            if user_id is None:
-                return
-            vendor = self._single_query_arg(query, "vendor")
-            product = self._single_query_arg(query, "product")
-            if not vendor or not product:
-                self._send_json(400, {"error": "vendor and product are required"})
-                return
-
-            conn = self._open_db()
-            if conn is None:
-                return
-            try:
-                state = get_device_state(conn, user_id, vendor, product)
-                LOGGER.info(
-                    "Returned device state user_id=%s vendor=%s product=%s fingerprint=%s",
-                    user_id,
-                    vendor,
-                    product,
-                    state.get("fingerprint_hex"),
-                )
-                self._send_json(200, state)
-            finally:
-                conn.close()
-            return
-
-        if path == "/api/equipment":
-            user_id = self._require_principal_id()
-            if user_id is None:
-                return
-            conn = self._open_db()
-            if conn is None:
-                return
-            try:
-                equipment = list_user_equipment(conn, user_id)
-            finally:
-                conn.close()
-            self._send_json(200, {"equipment": equipment})
-            return
-
-        if path == "/api/exports/dives.csv":
-            user_id = self._require_principal_id()
-            if user_id is None:
-                return
-
-            conn = self._open_db()
-            if conn is None:
-                return
-            try:
-                dives = list_all_dives(conn, user_id, include_samples=True, include_raw_data=False)
-            finally:
-                conn.close()
-
-            filename = attachment_filename(f"divevault-dives-{timestamp_slug()}.csv")
-            LOGGER.info("Returned dive CSV export user_id=%s dives=%d filename=%s", user_id, len(dives), filename)
-            self._send_bytes(
-                200,
-                build_dives_csv(dives),
-                "text/csv; charset=utf-8",
-                extra_headers={
-                    "Content-Disposition": f'attachment; filename="{filename}"',
-                    "Cache-Control": "no-store",
-                },
-            )
-            return
-
-        if path == "/api/exports/dives.pdf":
-            user_id = self._require_principal_id()
-            if user_id is None:
-                return
-
-            conn = self._open_db()
-            if conn is None:
-                return
-            try:
-                dives = list_all_dives(conn, user_id, include_samples=True, include_raw_data=False)
-            finally:
-                conn.close()
-
-            filename = attachment_filename(f"divevault-dives-{timestamp_slug()}.pdf")
-            LOGGER.info("Returned dive PDF export user_id=%s dives=%d filename=%s", user_id, len(dives), filename)
-            self._send_bytes(
-                200,
-                build_pdf_document(dives),
-                "application/pdf",
-                extra_headers={
-                    "Content-Disposition": f'attachment; filename="{filename}"',
-                    "Cache-Control": "no-store",
-                },
-            )
-            return
-
-        if backup_handlers.handle_get(self, path, deps=deps):
-            return
-
-        if geocode_handlers.handle_get(self, path, query):
-            return
-
-        if auth_user_handlers.handle_get(self, path, query, deps=deps):
-            return
-
-        if path == "/api/dives":
-            user_id = self._require_principal_id()
-            if user_id is None:
-                return
-            include_samples = self._is_truthy(query.get("include_samples", ["0"])[0])
-            include_raw_data = self._is_truthy(query.get("include_raw_data", ["0"])[0])
-            limit = self._parse_int(
-                query.get("limit", ["100"])[0],
-                default=100,
-                max_value=getattr(self.server, "max_list_limit", 200),
-            )
-            offset = self._parse_int(query.get("offset", ["0"])[0], default=0)
-
-            conn = self._open_db()
-            if conn is None:
-                return
-            try:
-                dives, total = list_dives(conn, user_id, include_samples, include_raw_data, limit, offset)
-            finally:
-                conn.close()
-
-            LOGGER.info(
-                "Returned dives user_id=%s count=%d total=%d include_samples=%s include_raw_data=%s limit=%d offset=%d",
-                user_id,
-                len(dives),
-                total,
-                include_samples,
-                include_raw_data,
-                limit,
-                offset,
-            )
-            self._send_json(
-                200,
-                {
-                    "dives": dives,
-                    "stats": summarize_dives(
-                        [dive for dive in dives if is_logbook_complete(dive.get("fields", {}).get("logbook"))],
-                        sum(1 for dive in dives if is_logbook_complete(dive.get("fields", {}).get("logbook"))),
-                    ),
-                    "imported_count": sum(
-                        1 for dive in dives if not is_logbook_complete(dive.get("fields", {}).get("logbook"))
-                    ),
-                    "limit": limit,
-                    "offset": offset,
-                    "total": total,
-                },
-            )
-            return
-
-        match = re.fullmatch(r"/api/dives/(\d+)", path)
-        if match:
-            user_id = self._require_principal_id()
-            if user_id is None:
-                return
-            dive_id = int(match.group(1))
-            include_raw_data = self._is_truthy(query.get("include_raw_data", ["0"])[0])
-
-            conn = self._open_db()
-            if conn is None:
-                return
-            try:
-                dive = get_dive(conn, user_id, dive_id, include_raw_data)
-            finally:
-                conn.close()
-
-            if not dive:
-                LOGGER.warning("Dive not found id=%d", dive_id)
-                self._send_json(404, {"error": "Dive not found"})
-                return
-
-            LOGGER.info("Returned dive user_id=%s id=%d include_raw_data=%s", user_id, dive_id, include_raw_data)
-            self._send_json(200, dive)
-            return
-
-        if path.startswith("/api/"):
-            LOGGER.warning("Route not found: %s", path)
-            self._send_json(404, {"error": "Not found"})
-            return
-
-        self._serve_frontend(path)
-
-    def do_POST(self) -> None:
-        self._mark_request_started()
-        LOGGER.info("POST %s", self.path)
-        parsed_request = urlparse(self.path)
-        path = parsed_request.path
-        deps = sys.modules[__name__]
-        match = re.fullmatch(r"/api/equipment/([A-Za-z0-9_-]+)/service", self.path)
-        if match:
-            user_id = self._require_principal_id()
-            if user_id is None:
-                return
-            equipment_id = match.group(1)
-            conn = self._open_db()
-            if conn is None:
-                return
-            try:
-                equipment = mark_equipment_serviced(conn, user_id, equipment_id)
-            finally:
-                conn.close()
-            if equipment is None:
-                self._send_json(404, {"error": "Equipment item not found"})
-                return
-            self._send_json(200, {"equipment": equipment})
-            return
-
-        if auth_user_handlers.handle_post(self, path, deps=deps):
-            return
-
-        if backup_handlers.handle_post(self, path, deps=deps):
-            return
-
-        if import_handlers.handle_post(self, path, parsed_request, deps=deps):
-            return
-
-        if self.path != "/api/dives":
-            self._send_json(404, {"error": "Not found"})
-            return
-
-        user_id = self._require_principal_id()
-        if user_id is None:
-            return
-        if not self._enforce_rate_limit("dive_upload"):
-            return
-
-        payload = self._read_json_body()
-        if payload is None:
-            return
-
-        missing = [
-            key
-            for key in ("vendor", "product", "dive_uid", "raw_sha256", "raw_data_b64")
-            if not payload.get(key)
-        ]
-        if missing:
-            LOGGER.warning("Rejected dive upload missing=%s", ",".join(missing))
-            self._send_json(400, {"error": f"Missing required fields: {', '.join(missing)}"})
-            return
-
-        conn = self._open_db()
-        if conn is None:
-            return
+        route, match = match_route(ROUTES, method, path)
         try:
-            try:
-                inserted = insert_dive_record(conn, user_id, payload)
-            except ValueError as exc:
-                LOGGER.warning("Rejected dive upload invalid base64 uid=%s", payload.get("dive_uid"))
-                self._send_json(400, {"error": str(exc)})
-                return
-            dive_id = get_dive_id_by_uid(conn, user_id, payload["dive_uid"])
-        finally:
-            conn.close()
-
-        LOGGER.info(
-            "Processed dive upload user_id=%s uid=%s inserted=%s id=%s",
-            user_id,
-            payload["dive_uid"],
-            inserted,
-            dive_id,
-        )
-        self._send_json(201 if inserted else 200, {"inserted": inserted, "id": dive_id})
-
-    def do_PUT(self) -> None:
-        self._mark_request_started()
-        LOGGER.info("PUT %s", self.path)
-        deps = sys.modules[__name__]
-        if auth_user_handlers.handle_put(self, self.path, deps=deps):
-            return
-
-        if profile_handlers.handle_put(self, self.path, deps=deps):
-            return
-
-        if self.path == "/api/equipment":
-            user_id = self._require_principal_id()
-            if user_id is None:
-                return
-            payload = self._read_json_body()
-            if payload is None:
-                return
-            equipment_entries = payload.get("equipment") if isinstance(payload, dict) else None
-            conn = self._open_db()
-            if conn is None:
-                return
-            try:
-                equipment = save_user_equipment(conn, user_id, equipment_entries)
-            finally:
-                conn.close()
-            self._send_json(200, {"equipment": equipment})
-            return
-
-        match = re.fullmatch(r"/api/dives/(\d+)/logbook", self.path)
-        if match:
-            user_id = self._require_principal_id()
-            if user_id is None:
-                return
-            payload = self._read_json_body()
-            if payload is None:
-                return
-
-            dive_id = int(match.group(1))
-            conn = self._open_db()
-            if conn is None:
-                return
-            try:
-                try:
-                    dive = update_dive_logbook(conn, user_id, dive_id, payload)
-                except ValueError as exc:
-                    self._send_json(400, {"error": str(exc)})
+            if route is None:
+                allowed = allowed_methods_for_path(ROUTES, path)
+                if allowed:
+                    raise MethodNotAllowed(
+                        "Method not allowed",
+                        headers={"Allow": ", ".join(allowed)},
+                    )
+                if method == "GET" and not path.startswith("/api/"):
+                    self._request_route_label = "frontend"
+                    self._serve_frontend(path)
                     return
-            finally:
-                conn.close()
+                LOGGER.warning("Route not found: %s", path)
+                raise NotFound("Not found")
 
-            if not dive:
-                LOGGER.warning("Dive not found for logbook update id=%d", dive_id)
-                self._send_json(404, {"error": "Dive not found"})
+            self._request_route_label = route.route_label
+            self._route_policy = route.policy
+            if not self._apply_route_policy(route.policy):
                 return
+            route.handler(self, match, parsed, query, deps=sys.modules[__name__])
+        except AppError as exc:
+            send_error(self, exc)
+        except Exception:
+            LOGGER.exception("Unhandled request error request_id=%s method=%s path=%s", self._request_id, method, path)
+            send_error(self, AppError())
 
-            LOGGER.info(
-                "Updated dive logbook user_id=%s id=%d status=%s",
-                user_id,
-                dive_id,
-                dive.get("fields", {}).get("logbook", {}).get("status"),
-            )
-            self._send_json(200, dive)
-            return
+    def _apply_route_policy(self, policy: RoutePolicy) -> bool:
+        self._route_max_body_bytes = self._route_body_limit(policy)
+        if self._route_max_body_bytes is not None:
+            content_length = self.headers.get("Content-Length")
+            if content_length:
+                try:
+                    length = int(content_length)
+                except ValueError:
+                    raise AppError("Invalid Content-Length header", status=400)
+                if length < 0:
+                    raise AppError("Invalid Content-Length header", status=400)
+                if length > self._route_max_body_bytes:
+                    raise PayloadTooLarge(f"Request body exceeds {self._route_max_body_bytes} byte limit")
 
-        if self.path != "/api/device-state":
-            self._send_json(404, {"error": "Not found"})
-            return
+        if policy.content_types and int(self.headers.get("Content-Length") or "0") > 0:
+            content_type = request_content_type(self)
+            if content_type not in policy.content_types:
+                accepted = ", ".join(sorted(policy.content_types))
+                if policy.content_types == JSON_TYPES:
+                    accepted = "application/json"
+                elif policy.content_types == BACKUP_IMPORT_TYPES:
+                    accepted = "application/json or application/zip"
+                elif policy.content_types == CSV_IMPORT_TYPES:
+                    accepted = "text/csv or application/json"
+                elif policy.content_types == SUBSURFACE_IMPORT_TYPES:
+                    accepted = "application/xml, text/xml, application/gzip, or application/zip"
+                raise UnsupportedMediaType(f"Content-Type must be {accepted}")
 
-        user_id = self._require_principal_id()
-        if user_id is None:
-            return
+        if policy.rate_limit_scope:
+            if not self._enforce_rate_limit(policy.rate_limit_scope):
+                return False
+            self._rate_limit_scopes_enforced.add(policy.rate_limit_scope)
 
-        payload = self._read_json_body()
-        if payload is None:
-            return
+        if policy.auth == AUTH_ANY:
+            if self._require_auth() is None:
+                return False
+        elif policy.auth == AUTH_PRINCIPAL:
+            if self._require_principal_id() is None:
+                return False
+        elif policy.auth == AUTH_OWNER:
+            if self._require_owner_auth() is None:
+                return False
+        elif policy.auth == AUTH_BROWSER_SESSION:
+            if self._require_browser_session_auth() is None:
+                return False
+        return True
 
-        vendor = payload.get("vendor")
-        product = payload.get("product")
-        if not vendor or not product:
-            LOGGER.warning("Rejected device-state update missing vendor/product")
-            self._send_json(400, {"error": "vendor and product are required"})
-            return
+    def _route_body_limit(self, policy: RoutePolicy) -> int | None:
+        if policy.max_body_attr is None:
+            return policy.max_body_default
+        return int(getattr(self.server, policy.max_body_attr, policy.max_body_default or 0))
 
-        conn = self._open_db()
-        if conn is None:
-            return
+    @contextmanager
+    def _db(self):
         try:
-            save_device_state(conn, user_id, vendor, product, payload.get("fingerprint_hex"))
-            state = get_device_state(conn, user_id, vendor, product)
+            conn = self._open_database_connection()
+        except Exception as exc:  # pragma: no cover - depends on runtime DB availability
+            LOGGER.exception("Database connection failed")
+            raise AppError(f"Database unavailable: {exc}", status=503) from exc
+        try:
+            yield conn
         finally:
             conn.close()
 
-        LOGGER.info(
-            "Processed device-state update user_id=%s vendor=%s product=%s fingerprint=%s",
-            user_id,
-            vendor,
-            product,
-            state.get("fingerprint_hex"),
-        )
-        self._send_json(200, state)
-
-    def do_DELETE(self) -> None:
-        self._mark_request_started()
-        LOGGER.info("DELETE %s", self.path)
-        deps = sys.modules[__name__]
-        if auth_user_handlers.handle_delete(self, self.path, deps=deps):
-            return
-
-        match = re.fullmatch(r"/api/dives/(\d+)", self.path)
-        if not match:
-            self._send_json(404, {"error": "Not found"})
-            return
-
-        user_id = self._require_principal_id()
-        if user_id is None:
-            return
-
-        dive_id = int(match.group(1))
-        conn = self._open_db()
-        if conn is None:
-            return
-        try:
-            deleted = delete_dive(conn, user_id, dive_id)
-        finally:
-            conn.close()
-
-        if not deleted:
-            LOGGER.warning("Dive not found for delete id=%d", dive_id)
-            self._send_json(404, {"error": "Dive not found"})
-            return
-
-        LOGGER.info("Deleted dive user_id=%s id=%d", user_id, dive_id)
-        self._send_json(200, {"deleted": True, "id": dive_id})
-
-    def log_message(self, fmt: str, *args) -> None:
-        LOGGER.debug("HTTP %s - %s", self.address_string(), fmt % args)
+    def _open_database_connection(self):
+        pool = getattr(self.server, "database_pool", None)
+        if pool is not None:
+            return PooledConnectionProxy(pool)
+        return open_db(self.server.database_url)
 
     def _open_db(self):
         try:
-            return open_db(self.server.database_url)
+            return self._open_database_connection()
         except Exception as exc:  # pragma: no cover - depends on runtime DB availability
             LOGGER.exception("Database connection failed")
             self._send_json(503, {"error": f"Database unavailable: {exc}"})
@@ -2528,22 +2189,41 @@ class DiveBackendHandler(BaseHTTPRequestHandler):
     def _mark_request_started(self) -> None:
         self._request_started_at = time.perf_counter()
         self._response_observed = False
+        self._request_id = uuid.uuid4().hex[:12]
+        self._request_route_label = ""
+        self._route_policy = RoutePolicy()
+        self._route_max_body_bytes = None
+        self._auth_claims = None
+        self._auth_checked = False
+        self._principal_id = None
+        self._owner_auth_claims = None
+        self._owner_auth_checked = False
+        self._rate_limit_scopes_enforced = set()
 
     def _observe_response(self, status: int) -> None:
         if getattr(self, "_response_observed", False):
             return
         self._response_observed = True
         metrics = getattr(self.server, "metrics", None)
-        if metrics is None:
-            return
         parsed = urlparse(self.path)
         started_at = getattr(self, "_request_started_at", None)
         duration_seconds = time.perf_counter() - started_at if isinstance(started_at, float) else 0.0
-        metrics.observe_request(
-            method=getattr(self, "command", ""),
-            path=parsed.path,
-            status=status,
-            duration_seconds=duration_seconds,
+        if metrics is not None:
+            metrics.observe_request(
+                method=getattr(self, "command", ""),
+                path=parsed.path,
+                status=status,
+                duration_seconds=duration_seconds,
+            )
+        LOGGER.info(
+            "request_complete request_id=%s method=%s route=%s path=%s status=%d duration_ms=%d principal_id=%s",
+            getattr(self, "_request_id", ""),
+            getattr(self, "command", ""),
+            getattr(self, "_request_route_label", "") or parsed.path,
+            parsed.path,
+            status,
+            int(duration_seconds * 1000),
+            getattr(self, "_principal_id", None) or "",
         )
 
     def _send_json(self, status: int, payload: dict, *, extra_headers: dict[str, str] | None = None) -> None:
@@ -2577,6 +2257,8 @@ class DiveBackendHandler(BaseHTTPRequestHandler):
         self.send_header("Access-Control-Allow-Headers", "Authorization, Content-Type")
 
     def _enforce_rate_limit(self, scope: str) -> bool:
+        if scope in getattr(self, "_rate_limit_scopes_enforced", set()):
+            return True
         limiter = getattr(self.server, "rate_limiter", None)
         if limiter is None:
             return True
@@ -2694,6 +2376,7 @@ def main() -> None:
     parser.add_argument("--db-startup-retries", type=int, default=int(os.getenv("DB_STARTUP_RETRIES", "5")), help="Number of startup checks to confirm PostgreSQL is reachable")
     parser.add_argument("--db-startup-retry-delay-seconds", type=float, default=float(os.getenv("DB_STARTUP_RETRY_DELAY_SECONDS", "2")), help="Delay between PostgreSQL startup checks")
     parser.add_argument("--db-connect-timeout-seconds", type=int, default=int(os.getenv("DB_CONNECT_TIMEOUT_SECONDS", "5")), help="Connection timeout for each PostgreSQL startup check")
+    parser.add_argument("--db-pool-size", type=int, default=int(os.getenv("DB_POOL_SIZE", "5")), help="Maximum pooled PostgreSQL connections for request handling; set 0 to disable pooling")
     parser.add_argument(
         "--startup-migrations",
         default=os.getenv("STARTUP_MIGRATIONS", "enabled"),
@@ -2757,6 +2440,7 @@ def main() -> None:
     server.database_ready = True
     server.database_ready_error = ""
     server.database_schema_version = schema_version
+    server.database_pool = None
     server.demo_mode = demo_mode
     server.metrics_enabled = args.metrics == "enabled"
     server.metrics = PrometheusMetrics() if server.metrics_enabled else None
@@ -2806,9 +2490,20 @@ def main() -> None:
         user_agent=args.nominatim_user_agent,
         email=args.nominatim_email,
     )
+    db_pool_size = max(args.db_pool_size, 0)
+    if db_pool_size > 0 and ConnectionPool is not None:
+        server.database_pool = ConnectionPool(
+            args.database_url,
+            min_size=1,
+            max_size=db_pool_size,
+            kwargs={"autocommit": True},
+            open=True,
+        )
+    elif db_pool_size > 0:
+        LOGGER.warning("DB_POOL_SIZE=%d requested but psycopg_pool is not installed; falling back to per-request connections", db_pool_size)
 
     LOGGER.info(
-        "Starting backend host=%s port=%d database_url=%s cors_origin=%s frontend_dir=%s schema_version=%d demo_mode=%s metrics=%s",
+        "Starting backend host=%s port=%d database_url=%s cors_origin=%s frontend_dir=%s schema_version=%d demo_mode=%s metrics=%s db_pool_size=%d",
         args.host,
         args.port,
         redact_database_url(args.database_url),
@@ -2817,6 +2512,7 @@ def main() -> None:
         schema_version,
         server.demo_mode,
         args.metrics,
+        db_pool_size if server.database_pool is not None else 0,
     )
     shutdown_started = threading.Event()
 
@@ -2835,6 +2531,8 @@ def main() -> None:
         server.serve_forever()
     finally:
         LOGGER.info("Stopping backend")
+        if getattr(server, "database_pool", None) is not None:
+            server.database_pool.close()
         server.server_close()
 
 
