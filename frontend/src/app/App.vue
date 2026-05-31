@@ -916,6 +916,7 @@ export default {
     },
     async uploadCsvImport(file, options = {}) {
       if (!file) return false;
+      const dryRun = options.dryRun === true;
       const navigateToQueue = options.navigateToQueue !== false;
       const setImportFeedback = options.setImportFeedback !== false;
       if (setImportFeedback) {
@@ -925,7 +926,7 @@ export default {
       const refreshAfterImport = options.refreshDives !== false;
       try {
         const csvText = await file.text();
-        const response = await this.authenticatedFetch("/api/imports/csv", {
+        const response = await this.authenticatedFetch(`/api/imports/csv${dryRun ? '?dry_run=1' : ''}`, {
           method: "POST",
           headers: { "Content-Type": "text/csv; charset=utf-8" },
           body: csvText
@@ -934,13 +935,13 @@ export default {
         if (!response.ok) {
           throw new Error(payload?.error || `API returned ${response.status}`);
         }
-        if (refreshAfterImport) {
+        if (!dryRun && refreshAfterImport) {
           await this.fetchDives();
         }
-        if (setImportFeedback) {
+        if (!dryRun && setImportFeedback) {
           this.importStatusMessage = `CSV import processed ${payload.rows || 0} row(s): ${payload.inserted || 0} new, ${payload.duplicates || 0} duplicate.`;
         }
-        if (navigateToQueue) {
+        if (!dryRun && navigateToQueue) {
           this.activeView = "imports";
           this.selectedImportId = this.resolvePendingImportId(this.dives, this.importDrafts, null);
           window.location.hash = this.selectedImportId ? `imports/${this.selectedImportId}` : "imports";

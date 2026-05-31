@@ -1093,6 +1093,26 @@ def test_post_and_put_endpoints(server_fixture):
     assert csv_import.json()["inserted"] == 1
     assert server.test_store["dives"][-1]["fields"]["logbook"]["status"] == "complete"
 
+    csv_preview = request(
+        server,
+        "POST",
+        "/api/imports/csv?dry_run=1",
+        token="session",
+        body=(
+            "dive_uid,started_at,duration_minutes,max_depth_m,site\n"
+            f"{server.test_store['dives'][-1]['dive_uid']},2026-05-01T08:30:00Z,42,18.6,House Reef\n"
+            "csv-invalid,2026-05-02T08:30:00Z,,20.0,North Wall\n"
+        ).encode("utf-8"),
+        content_type="text/csv",
+    )
+    assert csv_preview.status == 200
+    csv_summary = csv_preview.json()["summary"]
+    assert csv_summary["rows"] == 2
+    assert csv_summary["duplicates"] == 1
+    assert csv_summary["invalid_rows"] == 1
+    assert csv_summary["dives"][0]["status"] == "duplicate"
+    assert csv_summary["dives"][1]["status"] == "invalid"
+
     invalid_csv_import = request(
         server,
         "POST",
@@ -1131,6 +1151,8 @@ def test_post_and_put_endpoints(server_fixture):
     )
     assert subsurface_preview.status == 200
     assert subsurface_preview.json()["summary"]["rows"] == 1
+    assert subsurface_preview.json()["summary"]["ready_rows"] == 1
+    assert subsurface_preview.json()["summary"]["invalid_rows"] == 0
     assert subsurface_preview.json()["summary"]["dives"][0]["site"] == "Canyon Reef"
 
     subsurface_import = request(

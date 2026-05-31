@@ -14,23 +14,26 @@ export default {
       "desktopSyncError",
       "desktopSyncStatus",
       "hasCliAuthCode",
+      "canConfirmImportPreview",
+      "importPreview",
       "importReadyForReview",
       "isDataManagementBusy",
-      "isInteractionLocked",
-      "subsurfacePreview"
+      "isInteractionLocked"
     ])
   },
   methods: {
     ...settingsContextMethods([
       "approveDesktopSync",
-      "cancelSubsurfaceImportPreview",
-      "confirmSubsurfaceImport",
+      "cancelImportPreview",
+      "confirmImportPreview",
       "exportDiveCsv",
       "exportDivePdf",
       "handleCsvImportSelection",
       "handleSubsurfaceImportSelection",
+      "importPreviewStatusClass",
+      "importPreviewStatusLabel",
       "resetDataManagementFeedback",
-      "reviewCsvImportQueue"
+      "reviewImportQueue"
     ]),
     triggerCsvImport() {
       this.resetDataManagementFeedback();
@@ -60,7 +63,7 @@ export default {
         <button
           v-if="importReadyForReview"
           type="button"
-          @click="reviewCsvImportQueue"
+          @click="reviewImportQueue"
           class="settings-button settings-button-primary shrink-0"
         >
           Review Imported Dives
@@ -151,25 +154,31 @@ export default {
       @change="handleSubsurfaceImportSelection"
     />
 
-    <div v-if="subsurfacePreview" class="settings-side-panel mt-6">
+    <div v-if="importPreview" class="settings-side-panel mt-6">
       <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div>
-          <p class="font-label text-[10px] font-bold uppercase tracking-[0.24em] text-primary">Subsurface Preview</p>
-          <h5 class="mt-2 font-headline text-2xl font-bold tracking-tight text-on-surface">{{ subsurfacePreview.rows }} dives ready to import</h5>
-          <p class="mt-3 text-sm leading-7 text-secondary">Confirming will add these dives to the imported-dive queue. They will not enter the main logbook until you review and complete them.</p>
+          <p class="font-label text-[10px] font-bold uppercase tracking-[0.24em] text-primary">Import Preview</p>
+          <h5 class="mt-2 font-headline text-2xl font-bold tracking-tight text-on-surface">{{ importPreview.label }} review</h5>
+          <p class="mt-3 text-sm leading-7 text-secondary">
+            {{ importPreview.fileName || 'Selected file' }} has {{ importPreview.rows }} row{{ importPreview.rows === 1 ? '' : 's' }} checked:
+            {{ importPreview.ready_rows }} ready, {{ importPreview.duplicates }} duplicate, {{ importPreview.invalid_rows }} invalid.
+          </p>
+          <p v-if="importPreview.invalid_rows" class="mt-2 text-sm text-error">Fix invalid rows in the source file before importing.</p>
+          <p v-else-if="!importPreview.ready_rows" class="mt-2 text-sm text-tertiary">All valid rows are duplicates, so there are no new dives to import.</p>
+          <p v-else class="mt-2 text-sm text-secondary">Confirming adds ready rows to the imported-dive queue. Duplicates are skipped and finished logs still require queue review.</p>
         </div>
         <div class="flex flex-wrap gap-3">
           <button
             type="button"
-            @click="confirmSubsurfaceImport"
-            :disabled="isDataManagementBusy || isInteractionLocked"
+            @click="confirmImportPreview"
+            :disabled="isDataManagementBusy || isInteractionLocked || !canConfirmImportPreview"
             class="settings-button settings-button-primary"
           >
             Confirm Import
           </button>
           <button
             type="button"
-            @click="cancelSubsurfaceImportPreview"
+            @click="cancelImportPreview"
             :disabled="isDataManagementBusy"
             class="settings-button settings-button-ghost"
           >
@@ -177,12 +186,39 @@ export default {
           </button>
         </div>
       </div>
-      <div class="mt-5 grid gap-3 md:grid-cols-2">
-        <div v-for="dive in subsurfacePreview.dives" :key="dive.dive_uid" class="settings-info-card">
-          <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">{{ dive.started_at }}</p>
-          <p class="mt-2 text-base font-semibold text-on-surface">{{ dive.site || 'Unassigned site' }}</p>
-          <p class="mt-1 text-sm text-secondary">{{ Math.round((dive.duration_seconds || 0) / 60) }} min / {{ dive.max_depth_m || 0 }} m / {{ dive.sample_count || 0 }} samples</p>
-        </div>
+      <div class="mt-5 overflow-x-auto rounded-2xl border border-primary/10">
+        <table class="min-w-full divide-y divide-primary/10 text-left text-sm">
+          <thead class="bg-surface-container-high/60 text-secondary">
+            <tr>
+              <th class="px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.18em]">Row</th>
+              <th class="px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.18em]">Status</th>
+              <th class="px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.18em]">Started</th>
+              <th class="px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.18em]">Site</th>
+              <th class="px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.18em]">Profile</th>
+              <th class="px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.18em]">Validation</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-primary/10">
+            <tr v-for="row in importPreview.dives" :key="`${row.row_number}-${row.dive_uid || row.source_id || 'invalid'}`" class="bg-surface-container-low/45">
+              <td class="whitespace-nowrap px-4 py-3 text-secondary">{{ row.row_number || row.source_id || '-' }}</td>
+              <td class="whitespace-nowrap px-4 py-3">
+                <span class="inline-flex rounded-full border px-3 py-1 font-label text-[10px] font-bold uppercase tracking-[0.14em]" :class="importPreviewStatusClass(row)">
+                  {{ importPreviewStatusLabel(row) }}
+                </span>
+              </td>
+              <td class="whitespace-nowrap px-4 py-3 text-on-surface">{{ row.started_at || '-' }}</td>
+              <td class="min-w-[12rem] px-4 py-3 text-on-surface">{{ row.site || 'Unassigned site' }}</td>
+              <td class="whitespace-nowrap px-4 py-3 text-secondary">
+                {{ Math.round((row.duration_seconds || 0) / 60) }} min / {{ row.max_depth_m || 0 }} m / {{ row.sample_count || 0 }} samples
+              </td>
+              <td class="min-w-[16rem] px-4 py-3 text-secondary">
+                <span v-if="row.errors?.length" class="text-error">{{ row.errors.join('; ') }}</span>
+                <span v-else-if="row.duplicate" class="text-tertiary">Already present or repeated in this file.</span>
+                <span v-else>Ready for import.</span>
+              </td>
+            </tr>
+          </tbody>
+        </table>
       </div>
     </div>
 

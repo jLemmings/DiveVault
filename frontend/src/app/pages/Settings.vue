@@ -170,8 +170,9 @@ export default {
       dataManagementError: "",
       dataManagementAction: "",
       importReadyForReview: false,
-      pendingSubsurfaceFile: null,
-      subsurfacePreview: null,
+      pendingImportFile: null,
+      pendingImportKind: "",
+      importPreview: null,
       manageUsersLoading: false,
       manageUsersSaving: false,
       manageUsersStatus: "",
@@ -364,6 +365,13 @@ export default {
     },
     isDataManagementBusy() {
       return Boolean(this.dataManagementAction);
+    },
+    canConfirmImportPreview() {
+      return Boolean(
+        this.importPreview
+          && Number(this.importPreview.invalid_rows || 0) === 0
+          && Number(this.importPreview.ready_rows || 0) > 0
+      );
     },
     pendingCreationType() {
       return this.pendingCreation?.type || "";
@@ -579,6 +587,36 @@ export default {
       this.importReadyForReview = false;
     },
     duplicateImportWarning,
+    importKindLabel(kind) {
+      return kind === "subsurface" ? "Subsurface export" : "CSV file";
+    },
+    normalizedImportPreview(payload, kind, file) {
+      const summary = payload?.summary || payload || {};
+      const rows = Array.isArray(summary.dives) ? summary.dives : [];
+      return {
+        ...summary,
+        kind,
+        label: this.importKindLabel(kind),
+        fileName: file?.name || "",
+        rows: Number(summary.rows || rows.length || 0),
+        valid_rows: Number(summary.valid_rows || 0),
+        invalid_rows: Number(summary.invalid_rows || 0),
+        ready_rows: Number(summary.ready_rows || 0),
+        duplicates: Number(summary.duplicates || 0),
+        dives: rows
+      };
+    },
+    importPreviewStatusLabel(row) {
+      if (!row?.valid) return "Invalid";
+      if (row?.status === "inserted") return "Imported";
+      if (row?.duplicate) return "Duplicate";
+      return "Ready";
+    },
+    importPreviewStatusClass(row) {
+      if (!row?.valid) return "border-error/25 bg-error-container/20 text-on-error-container";
+      if (row?.duplicate) return "border-tertiary/30 bg-tertiary/10 text-tertiary";
+      return "border-primary/25 bg-primary/10 text-primary";
+    },
     importResultStatus(payload, label) {
       const inserted = Number(payload?.inserted ?? 0);
       const rows = Number(payload?.rows ?? 0);
@@ -1003,18 +1041,25 @@ export default {
       }
       if (!file || typeof this.uploadCsvImport !== "function") return;
 
-      this.dataManagementAction = "Importing CSV";
+      this.dataManagementAction = "Previewing CSV";
       this.resetDataManagementFeedback();
+      this.pendingImportFile = file;
+      this.pendingImportKind = "csv";
+      this.importPreview = null;
       try {
         const payload = await this.uploadCsvImport(file, {
+          dryRun: true,
           navigateToQueue: false,
           setImportFeedback: false,
           refreshDives: false
         });
-        this.dataManagementStatus = this.importResultStatus(payload, "CSV file");
-        this.dataManagementWarning = this.duplicateImportWarning(payload, "CSV file");
-        this.importReadyForReview = Number(payload?.inserted ?? 0) > 0;
+        this.importPreview = this.normalizedImportPreview(payload, "csv", file);
+        const rows = Number(this.importPreview.rows || 0);
+        this.dataManagementStatus = `CSV preview ready: ${rows} row${rows === 1 ? '' : 's'} checked. Review the table before importing.`;
       } catch (error) {
+        this.pendingImportFile = null;
+        this.pendingImportKind = "";
+        this.importPreview = null;
         this.dataManagementError = error?.message || "Could not import the CSV file.";
       } finally {
         this.dataManagementAction = "";
@@ -1029,47 +1074,59 @@ export default {
 
       this.dataManagementAction = "Previewing Subsurface";
       this.resetDataManagementFeedback();
-      this.pendingSubsurfaceFile = file;
-      this.subsurfacePreview = null;
+      this.pendingImportFile = file;
+      this.pendingImportKind = "subsurface";
+      this.importPreview = null;
       try {
         const payload = await this.uploadSubsurfaceImport(file, { dryRun: true });
-        this.subsurfacePreview = payload?.summary || null;
-        const rows = this.subsurfacePreview?.rows ?? 0;
-        this.dataManagementStatus = `Subsurface export preview ready: ${rows} dive${rows === 1 ? '' : 's'} found. Confirm import to place them in the imported-dive review queue.`;
+        this.importPreview = this.normalizedImportPreview(payload, "subsurface", file);
+        const rows = Number(this.importPreview.rows || 0);
+        this.dataManagementStatus = `Subsurface export preview ready: ${rows} dive${rows === 1 ? '' : 's'} checked. Review the table before importing.`;
       } catch (error) {
-        this.pendingSubsurfaceFile = null;
-        this.subsurfacePreview = null;
+        this.pendingImportFile = null;
+        this.pendingImportKind = "";
+        this.importPreview = null;
         this.dataManagementError = error?.message || "Could not preview the Subsurface export.";
       } finally {
         this.dataManagementAction = "";
       }
     },
-    async confirmSubsurfaceImport() {
-      if (!this.pendingSubsurfaceFile || typeof this.uploadSubsurfaceImport !== "function") return;
-      this.dataManagementAction = "Importing Subsurface";
+    async confirmImportPreview() {
+      if (!this.pendingImportFile || !this.pendingImportKind || !this.canConfirmImportPreview) return;
+      const kind = this.pendingImportKind;
+      const file = this.pendingImportFile;
+      const label = this.importKindLabel(kind);
+      const upload = kind === "subsurface" ? this.uploadSubsurfaceImport : this.uploadCsvImport;
+      if (typeof upload !== "function") return;
+
+      this.dataManagementAction = kind === "subsurface" ? "Importing Subsurface" : "Importing CSV";
       this.dataManagementError = "";
       try {
-        const payload = await this.uploadSubsurfaceImport(this.pendingSubsurfaceFile, {
+        const payload = await upload(file, {
           dryRun: false,
+          navigateToQueue: false,
+          setImportFeedback: false,
           refreshDives: false
         });
-        this.dataManagementStatus = this.importResultStatus(payload, "Subsurface export");
-        this.dataManagementWarning = this.duplicateImportWarning(payload, "Subsurface export");
+        this.dataManagementStatus = this.importResultStatus(payload, label);
+        this.dataManagementWarning = this.duplicateImportWarning(payload, label);
         this.importReadyForReview = Number(payload?.inserted ?? 0) > 0;
-        this.pendingSubsurfaceFile = null;
-        this.subsurfacePreview = null;
+        this.pendingImportFile = null;
+        this.pendingImportKind = "";
+        this.importPreview = null;
       } catch (error) {
-        this.dataManagementError = error?.message || "Could not import the Subsurface export.";
+        this.dataManagementError = error?.message || `Could not import the ${label}.`;
       } finally {
         this.dataManagementAction = "";
       }
     },
-    cancelSubsurfaceImportPreview() {
-      this.pendingSubsurfaceFile = null;
-      this.subsurfacePreview = null;
+    cancelImportPreview() {
+      this.pendingImportFile = null;
+      this.pendingImportKind = "";
+      this.importPreview = null;
       this.resetDataManagementFeedback();
     },
-    reviewCsvImportQueue() {
+    reviewImportQueue() {
       if (typeof this.openImportQueue === "function") {
         this.openImportQueue();
       }

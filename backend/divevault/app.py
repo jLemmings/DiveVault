@@ -1156,7 +1156,43 @@ def build_csv_import_fields(row: dict, *, required_fields: object = None) -> dic
     return fields
 
 
-def csv_import_payloads(csv_text: str, *, required_fields: object = None) -> list[dict]:
+def import_validation_row_from_payload(payload: dict, *, row_number: int | None = None, source_id: str = "") -> dict:
+    fields = payload.get("fields") if isinstance(payload.get("fields"), dict) else {}
+    logbook = fields.get("logbook") if isinstance(fields.get("logbook"), dict) else {}
+    return {
+        "row_number": row_number,
+        "source_id": source_id,
+        "valid": True,
+        "status": "ready",
+        "duplicate": False,
+        "errors": [],
+        "dive_uid": payload.get("dive_uid"),
+        "started_at": payload.get("started_at"),
+        "site": logbook.get("site") or "",
+        "duration_seconds": payload.get("duration_seconds"),
+        "max_depth_m": payload.get("max_depth_m"),
+        "sample_count": len(payload.get("samples") or []),
+    }
+
+
+def invalid_import_validation_row(*, row_number: int | None = None, source_id: str = "", error: object) -> dict:
+    return {
+        "row_number": row_number,
+        "source_id": source_id,
+        "valid": False,
+        "status": "invalid",
+        "duplicate": False,
+        "errors": [str(error)],
+        "dive_uid": "",
+        "started_at": "",
+        "site": "",
+        "duration_seconds": None,
+        "max_depth_m": None,
+        "sample_count": 0,
+    }
+
+
+def csv_import_preview(csv_text: str, *, required_fields: object = None) -> dict:
     if not csv_text.strip():
         raise ValueError("CSV import file is empty")
 
@@ -1165,6 +1201,7 @@ def csv_import_payloads(csv_text: str, *, required_fields: object = None) -> lis
         raise ValueError("CSV import requires a header row")
 
     payloads: list[dict] = []
+    rows: list[dict] = []
     for row_number, row in enumerate(reader, start=2):
         if not any(str(value or "").strip() for value in row.values()):
             continue
@@ -1178,7 +1215,8 @@ def csv_import_payloads(csv_text: str, *, required_fields: object = None) -> lis
             samples = parse_csv_samples(row)
             fields = build_csv_import_fields(row, required_fields=required_fields)
         except ValueError as exc:
-            raise ValueError(f"CSV row {row_number}: {exc}") from exc
+            rows.append(invalid_import_validation_row(row_number=row_number, error=exc))
+            continue
 
         archived_row = {key: clean_csv_value(row, key) for key in (reader.fieldnames or [])}
         raw_source = json.dumps(
@@ -1190,24 +1228,37 @@ def csv_import_payloads(csv_text: str, *, required_fields: object = None) -> lis
         raw_sha256 = hashlib.sha256(raw_source.encode("utf-8")).hexdigest()
         dive_uid = clean_csv_value(row, "dive_uid") or f"csv-{raw_sha256[:24]}"
 
-        payloads.append(
-            {
-                "vendor": clean_csv_value(row, "vendor") or "CSV",
-                "product": clean_csv_value(row, "product") or "Import",
-                "fingerprint_hex": clean_csv_value(row, "fingerprint_hex") or None,
-                "dive_uid": dive_uid,
-                "started_at": started_at,
-                "duration_seconds": duration_seconds,
-                "max_depth_m": max_depth_m,
-                "avg_depth_m": avg_depth_m,
-                "fields": fields,
-                "raw_sha256": raw_sha256,
-                "raw_data_b64": raw_data_b64,
-                "samples": samples,
-                "imported_at": clean_csv_value(row, "imported_at") or now_iso(),
-            }
-        )
+        payload = {
+            "vendor": clean_csv_value(row, "vendor") or "CSV",
+            "product": clean_csv_value(row, "product") or "Import",
+            "fingerprint_hex": clean_csv_value(row, "fingerprint_hex") or None,
+            "dive_uid": dive_uid,
+            "started_at": started_at,
+            "duration_seconds": duration_seconds,
+            "max_depth_m": max_depth_m,
+            "avg_depth_m": avg_depth_m,
+            "fields": fields,
+            "raw_sha256": raw_sha256,
+            "raw_data_b64": raw_data_b64,
+            "samples": samples,
+            "imported_at": clean_csv_value(row, "imported_at") or now_iso(),
+        }
+        payloads.append(payload)
+        rows.append(import_validation_row_from_payload(payload, row_number=row_number))
 
+    if not payloads and not rows:
+        raise ValueError("CSV import does not contain any dive rows")
+    return {"payloads": payloads, "rows": rows}
+
+
+def csv_import_payloads(csv_text: str, *, required_fields: object = None) -> list[dict]:
+    preview = csv_import_preview(csv_text, required_fields=required_fields)
+    invalid_row = next((row for row in preview["rows"] if not row.get("valid")), None)
+    if invalid_row:
+        row_number = invalid_row.get("row_number")
+        error = (invalid_row.get("errors") or ["Invalid row"])[0]
+        raise ValueError(f"CSV row {row_number}: {error}")
+    payloads = preview["payloads"]
     if not payloads:
         raise ValueError("CSV import does not contain any dive rows")
     return payloads
@@ -1479,7 +1530,7 @@ def build_subsurface_fields(dive_element, divecomputer, *, site: str, gps: dict 
     return fields
 
 
-def subsurface_import_payloads(export_text: str, *, required_fields: object = None) -> list[dict]:
+def subsurface_import_preview(export_text: str, *, required_fields: object = None) -> dict:
     if not export_text.strip():
         raise ValueError("Subsurface import file is empty")
     try:
@@ -1490,7 +1541,9 @@ def subsurface_import_payloads(export_text: str, *, required_fields: object = No
     site_lookup = parse_subsurface_sites(root)
     dive_elements = [element for element in root.iter() if local_xml_name(element) == "dive"]
     payloads: list[dict] = []
+    rows: list[dict] = []
     for index, dive_element in enumerate(dive_elements, start=1):
+        dive_number = dive_element.get("number") or str(index)
         try:
             started_at = parse_subsurface_started_at(dive_element)
             divecomputer = first_child(dive_element, "divecomputer")
@@ -1510,36 +1563,86 @@ def subsurface_import_payloads(export_text: str, *, required_fields: object = No
             samples = parse_subsurface_samples(divecomputer) if divecomputer is not None else []
             fields = build_subsurface_fields(dive_element, divecomputer, site=site, gps=gps, required_fields=required_fields)
         except ValueError as exc:
-            raise ValueError(f"Subsurface dive {index}: {exc}") from exc
+            rows.append(invalid_import_validation_row(row_number=index, source_id=dive_number, error=exc))
+            continue
 
         source_payload = ElementTree.tostring(dive_element, encoding="unicode")
         raw_data_b64 = base64.b64encode(source_payload.encode("utf-8")).decode("ascii")
         raw_sha256 = hashlib.sha256(source_payload.encode("utf-8")).hexdigest()
-        dive_number = dive_element.get("number") or str(index)
         dive_uid = f"subsurface-{raw_sha256[:24]}"
         model = divecomputer.get("model") if divecomputer is not None else ""
 
-        payloads.append(
-            {
-                "vendor": "Subsurface",
-                "product": model or "Export",
-                "dive_uid": dive_uid,
-                "started_at": started_at,
-                "duration_seconds": duration_seconds,
-                "max_depth_m": max_depth_m,
-                "avg_depth_m": avg_depth_m,
-                "fields": fields,
-                "raw_sha256": raw_sha256,
-                "raw_data_b64": raw_data_b64,
-                "samples": samples,
-                "imported_at": now_iso(),
-                "subsurface_number": dive_number,
-            }
-        )
+        payload = {
+            "vendor": "Subsurface",
+            "product": model or "Export",
+            "dive_uid": dive_uid,
+            "started_at": started_at,
+            "duration_seconds": duration_seconds,
+            "max_depth_m": max_depth_m,
+            "avg_depth_m": avg_depth_m,
+            "fields": fields,
+            "raw_sha256": raw_sha256,
+            "raw_data_b64": raw_data_b64,
+            "samples": samples,
+            "imported_at": now_iso(),
+            "subsurface_number": dive_number,
+        }
+        payloads.append(payload)
+        rows.append(import_validation_row_from_payload(payload, row_number=index, source_id=dive_number))
 
+    if not payloads and not rows:
+        raise ValueError("Subsurface import does not contain any dives")
+    return {"payloads": payloads, "rows": rows}
+
+
+def subsurface_import_payloads(export_text: str, *, required_fields: object = None) -> list[dict]:
+    preview = subsurface_import_preview(export_text, required_fields=required_fields)
+    invalid_row = next((row for row in preview["rows"] if not row.get("valid")), None)
+    if invalid_row:
+        row_number = invalid_row.get("row_number")
+        error = (invalid_row.get("errors") or ["Invalid dive"])[0]
+        raise ValueError(f"Subsurface dive {row_number}: {error}")
+    payloads = preview["payloads"]
     if not payloads:
         raise ValueError("Subsurface import does not contain any dives")
     return payloads
+
+
+def mark_import_preview_duplicates(rows: list[dict], existing_dive_uids: set[str] | None = None) -> list[dict]:
+    existing = existing_dive_uids or set()
+    seen: set[str] = set()
+    marked_rows: list[dict] = []
+    for row in rows:
+        next_row = dict(row)
+        if next_row.get("valid"):
+            dive_uid = str(next_row.get("dive_uid") or "")
+            duplicate = bool(dive_uid and (dive_uid in existing or dive_uid in seen))
+            next_row["duplicate"] = duplicate
+            next_row["status"] = "duplicate" if duplicate else "ready"
+            if dive_uid:
+                seen.add(dive_uid)
+        marked_rows.append(next_row)
+    return marked_rows
+
+
+def import_validation_summary(rows: list[dict], *, inserted: int | None = None, ids: list[int] | None = None) -> dict:
+    invalid_rows = sum(1 for row in rows if not row.get("valid"))
+    duplicate_rows = sum(1 for row in rows if row.get("duplicate") or row.get("status") == "duplicate")
+    ready_rows = sum(1 for row in rows if row.get("status") == "ready")
+    valid_rows = sum(1 for row in rows if row.get("valid"))
+    summary = {
+        "rows": len(rows),
+        "valid_rows": valid_rows,
+        "invalid_rows": invalid_rows,
+        "ready_rows": ready_rows,
+        "duplicates": duplicate_rows,
+        "dives": rows,
+    }
+    if inserted is not None:
+        summary["inserted"] = inserted
+    if ids is not None:
+        summary["ids"] = ids
+    return summary
 
 
 def import_payload_summary(payloads: list[dict]) -> dict:
@@ -2781,7 +2884,7 @@ class DiveBackendHandler(BaseHTTPRequestHandler):
             self._send_json(200, result)
             return
 
-        if self.path == "/api/imports/csv":
+        if path == "/api/imports/csv":
             if not self._enforce_rate_limit("dive_upload"):
                 return
             user_id = self._require_principal_id()
@@ -2809,7 +2912,8 @@ class DiveBackendHandler(BaseHTTPRequestHandler):
                     csv_text = str(payload.get("csv") or "")
                 else:
                     csv_text = body.decode("utf-8-sig")
-                dive_payloads = csv_import_payloads(csv_text, required_fields=required_fields)
+                preview = csv_import_preview(csv_text, required_fields=required_fields)
+                dive_payloads = preview["payloads"]
             except (UnicodeDecodeError, json.JSONDecodeError):
                 conn.close()
                 self._send_json(400, {"error": "Invalid CSV import request body"})
@@ -2819,13 +2923,43 @@ class DiveBackendHandler(BaseHTTPRequestHandler):
                 self._send_json(400, {"error": str(exc)})
                 return
 
+            query = parse_qs(parsed_request.query)
+            dry_run = self._is_truthy(query.get("dry_run", ["0"])[0])
+            duplicate_uids = {
+                row.get("dive_uid")
+                for row in preview["rows"]
+                if row.get("valid") and row.get("dive_uid") and get_dive_id_by_uid(conn, user_id, row["dive_uid"]) is not None
+            }
+            validation_rows = mark_import_preview_duplicates(preview["rows"], duplicate_uids)
+            summary = import_validation_summary(validation_rows)
+            if dry_run:
+                conn.close()
+                self._send_json(200, {"dry_run": True, "summary": summary})
+                return
+            invalid_row = next((row for row in validation_rows if not row.get("valid")), None)
+            if invalid_row:
+                row_number = invalid_row.get("row_number")
+                error_message = (invalid_row.get("errors") or ["Invalid row"])[0]
+                conn.close()
+                self._send_json(400, {"error": f"CSV row {row_number}: {error_message}", "summary": summary})
+                return
+
             inserted_count = 0
             ids: list[int] = []
+            payload_iter = iter(dive_payloads)
             try:
-                for dive_payload in dive_payloads:
+                for row in validation_rows:
+                    if not row.get("valid"):
+                        continue
+                    dive_payload = next(payload_iter)
                     inserted = insert_dive_record(conn, user_id, dive_payload)
                     if inserted:
                         inserted_count += 1
+                        row["status"] = "inserted"
+                        row["duplicate"] = False
+                    else:
+                        row["status"] = "duplicate"
+                        row["duplicate"] = True
                     dive_id = get_dive_id_by_uid(conn, user_id, dive_payload["dive_uid"])
                     if dive_id is not None:
                         ids.append(dive_id)
@@ -2838,6 +2972,7 @@ class DiveBackendHandler(BaseHTTPRequestHandler):
                 len(dive_payloads),
                 inserted_count,
             )
+            summary = import_validation_summary(validation_rows, inserted=inserted_count, ids=ids)
             self._send_json(
                 200,
                 {
@@ -2845,6 +2980,7 @@ class DiveBackendHandler(BaseHTTPRequestHandler):
                     "inserted": inserted_count,
                     "duplicates": len(dive_payloads) - inserted_count,
                     "ids": ids,
+                    "summary": summary,
                 },
             )
             return
@@ -2872,7 +3008,8 @@ class DiveBackendHandler(BaseHTTPRequestHandler):
                 return
             try:
                 export_text = decode_subsurface_export(body, max_uncompressed_bytes=max_subsurface_import_bytes)
-                dive_payloads = subsurface_import_payloads(export_text, required_fields=required_fields)
+                preview = subsurface_import_preview(export_text, required_fields=required_fields)
+                dive_payloads = preview["payloads"]
             except (OSError, ValueError) as exc:
                 conn.close()
                 self._send_json(400, {"error": str(exc)})
@@ -2880,19 +3017,41 @@ class DiveBackendHandler(BaseHTTPRequestHandler):
 
             query = parse_qs(parsed_request.query)
             dry_run = self._is_truthy(query.get("dry_run", ["0"])[0])
-            summary = import_payload_summary(dive_payloads)
+            duplicate_uids = {
+                row.get("dive_uid")
+                for row in preview["rows"]
+                if row.get("valid") and row.get("dive_uid") and get_dive_id_by_uid(conn, user_id, row["dive_uid"]) is not None
+            }
+            validation_rows = mark_import_preview_duplicates(preview["rows"], duplicate_uids)
+            summary = import_validation_summary(validation_rows)
             if dry_run:
                 conn.close()
                 self._send_json(200, {"dry_run": True, "summary": summary})
                 return
+            invalid_row = next((row for row in validation_rows if not row.get("valid")), None)
+            if invalid_row:
+                row_number = invalid_row.get("row_number")
+                error_message = (invalid_row.get("errors") or ["Invalid dive"])[0]
+                conn.close()
+                self._send_json(400, {"error": f"Subsurface dive {row_number}: {error_message}", "summary": summary})
+                return
 
             inserted_count = 0
             ids: list[int] = []
+            payload_iter = iter(dive_payloads)
             try:
-                for dive_payload in dive_payloads:
+                for row in validation_rows:
+                    if not row.get("valid"):
+                        continue
+                    dive_payload = next(payload_iter)
                     inserted = insert_dive_record(conn, user_id, dive_payload)
                     if inserted:
                         inserted_count += 1
+                        row["status"] = "inserted"
+                        row["duplicate"] = False
+                    else:
+                        row["status"] = "duplicate"
+                        row["duplicate"] = True
                     dive_id = get_dive_id_by_uid(conn, user_id, dive_payload["dive_uid"])
                     if dive_id is not None:
                         ids.append(dive_id)
@@ -2905,6 +3064,7 @@ class DiveBackendHandler(BaseHTTPRequestHandler):
                 len(dive_payloads),
                 inserted_count,
             )
+            summary = import_validation_summary(validation_rows, inserted=inserted_count, ids=ids)
             self._send_json(
                 200,
                 {
