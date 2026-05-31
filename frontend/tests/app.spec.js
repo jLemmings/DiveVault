@@ -145,15 +145,27 @@ test("covers settings profile loading and public sharing updates", async ({ page
   await gotoAndWait(page, "/#settings/diver-details");
 
   await expect(page.getByRole("heading", { name: "Settings", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Diver Details" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Certifications And PDFs" })).toBeVisible();
+  await expect(page.getByText("Public Dive Profile")).toBeHidden();
+
+  const settingsRail = page.locator(".settings-section-nav");
+  await settingsRail.getByRole("button", { name: /Application/ }).click();
+  await expect(page.getByRole("heading", { name: "Application Version" })).toBeVisible();
+  await expect(page.getByText(/^v\d+\.\d+\.\d+/)).toBeVisible();
   await expect(page.getByText("Public Dive Profile")).toBeVisible();
 
   await page.getByRole("checkbox", { name: "Make My Completed Dives Public" }).check();
   await page.getByRole("button", { name: "Save Sharing" }).click();
   await expect(page.getByText("Public dive profile enabled.")).toBeVisible();
 
-  const settingsRail = page.locator(".settings-section-nav");
   await settingsRail.getByRole("button", { name: /Dive Sites/ }).click();
   await expect(page.getByRole("heading", { name: "Reusable Site Directory" })).toBeVisible();
+  await expect(page.locator(".dive-theme-map")).toHaveCount(0);
+  await page.getByRole("button", { name: "Edit Site" }).click();
+  await expect(page.locator(".dive-theme-map")).toHaveCount(0);
+  await page.getByRole("button", { name: "Map", exact: true }).click();
+  await expect(page.locator(".dive-theme-map.leaflet-container")).toBeVisible();
   await settingsRail.getByRole("button", { name: /Data Management/ }).click();
   await expect(page.getByRole("heading", { name: "Exports And Desktop Sync" })).toBeVisible();
   await expect(page.getByRole("button", { name: /Import Dives \(CSV\)/ })).toBeVisible();
