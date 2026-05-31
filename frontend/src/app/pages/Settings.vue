@@ -1,4 +1,5 @@
 <script>
+import { defineAsyncComponent } from "vue";
 import { useAuth, useUser } from "../composables/auth.js";
 import { createSettingsCollectionOptions } from "../composables/settings-collection-options.js";
 import { createSettingsDiveSiteMapOptions } from "../composables/settings-dive-site-map.js";
@@ -11,8 +12,8 @@ import DiveSitesTab from "../components/settings/DiveSitesTab.vue";
 import DiverDetailsTab from "../components/settings/DiverDetailsTab.vue";
 import GuidesTab from "../components/settings/GuidesTab.vue";
 import UserManagementTab from "../components/settings/UserManagementTab.vue";
-import LicensePdfPreview from "../components/LicensePdfPreview.vue";
 import { MESSAGES } from "../i18n/index.js";
+import { SETTINGS_SECTIONS } from "../settings-sections.js";
 import packageJson from "../../../package.json";
 
 import {
@@ -49,17 +50,7 @@ import {
 } from "../utils/settings-profile.js";
 
 const APP_VERSION = packageJson?.version || "0.0.0";
-
-export const SETTINGS_SECTIONS = [
-  { id: "diver-details", label: "Diver Details", icon: "badge", description: "Diver and certifications" },
-  { id: "application-settings", label: "Application", icon: "tune", description: "Language, theme, and logbook rules" },
-  { id: "dive-sites", label: "Dive Sites", icon: "pin_drop", description: "Locations and GPS coordinates" },
-  { id: "buddies", label: "Buddies", icon: "groups", description: "Saved dive partners" },
-  { id: "dive-guide", label: "Dive Guide", icon: "support_agent", description: "Guides and instructors" },
-  { id: "data-management", label: "Data Management", icon: "database", description: "Exports and sync access" },
-  { id: "manage-users", label: "Manage Users", icon: "admin_panel_settings", description: "Invites and access control" },
-  { id: "backup", label: "Backup", icon: "archive", description: "Full backup import and export" }
-];
+const LicensePdfPreview = defineAsyncComponent(() => import("../components/LicensePdfPreview.vue"));
 
 export default {
   name: "SettingsView",

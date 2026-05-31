@@ -1,19 +1,10 @@
 <script>
+import { defineAsyncComponent } from "vue";
 import { useAuth, useUser } from "./composables/auth.js";
 import { filledIconStyle, importDraftSeed, isImportComplete, effectiveImportDraft, missingImportFields, normalizeRequiredLogbookFields, paddedDiveIndex, isCommittedDive } from "./utils/core.js";
-import DashboardView from "./pages/Dashboard.vue";
-import DiveDetailView from "./pages/DiveDetail.vue";
-import DiveImportEditorView from "./pages/ImportEdit.vue";
-import DiveImportView from "./pages/Imports.vue";
-import EquipmentView from "./pages/Equipment.vue";
-import LogbookEditorView from "./pages/LogbookEdit.vue";
-import LoginView from "./pages/Login.vue";
-import LogsView from "./pages/Logs.vue";
-import ManualDiveEntryView from "./pages/ManualDive.vue";
-import PublicProfileView from "./pages/PublicProfile.vue";
-import SettingsView, { SETTINGS_SECTIONS } from "./pages/Settings.vue";
 import { i18n, MESSAGES } from "./i18n/index.js";
 import { NAV_ITEMS } from "./navigation.js";
+import { SETTINGS_SECTIONS } from "./settings-sections.js";
 import { createManualDiveDraft } from "./utils/dive-drafts.js";
 import {
   applyDocumentTheme,
@@ -30,6 +21,17 @@ import {
 const DEFAULT_SETTINGS_SECTION = SETTINGS_SECTIONS[0]?.id || "diver-details";
 const SETTINGS_SECTION_IDS = new Set(SETTINGS_SECTIONS.map((section) => section.id));
 const SUPPORTED_LOCALES = new Set(Object.keys(MESSAGES));
+const DashboardView = defineAsyncComponent(() => import("./pages/Dashboard.vue"));
+const DiveDetailView = defineAsyncComponent(() => import("./pages/DiveDetail.vue"));
+const DiveImportEditorView = defineAsyncComponent(() => import("./pages/ImportEdit.vue"));
+const DiveImportView = defineAsyncComponent(() => import("./pages/Imports.vue"));
+const EquipmentView = defineAsyncComponent(() => import("./pages/Equipment.vue"));
+const LogbookEditorView = defineAsyncComponent(() => import("./pages/LogbookEdit.vue"));
+const LoginView = defineAsyncComponent(() => import("./pages/Login.vue"));
+const LogsView = defineAsyncComponent(() => import("./pages/Logs.vue"));
+const ManualDiveEntryView = defineAsyncComponent(() => import("./pages/ManualDive.vue"));
+const PublicProfileView = defineAsyncComponent(() => import("./pages/PublicProfile.vue"));
+const SettingsView = defineAsyncComponent(() => import("./pages/Settings.vue"));
 
 export default {
   name: "DiveVaultApp",

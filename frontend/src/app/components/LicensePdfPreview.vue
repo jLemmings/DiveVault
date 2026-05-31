@@ -1,9 +1,20 @@
 <script>
-import { getDocument, GlobalWorkerOptions } from "pdfjs-dist";
-import pdfWorkerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 import { PDF_PREVIEW_SCALE } from "../utils/settings-profile.js";
 
-GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
+let pdfJsPromise = null;
+
+async function loadPdfJs() {
+  if (!pdfJsPromise) {
+    pdfJsPromise = Promise.all([
+      import("pdfjs-dist"),
+      import("pdfjs-dist/build/pdf.worker.min.mjs?url")
+    ]).then(([pdfJs, workerUrl]) => {
+      pdfJs.GlobalWorkerOptions.workerSrc = workerUrl.default || workerUrl;
+      return pdfJs;
+    });
+  }
+  return pdfJsPromise;
+}
 
 export default {
   name: "LicensePdfPreview",
@@ -47,6 +58,7 @@ export default {
       this.pages = [];
 
       try {
+        const { getDocument } = await loadPdfJs();
         const response = await this.authenticatedFetch(this.pdf.preview_url);
         if (!response.ok) {
           throw new Error(`Preview request failed with ${response.status}`);
