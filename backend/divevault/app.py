@@ -42,6 +42,7 @@ from urllib.parse import parse_qs, urlencode, urlparse
 
 import jwt
 import psycopg
+from psycopg.rows import dict_row
 from dotenv import load_dotenv
 from jwt import InvalidTokenError
 
@@ -2496,7 +2497,7 @@ def main() -> None:
             args.database_url,
             min_size=1,
             max_size=db_pool_size,
-            kwargs={"autocommit": True},
+            kwargs={"autocommit": True, "row_factory": dict_row},
             open=True,
         )
     elif db_pool_size > 0:
