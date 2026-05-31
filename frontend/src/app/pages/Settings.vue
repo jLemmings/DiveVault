@@ -1,8 +1,11 @@
 <script>
+import L from "leaflet";
 import { useAuth, useUser } from "../composables/auth.js";
 import { logbookRequirementFieldOptions, normalizeRequiredLogbookFields } from "../utils/core.js";
+import { numericCoordinate, validCoordinates } from "../utils/dive-map.js";
 import LicensePdfPreview from "../components/LicensePdfPreview.vue";
 import { MESSAGES } from "../i18n/index.js";
+import packageJson from "../../../package.json";
 
 import {
   MAX_LICENSE_BYTES,
@@ -39,8 +42,11 @@ import {
   duplicateImportWarning
 } from "../utils/settings-profile.js";
 
+const APP_VERSION = packageJson?.version || "0.0.0";
+
 export const SETTINGS_SECTIONS = [
-  { id: "diver-details", label: "Diver Details", icon: "badge", description: "Profile and certifications" },
+  { id: "diver-details", label: "Diver Details", icon: "badge", description: "Diver and certifications" },
+  { id: "application-settings", label: "Application", icon: "tune", description: "Language, theme, and logbook rules" },
   { id: "dive-sites", label: "Dive Sites", icon: "pin_drop", description: "Locations and GPS coordinates" },
   { id: "buddies", label: "Buddies", icon: "groups", description: "Saved dive partners" },
   { id: "dive-guide", label: "Dive Guide", icon: "support_agent", description: "Guides and instructors" },
@@ -182,6 +188,7 @@ export default {
       diveSitePage: 1,
       diveSitePageSize: 10,
       diveSitePageSizeOptions: [5, 10, 20, 50],
+      openDiveSiteMapIds: [],
       buddyFilter: "",
       guideFilter: "",
       pendingCreation: null,
@@ -374,6 +381,9 @@ export default {
     },
     ownerUserId() {
       return this.authSettings.owner_user_id || "";
+    },
+    appVersion() {
+      return APP_VERSION;
     }
   },
   watch: {
@@ -428,9 +438,11 @@ export default {
       this.diveSitePage = 1;
     },
     diveSitePageSize() {
+      this.closeAllDiveSiteMaps();
       this.diveSitePage = 1;
     },
     areDiveSitesEditing() {
+      this.closeAllDiveSiteMaps();
       this.diveSitePage = 1;
     },
     visibleDiveSites() {
@@ -440,6 +452,9 @@ export default {
     },
     activeSettingsSection() {
       this.clearProfileStatusFeedback();
+      if (this.activeSettingsSection !== "dive-sites") {
+        this.closeAllDiveSiteMaps();
+      }
       if (this.activeSettingsSection === "dive-sites") {
         this.diveSitePage = 1;
       }
@@ -450,6 +465,7 @@ export default {
   },
   beforeUnmount() {
     this.clearProfileStatusTimer();
+    this.closeAllDiveSiteMaps();
   },
   methods: {
     clearProfileStatusTimer() {
@@ -663,11 +679,13 @@ export default {
     },
     nextDiveSitePage() {
       if (this.diveSitePage < this.diveSitePageCount) {
+        this.closeAllDiveSiteMaps();
         this.diveSitePage += 1;
       }
     },
     previousDiveSitePage() {
       if (this.diveSitePage > 1) {
+        this.closeAllDiveSiteMaps();
         this.diveSitePage -= 1;
       }
     },
@@ -1254,6 +1272,7 @@ export default {
       this.areDiveSitesEditing = true;
     },
     cancelDiveSitesEdit() {
+      this.closeAllDiveSiteMaps();
       this.diveSiteDrafts = cloneDiveSites(this.settingsProfile.dive_sites);
       this.editingDiveSiteIds = [];
       this.areDiveSitesEditing = false;
@@ -1527,6 +1546,158 @@ export default {
     isLookingUpDiveSite(siteId) {
       return this.diveSiteLookupId === siteId;
     },
+    ensureDiveSiteMapStores() {
+      if (!this._diveSiteMapEditors) {
+        this._diveSiteMapEditors = new Map();
+      }
+      if (!this._diveSiteMapRefs) {
+        this._diveSiteMapRefs = new Map();
+      }
+    },
+    setDiveSiteMapRef(siteId, element) {
+      this.ensureDiveSiteMapStores();
+      if (element) {
+        this._diveSiteMapRefs.set(siteId, element);
+        return;
+      }
+      this._diveSiteMapRefs.delete(siteId);
+    },
+    diveSiteMapOpen(siteId) {
+      return this.openDiveSiteMapIds.includes(siteId);
+    },
+    toggleDiveSiteMap(siteId) {
+      if (this.diveSiteMapOpen(siteId)) {
+        this.closeDiveSiteMap(siteId);
+        return;
+      }
+      this.openDiveSiteMapIds = [siteId];
+      this.$nextTick(() => this.initializeDiveSiteMap(siteId));
+    },
+    closeDiveSiteMap(siteId) {
+      this.ensureDiveSiteMapStores();
+      const editor = this._diveSiteMapEditors.get(siteId);
+      if (editor?.map) {
+        editor.map.remove();
+      }
+      this._diveSiteMapEditors.delete(siteId);
+      this.openDiveSiteMapIds = this.openDiveSiteMapIds.filter((entryId) => entryId !== siteId);
+    },
+    closeAllDiveSiteMaps() {
+      this.ensureDiveSiteMapStores();
+      for (const siteId of [...this._diveSiteMapEditors.keys()]) {
+        this.closeDiveSiteMap(siteId);
+      }
+      this.openDiveSiteMapIds = [];
+    },
+    diveSiteCoordinatePair(site) {
+      const lat = numericCoordinate(site?.latitude);
+      const lon = numericCoordinate(site?.longitude);
+      return validCoordinates(lat, lon) ? { lat, lon } : null;
+    },
+    updateDiveSiteCoordinates(siteId, lat, lon) {
+      if (!validCoordinates(lat, lon)) return;
+      const index = this.findCollectionIndexById(this.diveSiteDrafts, siteId);
+      if (index === -1) return;
+      const nextDrafts = this.diveSiteDrafts.slice();
+      nextDrafts[index] = {
+        ...nextDrafts[index],
+        latitude: lat.toFixed(6),
+        longitude: lon.toFixed(6)
+      };
+      this.diveSiteDrafts = nextDrafts;
+      this.syncDiveSiteMapFromFields(siteId, { preserveViewport: true });
+    },
+    diveSiteMapMarkerIcon() {
+      const size = 32;
+      return L.divIcon({
+        className: "dive-map-marker-shell",
+        iconSize: [size, size],
+        iconAnchor: [size / 2, size / 2],
+        html: `
+          <span class="dive-map-marker-ring" style="width:${size}px;height:${size}px;">
+            <span class="dive-map-marker-core">
+              <span class="material-symbols-outlined text-[16px]">my_location</span>
+            </span>
+          </span>
+        `
+      });
+    },
+    ensureDiveSiteMapMarker(siteId, editor, position) {
+      if (editor.marker) {
+        editor.marker.setLatLng(position);
+        return editor.marker;
+      }
+      editor.marker = L.marker(position, {
+        draggable: true,
+        autoPan: true,
+        icon: this.diveSiteMapMarkerIcon(),
+        title: "Dive site GPS coordinate"
+      }).addTo(editor.map);
+      editor.marker.on("dragend", () => {
+        const nextPosition = editor.marker.getLatLng();
+        this.updateDiveSiteCoordinates(siteId, nextPosition.lat, nextPosition.lng);
+      });
+      return editor.marker;
+    },
+    initializeDiveSiteMap(siteId) {
+      this.ensureDiveSiteMapStores();
+      const container = this._diveSiteMapRefs.get(siteId);
+      if (!container) return;
+
+      const site = this.diveSiteDrafts.find((entry) => entry.id === siteId);
+      if (!site) return;
+
+      const existingEditor = this._diveSiteMapEditors.get(siteId);
+      if (existingEditor?.map) {
+        existingEditor.map.invalidateSize(false);
+        this.syncDiveSiteMapFromFields(siteId);
+        return;
+      }
+
+      const coordinates = this.diveSiteCoordinatePair(site);
+      const center = coordinates ? [coordinates.lat, coordinates.lon] : [20, 0];
+      const map = L.map(container, {
+        zoomControl: false,
+        attributionControl: false,
+        scrollWheelZoom: true,
+        zoomSnap: 0.25,
+        zoomDelta: 0.5,
+        minZoom: 1.5,
+        maxZoom: 16,
+        worldCopyJump: true
+      });
+      L.control.zoom({ position: "bottomright" }).addTo(map);
+      L.tileLayer("https://server.arcgisonline.com/arcgis/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", {
+        maxZoom: 16,
+        className: "dive-theme-map-tiles",
+        referrerPolicy: "origin"
+      }).addTo(map);
+
+      const editor = { map, marker: null };
+      this._diveSiteMapEditors.set(siteId, editor);
+      map.setView(center, coordinates ? 13 : 2.5);
+      if (coordinates) {
+        this.ensureDiveSiteMapMarker(siteId, editor, center);
+      }
+      map.on("click", (event) => {
+        this.updateDiveSiteCoordinates(siteId, event.latlng.lat, event.latlng.lng);
+      });
+      this.$nextTick(() => map.invalidateSize(false));
+    },
+    syncDiveSiteMapFromFields(siteId, options = {}) {
+      this.ensureDiveSiteMapStores();
+      const editor = this._diveSiteMapEditors.get(siteId);
+      if (!editor?.map) return;
+      const site = this.diveSiteDrafts.find((entry) => entry.id === siteId);
+      const coordinates = this.diveSiteCoordinatePair(site);
+      if (!coordinates) return;
+      const position = [coordinates.lat, coordinates.lon];
+      this.ensureDiveSiteMapMarker(siteId, editor, position);
+      if (!options.preserveViewport) {
+        editor.map.setView(position, Math.max(editor.map.getZoom() || 13, 13));
+      }
+      editor.map.invalidateSize(false);
+    },
     async searchDiveSiteLocation(index) {
       const site = this.diveSiteDrafts[index];
       if (!site) return;
@@ -1560,6 +1731,7 @@ export default {
           longitude: String(payload.result.longitude)
         };
         this.diveSiteDrafts = nextDrafts;
+        this.$nextTick(() => this.syncDiveSiteMapFromFields(site.id));
         this.profileStatus = `Coordinates found for "${query}".`;
       } catch (error) {
         this.profileError = error?.message || "Could not search for GPS coordinates.";
@@ -1599,6 +1771,7 @@ export default {
         }
         this.settingsProfile = this.hydrateProfile(payload);
         this.notifyProfileUpdated(this.settingsProfile);
+        this.closeAllDiveSiteMaps();
         this.resetDraftsFromProfile();
         this.areDiveSitesEditing = false;
         this.editingDiveSiteIds = [];
@@ -2148,8 +2321,58 @@ export default {
           </div>
 
           <template v-else>
-          <div v-if="activeSettingsSection === 'diver-details'" class="settings-panel settings-card">
-            <div class="mb-8 rounded-2xl border border-primary/15 bg-surface-container-low p-6">
+          <div v-if="activeSettingsSection === 'diver-details' || activeSettingsSection === 'application-settings'" class="settings-panel settings-card">
+            <div v-if="activeSettingsSection === 'diver-details'" class="mb-8 rounded-2xl border border-primary/15 bg-surface-container-low p-6">
+              <div class="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
+                <div class="max-w-3xl">
+                  <p class="font-label text-[10px] font-bold uppercase tracking-[0.24em] text-primary">Diver Profile</p>
+                  <h4 class="mt-2 font-headline text-3xl font-bold tracking-tight text-on-surface">Diver Details</h4>
+                  <p class="mt-3 text-sm leading-7 text-secondary">Keep the public-facing diver identity separate from application behavior and instance settings.</p>
+                </div>
+                <div class="settings-toolbar">
+                  <button v-if="!isProfileEditing" @click="beginProfileEdit" :disabled="isInteractionLocked" class="settings-button settings-button-secondary">Edit Diver</button>
+                  <button v-if="isProfileEditing" @click="cancelProfileEdit" :disabled="isInteractionLocked" class="settings-button settings-button-ghost">Cancel</button>
+                  <button v-if="isProfileEditing" @click="saveProfile" :disabled="isInteractionLocked || !hasUnsavedProfileChanges" class="settings-button settings-button-primary">
+                    {{ profileSaving ? 'Saving Diver' : 'Save Diver' }}
+                  </button>
+                </div>
+              </div>
+
+              <div v-if="isProfileEditing" class="settings-form-grid mt-6">
+                <label class="space-y-2">
+                  <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Name</span>
+                  <input v-model="profileDraft.name" type="text" class="settings-input" placeholder="Alex Diver" />
+                </label>
+                <label class="space-y-2">
+                  <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Email</span>
+                  <input v-model="profileDraft.email" type="email" class="settings-input" placeholder="diver@example.com" />
+                </label>
+              </div>
+
+              <div v-else class="settings-detail-grid mt-6">
+                <div class="settings-info-card">
+                  <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Name</p>
+                  <p class="mt-2 text-base font-semibold text-on-surface">{{ displayValue(settingsProfile.name || currentUserName) }}</p>
+                </div>
+                <div class="settings-info-card">
+                  <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Email</p>
+                  <p class="mt-2 text-base font-semibold text-on-surface">{{ displayValue(settingsProfile.email || currentUserEmail) }}</p>
+                </div>
+              </div>
+            </div>
+
+            <div v-if="activeSettingsSection === 'application-settings'" class="mb-8 rounded-2xl border border-primary/15 bg-surface-container-low p-6">
+              <div class="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
+                <div class="max-w-3xl">
+                  <p class="font-label text-[10px] font-bold uppercase tracking-[0.24em] text-primary">Current Build</p>
+                  <h4 class="mt-2 font-headline text-3xl font-bold tracking-tight text-on-surface">Application Version</h4>
+                  <p class="mt-3 text-sm leading-7 text-secondary">This version comes from the frontend package used for the current build.</p>
+                </div>
+                <div class="settings-chip is-accent">v{{ appVersion }}</div>
+              </div>
+            </div>
+
+            <div v-if="activeSettingsSection === 'application-settings'" class="mb-8 rounded-2xl border border-primary/15 bg-surface-container-low p-6">
               <div class="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
                 <div class="max-w-3xl">
                   <p class="font-label text-[10px] font-bold uppercase tracking-[0.24em] text-primary">Interface Language</p>
@@ -2173,7 +2396,7 @@ export default {
               </div>
             </div>
 
-            <div class="mb-8 rounded-2xl border border-primary/15 bg-surface-container-low p-6">
+            <div v-if="activeSettingsSection === 'application-settings'" class="mb-8 rounded-2xl border border-primary/15 bg-surface-container-low p-6">
               <div class="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
                 <div class="max-w-3xl">
                   <p class="font-label text-[10px] font-bold uppercase tracking-[0.24em] text-primary">Interface Theme</p>
@@ -2203,7 +2426,7 @@ export default {
               </div>
             </div>
 
-            <div class="mb-8 rounded-2xl border border-primary/15 bg-surface-container-low p-6">
+            <div v-if="activeSettingsSection === 'application-settings'" class="mb-8 rounded-2xl border border-primary/15 bg-surface-container-low p-6">
               <div class="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
                 <div class="max-w-3xl">
                   <p class="font-label text-[10px] font-bold uppercase tracking-[0.24em] text-primary">Public Dive Profile</p>
@@ -2238,7 +2461,7 @@ export default {
               </div>
             </div>
 
-            <div class="mb-8 rounded-2xl border border-primary/15 bg-surface-container-low p-6">
+            <div v-if="activeSettingsSection === 'application-settings'" class="mb-8 rounded-2xl border border-primary/15 bg-surface-container-low p-6">
               <div class="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
                 <div class="max-w-3xl">
                   <p class="font-label text-[10px] font-bold uppercase tracking-[0.24em] text-primary">{{ t('settings.logLayout.title', 'Dive Log Layout') }}</p>
@@ -2297,6 +2520,7 @@ export default {
               </div>
             </div>
 
+            <template v-if="activeSettingsSection === 'diver-details'">
             <div class="settings-card-header">
               <div>
                 <p class="font-label text-[10px] font-bold uppercase tracking-[0.24em] text-primary">Diving Licenses</p>
@@ -2463,6 +2687,7 @@ export default {
             </div>
 
             <input ref="licenseInput" @change="handleLicenseSelection" type="file" accept="application/pdf,.pdf" class="hidden" />
+            </template>
           </div>
 
           <div v-if="activeSettingsSection === 'dive-sites'" class="settings-panel settings-card">
@@ -2580,7 +2805,7 @@ export default {
                         <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                           <div>
                             <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-primary">GPS Lookup</p>
-                            <p class="mt-2 text-sm text-secondary">Search from the location text, then fine-tune latitude and longitude manually if needed.</p>
+                            <p class="mt-2 text-sm text-secondary">Search from the location text, or open the map here and drag the marker to set the exact coordinate.</p>
                           </div>
                           <button
                             @click="searchDiveSiteLocationById(site.id)"
@@ -2588,6 +2813,12 @@ export default {
                             class="settings-button settings-button-secondary"
                           >
                             {{ isLookingUpDiveSite(site.id) ? 'Searching GPS' : 'Search GPS From Location' }}
+                          </button>
+                          <button
+                            @click="toggleDiveSiteMap(site.id)"
+                            class="settings-button settings-button-secondary"
+                          >
+                            {{ diveSiteMapOpen(site.id) ? 'Close Map' : 'Map' }}
                           </button>
                         </div>
                         <div class="settings-form-grid settings-form-grid-wide">
@@ -2603,12 +2834,19 @@ export default {
                         <div class="settings-form-grid settings-form-grid-wide">
                           <label class="space-y-2">
                             <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Latitude</span>
-                            <input v-model="site.latitude" type="number" step="any" min="-90" max="90" class="settings-input" placeholder="25.1234" />
+                            <input v-model="site.latitude" @input="syncDiveSiteMapFromFields(site.id)" type="number" step="any" min="-90" max="90" class="settings-input" placeholder="25.1234" />
                           </label>
                           <label class="space-y-2">
                             <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Longitude</span>
-                            <input v-model="site.longitude" type="number" step="any" min="-180" max="180" class="settings-input" placeholder="-80.4567" />
+                            <input v-model="site.longitude" @input="syncDiveSiteMapFromFields(site.id)" type="number" step="any" min="-180" max="180" class="settings-input" placeholder="-80.4567" />
                           </label>
+                        </div>
+                        <div v-if="diveSiteMapOpen(site.id)" class="space-y-3">
+                          <div
+                            :ref="(element) => setDiveSiteMapRef(site.id, element)"
+                            class="dive-theme-map h-80 min-h-80 overflow-hidden rounded-2xl border border-primary/10"
+                          ></div>
+                          <p class="text-xs leading-5 text-secondary">Drag the marker or click the map to set the exact GPS coordinate. Save the dive site to keep the new location.</p>
                         </div>
                       </div>
                     </div>
