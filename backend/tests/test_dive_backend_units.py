@@ -174,6 +174,30 @@ def test_csv_import_payloads_reports_row_errors():
         dive_backend.csv_import_payloads("started_at,max_depth_m\n2026-05-01T08:30:00Z,18.6\n")
 
 
+def test_csv_import_preview_reports_per_row_validation_and_file_duplicates():
+    csv_text = "\n".join(
+        [
+            "dive_uid,started_at,duration_minutes,max_depth_m,site,samples_json",
+            'csv-1,2026-05-01T08:30:00Z,42,18.6,House Reef,"[]"',
+            "csv-bad,2026-05-02T08:30:00Z,,21.0,North Wall,[]",
+            "csv-1,2026-05-03T08:30:00Z,38,16.0,House Reef,[]",
+        ]
+    )
+
+    preview = dive_backend.csv_import_preview(csv_text)
+    rows = dive_backend.mark_import_preview_duplicates(preview["rows"])
+    summary = dive_backend.import_validation_summary(rows)
+
+    assert len(preview["payloads"]) == 2
+    assert [row["status"] for row in rows] == ["ready", "invalid", "duplicate"]
+    assert rows[1]["errors"] == ["duration_seconds or duration_minutes is required"]
+    assert summary["rows"] == 3
+    assert summary["valid_rows"] == 2
+    assert summary["invalid_rows"] == 1
+    assert summary["duplicates"] == 1
+    assert summary["ready_rows"] == 1
+
+
 def test_subsurface_import_payloads_parse_xml_export():
     xml_text = """
     <divelog>
@@ -217,6 +241,44 @@ def test_subsurface_import_payloads_parse_xml_export():
     assert payload["fields"]["tanks"][0]["beginpressure_bar"] == 240
     assert payload["samples"][1]["time_seconds"] == 60
     assert payload["samples"][1]["depth_m"] == 3.0
+
+
+def test_subsurface_import_preview_reports_invalid_dive_without_dropping_valid_rows():
+    xml_text = """
+    <divelog>
+      <dives>
+        <dive number="1" date="2014-03-16" time="12:08:17">
+          <divecomputer model="missing duration">
+            <depth max="15.0 m" />
+          </divecomputer>
+        </dive>
+        <dive number="2" date="2014-03-17" time="10:00:00" duration="25:00 min">
+          <location>Training Reef</location>
+          <divecomputer model="sample depth fallback">
+            <sample time="0:00 min" depth="0.0 m" />
+            <sample time="10:00 min" depth="12.4 m" />
+          </divecomputer>
+        </dive>
+      </dives>
+    </divelog>
+    """
+
+    preview = dive_backend.subsurface_import_preview(xml_text)
+    rows = dive_backend.mark_import_preview_duplicates(preview["rows"], {"subsurface-existing"})
+    summary = dive_backend.import_validation_summary(rows)
+
+    assert len(preview["payloads"]) == 1
+    assert rows[0]["status"] == "invalid"
+    assert rows[0]["source_id"] == "1"
+    assert rows[0]["errors"] == ["missing duration"]
+    assert rows[1]["status"] == "ready"
+    assert rows[1]["source_id"] == "2"
+    assert rows[1]["site"] == "Training Reef"
+    assert rows[1]["max_depth_m"] == 12.4
+    assert rows[1]["sample_count"] == 2
+    assert summary["rows"] == 2
+    assert summary["invalid_rows"] == 1
+    assert summary["ready_rows"] == 1
 
 
 def test_decode_subsurface_export_rejects_gzip_over_uncompressed_limit():
