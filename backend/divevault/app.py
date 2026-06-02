@@ -11,10 +11,6 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import base64
-import binascii
-import csv
-import gzip
 import json
 import logging
 import mimetypes
@@ -22,27 +18,53 @@ import os
 import re
 import secrets
 import signal
+import sys
 import threading
 import time
-import hashlib
-import hmac
 import uuid
-import zipfile
+from contextlib import contextmanager
 from datetime import datetime, timezone
-from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from io import BytesIO, StringIO
 from pathlib import Path
-from xml.etree import ElementTree
-from urllib import error as urlerror
 from urllib import request as urlrequest
 from urllib.parse import parse_qs, urlencode, urlparse
 
-import jwt
 import psycopg
+from psycopg.rows import dict_row
 from dotenv import load_dotenv
-from jwt import InvalidTokenError
 
+from divevault.database import PooledConnectionProxy
+from divevault.handlers.errors import AppError, MethodNotAllowed, NotFound, PayloadTooLarge, UnsupportedMediaType, send_error
+from divevault.handlers.manifest import (
+    API_ROUTE_MANIFEST,
+    BACKUP_IMPORT_TYPES,
+    CSV_IMPORT_TYPES,
+    JSON_TYPES,
+    ROUTES,
+    SUBSURFACE_IMPORT_TYPES,
+)
+from divevault.handlers.metrics import PrometheusMetrics
+from divevault.handlers.request_utils import (
+    AuthError,
+    is_admin_claims,
+    principal_id_from_claims,
+    request_content_type,
+    read_json_body,
+    read_request_body,
+    require_auth,
+    require_browser_session_auth,
+    require_owner_auth,
+    require_principal_id,
+)
+from divevault.handlers.routes import (
+    AUTH_ANY,
+    AUTH_BROWSER_SESSION,
+    AUTH_OWNER,
+    AUTH_PRINCIPAL,
+    RoutePolicy,
+    allowed_methods_for_path,
+    match_route,
+)
 from divevault.postgres_store import (
     CURRENT_SCHEMA_VERSION,
     approve_cli_sync_request,
@@ -88,12 +110,105 @@ from divevault.postgres_store import (
     update_dive_logbook,
     verify_cli_sync_token,
 )
+from divevault.rate_limit import FixedWindowRateLimiter
+from divevault.static_assets import (
+    frontend_asset_path,
+    resolve_frontend_dir as resolve_frontend_dir_for_repo,
+    resolve_repo_path as resolve_repo_path_for_repo,
+)
+from divevault.services.auth import (
+    CliSyncTokenManager as BaseCliSyncTokenManager,
+    DiveVaultAuthTokenVerifier,
+    build_auth_verifier,
+    hash_password,
+    issue_session_token,
+    normalize_bearer_token,
+    verify_password,
+)
+from divevault.services.exports import (
+    attachment_filename,
+    build_dives_csv,
+    build_pdf_lines,
+    build_pdf_document,
+    build_pdf_stream,
+    csv_export_rows,
+    format_depth_label,
+    format_duration_label,
+    format_export_datetime,
+    json_compact,
+    now_utc,
+    paginate_pdf_lines,
+    pdf_text,
+    timestamp_slug,
+    wrap_pdf_text,
+)
+from divevault.services.geocode import NominatimClient
+from divevault.services.profile_documents import (
+    MAX_PROFILE_LICENSE_BYTES,
+    decode_profile_license_payload,
+    sanitize_profile_license_filename,
+)
+from divevault.services.importers import (
+    CSV_IMPORT_OPTIONAL_FIELDS,
+    CSV_IMPORT_REQUIRED_FIELDS,
+    build_csv_import_fields,
+    build_subsurface_fields,
+    child_text,
+    clean_csv_value,
+    complete_logbook_if_ready,
+    csv_import_payloads,
+    csv_import_preview,
+    decode_subsurface_export,
+    decompress_gzip_limited,
+    first_child,
+    import_payload_summary,
+    import_validation_row_from_payload,
+    import_validation_summary,
+    invalid_import_validation_row,
+    local_xml_name,
+    mark_import_preview_duplicates,
+    parse_csv_float,
+    parse_csv_positive_seconds,
+    parse_csv_samples,
+    parse_csv_started_at,
+    parse_subsurface_depth_m,
+    parse_subsurface_duration_seconds,
+    parse_subsurface_gps,
+    parse_subsurface_location,
+    parse_subsurface_number,
+    parse_subsurface_pressure_bar,
+    parse_subsurface_samples,
+    parse_subsurface_sites,
+    parse_subsurface_started_at,
+    parse_subsurface_temperature_c,
+    read_limited_stream,
+    read_zip_member_limited,
+    subsurface_import_payloads,
+    subsurface_import_preview,
+)
+from divevault.services.backup import (
+    BACKUP_EXPORT_VERSION,
+    BACKUP_MANIFEST_FILENAME,
+    backup_archive_license_path,
+    build_backup_archive,
+    build_backup_payload as service_build_backup_payload,
+    import_backup_payload as service_import_backup_payload,
+    is_safe_backup_member_path,
+    parse_backup_archive,
+    parse_backup_payload,
+    profile_license_documents as service_profile_license_documents,
+)
+
+try:  # pragma: no cover - exercised only when the optional runtime extra is installed
+    from psycopg_pool import ConnectionPool
+except ImportError:  # pragma: no cover - development environments may not install pool extras immediately
+    ConnectionPool = None
 
 
 LOGGER = logging.getLogger("dive_backend")
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
 REPO_ROOT = BACKEND_ROOT.parent
-MAX_PROFILE_LICENSE_BYTES = 10 * 1024 * 1024
+
 DEMO_ADMIN_USER_ID = "user_demoadmin"
 DEMO_ADMIN_USERNAME = "admin"
 DEMO_ADMIN_PASSWORD_HASH = (
@@ -104,591 +219,40 @@ DEMO_ADMIN_PASSWORD_HASH = (
 load_dotenv(REPO_ROOT / ".env")
 
 
-class AuthError(Exception):
-    def __init__(self, status: int, message: str) -> None:
-        super().__init__(message)
-        self.status = status
-        self.message = message
-
-
-class FixedWindowRateLimiter:
-    def __init__(self) -> None:
-        self._lock = threading.Lock()
-        self._windows: dict[str, dict[str, int]] = {}
-
-    def allow(self, key: str, *, limit: int, window_seconds: int, now: int | None = None) -> tuple[bool, int]:
-        if limit <= 0:
-            return True, 0
-        now_ts = int(now if now is not None else time.time())
-        window = max(int(window_seconds), 1)
-        current_window_start = now_ts - (now_ts % window)
-        expires_at = current_window_start + window
-        with self._lock:
-            stale_keys = [
-                existing_key
-                for existing_key, existing_entry in self._windows.items()
-                if int(existing_entry.get("expires_at", 0)) <= now_ts
-            ]
-            for stale_key in stale_keys:
-                self._windows.pop(stale_key, None)
-
-            entry = self._windows.get(key)
-            if entry is None or entry["window_start"] != current_window_start:
-                entry = {"window_start": current_window_start, "expires_at": expires_at, "count": 0}
-                self._windows[key] = entry
-            if entry["count"] >= limit:
-                return False, max(expires_at - now_ts, 1)
-            entry["count"] += 1
-            entry["expires_at"] = expires_at
-            return True, max(expires_at - now_ts, 1)
-
-
-class PrometheusMetrics:
-    ROUTE_LABEL_PATTERNS = (
-        (re.compile(r"/api/dives/\d+"), "/api/dives/{id}"),
-        (re.compile(r"/api/dives/\d+/logbook"), "/api/dives/{id}/logbook"),
-        (re.compile(r"/api/equipment/[A-Za-z0-9_-]+/service"), "/api/equipment/{id}/service"),
-        (re.compile(r"/api/profile/licenses/[A-Za-z0-9_-]+/pdf"), "/api/profile/licenses/{id}/pdf"),
-        (re.compile(r"/api/public/divers/[a-z0-9-]+"), "/api/public/divers/{slug}"),
-        (re.compile(r"/api/users/user_[A-Za-z0-9]+"), "/api/users/{id}"),
-    )
-
-    def __init__(self, *, started_at: float | None = None) -> None:
-        self.started_at = float(started_at if started_at is not None else time.time())
-        self._lock = threading.Lock()
-        self._requests: dict[tuple[str, str, str], int] = {}
-        self._duration_count: dict[tuple[str, str], int] = {}
-        self._duration_sum: dict[tuple[str, str], float] = {}
-
-    @staticmethod
-    def route_label(path: str) -> str:
-        if path in {
-            "/health",
-            "/api/health",
-            "/metrics",
-            "/config.js",
-            "/api/dives",
-            "/api/equipment",
-            "/api/profile",
-            "/api/users",
-            "/api/device-state",
-            "/api/backup/export",
-            "/api/backup/import",
-            "/api/cli-auth/approve",
-            "/api/cli-auth/request",
-            "/api/auth/invitations",
-            "/api/auth/login",
-            "/api/auth/me",
-            "/api/auth/password",
-            "/api/auth/register",
-            "/api/auth/settings",
-            "/api/auth/status",
-            "/api/exports/dives.csv",
-            "/api/exports/dives.pdf",
-            "/api/imports/csv",
-            "/api/imports/subsurface",
-            "/api/geocode/search",
-        }:
-            return path
-        for pattern, label in PrometheusMetrics.ROUTE_LABEL_PATTERNS:
-            if pattern.fullmatch(path):
-                return label
-        if path.startswith("/api/"):
-            return "/api/*"
-        return "frontend"
-
-    def observe_request(self, *, method: str, path: str, status: int, duration_seconds: float) -> None:
-        route = self.route_label(path)
-        status_class = f"{int(status) // 100}xx"
-        with self._lock:
-            self._requests[(method, route, status_class)] = self._requests.get((method, route, status_class), 0) + 1
-            self._duration_count[(method, route)] = self._duration_count.get((method, route), 0) + 1
-            self._duration_sum[(method, route)] = self._duration_sum.get((method, route), 0.0) + max(duration_seconds, 0.0)
-
-    @staticmethod
-    def _labels(labels: dict[str, str]) -> str:
-        def escape(value: str) -> str:
-            return value.replace("\\", "\\\\").replace('"', '\\"')
-
-        return ",".join(f'{key}="{escape(value)}"' for key, value in labels.items())
-
-    def render(self, *, database_ready: bool, schema_version: object) -> bytes:
-        with self._lock:
-            requests = dict(self._requests)
-            duration_count = dict(self._duration_count)
-            duration_sum = dict(self._duration_sum)
-        lines = [
-            "# HELP divevault_up Whether the DiveVault backend process is running.",
-            "# TYPE divevault_up gauge",
-            "divevault_up 1",
-            "# HELP divevault_database_ready Whether startup database checks and migrations completed.",
-            "# TYPE divevault_database_ready gauge",
-            f"divevault_database_ready {1 if database_ready else 0}",
-            "# HELP divevault_schema_version Current application schema version observed at startup.",
-            "# TYPE divevault_schema_version gauge",
-            f"divevault_schema_version {int(schema_version or 0)}",
-            "# HELP divevault_process_start_time_seconds Unix timestamp when the backend process started.",
-            "# TYPE divevault_process_start_time_seconds gauge",
-            f"divevault_process_start_time_seconds {self.started_at:.3f}",
-            "# HELP divevault_http_requests_total HTTP requests by method, route, and status class.",
-            "# TYPE divevault_http_requests_total counter",
-        ]
-        for (method, route, status_class), value in sorted(requests.items()):
-            labels = self._labels({"method": method, "route": route, "status_class": status_class})
-            lines.append(f"divevault_http_requests_total{{{labels}}} {value}")
-        lines.extend(
-            [
-                "# HELP divevault_http_request_duration_seconds_count HTTP request duration count by method and route.",
-                "# TYPE divevault_http_request_duration_seconds_count counter",
-            ]
-        )
-        for (method, route), value in sorted(duration_count.items()):
-            labels = self._labels({"method": method, "route": route})
-            lines.append(f"divevault_http_request_duration_seconds_count{{{labels}}} {value}")
-        lines.extend(
-            [
-                "# HELP divevault_http_request_duration_seconds_sum HTTP request duration sum by method and route.",
-                "# TYPE divevault_http_request_duration_seconds_sum counter",
-            ]
-        )
-        for (method, route), value in sorted(duration_sum.items()):
-            labels = self._labels({"method": method, "route": route})
-            lines.append(f"divevault_http_request_duration_seconds_sum{{{labels}}} {value:.6f}")
-        return ("\n".join(lines) + "\n").encode("utf-8")
-
-
-def normalize_bearer_token(value: str | None) -> str | None:
-    if not value:
-        return None
-    normalized = value.strip()
-    if len(normalized) >= 2 and normalized[0] == normalized[-1] and normalized[0] in {'"', "'"}:
-        normalized = normalized[1:-1].strip()
-    if normalized.lower().startswith("bearer "):
-        normalized = normalized.split(" ", 1)[1].strip()
-    return normalized or None
-
-
-class DiveVaultAuthTokenVerifier:
-    def __init__(
-        self,
-        *,
-        jwt_secret: str,
-        jwt_issuer: str,
-        jwt_audience: str,
-        sync_token_manager=None,
-    ) -> None:
-        self.jwt_secret = jwt_secret
-        self.issuer = jwt_issuer
-        self.audience = jwt_audience
-        self.sync_token_manager = sync_token_manager
-
-    @property
-    def configured(self) -> bool:
-        return bool(self.jwt_secret)
-
-    def verify_request(self, headers) -> dict:
-        token = normalize_bearer_token(self._extract_token(headers))
-        if not token:
-            raise AuthError(401, "Missing authentication bearer token")
-
-        if token.startswith("dvsync_"):
-            return self._verify_sync_token(token)
-        return self._verify_session_token(token)
-
-    def _verify_session_token(self, token: str) -> dict:
-        try:
-            claims = jwt.decode(
-                token,
-                self.jwt_secret,
-                algorithms=["HS256"],
-                issuer=self.issuer,
-                audience=self.audience,
-                options={"verify_exp": True},
-                leeway=5,
-            )
-        except InvalidTokenError as exc:
-            raise AuthError(401, f"Invalid session token: {exc}") from exc
-
-        claims.setdefault("token_type", "session_token")
-        return claims
-
-    def _verify_sync_token(self, token: str) -> dict:
-        if self.sync_token_manager is None:
-            raise AuthError(503, "Desktop sync login is not configured on the backend")
-
-        claims = self.sync_token_manager.verify_token(token)
-        if claims is None:
-            raise AuthError(401, "Desktop sync token is invalid or expired")
-        return claims
-
-    @staticmethod
-    def _extract_token(headers) -> str | None:
-        authorization = headers.get("Authorization", "")
-        if authorization.lower().startswith("bearer "):
-            return authorization.split(" ", 1)[1].strip() or None
-
-        cookie_header = headers.get("Cookie", "")
-        if not cookie_header:
-            return None
-
-        cookie = SimpleCookie()
-        cookie.load(cookie_header)
-        session_cookie = cookie.get("__session")
-        return session_cookie.value if session_cookie else None
-
-
-def sanitize_profile_license_filename(value: object) -> str:
-    if not isinstance(value, str):
-        return "diving-licenses.pdf"
-    filename = value.replace("\\", "/").split("/")[-1].strip()
-    if not filename:
-        return "diving-licenses.pdf"
-    return filename if filename.lower().endswith(".pdf") else f"{filename}.pdf"
-
-
-def decode_profile_license_payload(payload: dict | None) -> tuple[str, str, bytes]:
-    source = payload if isinstance(payload, dict) else {}
-    data_b64 = source.get("data_b64")
-    if not isinstance(data_b64, str) or not data_b64.strip():
-        raise ValueError("License PDF upload requires data_b64")
-
-    try:
-        pdf_bytes = base64.b64decode(data_b64, validate=True)
-    except (ValueError, binascii.Error) as exc:
-        raise ValueError("License PDF must be valid base64") from exc
-
-    if not pdf_bytes.startswith(b"%PDF-"):
-        raise ValueError("License file must be a PDF")
-    if len(pdf_bytes) > MAX_PROFILE_LICENSE_BYTES:
-        raise ValueError(f"License PDF must be {MAX_PROFILE_LICENSE_BYTES // (1024 * 1024)} MB or smaller")
-
-    content_type = (source.get("content_type") or "application/pdf").strip().lower()
-    if content_type != "application/pdf":
-        raise ValueError("License file must use content_type application/pdf")
-
-    return sanitize_profile_license_filename(source.get("filename")), "application/pdf", pdf_bytes
-
-
-class NominatimClient:
-    def __init__(
-        self,
-        *,
-        base_url: str,
-        user_agent: str,
-        email: str | None = None,
-        min_interval_seconds: float = 1.0,
-    ) -> None:
-        self.base_url = (base_url or "https://nominatim.openstreetmap.org").rstrip("/")
-        self.user_agent = (user_agent or "DiveVault/1.0").strip()
-        self.email = email.strip() if email else None
-        self.min_interval_seconds = max(min_interval_seconds, 0)
-        self._lock = threading.Lock()
-        self._cache: dict[str, dict] = {}
-        self._last_request_at = 0.0
-
-    def search(self, query: str) -> dict:
-        normalized_query = query.strip()
-        if not normalized_query:
-            raise ValueError("Missing search query")
-
-        cache_key = normalized_query.casefold()
-        with self._lock:
-            cached = self._cache.get(cache_key)
-            if cached is not None:
-                return dict(cached)
-
-            delay_seconds = self.min_interval_seconds - max(0.0, time.time() - self._last_request_at)
-            if delay_seconds > 0:
-                time.sleep(delay_seconds)
-
-            payload = self._perform_search(normalized_query)
-            self._cache[cache_key] = payload
-            self._last_request_at = time.time()
-            return dict(payload)
-
-    def _perform_search(self, query: str) -> dict:
-        params = {
-            "q": query,
-            "format": "jsonv2",
-            "limit": "1",
-            "addressdetails": "1",
-            "accept-language": "en",
-        }
-        if self.email:
-            params["email"] = self.email
-
-        request_url = f"{self.base_url}/search?{urlencode(params)}"
-        req = urlrequest.Request(
-            request_url,
-            headers={
-                "User-Agent": self.user_agent,
-                "Accept": "application/json",
-                "Accept-Language": "en",
-            },
-            method="GET",
-        )
-
-        try:
-            with urlrequest.urlopen(req, timeout=15) as response:
-                payload = json.loads(response.read().decode("utf-8"))
-        except urlerror.HTTPError as exc:
-            details = exc.read().decode("utf-8", errors="replace")
-            raise RuntimeError(f"Nominatim search failed with HTTP {exc.code}: {details}") from exc
-        except (urlerror.URLError, TimeoutError, json.JSONDecodeError) as exc:
-            raise RuntimeError(f"Nominatim search failed: {exc}") from exc
-
-        if not isinstance(payload, list) or not payload:
-            return {"query": query, "found": False, "result": None}
-
-        first_result = payload[0] if isinstance(payload[0], dict) else {}
-        address = first_result.get("address") if isinstance(first_result.get("address"), dict) else {}
-        try:
-            latitude = float(first_result.get("lat"))
-            longitude = float(first_result.get("lon"))
-        except (TypeError, ValueError):
-            return {"query": query, "found": False, "result": None}
-
-        return {
-            "query": query,
-            "found": True,
-            "result": {
-                "name": first_result.get("display_name") or query,
-                "country": address.get("country") if isinstance(address.get("country"), str) else "",
-                "latitude": latitude,
-                "longitude": longitude,
-            },
-        }
-
-
-class CliSyncTokenManager:
-    def __init__(
-        self,
-        *,
-        request_ttl_seconds: int = 600,
-        token_ttl_seconds: int = 1800,
-        database_url: str | None = None,
-    ) -> None:
-        self.request_ttl_seconds = request_ttl_seconds
-        self.token_ttl_seconds = token_ttl_seconds
-        self.database_url = database_url.strip() if database_url else None
-        self._pending_codes: dict[str, dict] = {}
-        self._active_tokens: dict[str, dict] = {}
-        self._lock = threading.Lock()
-
-    def _cleanup_locked(self, now: float) -> None:
-        expired_codes = [code for code, entry in self._pending_codes.items() if entry["expires_at"] <= now]
-        for code in expired_codes:
-            self._pending_codes.pop(code, None)
-
-        expired_tokens = [token for token, claims in self._active_tokens.items() if claims["expires_at"] <= now]
-        for token in expired_tokens:
-            self._active_tokens.pop(token, None)
-
-    def _uses_database(self) -> bool:
-        return bool(self.database_url)
-
+class CliSyncTokenManager(BaseCliSyncTokenManager):
     def _open_database(self):
         if not self.database_url:
             raise RuntimeError("CLI sync database persistence is not configured")
         return open_db(self.database_url)
 
-    def create_request(self) -> dict:
-        now = time.time()
-        code = secrets.token_urlsafe(24)
-        if self._uses_database():
-            conn = self._open_database()
-            try:
-                entry = create_cli_sync_request(
-                    conn,
-                    code=code,
-                    request_ttl_seconds=self.request_ttl_seconds,
-                    now_timestamp=int(now),
-                )
-            finally:
-                conn.close()
-            LOGGER.info("Created CLI auth request code=%s created_at=%s expires_at=%s", entry["code"], entry["created_at"], entry["expires_at"])
-            return entry
+    def _create_cli_sync_request(self, conn, **kwargs) -> dict:
+        return create_cli_sync_request(conn, **kwargs)
 
-        entry = {
-            "code": code,
-            "status": "pending",
-            "created_at": int(now),
-            "expires_at": int(now + self.request_ttl_seconds),
-            "token": None,
-            "token_expires_at": None,
-            "user_id": None,
-            "email": None,
-        }
-        with self._lock:
-            self._cleanup_locked(now)
-            self._pending_codes[code] = entry
-        LOGGER.info("Created CLI auth request code=%s created_at=%s expires_at=%s", entry["code"], entry["created_at"], entry["expires_at"])
-        return dict(entry)
+    def _get_cli_sync_request_status(self, conn, code: str, **kwargs) -> dict | None:
+        return get_cli_sync_request_status(conn, code, **kwargs)
 
-    def approve_request(self, code: str, claims: dict) -> dict | None:
-        now = time.time()
-        if self._uses_database():
-            token = f"dvsync_{secrets.token_urlsafe(32)}"
-            conn = self._open_database()
-            try:
-                entry = approve_cli_sync_request(
-                    conn,
-                    code,
-                    claims,
-                    token=token,
-                    token_ttl_seconds=self.token_ttl_seconds,
-                    now_timestamp=int(now),
-                )
-            finally:
-                conn.close()
-            if entry is not None:
-                LOGGER.info("Approved CLI auth request code=%s user_id=%s token_expires_at=%s", code, entry.get("user_id"), entry.get("token_expires_at"))
-            else:
-                LOGGER.warning("Rejected CLI auth approval because request was missing or expired code=%s", code)
-            return entry
+    def _approve_cli_sync_request(self, conn, code: str, claims: dict, **kwargs) -> dict | None:
+        return approve_cli_sync_request(conn, code, claims, **kwargs)
 
-        with self._lock:
-            self._cleanup_locked(now)
-            entry = self._pending_codes.get(code)
-            if not entry or entry["expires_at"] <= now:
-                return None
-
-            token = f"dvsync_{secrets.token_urlsafe(32)}"
-            token_expires_at = int(now + self.token_ttl_seconds)
-            self._active_tokens[token] = {
-                "token_type": "cli_sync",
-                "sub": claims.get("sub"),
-                "email": claims.get("email"),
-                "sid": claims.get("sid"),
-                "issued_at": int(now),
-                "expires_at": token_expires_at,
-            }
-            entry.update(
-                {
-                    "status": "approved",
-                    "approved_at": int(now),
-                    "token": token,
-                    "token_expires_at": token_expires_at,
-                    "user_id": claims.get("sub"),
-                    "email": claims.get("email"),
-                }
-            )
-            LOGGER.info("Approved CLI auth request code=%s user_id=%s token_expires_at=%s", code, entry.get("user_id"), entry.get("token_expires_at"))
-            return dict(entry)
-
-    def get_request_status(self, code: str) -> dict | None:
-        now = time.time()
-        if self._uses_database():
-            conn = self._open_database()
-            try:
-                entry = get_cli_sync_request_status(conn, code, now_timestamp=int(now))
-            finally:
-                conn.close()
-            if entry is None:
-                LOGGER.warning("CLI auth request status lookup missed code=%s", code)
-            return entry
-
-        with self._lock:
-            self._cleanup_locked(now)
-            entry = self._pending_codes.get(code)
-            if entry is None:
-                return None
-            return dict(entry)
-
-    def verify_token(self, token: str) -> dict | None:
-        now = time.time()
-        if self._uses_database():
-            conn = self._open_database()
-            try:
-                claims = verify_cli_sync_token(conn, token, now_timestamp=int(now))
-            finally:
-                conn.close()
-            return claims
-
-        with self._lock:
-            self._cleanup_locked(now)
-            claims = self._active_tokens.get(token)
-            if claims is None:
-                return None
-            return dict(claims)
-
-
-def hash_password(password: str, *, salt_hex: str | None = None) -> str:
-    salt = bytes.fromhex(salt_hex) if salt_hex else secrets.token_bytes(16)
-    digest = hashlib.scrypt(password.encode("utf-8"), salt=salt, n=2**14, r=8, p=1, dklen=64)
-    return f"scrypt${salt.hex()}${digest.hex()}"
-
-
-def verify_password(password: str, password_hash: str) -> bool:
-    if not isinstance(password_hash, str) or not password_hash.startswith("scrypt$"):
-        return False
-    parts = password_hash.split("$")
-    if len(parts) != 3:
-        return False
-    _, salt_hex, expected_hex = parts
-    actual_hash = hash_password(password, salt_hex=salt_hex)
-    return hmac.compare_digest(actual_hash, password_hash)
-
-
-def issue_session_token(*, user_id: str, email: str, role: str, jwt_secret: str, issuer: str, audience: str, ttl_seconds: int) -> str:
-    now_timestamp = int(time.time())
-    payload = {
-        "sub": user_id,
-        "sid": f"session_{uuid.uuid4().hex}",
-        "email": email,
-        "role": role,
-        "token_type": "session_token",
-        "iat": now_timestamp,
-        "nbf": now_timestamp,
-        "exp": now_timestamp + max(ttl_seconds, 300),
-        "iss": issuer,
-        "aud": audience,
-    }
-    return jwt.encode(payload, jwt_secret, algorithm="HS256")
-
-
-def build_auth_verifier(args: argparse.Namespace, *, sync_token_manager: CliSyncTokenManager | None) -> DiveVaultAuthTokenVerifier:
-    return DiveVaultAuthTokenVerifier(
-        jwt_secret=args.auth_jwt_secret,
-        jwt_issuer=args.auth_jwt_issuer,
-        jwt_audience=args.auth_jwt_audience,
-        sync_token_manager=sync_token_manager,
-    )
+    def _verify_cli_sync_token(self, conn, token: str, **kwargs) -> dict | None:
+        return verify_cli_sync_token(conn, token, **kwargs)
 
 
 def resolve_repo_path(path_value: str | Path) -> Path:
-    candidate = Path(path_value)
-    if not candidate.is_absolute():
-        candidate = REPO_ROOT / candidate
-    return candidate.resolve()
+    return resolve_repo_path_for_repo(REPO_ROOT, path_value)
 
 
 def resolve_frontend_dir(frontend_dir: str | Path) -> Path:
-    resolved = resolve_repo_path(frontend_dir)
-    if resolved.exists():
-        return resolved
-
-    legacy_dir = resolved.parent if resolved.name == "dist" else None
-    if legacy_dir and (legacy_dir / "index.html").is_file():
+    resolved = resolve_frontend_dir_for_repo(REPO_ROOT, frontend_dir)
+    configured = resolve_repo_path(frontend_dir)
+    legacy_dir = configured.parent if configured.name == "dist" else None
+    if resolved != configured and legacy_dir is not None:
         LOGGER.warning(
             "Configured frontend_dir=%s is missing; falling back to legacy frontend assets at %s",
+            configured,
             resolved,
-            legacy_dir,
         )
-        return legacy_dir
-
     return resolved
-
-
-def frontend_asset_path(frontend_dir: Path, request_path: str) -> Path:
-    relative = request_path.lstrip("/") or "index.html"
-    candidate = (frontend_dir / relative).resolve()
-    frontend_root = frontend_dir.resolve()
-    if frontend_root not in candidate.parents and candidate != frontend_root:
-        return frontend_root / "index.html"
-    if candidate.is_file():
-        return candidate
-    return frontend_root / "index.html"
 
 
 def redact_database_url(database_url: str) -> str:
@@ -832,1303 +396,29 @@ def require_expected_schema_version(schema_version: int, *, expected_schema_vers
     )
 
 
-BACKUP_EXPORT_VERSION = 1
-BACKUP_MANIFEST_FILENAME = "backup.json"
-PDF_PAGE_WIDTH = 612
-PDF_PAGE_HEIGHT = 792
-PDF_MARGIN_LEFT = 48
-PDF_MARGIN_TOP = 744
-PDF_MARGIN_BOTTOM = 48
-PDF_TEXT_RE = re.compile(r"[^\x20-\x7E]")
-
-
-def now_utc() -> datetime:
-    return datetime.now(timezone.utc)
-
-
-def timestamp_slug(value: datetime | None = None) -> str:
-    moment = value or now_utc()
-    return moment.strftime("%Y%m%d-%H%M%S")
-
-
-def attachment_filename(value: str) -> str:
-    sanitized = re.sub(r"[^A-Za-z0-9._-]+", "-", value or "").strip("-.")
-    return sanitized or "download"
-
-
-def json_compact(value: object) -> str:
-    return json.dumps(value, separators=(",", ":"), sort_keys=True)
-
-
-def format_export_datetime(value: object) -> str:
-    if not isinstance(value, str) or not value.strip():
-        return "Unknown"
-    try:
-        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
-    except ValueError:
-        return value
-    return parsed.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
-
-
-def format_duration_label(duration_seconds: object) -> str:
-    if not isinstance(duration_seconds, (int, float)):
-        return "Unknown"
-    total_seconds = max(int(round(float(duration_seconds))), 0)
-    hours, remainder = divmod(total_seconds, 3600)
-    minutes, seconds = divmod(remainder, 60)
-    if hours:
-        return f"{hours}h {minutes:02d}m"
-    if minutes:
-        return f"{minutes}m {seconds:02d}s"
-    return f"{seconds}s"
-
-
-def format_depth_label(depth_m: object) -> str:
-    if not isinstance(depth_m, (int, float)):
-        return "Unknown"
-    return f"{float(depth_m):.1f} m"
-
-
-def pdf_text(value: object) -> str:
-    text = str(value or "")
-    text = PDF_TEXT_RE.sub("?", text)
-    text = text.replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)")
-    return text
-
-
-def wrap_pdf_text(value: object, width: int = 88) -> list[str]:
-    text = PDF_TEXT_RE.sub("?", str(value or "")).strip()
-    if not text:
-        return []
-    words = text.split()
-    lines: list[str] = []
-    current = ""
-    for word in words:
-        candidate = word if not current else f"{current} {word}"
-        if len(candidate) <= width:
-            current = candidate
-            continue
-        if current:
-            lines.append(current)
-        current = word
-    if current:
-        lines.append(current)
-    return lines
-
-
-def csv_export_rows(dives: list[dict]) -> list[dict]:
-    rows: list[dict] = []
-    for dive in dives:
-        logbook = dive.get("fields", {}).get("logbook") if isinstance(dive.get("fields"), dict) else {}
-        logbook = logbook if isinstance(logbook, dict) else {}
-        base_row = {
-            "dive_id": dive.get("id"),
-            "dive_uid": dive.get("dive_uid"),
-            "status": logbook.get("status") or "imported",
-            "site": logbook.get("site") or "",
-            "buddy": logbook.get("buddy") or "",
-            "guide": logbook.get("guide") or "",
-            "weather_description": logbook.get("weather_description") or "",
-            "visibility": logbook.get("visibility") or "",
-            "wetsuit_description": logbook.get("wetsuit_description") or "",
-            "weight_description": logbook.get("weight_description") or "",
-            "notes": logbook.get("notes") or "",
-            "vendor": dive.get("vendor") or "",
-            "product": dive.get("product") or "",
-            "started_at": dive.get("started_at") or "",
-            "imported_at": dive.get("imported_at") or "",
-            "duration_seconds": dive.get("duration_seconds") or "",
-            "max_depth_m": dive.get("max_depth_m") or "",
-            "avg_depth_m": dive.get("avg_depth_m") or "",
-            "raw_sha256": dive.get("raw_sha256") or "",
-            "sample_count": dive.get("sample_count") or 0,
-        }
-        samples = dive.get("samples") if isinstance(dive.get("samples"), list) else []
-        if not samples:
-            rows.append(
-                {
-                    **base_row,
-                    "sample_index": "",
-                    "sample_time_seconds": "",
-                    "sample_depth_m": "",
-                    "sample_temperature_c": "",
-                    "sample_tank_pressure_bar": "",
-                    "sample_payload_json": "",
-                }
-            )
-            continue
-
-        for index, sample in enumerate(samples):
-            sample_dict = sample if isinstance(sample, dict) else {}
-            tank_pressure = sample_dict.get("tank_pressure_bar")
-            if isinstance(tank_pressure, dict):
-                tank_pressure = tank_pressure.get("tank_0")
-            rows.append(
-                {
-                    **base_row,
-                    "sample_index": index,
-                    "sample_time_seconds": sample_dict.get("time_seconds", ""),
-                    "sample_depth_m": sample_dict.get("depth_m", ""),
-                    "sample_temperature_c": sample_dict.get("temperature_c", ""),
-                    "sample_tank_pressure_bar": tank_pressure if tank_pressure is not None else "",
-                    "sample_payload_json": json_compact(sample_dict),
-                }
-            )
-    return rows
-
-
-def build_dives_csv(dives: list[dict]) -> bytes:
-    fieldnames = [
-        "dive_id",
-        "dive_uid",
-        "status",
-        "site",
-        "buddy",
-        "guide",
-        "weather_description",
-        "visibility",
-        "wetsuit_description",
-        "weight_description",
-        "notes",
-        "vendor",
-        "product",
-        "started_at",
-        "imported_at",
-        "duration_seconds",
-        "max_depth_m",
-        "avg_depth_m",
-        "raw_sha256",
-        "sample_count",
-        "sample_index",
-        "sample_time_seconds",
-        "sample_depth_m",
-        "sample_temperature_c",
-        "sample_tank_pressure_bar",
-        "sample_payload_json",
-    ]
-    buffer = StringIO()
-    writer = csv.DictWriter(buffer, fieldnames=fieldnames)
-    writer.writeheader()
-    for row in csv_export_rows(dives):
-        writer.writerow(row)
-    return buffer.getvalue().encode("utf-8")
-
-
-CSV_IMPORT_OPTIONAL_FIELDS = [
-    "dive_uid",
-    "vendor",
-    "product",
-    "fingerprint_hex",
-    "started_at",
-    "date",
-    "time",
-    "duration_seconds",
-    "duration_minutes",
-    "max_depth_m",
-    "avg_depth_m",
-    "site",
-    "buddy",
-    "guide",
-    "weather_description",
-    "visibility",
-    "wetsuit_description",
-    "notes",
-    "temperature_surface_c",
-    "temperature_minimum_c",
-    "temperature_maximum_c",
-    "tank_volume_l",
-    "begin_pressure_bar",
-    "end_pressure_bar",
-    "gas_o2_percent",
-    "gas_he_percent",
-    "imported_at",
-    "samples_json",
-]
-CSV_IMPORT_REQUIRED_FIELDS = ["started_at", "duration_seconds", "max_depth_m"]
-
-
-def clean_csv_value(row: dict, key: str) -> str:
-    value = row.get(key)
-    return str(value).strip() if value is not None else ""
-
-
-def parse_csv_float(row: dict, key: str) -> float | None:
-    value = clean_csv_value(row, key)
-    if value == "":
-        return None
-    try:
-        return float(value)
-    except ValueError as exc:
-        raise ValueError(f"{key} must be a number") from exc
-
-
-def parse_csv_positive_seconds(row: dict) -> int:
-    seconds = parse_csv_float(row, "duration_seconds")
-    if seconds is None:
-        minutes = parse_csv_float(row, "duration_minutes")
-        if minutes is None:
-            raise ValueError("duration_seconds or duration_minutes is required")
-        seconds = minutes * 60
-    if seconds <= 0:
-        raise ValueError("duration must be greater than zero")
-    return int(round(seconds))
-
-
-def parse_csv_started_at(row: dict) -> str:
-    started_at = clean_csv_value(row, "started_at")
-    if started_at:
-        return started_at
-    date = clean_csv_value(row, "date")
-    time_value = clean_csv_value(row, "time")
-    if date and time_value:
-        if re.match(r"^\d{2}:\d{2}$", time_value):
-            time_value = f"{time_value}:00"
-        return f"{date}T{time_value}"
-    raise ValueError("started_at is required")
-
-
-def parse_csv_samples(row: dict) -> list:
-    samples_json = clean_csv_value(row, "samples_json")
-    if not samples_json:
-        return []
-    try:
-        samples = json.loads(samples_json)
-    except json.JSONDecodeError as exc:
-        raise ValueError("samples_json must be valid JSON") from exc
-    if not isinstance(samples, list):
-        raise ValueError("samples_json must be a JSON array")
-    return samples
-
-
-def complete_logbook_if_ready(logbook: dict, *, required_fields: object = None) -> dict:
-    required = normalize_required_logbook_fields(required_fields)
-    ready = all(isinstance(logbook.get(key), str) and logbook[key].strip() for key in required)
-    if ready:
-        logbook["status"] = "complete"
-        logbook.setdefault("completed_at", now_iso())
-    else:
-        logbook["status"] = "imported"
-        logbook.pop("completed_at", None)
-    return logbook
-
-
-def build_csv_import_fields(row: dict, *, required_fields: object = None) -> dict:
-    logbook = {
-        "site": clean_csv_value(row, "site"),
-        "buddy": clean_csv_value(row, "buddy"),
-        "guide": clean_csv_value(row, "guide"),
-        "weather_description": clean_csv_value(row, "weather_description"),
-        "visibility": clean_csv_value(row, "visibility"),
-        "wetsuit_description": clean_csv_value(row, "wetsuit_description"),
-        "notes": clean_csv_value(row, "notes"),
-    }
-    complete_logbook_if_ready(logbook, required_fields=required_fields)
-    fields: dict = {"source": "csv", "csv_import": True, "logbook": logbook}
-
-    for csv_key, field_key in (
-        ("temperature_surface_c", "temperature_surface_c"),
-        ("temperature_minimum_c", "temperature_minimum_c"),
-        ("temperature_maximum_c", "temperature_maximum_c"),
-    ):
-        value = parse_csv_float(row, csv_key)
-        if value is not None:
-            fields[field_key] = value
-
-    tank: dict = {}
-    tank_volume = parse_csv_float(row, "tank_volume_l")
-    begin_pressure = parse_csv_float(row, "begin_pressure_bar")
-    end_pressure = parse_csv_float(row, "end_pressure_bar")
-    gas_o2 = parse_csv_float(row, "gas_o2_percent")
-    gas_he = parse_csv_float(row, "gas_he_percent")
-    if tank_volume is not None:
-        tank["volume"] = tank_volume
-    if begin_pressure is not None:
-        tank["beginpressure_bar"] = int(round(begin_pressure))
-    if end_pressure is not None:
-        tank["endpressure_bar"] = int(round(end_pressure))
-    if gas_o2 is not None:
-        tank["o2_percent"] = gas_o2
-    if gas_he is not None:
-        tank["he_percent"] = gas_he
-    if tank:
-        fields["tanks"] = [tank]
-
-    return fields
-
-
-def import_validation_row_from_payload(payload: dict, *, row_number: int | None = None, source_id: str = "") -> dict:
-    fields = payload.get("fields") if isinstance(payload.get("fields"), dict) else {}
-    logbook = fields.get("logbook") if isinstance(fields.get("logbook"), dict) else {}
-    return {
-        "row_number": row_number,
-        "source_id": source_id,
-        "valid": True,
-        "status": "ready",
-        "duplicate": False,
-        "errors": [],
-        "dive_uid": payload.get("dive_uid"),
-        "started_at": payload.get("started_at"),
-        "site": logbook.get("site") or "",
-        "duration_seconds": payload.get("duration_seconds"),
-        "max_depth_m": payload.get("max_depth_m"),
-        "sample_count": len(payload.get("samples") or []),
-    }
-
-
-def invalid_import_validation_row(*, row_number: int | None = None, source_id: str = "", error: object) -> dict:
-    return {
-        "row_number": row_number,
-        "source_id": source_id,
-        "valid": False,
-        "status": "invalid",
-        "duplicate": False,
-        "errors": [str(error)],
-        "dive_uid": "",
-        "started_at": "",
-        "site": "",
-        "duration_seconds": None,
-        "max_depth_m": None,
-        "sample_count": 0,
-    }
-
-
-def csv_import_preview(csv_text: str, *, required_fields: object = None) -> dict:
-    if not csv_text.strip():
-        raise ValueError("CSV import file is empty")
-
-    reader = csv.DictReader(StringIO(csv_text))
-    if not reader.fieldnames:
-        raise ValueError("CSV import requires a header row")
-
-    payloads: list[dict] = []
-    rows: list[dict] = []
-    for row_number, row in enumerate(reader, start=2):
-        if not any(str(value or "").strip() for value in row.values()):
-            continue
-        try:
-            started_at = parse_csv_started_at(row)
-            duration_seconds = parse_csv_positive_seconds(row)
-            max_depth_m = parse_csv_float(row, "max_depth_m")
-            if max_depth_m is None:
-                raise ValueError("max_depth_m is required")
-            avg_depth_m = parse_csv_float(row, "avg_depth_m")
-            samples = parse_csv_samples(row)
-            fields = build_csv_import_fields(row, required_fields=required_fields)
-        except ValueError as exc:
-            rows.append(invalid_import_validation_row(row_number=row_number, error=exc))
-            continue
-
-        archived_row = {key: clean_csv_value(row, key) for key in (reader.fieldnames or [])}
-        raw_source = json.dumps(
-            {"source": "csv", "row_number": row_number, "row": archived_row},
-            sort_keys=True,
-            separators=(",", ":"),
-        )
-        raw_data_b64 = base64.b64encode(raw_source.encode("utf-8")).decode("ascii")
-        raw_sha256 = hashlib.sha256(raw_source.encode("utf-8")).hexdigest()
-        dive_uid = clean_csv_value(row, "dive_uid") or f"csv-{raw_sha256[:24]}"
-
-        payload = {
-            "vendor": clean_csv_value(row, "vendor") or "CSV",
-            "product": clean_csv_value(row, "product") or "Import",
-            "fingerprint_hex": clean_csv_value(row, "fingerprint_hex") or None,
-            "dive_uid": dive_uid,
-            "started_at": started_at,
-            "duration_seconds": duration_seconds,
-            "max_depth_m": max_depth_m,
-            "avg_depth_m": avg_depth_m,
-            "fields": fields,
-            "raw_sha256": raw_sha256,
-            "raw_data_b64": raw_data_b64,
-            "samples": samples,
-            "imported_at": clean_csv_value(row, "imported_at") or now_iso(),
-        }
-        payloads.append(payload)
-        rows.append(import_validation_row_from_payload(payload, row_number=row_number))
-
-    if not payloads and not rows:
-        raise ValueError("CSV import does not contain any dive rows")
-    return {"payloads": payloads, "rows": rows}
-
-
-def csv_import_payloads(csv_text: str, *, required_fields: object = None) -> list[dict]:
-    preview = csv_import_preview(csv_text, required_fields=required_fields)
-    invalid_row = next((row for row in preview["rows"] if not row.get("valid")), None)
-    if invalid_row:
-        row_number = invalid_row.get("row_number")
-        error = (invalid_row.get("errors") or ["Invalid row"])[0]
-        raise ValueError(f"CSV row {row_number}: {error}")
-    payloads = preview["payloads"]
-    if not payloads:
-        raise ValueError("CSV import does not contain any dive rows")
-    return payloads
-
-
-def local_xml_name(element) -> str:
-    tag = getattr(element, "tag", "")
-    if not isinstance(tag, str):
-        return ""
-    return tag.rsplit("}", 1)[-1].lower()
-
-
-def child_text(element, *names: str) -> str:
-    wanted = {name.lower() for name in names}
-    for child in list(element):
-        if local_xml_name(child) in wanted:
-            return "".join(child.itertext()).strip()
-    return ""
-
-
-def first_child(element, *names: str):
-    wanted = {name.lower() for name in names}
-    for child in list(element):
-        if local_xml_name(child) in wanted:
-            return child
-    return None
-
-
-def parse_subsurface_number(value: object) -> float | None:
-    if value is None:
-        return None
-    match = re.search(r"-?\d+(?:\.\d+)?", str(value))
-    if not match:
-        return None
-    try:
-        return float(match.group(0))
-    except ValueError:
-        return None
-
-
-def parse_subsurface_depth_m(value: object) -> float | None:
-    number = parse_subsurface_number(value)
-    if number is None:
-        return None
-    text = str(value).lower()
-    if "ft" in text or "feet" in text:
-        return round(number * 0.3048, 3)
-    return number
-
-
-def parse_subsurface_pressure_bar(value: object) -> int | None:
-    number = parse_subsurface_number(value)
-    if number is None:
-        return None
-    text = str(value).lower()
-    if "psi" in text:
-        number = number * 0.0689476
-    return int(round(number))
-
-
-def parse_subsurface_temperature_c(value: object) -> float | None:
-    number = parse_subsurface_number(value)
-    if number is None:
-        return None
-    text = str(value).lower()
-    if "f" in text and "c" not in text:
-        number = (number - 32) * 5 / 9
-    return round(number, 2)
-
-
-def parse_subsurface_duration_seconds(value: object) -> int | None:
-    if value is None:
-        return None
-    text = str(value).strip().lower()
-    if not text:
-        return None
-    match = re.search(r"(\d+):(\d+)(?::(\d+))?", text)
-    if match:
-        first = int(match.group(1))
-        second = int(match.group(2))
-        third = int(match.group(3) or 0)
-        if match.group(3) is not None:
-            return first * 3600 + second * 60 + third
-        return first * 60 + second
-    number = parse_subsurface_number(text)
-    if number is None:
-        return None
-    if "hour" in text or re.search(r"\bh\b", text):
-        return int(round(number * 3600))
-    if "sec" in text:
-        return int(round(number))
-    return int(round(number * 60))
-
-
-def parse_subsurface_started_at(dive_element) -> str:
-    date_value = (dive_element.get("date") or child_text(dive_element, "date")).strip()
-    time_value = (dive_element.get("time") or child_text(dive_element, "time")).strip()
-    if not date_value:
-        raise ValueError("missing dive date")
-    if not time_value:
-        return date_value
-    time_value = time_value.replace("Z", "")
-    if re.match(r"^\d{2}:\d{2}$", time_value):
-        time_value = f"{time_value}:00"
-    return f"{date_value}T{time_value}"
-
-
-def parse_subsurface_gps(value: object) -> dict | None:
-    text = str(value or "").strip()
-    if not text:
-        return None
-    numbers = re.findall(r"-?\d+(?:\.\d+)?", text)
-    if len(numbers) < 2:
-        return None
-    lat = float(numbers[0])
-    lon = float(numbers[1])
-    if -90 <= lat <= 90 and -180 <= lon <= 180:
-        return {"lat": lat, "lon": lon}
-    return None
-
-
-def read_limited_stream(stream, *, max_bytes: int, label: str) -> bytes:
-    output = BytesIO()
-    remaining = max(max_bytes, 0)
-    while True:
-        chunk_size = min(1024 * 1024, remaining + 1)
-        chunk = stream.read(chunk_size)
-        if not chunk:
-            break
-        output.write(chunk)
-        remaining -= len(chunk)
-        if remaining < 0:
-            raise ValueError(f"{label} exceeds {max_bytes} byte uncompressed limit")
-    return output.getvalue()
-
-
-def decompress_gzip_limited(source: bytes, *, max_bytes: int, label: str) -> bytes:
-    try:
-        with gzip.GzipFile(fileobj=BytesIO(source)) as stream:
-            return read_limited_stream(stream, max_bytes=max_bytes, label=label)
-    except (OSError, EOFError) as exc:
-        raise ValueError(f"{label} must be a valid gzip file") from exc
-
-
-def read_zip_member_limited(archive: zipfile.ZipFile, member: str, *, max_bytes: int, label: str) -> bytes:
-    try:
-        with archive.open(member, "r") as stream:
-            return read_limited_stream(stream, max_bytes=max_bytes, label=label)
-    except zipfile.BadZipFile as exc:
-        raise ValueError(f"{label} must be a valid ZIP entry") from exc
-
-
-def decode_subsurface_export(body: bytes, *, max_uncompressed_bytes: int) -> str:
-    source = body or b""
-    if source.startswith(b"\xef\xbb\xbf"):
-        source = source[3:]
-    if source.startswith(b"\x1f\x8b"):
-        source = decompress_gzip_limited(source, max_bytes=max_uncompressed_bytes, label="Subsurface export")
-    elif zipfile.is_zipfile(BytesIO(source)):
-        with zipfile.ZipFile(BytesIO(source), "r") as archive:
-            names = [name for name in archive.namelist() if name.lower().endswith((".xml", ".ssrf"))]
-            if not names:
-                raise ValueError("Subsurface archive does not contain an XML export")
-            source = read_zip_member_limited(
-                archive,
-                names[0],
-                max_bytes=max_uncompressed_bytes,
-                label="Subsurface archive XML export",
-            )
-    elif len(source) > max_uncompressed_bytes:
-        raise ValueError(f"Subsurface export exceeds {max_uncompressed_bytes} byte uncompressed limit")
-    try:
-        return source.decode("utf-8-sig")
-    except UnicodeDecodeError:
-        return source.decode("latin-1")
-
-
-def parse_subsurface_sites(root) -> dict[str, dict]:
-    sites: dict[str, dict] = {}
-    for element in root.iter():
-        if local_xml_name(element) not in {"site", "dive_site", "divesite"}:
-            continue
-        site_id = element.get("uuid") or element.get("id") or element.get("name") or ""
-        name = element.get("name") or child_text(element, "name") or "".join(element.itertext()).strip()
-        gps = parse_subsurface_gps(element.get("gps") or element.get("location"))
-        if site_id:
-            sites[site_id] = {"name": name, "gps": gps}
-    return sites
-
-
-def parse_subsurface_location(dive_element, site_lookup: dict[str, dict]) -> tuple[str, dict | None]:
-    location_element = first_child(dive_element, "location", "site", "divesite")
-    if location_element is not None:
-        site_ref = location_element.get("uuid") or location_element.get("ref") or location_element.get("site") or ""
-        matched_site = site_lookup.get(site_ref, {})
-        name = "".join(location_element.itertext()).strip() or location_element.get("name") or matched_site.get("name") or ""
-        gps = parse_subsurface_gps(location_element.get("gps") or location_element.get("location")) or matched_site.get("gps")
-        return name, gps
-    site_ref = dive_element.get("divesiteid") or dive_element.get("siteid") or dive_element.get("site") or ""
-    matched_site = site_lookup.get(site_ref, {})
-    return matched_site.get("name") or "", matched_site.get("gps")
-
-
-def parse_subsurface_samples(divecomputer) -> list[dict]:
-    samples: list[dict] = []
-    for sample_element in list(divecomputer):
-        if local_xml_name(sample_element) != "sample":
-            continue
-        sample: dict = {}
-        time_seconds = parse_subsurface_duration_seconds(sample_element.get("time"))
-        depth_m = parse_subsurface_depth_m(sample_element.get("depth"))
-        temperature_c = parse_subsurface_temperature_c(sample_element.get("temp") or sample_element.get("temperature"))
-        pressure_bar = parse_subsurface_pressure_bar(sample_element.get("pressure") or sample_element.get("tankpressure"))
-        if time_seconds is not None:
-            sample["time_seconds"] = time_seconds
-        if depth_m is not None:
-            sample["depth_m"] = depth_m
-        if temperature_c is not None:
-            sample["temperature_c"] = temperature_c
-        if pressure_bar is not None:
-            sample["tank_pressure_bar"] = pressure_bar
-        if sample:
-            samples.append(sample)
-    return samples
-
-
-def build_subsurface_fields(dive_element, divecomputer, *, site: str, gps: dict | None, required_fields: object = None) -> dict:
-    logbook = {
-        "site": site,
-        "buddy": child_text(dive_element, "buddy"),
-        "guide": child_text(dive_element, "divemaster", "guide"),
-        "weather_description": child_text(dive_element, "weather"),
-        "visibility": dive_element.get("visibility") or child_text(dive_element, "visibility"),
-        "wetsuit_description": child_text(dive_element, "suit"),
-        "notes": child_text(dive_element, "notes"),
-    }
-    complete_logbook_if_ready(logbook, required_fields=required_fields)
-    fields: dict = {"source": "subsurface", "subsurface_import": True, "logbook": logbook}
-    if gps:
-        fields["location"] = gps
-    temperature_element = first_child(divecomputer, "temperature") if divecomputer is not None else None
-    if temperature_element is not None:
-        water = parse_subsurface_temperature_c(temperature_element.get("water"))
-        air = parse_subsurface_temperature_c(temperature_element.get("air"))
-        if water is not None:
-            fields["temperature_minimum_c"] = water
-            fields["temperature_surface_c"] = air if air is not None else water
-    cylinder = first_child(dive_element, "cylinder")
-    if cylinder is not None:
-        tank: dict = {}
-        size = parse_subsurface_number(cylinder.get("size"))
-        start = parse_subsurface_pressure_bar(cylinder.get("start"))
-        end = parse_subsurface_pressure_bar(cylinder.get("end"))
-        o2 = parse_subsurface_number(cylinder.get("o2") or cylinder.get("oxygen"))
-        he = parse_subsurface_number(cylinder.get("he") or cylinder.get("helium"))
-        if size is not None:
-            tank["volume"] = size
-        if start is not None:
-            tank["beginpressure_bar"] = start
-        if end is not None:
-            tank["endpressure_bar"] = end
-        if o2 is not None:
-            tank["o2_percent"] = o2
-            fields["gasmixes"] = [{"oxygen_fraction": o2 / 100 if o2 > 1 else o2}]
-        if he is not None:
-            tank["he_percent"] = he
-        if tank:
-            fields["tanks"] = [tank]
-    return fields
-
-
-def subsurface_import_preview(export_text: str, *, required_fields: object = None) -> dict:
-    if not export_text.strip():
-        raise ValueError("Subsurface import file is empty")
-    try:
-        root = ElementTree.fromstring(export_text)
-    except ElementTree.ParseError as exc:
-        raise ValueError("Subsurface import must be a valid XML export") from exc
-
-    site_lookup = parse_subsurface_sites(root)
-    dive_elements = [element for element in root.iter() if local_xml_name(element) == "dive"]
-    payloads: list[dict] = []
-    rows: list[dict] = []
-    for index, dive_element in enumerate(dive_elements, start=1):
-        dive_number = dive_element.get("number") or str(index)
-        try:
-            started_at = parse_subsurface_started_at(dive_element)
-            divecomputer = first_child(dive_element, "divecomputer")
-            depth_element = first_child(divecomputer, "depth") if divecomputer is not None else None
-            max_depth_source = depth_element.get("max") if depth_element is not None else dive_element.get("maxdepth")
-            max_depth_m = parse_subsurface_depth_m(max_depth_source)
-            avg_depth_m = parse_subsurface_depth_m(depth_element.get("mean")) if depth_element is not None else None
-            duration_seconds = parse_subsurface_duration_seconds(dive_element.get("duration") or child_text(dive_element, "duration"))
-            if duration_seconds is None:
-                raise ValueError("missing duration")
-            if max_depth_m is None:
-                sample_depths = [sample.get("depth_m") for sample in parse_subsurface_samples(divecomputer) if isinstance(sample.get("depth_m"), (int, float))] if divecomputer is not None else []
-                max_depth_m = max(sample_depths) if sample_depths else None
-            if max_depth_m is None:
-                raise ValueError("missing max depth")
-            site, gps = parse_subsurface_location(dive_element, site_lookup)
-            samples = parse_subsurface_samples(divecomputer) if divecomputer is not None else []
-            fields = build_subsurface_fields(dive_element, divecomputer, site=site, gps=gps, required_fields=required_fields)
-        except ValueError as exc:
-            rows.append(invalid_import_validation_row(row_number=index, source_id=dive_number, error=exc))
-            continue
-
-        source_payload = ElementTree.tostring(dive_element, encoding="unicode")
-        raw_data_b64 = base64.b64encode(source_payload.encode("utf-8")).decode("ascii")
-        raw_sha256 = hashlib.sha256(source_payload.encode("utf-8")).hexdigest()
-        dive_uid = f"subsurface-{raw_sha256[:24]}"
-        model = divecomputer.get("model") if divecomputer is not None else ""
-
-        payload = {
-            "vendor": "Subsurface",
-            "product": model or "Export",
-            "dive_uid": dive_uid,
-            "started_at": started_at,
-            "duration_seconds": duration_seconds,
-            "max_depth_m": max_depth_m,
-            "avg_depth_m": avg_depth_m,
-            "fields": fields,
-            "raw_sha256": raw_sha256,
-            "raw_data_b64": raw_data_b64,
-            "samples": samples,
-            "imported_at": now_iso(),
-            "subsurface_number": dive_number,
-        }
-        payloads.append(payload)
-        rows.append(import_validation_row_from_payload(payload, row_number=index, source_id=dive_number))
-
-    if not payloads and not rows:
-        raise ValueError("Subsurface import does not contain any dives")
-    return {"payloads": payloads, "rows": rows}
-
-
-def subsurface_import_payloads(export_text: str, *, required_fields: object = None) -> list[dict]:
-    preview = subsurface_import_preview(export_text, required_fields=required_fields)
-    invalid_row = next((row for row in preview["rows"] if not row.get("valid")), None)
-    if invalid_row:
-        row_number = invalid_row.get("row_number")
-        error = (invalid_row.get("errors") or ["Invalid dive"])[0]
-        raise ValueError(f"Subsurface dive {row_number}: {error}")
-    payloads = preview["payloads"]
-    if not payloads:
-        raise ValueError("Subsurface import does not contain any dives")
-    return payloads
-
-
-def mark_import_preview_duplicates(rows: list[dict], existing_dive_uids: set[str] | None = None) -> list[dict]:
-    existing = existing_dive_uids or set()
-    seen: set[str] = set()
-    marked_rows: list[dict] = []
-    for row in rows:
-        next_row = dict(row)
-        if next_row.get("valid"):
-            dive_uid = str(next_row.get("dive_uid") or "")
-            duplicate = bool(dive_uid and (dive_uid in existing or dive_uid in seen))
-            next_row["duplicate"] = duplicate
-            next_row["status"] = "duplicate" if duplicate else "ready"
-            if dive_uid:
-                seen.add(dive_uid)
-        marked_rows.append(next_row)
-    return marked_rows
-
-
-def import_validation_summary(rows: list[dict], *, inserted: int | None = None, ids: list[int] | None = None) -> dict:
-    invalid_rows = sum(1 for row in rows if not row.get("valid"))
-    duplicate_rows = sum(1 for row in rows if row.get("duplicate") or row.get("status") == "duplicate")
-    ready_rows = sum(1 for row in rows if row.get("status") == "ready")
-    valid_rows = sum(1 for row in rows if row.get("valid"))
-    summary = {
-        "rows": len(rows),
-        "valid_rows": valid_rows,
-        "invalid_rows": invalid_rows,
-        "ready_rows": ready_rows,
-        "duplicates": duplicate_rows,
-        "dives": rows,
-    }
-    if inserted is not None:
-        summary["inserted"] = inserted
-    if ids is not None:
-        summary["ids"] = ids
-    return summary
-
-
-def import_payload_summary(payloads: list[dict]) -> dict:
-    return {
-        "rows": len(payloads),
-        "dives": [
-            {
-                "dive_uid": payload.get("dive_uid"),
-                "started_at": payload.get("started_at"),
-                "site": ((payload.get("fields") or {}).get("logbook") or {}).get("site") or "",
-                "duration_seconds": payload.get("duration_seconds"),
-                "max_depth_m": payload.get("max_depth_m"),
-                "sample_count": len(payload.get("samples") or []),
-            }
-            for payload in payloads[:25]
-        ],
-    }
-
-
-def build_pdf_lines(dives: list[dict], *, generated_at: datetime) -> list[dict]:
-    lines = [
-        {"text": "DiveVault Logbook Export", "font": "F2", "size": 20, "gap": 10},
-        {"text": f"Generated {generated_at.strftime('%Y-%m-%d %H:%M UTC')}", "font": "F1", "size": 10, "gap": 4},
-        {"text": f"{len(dives)} dives included", "font": "F1", "size": 10, "gap": 12},
-    ]
-    if not dives:
-        lines.append({"text": "No dives available for export.", "font": "F1", "size": 12, "gap": 12})
-        return lines
-
-    for index, dive in enumerate(dives, start=1):
-        logbook = dive.get("fields", {}).get("logbook") if isinstance(dive.get("fields"), dict) else {}
-        logbook = logbook if isinstance(logbook, dict) else {}
-        site = logbook.get("site") or "Unassigned site"
-        title = f"{index}. {site}"
-        started_at = format_export_datetime(dive.get("started_at"))
-        status = (logbook.get("status") or "imported").upper()
-        lines.append({"text": title, "font": "F2", "size": 12, "gap": 4})
-        lines.append({"text": f"{started_at} | Status {status}", "font": "F1", "size": 10, "gap": 4})
-        lines.append(
-            {
-                "text": (
-                    f"{dive.get('vendor') or 'Unknown'} {dive.get('product') or ''} | "
-                    f"Depth {format_depth_label(dive.get('max_depth_m'))} | "
-                    f"Duration {format_duration_label(dive.get('duration_seconds'))} | "
-                    f"Samples {dive.get('sample_count') or 0}"
-                ),
-                "font": "F1",
-                "size": 10,
-                "gap": 4,
-            }
-        )
-        lines.append(
-            {
-                "text": f"Buddy {logbook.get('buddy') or '-'} | Guide {logbook.get('guide') or '-'}",
-                "font": "F1",
-                "size": 10,
-                "gap": 4,
-            }
-        )
-        optional_details = [
-            ("Weather", logbook.get("weather_description")),
-            ("Visibility", logbook.get("visibility")),
-            ("Wetsuit", logbook.get("wetsuit_description")),
-            ("Weights", logbook.get("weight_description")),
-        ]
-        detail_text = " | ".join(
-            f"{label} {value.strip()}"
-            for label, value in optional_details
-            if isinstance(value, str) and value.strip()
-        )
-        if detail_text:
-            for detail_line in wrap_pdf_text(detail_text, width=92)[:2]:
-                lines.append({"text": detail_line, "font": "F1", "size": 10, "gap": 4})
-        notes = logbook.get("notes")
-        if isinstance(notes, str) and notes.strip():
-            wrapped_notes = wrap_pdf_text(f"Notes: {notes.strip()}", width=92)[:3]
-            for note_line in wrapped_notes:
-                lines.append({"text": note_line, "font": "F1", "size": 10, "gap": 4})
-        lines.append({"text": "", "font": "F1", "size": 8, "gap": 8})
-    return lines
-
-
-def paginate_pdf_lines(lines: list[dict]) -> list[list[dict]]:
-    pages: list[list[dict]] = []
-    current_page: list[dict] = []
-    y_cursor = PDF_MARGIN_TOP
-
-    for line in lines:
-        required = int(line.get("size", 10)) + int(line.get("gap", 4))
-        if current_page and y_cursor - required < PDF_MARGIN_BOTTOM:
-            pages.append(current_page)
-            current_page = []
-            y_cursor = PDF_MARGIN_TOP
-        current_page.append(line)
-        y_cursor -= required
-
-    if current_page:
-        pages.append(current_page)
-    return pages or [[{"text": "No dives available for export.", "font": "F1", "size": 12, "gap": 12}]]
-
-
-def build_pdf_stream(page_lines: list[dict]) -> bytes:
-    commands: list[str] = []
-    y_cursor = PDF_MARGIN_TOP
-    for line in page_lines:
-        size = int(line.get("size", 10))
-        gap = int(line.get("gap", 4))
-        text = pdf_text(line.get("text") or " ")
-        font = line.get("font") or "F1"
-        commands.append(f"BT /{font} {size} Tf 1 0 0 1 {PDF_MARGIN_LEFT} {y_cursor} Tm ({text}) Tj ET")
-        y_cursor -= size + gap
-    return "\n".join(commands).encode("latin-1", errors="replace")
-
-
-def build_pdf_document(dives: list[dict]) -> bytes:
-    generated_at = now_utc()
-    pages = paginate_pdf_lines(build_pdf_lines(dives, generated_at=generated_at))
-    objects: list[bytes] = []
-
-    def add_object(body: bytes | str) -> int:
-        body_bytes = body.encode("latin-1") if isinstance(body, str) else body
-        objects.append(body_bytes)
-        return len(objects)
-
-    add_object("<< /Type /Catalog /Pages 2 0 R >>")
-    add_object("<< /Type /Pages /Kids [] /Count 0 >>")
-    font_regular_id = add_object("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>")
-    font_bold_id = add_object("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>")
-
-    page_ids: list[int] = []
-    for page_lines in pages:
-        stream = build_pdf_stream(page_lines)
-        stream_id = add_object(b"<< /Length %d >>\nstream\n%s\nendstream" % (len(stream), stream))
-        page_id = add_object(
-            (
-                f"<< /Type /Page /Parent 2 0 R "
-                f"/MediaBox [0 0 {PDF_PAGE_WIDTH} {PDF_PAGE_HEIGHT}] "
-                f"/Resources << /Font << /F1 {font_regular_id} 0 R /F2 {font_bold_id} 0 R >> >> "
-                f"/Contents {stream_id} 0 R >>"
-            ).encode("latin-1")
-        )
-        page_ids.append(page_id)
-
-    kids = " ".join(f"{page_id} 0 R" for page_id in page_ids)
-    objects[1] = f"<< /Type /Pages /Kids [{kids}] /Count {len(page_ids)} >>".encode("latin-1")
-
-    output = bytearray(b"%PDF-1.4\n%\xe2\xe3\xcf\xd3\n")
-    offsets = [0]
-    for index, body in enumerate(objects, start=1):
-        offsets.append(len(output))
-        output.extend(f"{index} 0 obj\n".encode("latin-1"))
-        output.extend(body)
-        output.extend(b"\nendobj\n")
-
-    xref_start = len(output)
-    output.extend(f"xref\n0 {len(objects) + 1}\n".encode("latin-1"))
-    output.extend(b"0000000000 65535 f \n")
-    for offset in offsets[1:]:
-        output.extend(f"{offset:010d} 00000 n \n".encode("latin-1"))
-    output.extend(
-        (
-            f"trailer\n<< /Size {len(objects) + 1} /Root 1 0 R >>\n"
-            f"startxref\n{xref_start}\n%%EOF\n"
-        ).encode("latin-1")
-    )
-    return bytes(output)
+def _app_backup_repository():
+    return sys.modules[__name__]
 
 
 def profile_license_documents(conn, user_id: str, profile: dict) -> list[dict]:
-    documents: list[dict] = []
-    for license_entry in profile.get("licenses") or []:
-        if not isinstance(license_entry, dict) or not license_entry.get("pdf"):
-            continue
-        license_id = license_entry.get("id")
-        if not isinstance(license_id, str) or not license_id:
-            continue
-        license_pdf = get_user_profile_license_pdf(conn, user_id, license_id)
-        if not license_pdf:
-            continue
-        documents.append(
-            {
-                "license_id": license_id,
-                "filename": license_pdf["filename"],
-                "content_type": license_pdf["content_type"],
-                "uploaded_at": license_pdf.get("uploaded_at"),
-                "data_b64": base64.b64encode(license_pdf["data"]).decode("ascii"),
-            }
-        )
-    return documents
+    return service_profile_license_documents(conn, user_id, profile, repo=_app_backup_repository())
 
 
 def build_backup_payload(conn, user_id: str) -> dict:
-    profile = get_user_profile(conn, user_id)
-    return {
-        "version": BACKUP_EXPORT_VERSION,
-        "app": "DiveVault",
-        "exported_at": now_utc().isoformat(),
-        "source_user_id": user_id,
-        "profile": profile,
-        "equipment": list_user_equipment(conn, user_id),
-        "license_documents": profile_license_documents(conn, user_id, profile),
-        "device_states": list_device_states(conn, user_id),
-        "dives": list_all_dives(conn, user_id, include_samples=True, include_raw_data=True),
-    }
-
-
-def backup_archive_license_path(license_id: str, filename: str, used_paths: set[str]) -> str:
-    safe_license_id = re.sub(r"[^A-Za-z0-9_-]+", "-", license_id).strip("-") or "license"
-    safe_filename = sanitize_profile_license_filename(filename)
-    base_path = f"licenses/{safe_license_id}/{safe_filename}"
-    path = base_path
-    suffix = 2
-    while path in used_paths:
-        stem = Path(safe_filename).stem or "license"
-        extension = Path(safe_filename).suffix or ".pdf"
-        path = f"licenses/{safe_license_id}/{stem}-{suffix}{extension}"
-        suffix += 1
-    used_paths.add(path)
-    return path
-
-
-def build_backup_archive(payload: dict) -> bytes:
-    manifest = dict(payload)
-    license_documents: list[dict] = []
-    files: list[tuple[str, bytes]] = []
-    used_paths: set[str] = set()
-
-    for entry in payload.get("license_documents") or []:
-        if not isinstance(entry, dict):
-            continue
-        data_b64 = entry.get("data_b64")
-        if not isinstance(data_b64, str) or not data_b64:
-            continue
-        try:
-            pdf_bytes = base64.b64decode(data_b64, validate=True)
-        except (ValueError, binascii.Error):
-            continue
-        license_id = str(entry.get("license_id") or "").strip()
-        if not license_id:
-            continue
-        file_path = backup_archive_license_path(license_id, entry.get("filename") or "license.pdf", used_paths)
-        document = {key: value for key, value in entry.items() if key != "data_b64"}
-        document["file_path"] = file_path
-        license_documents.append(document)
-        files.append((file_path, pdf_bytes))
-
-    manifest["license_documents"] = license_documents
-
-    output = BytesIO()
-    with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED) as archive:
-        archive.writestr(
-            BACKUP_MANIFEST_FILENAME,
-            json.dumps(manifest, indent=2, sort_keys=True).encode("utf-8"),
-        )
-        for file_path, pdf_bytes in files:
-            archive.writestr(file_path, pdf_bytes)
-    return output.getvalue()
-
-
-def is_safe_backup_member_path(path: str) -> bool:
-    if not isinstance(path, str) or not path or path.startswith(("/", "\\")):
-        return False
-    normalized = Path(path)
-    return not normalized.is_absolute() and ".." not in normalized.parts
-
-
-def parse_backup_archive(archive_bytes: bytes, *, max_uncompressed_bytes: int) -> dict:
-    try:
-        with zipfile.ZipFile(BytesIO(archive_bytes), "r") as archive:
-            infos = archive.infolist()
-            if sum(info.file_size for info in infos) > max_uncompressed_bytes:
-                raise ValueError(f"Backup archive exceeds {max_uncompressed_bytes} byte uncompressed limit")
-            names = {info.filename for info in infos}
-            if BACKUP_MANIFEST_FILENAME not in names:
-                raise ValueError(f"Backup archive is missing {BACKUP_MANIFEST_FILENAME}")
-            for name in names:
-                if not is_safe_backup_member_path(name):
-                    raise ValueError(f"Backup archive contains unsafe path {name!r}")
-            try:
-                remaining_uncompressed_bytes = max_uncompressed_bytes
-                manifest_bytes = read_zip_member_limited(
-                    archive,
-                    BACKUP_MANIFEST_FILENAME,
-                    max_bytes=remaining_uncompressed_bytes,
-                    label=f"Backup archive {BACKUP_MANIFEST_FILENAME}",
-                )
-                remaining_uncompressed_bytes -= len(manifest_bytes)
-                manifest = json.loads(manifest_bytes.decode("utf-8"))
-            except json.JSONDecodeError as exc:
-                raise ValueError(f"Backup archive {BACKUP_MANIFEST_FILENAME} is invalid JSON") from exc
-            if not isinstance(manifest, dict):
-                raise ValueError(f"Backup archive {BACKUP_MANIFEST_FILENAME} must contain a JSON object")
-
-            license_documents: list[dict] = []
-            for index, entry in enumerate(manifest.get("license_documents") or [], start=1):
-                if not isinstance(entry, dict):
-                    raise ValueError(f"Backup license document #{index} must be an object")
-                if entry.get("data_b64"):
-                    license_documents.append(entry)
-                    continue
-                file_path = entry.get("file_path")
-                if not is_safe_backup_member_path(file_path) or file_path not in names:
-                    raise ValueError(f"Backup license document #{index} references a missing file")
-                document = {key: value for key, value in entry.items() if key != "file_path"}
-                document_bytes = read_zip_member_limited(
-                    archive,
-                    file_path,
-                    max_bytes=remaining_uncompressed_bytes,
-                    label=f"Backup archive {file_path}",
-                )
-                remaining_uncompressed_bytes -= len(document_bytes)
-                document["data_b64"] = base64.b64encode(document_bytes).decode("ascii")
-                license_documents.append(document)
-            manifest["license_documents"] = license_documents
-            return manifest
-    except zipfile.BadZipFile as exc:
-        raise ValueError("Backup file must be a valid ZIP archive") from exc
-
-
-def parse_backup_payload(payload: dict | None) -> dict:
-    if not isinstance(payload, dict):
-        raise ValueError("Backup import requires a JSON object")
-
-    version = payload.get("version")
-    if version != BACKUP_EXPORT_VERSION:
-        raise ValueError(f"Unsupported backup version: {version!r}")
-
-    profile = payload.get("profile") or {}
-    if not isinstance(profile, dict):
-        raise ValueError("Backup profile must be an object")
-
-    device_states = payload.get("device_states") or []
-    if not isinstance(device_states, list):
-        raise ValueError("Backup device_states must be an array")
-
-    equipment = payload.get("equipment") or []
-    if not isinstance(equipment, list):
-        raise ValueError("Backup equipment must be an array")
-
-    normalized_device_states: list[dict] = []
-    for index, entry in enumerate(device_states, start=1):
-        if not isinstance(entry, dict):
-            raise ValueError(f"Backup device state #{index} must be an object")
-        vendor = str(entry.get("vendor") or "").strip()
-        product = str(entry.get("product") or "").strip()
-        if not vendor or not product:
-            raise ValueError(f"Backup device state #{index} is missing vendor or product")
-        normalized_device_states.append(
-            {
-                "vendor": vendor,
-                "product": product,
-                "fingerprint_hex": entry.get("fingerprint_hex"),
-            }
-        )
-
-    dives = payload.get("dives") or []
-    if not isinstance(dives, list):
-        raise ValueError("Backup dives must be an array")
-
-    normalized_dives: list[dict] = []
-    for index, entry in enumerate(dives, start=1):
-        if not isinstance(entry, dict):
-            raise ValueError(f"Backup dive #{index} must be an object")
-        missing = [key for key in ("vendor", "product", "dive_uid", "raw_sha256", "raw_data_b64") if not entry.get(key)]
-        if missing:
-            raise ValueError(f"Backup dive #{index} is missing required fields: {', '.join(missing)}")
-        try:
-            base64.b64decode(entry["raw_data_b64"], validate=True)
-        except (ValueError, binascii.Error) as exc:
-            raise ValueError(f"Backup dive #{index} has invalid raw_data_b64") from exc
-        samples = entry.get("samples") if isinstance(entry.get("samples"), list) else []
-        fields = entry.get("fields") if isinstance(entry.get("fields"), dict) else {}
-        normalized_dives.append(
-            {
-                "vendor": entry["vendor"],
-                "product": entry["product"],
-                "fingerprint_hex": entry.get("fingerprint_hex"),
-                "dive_uid": entry["dive_uid"],
-                "started_at": entry.get("started_at"),
-                "duration_ms": entry.get("duration_ms"),
-                "duration_seconds": entry.get("duration_seconds"),
-                "max_depth_m": entry.get("max_depth_m"),
-                "avg_depth_m": entry.get("avg_depth_m"),
-                "fields": fields,
-                "raw_sha256": entry["raw_sha256"],
-                "raw_data_b64": entry["raw_data_b64"],
-                "samples": samples,
-                "imported_at": entry.get("imported_at"),
-            }
-        )
-
-    license_documents = payload.get("license_documents") or []
-    if not isinstance(license_documents, list):
-        raise ValueError("Backup license_documents must be an array")
-
-    allowed_license_ids = {
-        str(license.get("id")).strip()
-        for license in profile.get("licenses") or []
-        if isinstance(license, dict) and str(license.get("id") or "").strip()
-    }
-    normalized_license_documents: list[dict] = []
-    for index, entry in enumerate(license_documents, start=1):
-        if not isinstance(entry, dict):
-            raise ValueError(f"Backup license document #{index} must be an object")
-        license_id = str(entry.get("license_id") or "").strip()
-        if not license_id:
-            raise ValueError(f"Backup license document #{index} is missing license_id")
-        if allowed_license_ids and license_id not in allowed_license_ids:
-            raise ValueError(f"Backup license document #{index} references unknown license_id {license_id}")
-        data_b64 = entry.get("data_b64")
-        if not isinstance(data_b64, str) or not data_b64.strip():
-            raise ValueError(f"Backup license document #{index} is missing data_b64")
-        try:
-            pdf_bytes = base64.b64decode(data_b64, validate=True)
-        except (ValueError, binascii.Error) as exc:
-            raise ValueError(f"Backup license document #{index} has invalid data_b64") from exc
-        normalized_license_documents.append(
-            {
-                "license_id": license_id,
-                "filename": sanitize_profile_license_filename(entry.get("filename")),
-                "content_type": (entry.get("content_type") or "application/pdf").strip().lower(),
-                "pdf_bytes": pdf_bytes,
-            }
-        )
-
-    return {
-        "profile": {
-            "name": profile.get("name"),
-            "email": profile.get("email"),
-            "licenses": profile.get("licenses"),
-            "dive_sites": profile.get("dive_sites"),
-            "buddies": profile.get("buddies"),
-            "guides": profile.get("guides"),
-        },
-        "equipment": equipment,
-        "device_states": normalized_device_states,
-        "dives": normalized_dives,
-        "license_documents": normalized_license_documents,
-    }
+    return service_build_backup_payload(conn, user_id, repo=_app_backup_repository())
 
 
 def import_backup_payload(conn, user_id: str, payload: dict | None) -> dict:
-    normalized = parse_backup_payload(payload)
-    profile = save_user_profile(conn, user_id, normalized["profile"])
-    save_user_equipment(conn, user_id, normalized["equipment"])
+    return service_import_backup_payload(conn, user_id, payload, repo=_app_backup_repository())
 
-    licenses_imported = 0
-    for license_document in normalized["license_documents"]:
-        if license_document["content_type"] != "application/pdf":
-            raise ValueError(f"License {license_document['license_id']} must use content_type application/pdf")
-        updated_profile = save_user_profile_license_pdf(
-            conn,
-            user_id,
-            license_id=license_document["license_id"],
-            filename=license_document["filename"],
-            content_type=license_document["content_type"],
-            pdf_bytes=license_document["pdf_bytes"],
-        )
-        if updated_profile is None:
-            raise ValueError(f"License {license_document['license_id']} does not exist in the imported profile")
-        profile = updated_profile
-        licenses_imported += 1
 
-    for device_state in normalized["device_states"]:
-        save_device_state(
-            conn,
-            user_id,
-            device_state["vendor"],
-            device_state["product"],
-            device_state.get("fingerprint_hex"),
-        )
 
-    dives_inserted = 0
-    for dive in normalized["dives"]:
-        if insert_dive_record(conn, user_id, dive):
-            dives_inserted += 1
 
-    return {
-        "profile": profile,
-        "summary": {
-            "dives_in_backup": len(normalized["dives"]),
-            "dives_inserted": dives_inserted,
-            "device_states_imported": len(normalized["device_states"]),
-            "license_documents_imported": licenses_imported,
-        },
-    }
+
+
+
+
+
 
 
 class DiveBackendHandler(BaseHTTPRequestHandler):
@@ -2144,1361 +434,144 @@ class DiveBackendHandler(BaseHTTPRequestHandler):
         self._observe_response(204)
 
     def do_GET(self) -> None:
+        self._handle_method("GET")
+
+    def do_POST(self) -> None:
+        self._handle_method("POST")
+
+    def do_PUT(self) -> None:
+        self._handle_method("PUT")
+
+    def do_DELETE(self) -> None:
+        self._handle_method("DELETE")
+
+    def log_message(self, fmt: str, *args) -> None:
+        LOGGER.debug("HTTP %s - %s", self.address_string(), fmt % args)
+
+    def _handle_method(self, method: str) -> None:
         self._mark_request_started()
         parsed = urlparse(self.path)
         path = parsed.path
         query = parse_qs(parsed.query)
         if path in {"/health", "/api/health"}:
-            LOGGER.debug("GET %s query=%s", path, dict(query))
+            LOGGER.debug("%s %s query=%s request_id=%s", method, path, dict(query), self._request_id)
         else:
-            LOGGER.info("GET %s query=%s", path, dict(query))
+            LOGGER.info("%s %s query=%s request_id=%s", method, path, dict(query), self._request_id)
 
-        if path == "/metrics":
-            if not bool(getattr(self.server, "metrics_enabled", False)):
-                self._send_json(404, {"error": "Not found"})
-                return
-            metrics = getattr(self.server, "metrics", None)
-            if metrics is None:
-                self._send_json(503, {"error": "Metrics collector is not configured"})
-                return
-            self._send_bytes(
-                200,
-                metrics.render(
-                    database_ready=bool(getattr(self.server, "database_ready", False)),
-                    schema_version=getattr(self.server, "database_schema_version", 0),
-                ),
-                "text/plain; version=0.0.4; charset=utf-8",
-                extra_headers={"Cache-Control": "no-store"},
-            )
-            return
-
-        if path in {"/health", "/api/health"}:
-            database_ready = bool(getattr(self.server, "database_ready", False))
-            database_ready_error = getattr(self.server, "database_ready_error", "")
-            if not database_ready:
-                payload = {
-                    "status": "starting",
-                    "database": "migrating",
-                }
-                if database_ready_error:
-                    payload["error"] = database_ready_error
-                self._send_json(503, payload)
-                return
-            self._send_json(200, {"status": "ok"})
-            return
-
-        if path == "/config.js":
-            self._send_config_js()
-            return
-
-        match = re.fullmatch(r"/api/public/divers/([a-z0-9-]+)", path)
-        if match:
-            public_slug = match.group(1)
-            conn = self._open_db()
-            if conn is None:
-                return
-            try:
-                public_profile, dives, stats = get_public_profile_dives(conn, public_slug)
-            finally:
-                conn.close()
-
-            if not public_profile:
-                self._send_json(404, {"error": "Public dive profile not found"})
-                return
-
-            LOGGER.info(
-                "Returned public dive profile slug=%s dives=%d",
-                public_slug,
-                len(dives),
-            )
-            self._send_json(
-                200,
-                {
-                    "diver": public_profile,
-                    "dives": dives,
-                    "stats": stats,
-                },
-            )
-            return
-
-        if path == "/api/device-state":
-            user_id = self._require_principal_id()
-            if user_id is None:
-                return
-            vendor = self._single_query_arg(query, "vendor")
-            product = self._single_query_arg(query, "product")
-            if not vendor or not product:
-                self._send_json(400, {"error": "vendor and product are required"})
-                return
-
-            conn = self._open_db()
-            if conn is None:
-                return
-            try:
-                state = get_device_state(conn, user_id, vendor, product)
-                LOGGER.info(
-                    "Returned device state user_id=%s vendor=%s product=%s fingerprint=%s",
-                    user_id,
-                    vendor,
-                    product,
-                    state.get("fingerprint_hex"),
-                )
-                self._send_json(200, state)
-            finally:
-                conn.close()
-            return
-
-        if path == "/api/profile":
-            user_id = self._require_principal_id()
-            if user_id is None:
-                return
-
-            conn = self._open_db()
-            if conn is None:
-                return
-            try:
-                profile = get_user_profile(conn, user_id)
-            finally:
-                conn.close()
-
-            LOGGER.info(
-                "Returned profile user_id=%s license_count=%d licenses_with_pdf=%d",
-                user_id,
-                len(profile.get("licenses") or []),
-                sum(1 for license_entry in profile.get("licenses") or [] if license_entry.get("pdf")),
-            )
-            self._send_json(200, profile)
-            return
-
-        if path == "/api/equipment":
-            user_id = self._require_principal_id()
-            if user_id is None:
-                return
-            conn = self._open_db()
-            if conn is None:
-                return
-            try:
-                equipment = list_user_equipment(conn, user_id)
-            finally:
-                conn.close()
-            self._send_json(200, {"equipment": equipment})
-            return
-
-        if path == "/api/exports/dives.csv":
-            user_id = self._require_principal_id()
-            if user_id is None:
-                return
-
-            conn = self._open_db()
-            if conn is None:
-                return
-            try:
-                dives = list_all_dives(conn, user_id, include_samples=True, include_raw_data=False)
-            finally:
-                conn.close()
-
-            filename = attachment_filename(f"divevault-dives-{timestamp_slug()}.csv")
-            LOGGER.info("Returned dive CSV export user_id=%s dives=%d filename=%s", user_id, len(dives), filename)
-            self._send_bytes(
-                200,
-                build_dives_csv(dives),
-                "text/csv; charset=utf-8",
-                extra_headers={
-                    "Content-Disposition": f'attachment; filename="{filename}"',
-                    "Cache-Control": "no-store",
-                },
-            )
-            return
-
-        if path == "/api/exports/dives.pdf":
-            user_id = self._require_principal_id()
-            if user_id is None:
-                return
-
-            conn = self._open_db()
-            if conn is None:
-                return
-            try:
-                dives = list_all_dives(conn, user_id, include_samples=True, include_raw_data=False)
-            finally:
-                conn.close()
-
-            filename = attachment_filename(f"divevault-dives-{timestamp_slug()}.pdf")
-            LOGGER.info("Returned dive PDF export user_id=%s dives=%d filename=%s", user_id, len(dives), filename)
-            self._send_bytes(
-                200,
-                build_pdf_document(dives),
-                "application/pdf",
-                extra_headers={
-                    "Content-Disposition": f'attachment; filename="{filename}"',
-                    "Cache-Control": "no-store",
-                },
-            )
-            return
-
-        if path == "/api/backup/export":
-            user_id = self._require_principal_id()
-            if user_id is None:
-                return
-
-            conn = self._open_db()
-            if conn is None:
-                return
-            try:
-                payload = build_backup_payload(conn, user_id)
-            finally:
-                conn.close()
-
-            archive_bytes = build_backup_archive(payload)
-            filename = attachment_filename(f"divevault-backup-{timestamp_slug()}.zip")
-            LOGGER.info(
-                "Returned backup export user_id=%s dives=%d device_states=%d licenses=%d filename=%s",
-                user_id,
-                len(payload.get("dives") or []),
-                len(payload.get("device_states") or []),
-                len(payload.get("license_documents") or []),
-                filename,
-            )
-            self._send_bytes(
-                200,
-                archive_bytes,
-                "application/zip",
-                extra_headers={
-                    "Content-Disposition": f'attachment; filename="{filename}"',
-                    "Cache-Control": "no-store",
-                },
-            )
-            return
-
-        if path == "/api/geocode/search":
-            user_id = self._require_principal_id()
-            if user_id is None:
-                return
-
-            query_value = self._single_query_arg(query, "q")
-            if not query_value or not query_value.strip():
-                self._send_json(400, {"error": "Missing q query parameter"})
-                return
-
-            try:
-                result = self.server.nominatim_client.search(query_value)
-            except ValueError as exc:
-                self._send_json(400, {"error": str(exc)})
-                return
-            except RuntimeError as exc:
-                self._send_json(503, {"error": str(exc)})
-                return
-
-            LOGGER.info("Completed geocode lookup user_id=%s query=%s found=%s", user_id, query_value, result.get("found"))
-            self._send_json(200, result)
-            return
-
-        match = re.fullmatch(r"/api/profile/licenses/([A-Za-z0-9_-]+)/pdf", path)
-        if match:
-            user_id = self._require_principal_id()
-            if user_id is None:
-                return
-            license_id = match.group(1)
-
-            conn = self._open_db()
-            if conn is None:
-                return
-            try:
-                license_pdf = get_user_profile_license_pdf(conn, user_id, license_id)
-            finally:
-                conn.close()
-
-            if not license_pdf:
-                self._send_json(404, {"error": "License PDF not found"})
-                return
-
-            LOGGER.info("Returned profile license user_id=%s license_id=%s filename=%s", user_id, license_id, license_pdf["filename"])
-            self._send_bytes(
-                200,
-                license_pdf["data"],
-                license_pdf["content_type"],
-                extra_headers={
-                    "Content-Disposition": f'inline; filename="{license_pdf["filename"]}"',
-                    "Cache-Control": "no-store",
-                },
-            )
-            return
-
-        if path == "/api/auth/status":
-            invite_token = (self._single_query_arg(query, "invite_token") or "").strip()
-            conn = self._open_db()
-            if conn is None:
-                return
-            try:
-                settings = get_auth_instance_settings(conn)
-                invite = None
-                if invite_token:
-                    invite = get_auth_invite_by_token(conn, invite_token, now_timestamp=int(time.time()))
-            finally:
-                conn.close()
-            self._send_json(
-                200,
-                {
-                    "initialized": settings.get("initialized", False),
-                    "user_count": settings.get("user_count", 0),
-                    "bootstrap_registration_open": settings.get("bootstrap_registration_open", False),
-                    "public_registration_enabled": settings.get("public_registration_enabled", False),
-                    "public_registration_open": settings.get("public_registration_open", False),
-                    "invite": invite,
-                },
-            )
-            return
-
-        if path == "/api/auth/me":
-            claims = self._require_auth()
-            if claims is None:
-                return
-            conn = self._open_db()
-            if conn is None:
-                return
-            try:
-                auth_user = get_auth_user_by_id(conn, claims.get("sub") or "")
-                auth_settings = get_auth_instance_settings(conn)
-            finally:
-                conn.close()
-            self._send_json(
-                200,
-                {
-                    "token_type": claims.get("token_type", "session_token"),
-                    "session_id": claims.get("sid"),
-                    "user_id": claims.get("sub"),
-                    "email": (auth_user or {}).get("email") or claims.get("email"),
-                    "first_name": (auth_user or {}).get("first_name", ""),
-                    "last_name": (auth_user or {}).get("last_name", ""),
-                    "role": (auth_user or {}).get("role") or claims.get("role", "user"),
-                    "is_active": bool((auth_user or {}).get("is_active", True)),
-                    "is_owner": self._principal_id_from_claims(claims) == auth_settings.get("owner_user_id"),
-                },
-            )
-            return
-
-        if path == "/api/auth/settings":
-            claims = self._require_owner_auth()
-            if claims is None:
-                return
-            conn = self._open_db()
-            if conn is None:
-                return
-            try:
-                settings = get_auth_instance_settings(conn)
-            finally:
-                conn.close()
-            self._send_json(200, settings)
-            return
-
-        if path == "/api/users":
-            claims = self._require_owner_auth()
-            if claims is None:
-                return
-            conn = self._open_db()
-            if conn is None:
-                return
-            try:
-                users = list_auth_users(conn)
-            finally:
-                conn.close()
-            self._send_json(200, {"users": users})
-            return
-
-        if path == "/api/cli-auth/request":
-            if not self._enforce_rate_limit("cli_auth_request_status"):
-                return
-            code = self._single_query_arg(query, "code")
-            if not code:
-                self._send_json(400, {"error": "Missing code query parameter"})
-                return
-            payload = self.server.cli_auth_manager.get_request_status(code)
-            if payload is None:
-                self._send_json(404, {"error": "CLI auth request not found or expired"})
-                return
-            self._send_json(200, payload)
-            return
-
-        if path == "/api/dives":
-            user_id = self._require_principal_id()
-            if user_id is None:
-                return
-            include_samples = self._is_truthy(query.get("include_samples", ["0"])[0])
-            include_raw_data = self._is_truthy(query.get("include_raw_data", ["0"])[0])
-            limit = self._parse_int(
-                query.get("limit", ["100"])[0],
-                default=100,
-                max_value=getattr(self.server, "max_list_limit", 200),
-            )
-            offset = self._parse_int(query.get("offset", ["0"])[0], default=0)
-
-            conn = self._open_db()
-            if conn is None:
-                return
-            try:
-                dives, total = list_dives(conn, user_id, include_samples, include_raw_data, limit, offset)
-            finally:
-                conn.close()
-
-            LOGGER.info(
-                "Returned dives user_id=%s count=%d total=%d include_samples=%s include_raw_data=%s limit=%d offset=%d",
-                user_id,
-                len(dives),
-                total,
-                include_samples,
-                include_raw_data,
-                limit,
-                offset,
-            )
-            self._send_json(
-                200,
-                {
-                    "dives": dives,
-                    "stats": summarize_dives(
-                        [dive for dive in dives if is_logbook_complete(dive.get("fields", {}).get("logbook"))],
-                        sum(1 for dive in dives if is_logbook_complete(dive.get("fields", {}).get("logbook"))),
-                    ),
-                    "imported_count": sum(
-                        1 for dive in dives if not is_logbook_complete(dive.get("fields", {}).get("logbook"))
-                    ),
-                    "limit": limit,
-                    "offset": offset,
-                    "total": total,
-                },
-            )
-            return
-
-        match = re.fullmatch(r"/api/dives/(\d+)", path)
-        if match:
-            user_id = self._require_principal_id()
-            if user_id is None:
-                return
-            dive_id = int(match.group(1))
-            include_raw_data = self._is_truthy(query.get("include_raw_data", ["0"])[0])
-
-            conn = self._open_db()
-            if conn is None:
-                return
-            try:
-                dive = get_dive(conn, user_id, dive_id, include_raw_data)
-            finally:
-                conn.close()
-
-            if not dive:
-                LOGGER.warning("Dive not found id=%d", dive_id)
-                self._send_json(404, {"error": "Dive not found"})
-                return
-
-            LOGGER.info("Returned dive user_id=%s id=%d include_raw_data=%s", user_id, dive_id, include_raw_data)
-            self._send_json(200, dive)
-            return
-
-        if path.startswith("/api/"):
-            LOGGER.warning("Route not found: %s", path)
-            self._send_json(404, {"error": "Not found"})
-            return
-
-        self._serve_frontend(path)
-
-    def do_POST(self) -> None:
-        self._mark_request_started()
-        LOGGER.info("POST %s", self.path)
-        parsed_request = urlparse(self.path)
-        path = parsed_request.path
-        match = re.fullmatch(r"/api/equipment/([A-Za-z0-9_-]+)/service", self.path)
-        if match:
-            user_id = self._require_principal_id()
-            if user_id is None:
-                return
-            equipment_id = match.group(1)
-            conn = self._open_db()
-            if conn is None:
-                return
-            try:
-                equipment = mark_equipment_serviced(conn, user_id, equipment_id)
-            finally:
-                conn.close()
-            if equipment is None:
-                self._send_json(404, {"error": "Equipment item not found"})
-                return
-            self._send_json(200, {"equipment": equipment})
-            return
-
-        if self.path == "/api/auth/register":
-            payload = self._read_json_body()
-            if payload is None:
-                return
-            email = str(payload.get("email") or "").strip().lower()
-            password = str(payload.get("password") or "")
-            invite_token = str(payload.get("invite_token") or "").strip()
-            if not invite_token and (not email or "@" not in email):
-                self._send_json(400, {"error": "Valid email is required"})
-                return
-            if len(password) < 8:
-                self._send_json(400, {"error": "Password must be at least 8 characters"})
-                return
-            conn = self._open_db()
-            if conn is None:
-                return
-            try:
-                if invite_token:
-                    invite = get_auth_invite_by_token(conn, invite_token, now_timestamp=int(time.time()))
-                    if not invite:
-                        self._send_json(400, {"error": "Invitation is invalid or expired"})
-                        return
-                    invite_email = str(invite.get("email") or "").strip().lower()
-                    if email and email != invite_email:
-                        self._send_json(400, {"error": "Invitation email does not match the submitted email"})
-                        return
-                    try:
-                        user = create_auth_user_from_invite(
-                            conn,
-                            invite_token=invite_token,
-                            user_id=f"user_{uuid.uuid4().hex}",
-                            password_hash=hash_password(password),
-                        )
-                    except ValueError as exc:
-                        message = str(exc)
-                        if message == "Email already registered":
-                            self._send_json(409, {"error": message})
-                            return
-                        self._send_json(400, {"error": message})
-                        return
-                else:
-                    settings = get_auth_instance_settings(conn)
-                    if get_auth_user_by_email(conn, email):
-                        self._send_json(409, {"error": "Email already registered"})
-                        return
-                    if settings.get("bootstrap_registration_open"):
-                        try:
-                            user = create_bootstrap_auth_user(
-                                conn,
-                                user_id=f"user_{uuid.uuid4().hex}",
-                                email=email,
-                                password_hash=hash_password(password),
-                                first_name=str(payload.get("first_name") or "").strip(),
-                                last_name=str(payload.get("last_name") or "").strip(),
-                            )
-                        except ValueError as exc:
-                            message = str(exc)
-                            if message == "Email already registered":
-                                self._send_json(409, {"error": message})
-                                return
-                            self._send_json(403, {"error": message})
-                            return
-                    elif settings.get("public_registration_enabled"):
-                        user = create_auth_user(
-                            conn,
-                            user_id=f"user_{uuid.uuid4().hex}",
-                            email=email,
-                            password_hash=hash_password(password),
-                            first_name=str(payload.get("first_name") or "").strip(),
-                            last_name=str(payload.get("last_name") or "").strip(),
-                            role="user",
-                        )
-                    else:
-                        self._send_json(403, {"error": "Public registration is closed"})
-                        return
-            finally:
-                conn.close()
-            self._send_json(
-                201,
-                {
-                    "user_id": user.get("id"),
-                    "email": user.get("email"),
-                    "role": user.get("role"),
-                    "is_owner": bool(invite_token) is False and user.get("role") == "admin",
-                },
-            )
-            return
-
-        if self.path == "/api/auth/login":
-            payload = self._read_json_body()
-            if payload is None:
-                return
-            email = str(payload.get("email") or "").strip().lower()
-            password = str(payload.get("password") or "")
-            conn = self._open_db()
-            if conn is None:
-                return
-            try:
-                user = get_auth_user_by_email(conn, email)
-                if not user or not verify_password(password, user.get("password_hash") or ""):
-                    self._send_json(401, {"error": "Invalid email or password"})
+        route, match = match_route(ROUTES, method, path)
+        try:
+            if route is None:
+                allowed = allowed_methods_for_path(ROUTES, path)
+                if allowed:
+                    raise MethodNotAllowed(
+                        "Method not allowed",
+                        headers={"Allow": ", ".join(allowed)},
+                    )
+                if method == "GET" and not path.startswith("/api/"):
+                    self._request_route_label = "frontend"
+                    self._serve_frontend(path)
                     return
-                if not bool(user.get("is_active", True)):
-                    self._send_json(403, {"error": "User account is inactive"})
-                    return
-                update_auth_user_last_login(conn, user.get("id"))
-            finally:
-                conn.close()
-            token = issue_session_token(
-                user_id=user.get("id"),
-                email=user.get("email"),
-                role=user.get("role") or "user",
-                jwt_secret=self.server.auth_jwt_secret,
-                issuer=self.server.auth_jwt_issuer,
-                audience=self.server.auth_jwt_audience,
-                ttl_seconds=self.server.auth_token_ttl_seconds,
-            )
-            self._send_json(200, {"token": token})
-            return
+                LOGGER.warning("Route not found: %s", path)
+                raise NotFound("Not found")
 
-        if self.path == "/api/cli-auth/request":
-            if not self._enforce_rate_limit("cli_auth_request_create"):
+            self._request_route_label = route.route_label
+            self._route_policy = route.policy
+            if not self._apply_route_policy(route.policy):
                 return
-            payload = self.server.cli_auth_manager.create_request()
-            self._send_json(201, payload)
-            return
+            route.handler(self, match, parsed, query, deps=sys.modules[__name__])
+        except AppError as exc:
+            send_error(self, exc)
+        except Exception:
+            LOGGER.exception("Unhandled request error request_id=%s method=%s path=%s", self._request_id, method, path)
+            send_error(self, AppError())
 
-        if self.path == "/api/auth/invitations":
-            claims = self._require_owner_auth()
-            if claims is None:
-                return
-            payload = self._read_json_body()
-            if payload is None:
-                return
-            email = str(payload.get("email") or "").strip().lower()
-            if not email or "@" not in email:
-                self._send_json(400, {"error": "Valid email is required"})
-                return
-            role = self._normalize_user_role(payload.get("role"))
-            if role is None:
-                self._send_json(400, {"error": "Role must be either 'user' or 'admin'"})
-                return
-            expires_in_days = self._parse_int(str(payload.get("expires_in_days") or "7"), default=7, max_value=30)
-            now_timestamp = int(time.time())
-            expires_at = now_timestamp + max(expires_in_days, 1) * 24 * 60 * 60
-            invite_token = secrets.token_urlsafe(24)
-            conn = self._open_db()
-            if conn is None:
-                return
-            try:
-                if get_auth_user_by_email(conn, email):
-                    self._send_json(409, {"error": "Email already registered"})
-                    return
-                invite = create_auth_invite(
-                    conn,
-                    token=invite_token,
-                    email=email,
-                    first_name=str(payload.get("first_name") or "").strip(),
-                    last_name=str(payload.get("last_name") or "").strip(),
-                    role=role,
-                    invited_by_user_id=self._principal_id_from_claims(claims) or "",
-                    expires_at=expires_at,
-                    now_timestamp=now_timestamp,
-                )
-            finally:
-                conn.close()
-            invite_query = urlencode({"invite_token": invite_token})
-            self._send_json(
-                201,
-                {
-                    "invite": invite,
-                    "invite_url": f"/?{invite_query}",
-                },
-            )
-            return
-
-        if self.path == "/api/users":
-            claims = self._require_owner_auth()
-            if claims is None:
-                return
-            payload = self._read_json_body()
-            if payload is None:
-                return
-            email = str(payload.get("email") or "").strip().lower()
-            password = str(payload.get("password") or "")
-            if not email or not password:
-                self._send_json(400, {"error": "email and password are required"})
-                return
-            role = self._normalize_user_role(payload.get("role"))
-            if role is None:
-                self._send_json(400, {"error": "Role must be either 'user' or 'admin'"})
-                return
-            conn = self._open_db()
-            if conn is None:
-                return
-            try:
-                if get_auth_user_by_email(conn, email):
-                    self._send_json(409, {"error": "Email already registered"})
-                    return
-                created = create_auth_user(
-                    conn,
-                    user_id=f"user_{uuid.uuid4().hex}",
-                    email=email,
-                    password_hash=hash_password(password),
-                    first_name=str(payload.get("first_name") or "").strip(),
-                    last_name=str(payload.get("last_name") or "").strip(),
-                    role=role,
-                )
-            finally:
-                conn.close()
-            self._send_json(201, {"user": created})
-            return
-
-        if self.path == "/api/backup/import":
-            if not self._enforce_rate_limit("backup_import"):
-                return
-            user_id = self._require_principal_id()
-            if user_id is None:
-                return
-
-            max_backup_import_bytes = getattr(self.server, "max_backup_import_bytes", 25 * 1024 * 1024)
-            body = self._read_request_body(max_bytes=max_backup_import_bytes)
-            if body is None:
-                return
-            content_type = (self.headers.get("Content-Type") or "").split(";", 1)[0].strip().lower()
-            try:
-                if content_type in {"application/zip", "application/x-zip-compressed", "application/octet-stream"}:
-                    payload = parse_backup_archive(body, max_uncompressed_bytes=max_backup_import_bytes)
-                else:
-                    payload = json.loads(body.decode("utf-8")) if body else {}
-            except (UnicodeDecodeError, json.JSONDecodeError):
-                LOGGER.warning("Rejected invalid backup JSON path=%s", self.path)
-                self._send_json(400, {"error": "Invalid JSON"})
-                return
-            except ValueError as exc:
-                self._send_json(400, {"error": str(exc)})
-                return
-
-            conn = self._open_db()
-            if conn is None:
-                return
-            try:
+    def _apply_route_policy(self, policy: RoutePolicy) -> bool:
+        self._route_max_body_bytes = self._route_body_limit(policy)
+        if self._route_max_body_bytes is not None:
+            content_length = self.headers.get("Content-Length")
+            if content_length:
                 try:
-                    result = import_backup_payload(conn, user_id, payload)
-                except ValueError as exc:
-                    self._send_json(400, {"error": str(exc)})
-                    return
-            finally:
-                conn.close()
+                    length = int(content_length)
+                except ValueError:
+                    raise AppError("Invalid Content-Length header", status=400)
+                if length < 0:
+                    raise AppError("Invalid Content-Length header", status=400)
+                if length > self._route_max_body_bytes:
+                    raise PayloadTooLarge(f"Request body exceeds {self._route_max_body_bytes} byte limit")
 
-            LOGGER.info(
-                "Imported backup user_id=%s dives_inserted=%d device_states=%d license_documents=%d",
-                user_id,
-                result["summary"]["dives_inserted"],
-                result["summary"]["device_states_imported"],
-                result["summary"]["license_documents_imported"],
-            )
-            self._send_json(200, result)
-            return
+        if policy.content_types and int(self.headers.get("Content-Length") or "0") > 0:
+            content_type = request_content_type(self)
+            if content_type not in policy.content_types:
+                accepted = ", ".join(sorted(policy.content_types))
+                if policy.content_types == JSON_TYPES:
+                    accepted = "application/json"
+                elif policy.content_types == BACKUP_IMPORT_TYPES:
+                    accepted = "application/json or application/zip"
+                elif policy.content_types == CSV_IMPORT_TYPES:
+                    accepted = "text/csv or application/json"
+                elif policy.content_types == SUBSURFACE_IMPORT_TYPES:
+                    accepted = "application/xml, text/xml, application/gzip, or application/zip"
+                raise UnsupportedMediaType(f"Content-Type must be {accepted}")
 
-        if path == "/api/imports/csv":
-            if not self._enforce_rate_limit("dive_upload"):
-                return
-            user_id = self._require_principal_id()
-            if user_id is None:
-                return
+        if policy.rate_limit_scope:
+            if not self._enforce_rate_limit(policy.rate_limit_scope):
+                return False
+            self._rate_limit_scopes_enforced.add(policy.rate_limit_scope)
 
-            max_csv_import_bytes = getattr(self.server, "max_csv_import_bytes", 5 * 1024 * 1024)
-            body = self._read_request_body(max_bytes=max_csv_import_bytes)
-            if body is None:
-                return
-            conn = self._open_db()
-            if conn is None:
-                return
-            try:
-                profile = get_user_profile(conn, user_id)
-                required_fields = profile.get("required_logbook_fields")
-            except ValueError as exc:
-                conn.close()
-                self._send_json(400, {"error": str(exc)})
-                return
-            content_type = (self.headers.get("Content-Type") or "").split(";", 1)[0].strip().lower()
-            try:
-                if content_type == "application/json":
-                    payload = json.loads(body.decode("utf-8")) if body else {}
-                    csv_text = str(payload.get("csv") or "")
-                else:
-                    csv_text = body.decode("utf-8-sig")
-                preview = csv_import_preview(csv_text, required_fields=required_fields)
-                dive_payloads = preview["payloads"]
-            except (UnicodeDecodeError, json.JSONDecodeError):
-                conn.close()
-                self._send_json(400, {"error": "Invalid CSV import request body"})
-                return
-            except ValueError as exc:
-                conn.close()
-                self._send_json(400, {"error": str(exc)})
-                return
+        if policy.auth == AUTH_ANY:
+            if self._require_auth() is None:
+                return False
+        elif policy.auth == AUTH_PRINCIPAL:
+            if self._require_principal_id() is None:
+                return False
+        elif policy.auth == AUTH_OWNER:
+            if self._require_owner_auth() is None:
+                return False
+        elif policy.auth == AUTH_BROWSER_SESSION:
+            if self._require_browser_session_auth() is None:
+                return False
+        return True
 
-            query = parse_qs(parsed_request.query)
-            dry_run = self._is_truthy(query.get("dry_run", ["0"])[0])
-            duplicate_uids = {
-                row.get("dive_uid")
-                for row in preview["rows"]
-                if row.get("valid") and row.get("dive_uid") and get_dive_id_by_uid(conn, user_id, row["dive_uid"]) is not None
-            }
-            validation_rows = mark_import_preview_duplicates(preview["rows"], duplicate_uids)
-            summary = import_validation_summary(validation_rows)
-            if dry_run:
-                conn.close()
-                self._send_json(200, {"dry_run": True, "summary": summary})
-                return
-            invalid_row = next((row for row in validation_rows if not row.get("valid")), None)
-            if invalid_row:
-                row_number = invalid_row.get("row_number")
-                error_message = (invalid_row.get("errors") or ["Invalid row"])[0]
-                conn.close()
-                self._send_json(400, {"error": f"CSV row {row_number}: {error_message}", "summary": summary})
-                return
+    def _route_body_limit(self, policy: RoutePolicy) -> int | None:
+        if policy.max_body_attr is None:
+            return policy.max_body_default
+        return int(getattr(self.server, policy.max_body_attr, policy.max_body_default or 0))
 
-            inserted_count = 0
-            ids: list[int] = []
-            payload_iter = iter(dive_payloads)
-            try:
-                for row in validation_rows:
-                    if not row.get("valid"):
-                        continue
-                    dive_payload = next(payload_iter)
-                    inserted = insert_dive_record(conn, user_id, dive_payload)
-                    if inserted:
-                        inserted_count += 1
-                        row["status"] = "inserted"
-                        row["duplicate"] = False
-                    else:
-                        row["status"] = "duplicate"
-                        row["duplicate"] = True
-                    dive_id = get_dive_id_by_uid(conn, user_id, dive_payload["dive_uid"])
-                    if dive_id is not None:
-                        ids.append(dive_id)
-            finally:
-                conn.close()
-
-            LOGGER.info(
-                "Imported CSV dives user_id=%s rows=%d inserted=%d",
-                user_id,
-                len(dive_payloads),
-                inserted_count,
-            )
-            summary = import_validation_summary(validation_rows, inserted=inserted_count, ids=ids)
-            self._send_json(
-                200,
-                {
-                    "rows": len(dive_payloads),
-                    "inserted": inserted_count,
-                    "duplicates": len(dive_payloads) - inserted_count,
-                    "ids": ids,
-                    "summary": summary,
-                },
-            )
-            return
-
-        if path == "/api/imports/subsurface":
-            if not self._enforce_rate_limit("dive_upload"):
-                return
-            user_id = self._require_principal_id()
-            if user_id is None:
-                return
-
-            max_subsurface_import_bytes = getattr(self.server, "max_subsurface_import_bytes", 15 * 1024 * 1024)
-            body = self._read_request_body(max_bytes=max_subsurface_import_bytes)
-            if body is None:
-                return
-            conn = self._open_db()
-            if conn is None:
-                return
-            try:
-                profile = get_user_profile(conn, user_id)
-                required_fields = profile.get("required_logbook_fields")
-            except ValueError as exc:
-                conn.close()
-                self._send_json(400, {"error": str(exc)})
-                return
-            try:
-                export_text = decode_subsurface_export(body, max_uncompressed_bytes=max_subsurface_import_bytes)
-                preview = subsurface_import_preview(export_text, required_fields=required_fields)
-                dive_payloads = preview["payloads"]
-            except (OSError, ValueError) as exc:
-                conn.close()
-                self._send_json(400, {"error": str(exc)})
-                return
-
-            query = parse_qs(parsed_request.query)
-            dry_run = self._is_truthy(query.get("dry_run", ["0"])[0])
-            duplicate_uids = {
-                row.get("dive_uid")
-                for row in preview["rows"]
-                if row.get("valid") and row.get("dive_uid") and get_dive_id_by_uid(conn, user_id, row["dive_uid"]) is not None
-            }
-            validation_rows = mark_import_preview_duplicates(preview["rows"], duplicate_uids)
-            summary = import_validation_summary(validation_rows)
-            if dry_run:
-                conn.close()
-                self._send_json(200, {"dry_run": True, "summary": summary})
-                return
-            invalid_row = next((row for row in validation_rows if not row.get("valid")), None)
-            if invalid_row:
-                row_number = invalid_row.get("row_number")
-                error_message = (invalid_row.get("errors") or ["Invalid dive"])[0]
-                conn.close()
-                self._send_json(400, {"error": f"Subsurface dive {row_number}: {error_message}", "summary": summary})
-                return
-
-            inserted_count = 0
-            ids: list[int] = []
-            payload_iter = iter(dive_payloads)
-            try:
-                for row in validation_rows:
-                    if not row.get("valid"):
-                        continue
-                    dive_payload = next(payload_iter)
-                    inserted = insert_dive_record(conn, user_id, dive_payload)
-                    if inserted:
-                        inserted_count += 1
-                        row["status"] = "inserted"
-                        row["duplicate"] = False
-                    else:
-                        row["status"] = "duplicate"
-                        row["duplicate"] = True
-                    dive_id = get_dive_id_by_uid(conn, user_id, dive_payload["dive_uid"])
-                    if dive_id is not None:
-                        ids.append(dive_id)
-            finally:
-                conn.close()
-
-            LOGGER.info(
-                "Imported Subsurface dives user_id=%s rows=%d inserted=%d",
-                user_id,
-                len(dive_payloads),
-                inserted_count,
-            )
-            summary = import_validation_summary(validation_rows, inserted=inserted_count, ids=ids)
-            self._send_json(
-                200,
-                {
-                    "rows": len(dive_payloads),
-                    "inserted": inserted_count,
-                    "duplicates": len(dive_payloads) - inserted_count,
-                    "ids": ids,
-                    "summary": summary,
-                },
-            )
-            return
-
-        if self.path == "/api/cli-auth/approve":
-            if not self._enforce_rate_limit("cli_auth_approve"):
-                return
-            claims = self._require_browser_session_auth()
-            if claims is None:
-                return
-            payload = self._read_json_body()
-            if payload is None:
-                return
-            code = (payload.get("code") or "").strip()
-            if not code:
-                self._send_json(400, {"error": "Missing CLI auth code"})
-                return
-            approval = self.server.cli_auth_manager.approve_request(code, claims)
-            if approval is None:
-                self._send_json(404, {"error": "CLI auth request not found or expired"})
-                return
-            self._send_json(
-                200,
-                {
-                    "status": approval["status"],
-                    "email": approval.get("email"),
-                    "token_expires_at": approval.get("token_expires_at"),
-                },
-            )
-            return
-
-        if self.path != "/api/dives":
-            self._send_json(404, {"error": "Not found"})
-            return
-
-        user_id = self._require_principal_id()
-        if user_id is None:
-            return
-        if not self._enforce_rate_limit("dive_upload"):
-            return
-
-        payload = self._read_json_body()
-        if payload is None:
-            return
-
-        missing = [
-            key
-            for key in ("vendor", "product", "dive_uid", "raw_sha256", "raw_data_b64")
-            if not payload.get(key)
-        ]
-        if missing:
-            LOGGER.warning("Rejected dive upload missing=%s", ",".join(missing))
-            self._send_json(400, {"error": f"Missing required fields: {', '.join(missing)}"})
-            return
-
-        conn = self._open_db()
-        if conn is None:
-            return
+    @contextmanager
+    def _db(self):
         try:
-            try:
-                inserted = insert_dive_record(conn, user_id, payload)
-            except ValueError as exc:
-                LOGGER.warning("Rejected dive upload invalid base64 uid=%s", payload.get("dive_uid"))
-                self._send_json(400, {"error": str(exc)})
-                return
-            dive_id = get_dive_id_by_uid(conn, user_id, payload["dive_uid"])
+            conn = self._open_database_connection()
+        except Exception as exc:  # pragma: no cover - depends on runtime DB availability
+            LOGGER.exception("Database connection failed")
+            raise AppError(f"Database unavailable: {exc}", status=503) from exc
+        try:
+            yield conn
         finally:
             conn.close()
 
-        LOGGER.info(
-            "Processed dive upload user_id=%s uid=%s inserted=%s id=%s",
-            user_id,
-            payload["dive_uid"],
-            inserted,
-            dive_id,
-        )
-        self._send_json(201 if inserted else 200, {"inserted": inserted, "id": dive_id})
-
-    def do_PUT(self) -> None:
-        self._mark_request_started()
-        LOGGER.info("PUT %s", self.path)
-        if self.path == "/api/auth/settings":
-            claims = self._require_owner_auth()
-            if claims is None:
-                return
-            payload = self._read_json_body()
-            if payload is None:
-                return
-            if "public_registration_enabled" not in payload:
-                self._send_json(400, {"error": "public_registration_enabled is required"})
-                return
-            conn = self._open_db()
-            if conn is None:
-                return
-            try:
-                settings = update_auth_instance_settings(
-                    conn,
-                    public_registration_enabled=bool(payload.get("public_registration_enabled")),
-                )
-            finally:
-                conn.close()
-            self._send_json(200, settings)
-            return
-
-        if self.path == "/api/auth/password":
-            claims = self._require_auth()
-            if claims is None:
-                return
-            payload = self._read_json_body()
-            if payload is None:
-                return
-            current_password = str(payload.get("current_password") or "")
-            new_password = str(payload.get("new_password") or "")
-            if len(new_password) < 8:
-                self._send_json(400, {"error": "New password must be at least 8 characters"})
-                return
-            conn = self._open_db()
-            if conn is None:
-                return
-            try:
-                user = get_auth_user_by_id(conn, claims.get("sub") or "")
-                if not user or not verify_password(current_password, user.get("password_hash") or ""):
-                    self._send_json(401, {"error": "Current password is incorrect"})
-                    return
-                update_auth_user(conn, user.get("id"), {"password_hash": hash_password(new_password)})
-            finally:
-                conn.close()
-            self._send_json(200, {"updated": True})
-            return
-
-        match = re.fullmatch(r"/api/users/(user_[A-Za-z0-9]+)", self.path)
-        if match:
-            claims = self._require_owner_auth()
-            if claims is None:
-                return
-            payload = self._read_json_body()
-            if payload is None:
-                return
-            user_id = match.group(1)
-            if "role" in payload:
-                role = self._normalize_user_role(payload.get("role"))
-                if role is None:
-                    self._send_json(400, {"error": "Role must be either 'user' or 'admin'"})
-                    return
-                payload = dict(payload)
-                payload["role"] = role
-            conn = self._open_db()
-            if conn is None:
-                return
-            try:
-                settings = get_auth_instance_settings(conn)
-                if user_id == settings.get("owner_user_id"):
-                    if "is_active" in payload and not bool(payload.get("is_active")):
-                        self._send_json(400, {"error": "The instance owner cannot be deactivated"})
-                        return
-                    if payload.get("role") == "user":
-                        self._send_json(400, {"error": "The instance owner must retain the admin role"})
-                        return
-                updated = update_auth_user(conn, user_id, payload)
-            finally:
-                conn.close()
-            if not updated:
-                self._send_json(404, {"error": "User not found"})
-                return
-            self._send_json(200, {"user": updated})
-            return
-
-        if self.path == "/api/profile":
-            user_id = self._require_principal_id()
-            if user_id is None:
-                return
-            payload = self._read_json_body()
-            if payload is None:
-                return
-
-            conn = self._open_db()
-            if conn is None:
-                return
-            try:
-                profile = save_user_profile(conn, user_id, payload)
-            finally:
-                conn.close()
-
-            LOGGER.info(
-                "Updated profile user_id=%s license_count=%d licenses_with_pdf=%d",
-                user_id,
-                len(profile.get("licenses") or []),
-                sum(1 for license_entry in profile.get("licenses") or [] if license_entry.get("pdf")),
-            )
-            self._send_json(200, profile)
-            return
-
-        if self.path == "/api/equipment":
-            user_id = self._require_principal_id()
-            if user_id is None:
-                return
-            payload = self._read_json_body()
-            if payload is None:
-                return
-            equipment_entries = payload.get("equipment") if isinstance(payload, dict) else None
-            conn = self._open_db()
-            if conn is None:
-                return
-            try:
-                equipment = save_user_equipment(conn, user_id, equipment_entries)
-            finally:
-                conn.close()
-            self._send_json(200, {"equipment": equipment})
-            return
-
-        match = re.fullmatch(r"/api/profile/licenses/([A-Za-z0-9_-]+)/pdf", self.path)
-        if match:
-            user_id = self._require_principal_id()
-            if user_id is None:
-                return
-            license_id = match.group(1)
-            payload = self._read_json_body()
-            if payload is None:
-                return
-
-            try:
-                filename, content_type, pdf_bytes = decode_profile_license_payload(payload)
-            except ValueError as exc:
-                self._send_json(400, {"error": str(exc)})
-                return
-
-            conn = self._open_db()
-            if conn is None:
-                return
-            try:
-                profile = save_user_profile_license_pdf(
-                    conn,
-                    user_id,
-                    license_id=license_id,
-                    filename=filename,
-                    content_type=content_type,
-                    pdf_bytes=pdf_bytes,
-                )
-            finally:
-                conn.close()
-
-            if profile is None:
-                self._send_json(404, {"error": "License entry not found"})
-                return
-
-            LOGGER.info(
-                "Updated profile license user_id=%s license_id=%s filename=%s size_bytes=%d",
-                user_id,
-                license_id,
-                filename,
-                len(pdf_bytes),
-            )
-            self._send_json(200, profile)
-            return
-
-        match = re.fullmatch(r"/api/dives/(\d+)/logbook", self.path)
-        if match:
-            user_id = self._require_principal_id()
-            if user_id is None:
-                return
-            payload = self._read_json_body()
-            if payload is None:
-                return
-
-            dive_id = int(match.group(1))
-            conn = self._open_db()
-            if conn is None:
-                return
-            try:
-                try:
-                    dive = update_dive_logbook(conn, user_id, dive_id, payload)
-                except ValueError as exc:
-                    self._send_json(400, {"error": str(exc)})
-                    return
-            finally:
-                conn.close()
-
-            if not dive:
-                LOGGER.warning("Dive not found for logbook update id=%d", dive_id)
-                self._send_json(404, {"error": "Dive not found"})
-                return
-
-            LOGGER.info(
-                "Updated dive logbook user_id=%s id=%d status=%s",
-                user_id,
-                dive_id,
-                dive.get("fields", {}).get("logbook", {}).get("status"),
-            )
-            self._send_json(200, dive)
-            return
-
-        if self.path != "/api/device-state":
-            self._send_json(404, {"error": "Not found"})
-            return
-
-        user_id = self._require_principal_id()
-        if user_id is None:
-            return
-
-        payload = self._read_json_body()
-        if payload is None:
-            return
-
-        vendor = payload.get("vendor")
-        product = payload.get("product")
-        if not vendor or not product:
-            LOGGER.warning("Rejected device-state update missing vendor/product")
-            self._send_json(400, {"error": "vendor and product are required"})
-            return
-
-        conn = self._open_db()
-        if conn is None:
-            return
-        try:
-            save_device_state(conn, user_id, vendor, product, payload.get("fingerprint_hex"))
-            state = get_device_state(conn, user_id, vendor, product)
-        finally:
-            conn.close()
-
-        LOGGER.info(
-            "Processed device-state update user_id=%s vendor=%s product=%s fingerprint=%s",
-            user_id,
-            vendor,
-            product,
-            state.get("fingerprint_hex"),
-        )
-        self._send_json(200, state)
-
-    def do_DELETE(self) -> None:
-        self._mark_request_started()
-        LOGGER.info("DELETE %s", self.path)
-        match = re.fullmatch(r"/api/users/(user_[A-Za-z0-9]+)", self.path)
-        if match:
-            claims = self._require_owner_auth()
-            if claims is None:
-                return
-            target_user_id = match.group(1)
-            conn = self._open_db()
-            if conn is None:
-                return
-            try:
-                settings = get_auth_instance_settings(conn)
-                if target_user_id == settings.get("owner_user_id"):
-                    self._send_json(400, {"error": "The instance owner cannot be deleted"})
-                    return
-                deleted = delete_auth_user(conn, target_user_id)
-            finally:
-                conn.close()
-            if not deleted:
-                self._send_json(404, {"error": "User not found"})
-                return
-            self._send_json(200, {"deleted": True, "user_id": target_user_id})
-            return
-
-        match = re.fullmatch(r"/api/dives/(\d+)", self.path)
-        if not match:
-            self._send_json(404, {"error": "Not found"})
-            return
-
-        user_id = self._require_principal_id()
-        if user_id is None:
-            return
-
-        dive_id = int(match.group(1))
-        conn = self._open_db()
-        if conn is None:
-            return
-        try:
-            deleted = delete_dive(conn, user_id, dive_id)
-        finally:
-            conn.close()
-
-        if not deleted:
-            LOGGER.warning("Dive not found for delete id=%d", dive_id)
-            self._send_json(404, {"error": "Dive not found"})
-            return
-
-        LOGGER.info("Deleted dive user_id=%s id=%d", user_id, dive_id)
-        self._send_json(200, {"deleted": True, "id": dive_id})
-
-    def log_message(self, fmt: str, *args) -> None:
-        LOGGER.debug("HTTP %s - %s", self.address_string(), fmt % args)
+    def _open_database_connection(self):
+        pool = getattr(self.server, "database_pool", None)
+        if pool is not None:
+            return PooledConnectionProxy(pool)
+        return open_db(self.server.database_url)
 
     def _open_db(self):
         try:
-            return open_db(self.server.database_url)
+            return self._open_database_connection()
         except Exception as exc:  # pragma: no cover - depends on runtime DB availability
             LOGGER.exception("Database connection failed")
             self._send_json(503, {"error": f"Database unavailable: {exc}"})
             return None
 
     def _require_auth(self) -> dict | None:
-        verifier = getattr(self.server, "auth_verifier", None)
-        if verifier is None:
-            self._send_json(503, {"error": "Authentication is not configured on the backend"})
-            return None
-
-        try:
-            return verifier.verify_request(self.headers)
-        except AuthError as exc:
-            self._send_json(exc.status, {"error": exc.message})
-            return None
+        return require_auth(self)
 
     @staticmethod
     def _is_admin_claims(claims: dict | None) -> bool:
-        return bool(isinstance(claims, dict) and str(claims.get("role") or "").lower() == "admin")
+        return is_admin_claims(claims)
 
     def _require_owner_auth(self) -> dict | None:
-        claims = self._require_auth()
-        if claims is None:
-            return None
-        principal_id = self._principal_id_from_claims(claims)
-        if not principal_id:
-            self._send_json(403, {"error": "Authenticated identity is missing a stable user identifier"})
-            return None
-        conn = self._open_db()
-        if conn is None:
-            return None
-        try:
-            settings = get_auth_instance_settings(conn)
-        finally:
-            conn.close()
-        if principal_id != settings.get("owner_user_id"):
-            self._send_json(403, {"error": "Instance owner required"})
-            return None
-        return claims
+        return require_owner_auth(self, get_auth_instance_settings=get_auth_instance_settings)
 
     @staticmethod
     def _normalize_user_role(value: object) -> str | None:
@@ -3508,57 +581,20 @@ class DiveBackendHandler(BaseHTTPRequestHandler):
         return normalized
 
     def _require_browser_session_auth(self) -> dict | None:
-        claims = self._require_auth()
-        if claims is None:
-            return None
-        if claims.get("token_type") != "session_token":
-            self._send_json(403, {"error": "Desktop sync approval requires an authenticated browser session"})
-            return None
-        return claims
+        return require_browser_session_auth(self)
 
     @staticmethod
     def _principal_id_from_claims(claims: dict | None) -> str | None:
-        if not isinstance(claims, dict):
-            return None
-        return claims.get("sub") or claims.get("user_id") or claims.get("subject")
+        return principal_id_from_claims(claims)
 
     def _require_principal_id(self) -> str | None:
-        claims = self._require_auth()
-        if claims is None:
-            return None
-        principal_id = self._principal_id_from_claims(claims)
-        if principal_id:
-            return principal_id
-        self._send_json(403, {"error": "Authenticated identity is missing a stable user identifier"})
-        return None
+        return require_principal_id(self)
 
     def _read_request_body(self, *, max_bytes: int) -> bytes | None:
-        max_body_bytes = int(max_bytes)
-        content_length = self.headers.get("Content-Length", "0")
-        try:
-            length = int(content_length)
-        except ValueError:
-            self._send_json(400, {"error": "Invalid Content-Length header"})
-            return None
-        if length < 0:
-            self._send_json(400, {"error": "Invalid Content-Length header"})
-            return None
-        if length > max_body_bytes:
-            self._send_json(413, {"error": f"Request body exceeds {max_body_bytes} byte limit"})
-            return None
-        return self.rfile.read(length) if length > 0 else b""
+        return read_request_body(self, max_bytes=max_bytes)
 
     def _read_json_body(self, *, max_bytes: int | None = None) -> dict | None:
-        max_json_body_bytes = int(max_bytes if max_bytes is not None else getattr(self.server, "max_json_body_bytes", 1024 * 1024))
-        body = self._read_request_body(max_bytes=max_json_body_bytes)
-        if body is None:
-            return None
-        try:
-            return json.loads(body.decode("utf-8")) if body else {}
-        except json.JSONDecodeError:
-            LOGGER.warning("Rejected invalid JSON path=%s", self.path)
-            self._send_json(400, {"error": "Invalid JSON"})
-            return None
+        return read_json_body(self, max_bytes=max_bytes)
 
     def _send_security_headers(self) -> None:
         self.send_header("X-Content-Type-Options", "nosniff")
@@ -3569,22 +605,41 @@ class DiveBackendHandler(BaseHTTPRequestHandler):
     def _mark_request_started(self) -> None:
         self._request_started_at = time.perf_counter()
         self._response_observed = False
+        self._request_id = uuid.uuid4().hex[:12]
+        self._request_route_label = ""
+        self._route_policy = RoutePolicy()
+        self._route_max_body_bytes = None
+        self._auth_claims = None
+        self._auth_checked = False
+        self._principal_id = None
+        self._owner_auth_claims = None
+        self._owner_auth_checked = False
+        self._rate_limit_scopes_enforced = set()
 
     def _observe_response(self, status: int) -> None:
         if getattr(self, "_response_observed", False):
             return
         self._response_observed = True
         metrics = getattr(self.server, "metrics", None)
-        if metrics is None:
-            return
         parsed = urlparse(self.path)
         started_at = getattr(self, "_request_started_at", None)
         duration_seconds = time.perf_counter() - started_at if isinstance(started_at, float) else 0.0
-        metrics.observe_request(
-            method=getattr(self, "command", ""),
-            path=parsed.path,
-            status=status,
-            duration_seconds=duration_seconds,
+        if metrics is not None:
+            metrics.observe_request(
+                method=getattr(self, "command", ""),
+                path=parsed.path,
+                status=status,
+                duration_seconds=duration_seconds,
+            )
+        LOGGER.info(
+            "request_complete request_id=%s method=%s route=%s path=%s status=%d duration_ms=%d principal_id=%s",
+            getattr(self, "_request_id", ""),
+            getattr(self, "command", ""),
+            getattr(self, "_request_route_label", "") or parsed.path,
+            parsed.path,
+            status,
+            int(duration_seconds * 1000),
+            getattr(self, "_principal_id", None) or "",
         )
 
     def _send_json(self, status: int, payload: dict, *, extra_headers: dict[str, str] | None = None) -> None:
@@ -3618,6 +673,8 @@ class DiveBackendHandler(BaseHTTPRequestHandler):
         self.send_header("Access-Control-Allow-Headers", "Authorization, Content-Type")
 
     def _enforce_rate_limit(self, scope: str) -> bool:
+        if scope in getattr(self, "_rate_limit_scopes_enforced", set()):
+            return True
         limiter = getattr(self.server, "rate_limiter", None)
         if limiter is None:
             return True
@@ -3735,6 +792,7 @@ def main() -> None:
     parser.add_argument("--db-startup-retries", type=int, default=int(os.getenv("DB_STARTUP_RETRIES", "5")), help="Number of startup checks to confirm PostgreSQL is reachable")
     parser.add_argument("--db-startup-retry-delay-seconds", type=float, default=float(os.getenv("DB_STARTUP_RETRY_DELAY_SECONDS", "2")), help="Delay between PostgreSQL startup checks")
     parser.add_argument("--db-connect-timeout-seconds", type=int, default=int(os.getenv("DB_CONNECT_TIMEOUT_SECONDS", "5")), help="Connection timeout for each PostgreSQL startup check")
+    parser.add_argument("--db-pool-size", type=int, default=int(os.getenv("DB_POOL_SIZE", "5")), help="Maximum pooled PostgreSQL connections for request handling; set 0 to disable pooling")
     parser.add_argument(
         "--startup-migrations",
         default=os.getenv("STARTUP_MIGRATIONS", "enabled"),
@@ -3798,6 +856,7 @@ def main() -> None:
     server.database_ready = True
     server.database_ready_error = ""
     server.database_schema_version = schema_version
+    server.database_pool = None
     server.demo_mode = demo_mode
     server.metrics_enabled = args.metrics == "enabled"
     server.metrics = PrometheusMetrics() if server.metrics_enabled else None
@@ -3847,9 +906,20 @@ def main() -> None:
         user_agent=args.nominatim_user_agent,
         email=args.nominatim_email,
     )
+    db_pool_size = max(args.db_pool_size, 0)
+    if db_pool_size > 0 and ConnectionPool is not None:
+        server.database_pool = ConnectionPool(
+            args.database_url,
+            min_size=1,
+            max_size=db_pool_size,
+            kwargs={"autocommit": True, "row_factory": dict_row},
+            open=True,
+        )
+    elif db_pool_size > 0:
+        LOGGER.warning("DB_POOL_SIZE=%d requested but psycopg_pool is not installed; falling back to per-request connections", db_pool_size)
 
     LOGGER.info(
-        "Starting backend host=%s port=%d database_url=%s cors_origin=%s frontend_dir=%s schema_version=%d demo_mode=%s metrics=%s",
+        "Starting backend host=%s port=%d database_url=%s cors_origin=%s frontend_dir=%s schema_version=%d demo_mode=%s metrics=%s db_pool_size=%d",
         args.host,
         args.port,
         redact_database_url(args.database_url),
@@ -3858,6 +928,7 @@ def main() -> None:
         schema_version,
         server.demo_mode,
         args.metrics,
+        db_pool_size if server.database_pool is not None else 0,
     )
     shutdown_started = threading.Event()
 
@@ -3876,6 +947,8 @@ def main() -> None:
         server.serve_forever()
     finally:
         LOGGER.info("Stopping backend")
+        if getattr(server, "database_pool", None) is not None:
+            server.database_pool.close()
         server.server_close()
 
 

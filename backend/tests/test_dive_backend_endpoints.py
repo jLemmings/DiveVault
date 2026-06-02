@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import base64
 import json
-import re
 import threading
 import zipfile
 from dataclasses import dataclass
@@ -736,6 +735,10 @@ def test_get_and_options_routes(server_fixture):
     missing_api = request(server, "GET", "/api/not-real")
     assert missing_api.status == 404
 
+    wrong_method = request(server, "GET", "/api/backup/import")
+    assert wrong_method.status == 405
+    assert wrong_method.headers["Allow"] == "POST"
+
     preflight = request(server, "OPTIONS", "/api/dives")
     assert preflight.status == 204
     assert preflight.headers["Access-Control-Allow-Origin"] == "http://localhost:5173"
@@ -1373,6 +1376,98 @@ def test_post_and_put_endpoints(server_fixture):
     assert put_not_found.status == 404
 
 
+def test_request_body_limits_and_content_types(server_fixture):
+    server = server_fixture
+
+    wrong_json_type = request(
+        server,
+        "POST",
+        "/api/dives",
+        token="session",
+        body=json.dumps(
+            {
+                "vendor": "Mares",
+                "product": "Smart Air",
+                "dive_uid": "uid-wrong-type",
+                "raw_sha256": "sha-wrong-type",
+                "raw_data_b64": base64.b64encode(b"123").decode("ascii"),
+            }
+        ).encode("utf-8"),
+        content_type="text/plain",
+    )
+    assert wrong_json_type.status == 415
+    assert wrong_json_type.json()["error"] == "Content-Type must be application/json"
+
+    server.max_csv_import_bytes = 16
+    oversized_csv = request(
+        server,
+        "POST",
+        "/api/imports/csv",
+        token="session",
+        body=b"started_at,duration_minutes,max_depth_m\n2026-05-01T08:30:00Z,42,18.6\n",
+        content_type="text/csv",
+    )
+    assert oversized_csv.status == 413
+    server.max_csv_import_bytes = 5 * 1024 * 1024
+
+    wrong_csv_type = request(
+        server,
+        "POST",
+        "/api/imports/csv",
+        token="session",
+        body=b"started_at,duration_minutes,max_depth_m\n2026-05-01T08:30:00Z,42,18.6\n",
+        content_type="application/xml",
+    )
+    assert wrong_csv_type.status == 415
+    assert wrong_csv_type.json()["error"] == "Content-Type must be text/csv or application/json"
+
+    server.max_subsurface_import_bytes = 16
+    oversized_subsurface = request(
+        server,
+        "POST",
+        "/api/imports/subsurface",
+        token="session",
+        body=b"<divelog><dives></dives></divelog>",
+        content_type="application/xml",
+    )
+    assert oversized_subsurface.status == 413
+    server.max_subsurface_import_bytes = 15 * 1024 * 1024
+
+    wrong_subsurface_type = request(
+        server,
+        "POST",
+        "/api/imports/subsurface",
+        token="session",
+        body=b"<divelog><dives></dives></divelog>",
+        content_type="text/csv",
+    )
+    assert wrong_subsurface_type.status == 415
+    assert wrong_subsurface_type.json()["error"] == "Content-Type must be application/xml, text/xml, application/gzip, or application/zip"
+
+    server.max_backup_import_bytes = 16
+    oversized_backup = request(
+        server,
+        "POST",
+        "/api/backup/import",
+        token="session",
+        body=json.dumps({"version": 1, "profile": {"name": "A" * 64}}).encode("utf-8"),
+        content_type="application/json",
+    )
+    assert oversized_backup.status == 413
+    server.max_backup_import_bytes = 25 * 1024 * 1024
+
+    wrong_backup_type = request(
+        server,
+        "POST",
+        "/api/backup/import",
+        token="session",
+        body=b"{}",
+        content_type="text/plain",
+    )
+    assert wrong_backup_type.status == 415
+    assert wrong_backup_type.json()["error"] == "Content-Type must be application/json or application/zip"
+
+
 def test_export_and_backup_endpoints(server_fixture):
     server = server_fixture
 
@@ -1573,55 +1668,77 @@ def test_delete_endpoints(server_fixture):
 
 def test_route_manifest_requires_test_updates_for_new_endpoints():
     """Guardrail: when route literals change, this test fails and forces test updates."""
-    source = (Path(__file__).resolve().parents[1] / "divevault" / "app.py").read_text(encoding="utf-8")
-
-    discovered_literals = set(re.findall(r'if (?:path|self\.path) == "([^"]+)"', source))
-    discovered_regex = {f"regex:{pattern}" for pattern in re.findall(r're\.fullmatch\(r"([^"]+)"', source)}
-
-    set_membership = re.findall(r'if path in \{([^}]+)\}:', source)
-    for membership_block in set_membership:
-        discovered_literals.update(re.findall(r'"([^"]+)"', membership_block))
-
-    if 'if path.startswith("/api/"):' in source:
-        discovered_literals.add("prefix:/api/*")
-
     expected_routes = {
-        "/health",
-        "/metrics",
-        "/api/health",
-        "/config.js",
-        "/api/auth/invitations",
-        "/api/auth/login",
-        "/api/auth/me",
-        "/api/auth/password",
-        "/api/auth/register",
-        "/api/auth/settings",
-        "/api/auth/status",
-        "/api/backup/export",
-        "/api/backup/import",
-        "/api/cli-auth/approve",
-        "/api/cli-auth/request",
-        "/api/device-state",
-        "/api/equipment",
-        "/api/exports/dives.csv",
-        "/api/exports/dives.pdf",
-        "/api/geocode/search",
-        "/api/imports/csv",
-        "/api/imports/subsurface",
-        "/api/profile",
-        "/api/users",
-        "/api/dives",
-        "prefix:/api/*",
-        "regex:/api/dives/(\\d+)",
-        "regex:/api/dives/(\\d+)/logbook",
-        "regex:/api/equipment/([A-Za-z0-9_-]+)/service",
-        "regex:/api/profile/licenses/([A-Za-z0-9_-]+)/pdf",
-        "regex:/api/public/divers/([a-z0-9-]+)",
-        "regex:/api/users/(user_[A-Za-z0-9]+)",
+        ("GET", "/health"),
+        ("GET", "/metrics"),
+        ("GET", "/api/health"),
+        ("GET", "/config.js"),
+        ("POST", "/api/auth/invitations"),
+        ("POST", "/api/auth/login"),
+        ("GET", "/api/auth/me"),
+        ("PUT", "/api/auth/password"),
+        ("POST", "/api/auth/register"),
+        ("GET", "/api/auth/settings"),
+        ("PUT", "/api/auth/settings"),
+        ("GET", "/api/auth/status"),
+        ("GET", "/api/backup/export"),
+        ("POST", "/api/backup/import"),
+        ("POST", "/api/cli-auth/approve"),
+        ("GET", "/api/cli-auth/request"),
+        ("POST", "/api/cli-auth/request"),
+        ("GET", "/api/device-state"),
+        ("PUT", "/api/device-state"),
+        ("GET", "/api/equipment"),
+        ("PUT", "/api/equipment"),
+        ("GET", "/api/exports/dives.csv"),
+        ("GET", "/api/exports/dives.pdf"),
+        ("GET", "/api/geocode/search"),
+        ("POST", "/api/imports/csv"),
+        ("POST", "/api/imports/subsurface"),
+        ("GET", "/api/profile"),
+        ("PUT", "/api/profile"),
+        ("GET", "/api/users"),
+        ("POST", "/api/users"),
+        ("GET", "/api/dives"),
+        ("POST", "/api/dives"),
+        ("GET", "regex:/api/dives/(\\d+)"),
+        ("DELETE", "regex:/api/dives/(\\d+)"),
+        ("PUT", "regex:/api/dives/(\\d+)/logbook"),
+        ("POST", "regex:/api/equipment/([A-Za-z0-9_-]+)/service"),
+        ("GET", "regex:/api/profile/licenses/([A-Za-z0-9_-]+)/pdf"),
+        ("PUT", "regex:/api/profile/licenses/([A-Za-z0-9_-]+)/pdf"),
+        ("GET", "regex:/api/public/divers/([a-z0-9-]+)"),
+        ("PUT", "regex:/api/users/(user_[A-Za-z0-9]+)"),
+        ("DELETE", "regex:/api/users/(user_[A-Za-z0-9]+)"),
     }
 
-    discovered = discovered_literals | discovered_regex
+    discovered = {(route["method"], route["path"]) for route in dive_backend.API_ROUTE_MANIFEST}
     assert discovered == expected_routes
+
+
+@pytest.mark.parametrize(
+    "route",
+    [route for route in dive_backend.API_ROUTE_MANIFEST if route["auth"] in {"auth", "principal", "owner", "browser_session"}],
+    ids=lambda route: f"{route['method']} {route['path']}",
+)
+def test_route_auth_matrix_rejects_missing_auth(server_fixture, route):
+    response = request(server_fixture, route["method"], route["sample_path"])
+    assert response.status == 401
+
+
+@pytest.mark.parametrize(
+    "route",
+    [route for route in dive_backend.API_ROUTE_MANIFEST if route["auth"] == "owner"],
+    ids=lambda route: f"{route['method']} {route['path']}",
+)
+def test_route_auth_matrix_requires_owner_for_owner_routes(server_fixture, route):
+    response = request(server_fixture, route["method"], route["sample_path"], token="api")
+    assert response.status == 403
+
+
+def test_route_auth_matrix_requires_browser_session_for_cli_approval(server_fixture):
+    response = request(server_fixture, "POST", "/api/cli-auth/approve", token="api")
+    assert response.status == 403
 
 
 def test_rate_limiter_prunes_stale_entries():

@@ -14,6 +14,15 @@ import psycopg
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 
+from divevault.domain.logbook import (
+    DEFAULT_LOGBOOK_REQUIRED_FIELDS,
+    LOGBOOK_DISPLAY_FIELD_OPTIONS,
+    LOGBOOK_OPTIONAL_FIELDS,
+    LOGBOOK_REQUIRED_FIELD_OPTIONS,
+    clean_logbook_text,
+    normalize_logbook_display_fields,
+    normalize_required_logbook_fields,
+)
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS device_state (
@@ -177,19 +186,6 @@ CREATE TABLE IF NOT EXISTS user_equipment (
 );
 """
 
-DEFAULT_LOGBOOK_REQUIRED_FIELDS = ("site",)
-LOGBOOK_REQUIRED_FIELD_OPTIONS = (
-    "site",
-    "buddy",
-    "guide",
-    "weather_description",
-    "visibility",
-    "wetsuit_description",
-    "weight_description",
-    "notes",
-)
-LOGBOOK_OPTIONAL_FIELDS = ("weather_description", "visibility", "wetsuit_description", "weight_description")
-LOGBOOK_DISPLAY_FIELD_OPTIONS = set(LOGBOOK_OPTIONAL_FIELDS)
 SAMPLE_TIME_UNIT_SECONDS = "seconds"
 SAMPLE_TIME_UNIT_MILLISECONDS = "milliseconds"
 CURRENT_SCHEMA_VERSION = 14
@@ -887,10 +883,6 @@ def verify_cli_sync_token(conn: psycopg.Connection, token: str, *, now_timestamp
     }
 
 
-def clean_logbook_text(value: object) -> str:
-    return value.strip() if isinstance(value, str) else ""
-
-
 def clean_profile_text(value: object) -> str:
     return value.strip() if isinstance(value, str) else ""
 
@@ -1297,46 +1289,6 @@ def normalize_profile_guides(entries: object) -> list[dict]:
         normalized.append(normalized_entry)
 
     return normalized
-
-
-def normalize_logbook_display_fields(entries: object) -> list[str]:
-    if isinstance(entries, str):
-        try:
-            entries = json.loads(entries)
-        except json.JSONDecodeError:
-            return []
-    if not isinstance(entries, list):
-        return []
-
-    normalized: list[str] = []
-    seen: set[str] = set()
-    for entry in entries:
-        value = clean_profile_text(entry)
-        if value not in LOGBOOK_DISPLAY_FIELD_OPTIONS or value in seen:
-            continue
-        seen.add(value)
-        normalized.append(value)
-    return normalized
-
-
-def normalize_required_logbook_fields(entries: object) -> list[str]:
-    if isinstance(entries, str):
-        try:
-            entries = json.loads(entries)
-        except json.JSONDecodeError:
-            return list(DEFAULT_LOGBOOK_REQUIRED_FIELDS)
-    if not isinstance(entries, list):
-        return list(DEFAULT_LOGBOOK_REQUIRED_FIELDS)
-
-    normalized: list[str] = []
-    seen: set[str] = set()
-    for entry in entries:
-        value = clean_profile_text(entry)
-        if value not in LOGBOOK_REQUIRED_FIELD_OPTIONS or value in seen:
-            continue
-        seen.add(value)
-        normalized.append(value)
-    return normalized or list(DEFAULT_LOGBOOK_REQUIRED_FIELDS)
 
 
 def decode_profile_collection(value: object) -> list[dict]:
