@@ -1,0 +1,136 @@
+name: Full Application Test
+
+on:
+  pull_request:
+    branches:
+      - master
+  workflow_dispatch:
+
+env:
+  DATABASE_URL: postgresql://dive:dive@127.0.0.1:5432/dive
+  FULL_APP_BASE_URL: http://127.0.0.1:8000
+  PYTHON_VERSION: "3.14.5"
+  NODE_VERSION: "24.16.0"
+
+jobs:
+  full-application-test:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: dive
+          POSTGRES_PASSWORD: dive
+          POSTGRES_DB: dive
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U dive -d dive"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install backend dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r backend/requirements-dev.txt
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Install Playwright browsers
+        working-directory: frontend
+        env:
+          PLAYWRIGHT_BROWSERS_PATH: 0
+        run: |
+          npx playwright --version
+          npx playwright install --with-deps
+
+      - name: Run backend test suite
+        env:
+          PYTHONPATH: ${{ github.workspace }}/backend
+        run: python -m pytest -vv -ra backend/tests
+
+      - name: Run frontend test suite
+        working-directory: frontend
+        env:
+          PLAYWRIGHT_BROWSERS_PATH: 0
+        run: npm test
+
+      - name: Build production frontend assets
+        working-directory: frontend
+        run: npm run build:app
+
+      - name: Start deployed backend with built frontend and auth
+        env:
+          PYTHONPATH: ${{ github.workspace }}/backend
+          AUTH_JWT_SECRET: full-application-test-secret
+          AUTH_JWT_ISSUER: divevault.full-application-test
+          AUTH_JWT_AUDIENCE: divevault.full-application-test
+          STARTUP_MIGRATIONS: enabled
+          FRONTEND_DIR: frontend/dist
+          HOST: 127.0.0.1
+          PORT: "8000"
+          CORS_ORIGIN: http://127.0.0.1:8000
+          DB_POOL_SIZE: "0"
+          METRICS_ENABLED: disabled
+        run: |
+          set -euo pipefail
+          python -m divevault.app > "${RUNNER_TEMP}/divevault-backend.log" 2>&1 &
+          echo "$!" > "${RUNNER_TEMP}/divevault-backend.pid"
+
+      - name: Wait for deployed backend
+        run: |
+          set -euo pipefail
+          for attempt in {1..60}; do
+            if curl -fsS "${FULL_APP_BASE_URL}/health"; then
+              exit 0
+            fi
+            sleep 2
+          done
+          cat "${RUNNER_TEMP}/divevault-backend.log" >&2
+          exit 1
+
+      - name: Run full application test
+        working-directory: frontend
+        env:
+          PLAYWRIGHT_BROWSERS_PATH: 0
+          FULL_APP_BASE_URL: ${{ env.FULL_APP_BASE_URL }}
+        run: npm run test:full-app
+
+      - name: Stop deployed backend
+        if: always()
+        run: |
+          if [[ -f "${RUNNER_TEMP}/divevault-backend.pid" ]]; then
+            kill "$(cat "${RUNNER_TEMP}/divevault-backend.pid")" || true
+          fi
+
+      - name: Upload full application diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: full-application-test-diagnostics
+          path: |
+            ${{ runner.temp }}/divevault-backend.log
+            frontend/playwright-report
+            frontend/test-results
+          if-no-files-found: ignore
+

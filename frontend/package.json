@@ -10,6 +10,7 @@
     "preview": "vite preview",
     "screenshots:readme": "node scripts/capture-readme-screenshots.mjs",
     "test": "playwright test",
+    "test:full-app": "playwright test -c playwright.full-app.config.js",
     "test:ui": "playwright test --ui"
   },
   "dependencies": {
