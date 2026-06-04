@@ -77,7 +77,7 @@ test("runs auth, frontend, and backend against a deployed app stack", async ({ p
   });
   expect(createdDive).toMatchObject({
     vendor: "Manual",
-    product: "DiveVault",
+    product: "Entry",
     duration_seconds: 2220,
     max_depth_m: 14.2
   });
