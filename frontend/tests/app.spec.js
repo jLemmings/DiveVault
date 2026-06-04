@@ -247,6 +247,78 @@ test("covers extracted settings lists and user management", async ({ page }) => 
   await expect(page.getByText("kai@example.com")).toBeVisible();
 });
 
+test("keeps user management settings inside narrow mobile viewports", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await installAppMocks(page, {
+    user: {
+      id: "owner_avery",
+      firstName: "Avery",
+      lastName: "Marlow",
+      role: "admin",
+      isOwner: true,
+      primaryEmailAddress: {
+        emailAddress: "avery@example.com"
+      },
+      emailAddresses: [
+        {
+          emailAddress: "avery@example.com"
+        }
+      ]
+    },
+    authUsers: [
+      {
+        id: "owner_avery",
+        email: "avery.longname@example.com",
+        first_name: "Avery",
+        last_name: "Marlow",
+        role: "admin",
+        is_active: true,
+        created_at: "2026-04-01T09:00:00Z",
+        updated_at: "2026-04-01T09:00:00Z",
+        last_login_at: "2026-04-07T10:00:00Z"
+      },
+      {
+        id: "user_kai",
+        email: "kai.with-a-long-email-address@example.com",
+        first_name: "Kai",
+        last_name: "Reef",
+        role: "user",
+        is_active: true,
+        created_at: "2026-04-02T09:00:00Z",
+        updated_at: "2026-04-02T09:00:00Z",
+        last_login_at: "2026-04-07T11:00:00Z"
+      }
+    ]
+  });
+  await gotoAndWait(page, "/#settings/manage-users");
+
+  await expect(page.getByRole("heading", { name: "Invites And Access Control" })).toBeVisible();
+
+  const overflow = await page.evaluate(() => ({
+    documentWidth: document.documentElement.clientWidth,
+    scrollWidth: document.documentElement.scrollWidth,
+    bodyScrollWidth: document.body.scrollWidth
+  }));
+  expect(overflow.scrollWidth).toBeLessThanOrEqual(overflow.documentWidth + 1);
+  expect(overflow.bodyScrollWidth).toBeLessThanOrEqual(overflow.documentWidth + 1);
+
+  for (const selector of [".settings-panel", ".settings-action-card", ".settings-item-card"]) {
+    const boxes = await page.locator(selector).evaluateAll((elements) =>
+      elements
+        .map((element) => {
+          const rect = element.getBoundingClientRect();
+          return { height: rect.height, left: rect.left, right: rect.right, width: rect.width };
+        })
+        .filter((box) => box.width > 0 && box.height > 0)
+    );
+    for (const box of boxes) {
+      expect(box.left).toBeGreaterThanOrEqual(-1);
+      expect(box.right).toBeLessThanOrEqual(overflow.documentWidth + 1);
+      expect(box.width).toBeGreaterThan(0);
+    }
+  }
+});
+
 test("manages equipment inventory and service schedule", async ({ page }) => {
   await installAppMocks(page);
   await gotoAndWait(page, "/#equipment");
