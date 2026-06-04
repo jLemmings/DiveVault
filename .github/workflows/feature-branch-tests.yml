@@ -9,6 +9,8 @@ on:
 env:
   PYTHON_VERSION: "3.14.5"
   NODE_VERSION: "24.16.0"
+  LOCAL_IMAGE_TAG: divevault-feature:${{ github.sha }}
+  FULL_APP_BASE_URL: http://127.0.0.1:8000
 
 jobs:
   backend-tests:
@@ -33,7 +35,7 @@ jobs:
           PYTHONPATH: ${{ github.workspace }}/backend
         run: python -m pytest -vv -ra backend/tests
 
-  frontend-tests:
+  image-full-application-test:
     runs-on: ubuntu-latest
 
     steps:
@@ -59,8 +61,93 @@ jobs:
           npx playwright --version
           npx playwright install --with-deps
 
-      - name: Run frontend tests
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Build Docker image locally
+        uses: docker/build-push-action@v7
+        with:
+          file: backend/Dockerfile
+          platforms: linux/amd64
+          pull: true
+          push: false
+          load: true
+          tags: ${{ env.LOCAL_IMAGE_TAG }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+
+      - name: Start image test stack
+        run: |
+          set -euo pipefail
+          docker network create divevault-feature-full-app-test
+          docker run --detach --name divevault-feature-postgres --network divevault-feature-full-app-test \
+            --env POSTGRES_USER=dive \
+            --env POSTGRES_PASSWORD=dive \
+            --env POSTGRES_DB=dive \
+            postgres:17
+
+          for attempt in {1..60}; do
+            if docker exec divevault-feature-postgres pg_isready -U dive -d dive; then
+              break
+            fi
+            if [[ "${attempt}" == "60" ]]; then
+              docker logs divevault-feature-postgres >&2 || true
+              exit 1
+            fi
+            sleep 2
+          done
+
+          docker run --detach --name divevault-feature-backend --network divevault-feature-full-app-test \
+            --publish 127.0.0.1:8000:8000 \
+            --env DATABASE_URL=postgresql://dive:dive@divevault-feature-postgres:5432/dive \
+            --env AUTH_JWT_SECRET=full-application-test-secret \
+            --env AUTH_JWT_ISSUER=divevault.full-application-test \
+            --env AUTH_JWT_AUDIENCE=divevault.full-application-test \
+            --env STARTUP_MIGRATIONS=enabled \
+            --env FRONTEND_DIR=/app/frontend/dist \
+            --env HOST=0.0.0.0 \
+            --env PORT=8000 \
+            --env CORS_ORIGIN=http://127.0.0.1:8000 \
+            --env DB_POOL_SIZE=0 \
+            --env METRICS_ENABLED=disabled \
+            "${LOCAL_IMAGE_TAG}"
+
+      - name: Wait for image test stack
+        run: |
+          set -euo pipefail
+          for attempt in {1..60}; do
+            if curl -fsS "${FULL_APP_BASE_URL}/health"; then
+              exit 0
+            fi
+            sleep 2
+          done
+          docker logs divevault-feature-backend >&2 || true
+          exit 1
+
+      - name: Run full application test against feature image
         working-directory: frontend
         env:
           PLAYWRIGHT_BROWSERS_PATH: 0
-        run: npm test
+          FULL_APP_BASE_URL: ${{ env.FULL_APP_BASE_URL }}
+        run: npm run test:full-app
+
+      - name: Stop image test stack
+        if: always()
+        run: |
+          docker logs divevault-feature-backend > "${RUNNER_TEMP}/divevault-feature-backend.log" 2>&1 || true
+          docker logs divevault-feature-postgres > "${RUNNER_TEMP}/divevault-feature-postgres.log" 2>&1 || true
+          docker rm -f divevault-feature-backend divevault-feature-postgres || true
+          docker network rm divevault-feature-full-app-test || true
+
+      - name: Upload full application diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: feature-image-full-application-diagnostics
+          path: |
+            ${{ runner.temp }}/divevault-feature-backend.log
+            ${{ runner.temp }}/divevault-feature-postgres.log
+            frontend/playwright-report
+            frontend/test-results
+          if-no-files-found: ignore
