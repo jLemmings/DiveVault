@@ -16,7 +16,7 @@
   "dependencies": {
     "leaflet": "^1.9.4",
     "pdfjs-dist": "^6.0.227",
-    "vue": "^3.5.35",
+    "vue": "^3.5.37",
     "vue-i18n": "^11.4.5"
   },
   "devDependencies": {
