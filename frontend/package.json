@@ -16,16 +16,16 @@
   "dependencies": {
     "leaflet": "^1.9.4",
     "pdfjs-dist": "^6.0.227",
-    "vue": "^3.5.37",
-    "vue-i18n": "^11.4.5"
+    "vue": "^3.5.38",
+    "vue-i18n": "^11.4.6"
   },
   "devDependencies": {
-    "@playwright/test": "1.60.0",
-    "@tailwindcss/postcss": "^4.3.0",
+    "@playwright/test": "1.61.0",
+    "@tailwindcss/postcss": "^4.3.1",
     "@vitejs/plugin-vue": "^6.0.7",
     "autoprefixer": "^10.5.0",
     "postcss": "^8.5.15",
-    "tailwindcss": "^4.3.0",
+    "tailwindcss": "^4.3.1",
     "vite": "^8.0.16"
   }
 }
