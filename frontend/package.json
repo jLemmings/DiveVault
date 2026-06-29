@@ -15,17 +15,17 @@
   },
   "dependencies": {
     "leaflet": "^1.9.4",
-    "pdfjs-dist": "^6.0.227",
-    "vue": "^3.5.38",
+    "pdfjs-dist": "^6.1.200",
+    "vue": "^3.5.39",
     "vue-i18n": "^11.4.6"
   },
   "devDependencies": {
-    "@playwright/test": "1.61.0",
-    "@tailwindcss/postcss": "^4.3.1",
+    "@playwright/test": "1.61.1",
+    "@tailwindcss/postcss": "^4.3.2",
     "@vitejs/plugin-vue": "^6.0.7",
-    "autoprefixer": "^10.5.0",
-    "postcss": "^8.5.15",
-    "tailwindcss": "^4.3.1",
-    "vite": "^8.0.16"
+    "autoprefixer": "^10.5.2",
+    "postcss": "^8.5.16",
+    "tailwindcss": "^4.3.2",
+    "vite": "^8.1.0"
   }
 }
