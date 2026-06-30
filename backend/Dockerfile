@@ -1,4 +1,4 @@
-FROM node:24.17.0-slim AS frontend-build
+FROM node:24.18.0-slim AS frontend-build
 
 WORKDIR /frontend
 
