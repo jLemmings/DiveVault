@@ -15,9 +15,10 @@ export default defineConfig({
     viewport: { width: 1440, height: 1100 }
   },
   webServer: {
-    command: "node ./node_modules/vite/bin/vite.js --host 127.0.0.1 --port 4173",
+    command: "node scripts/serve-dist.mjs 4173 15000",
     port: 4173,
     reuseExistingServer: !process.env.CI,
+    gracefulShutdown: { signal: "SIGTERM", timeout: 5000 },
     timeout: 120000
   },
   projects: [

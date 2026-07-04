@@ -7,12 +7,13 @@ This document is for contributors and maintainers. The main README is intentiona
 - Backend: stdlib `http.server` application in `backend/divevault/app.py`.
 - API/runtime: serves `/api/*`, `/health`, `/config.js`, and built frontend assets from `FRONTEND_DIR`.
 - Database: PostgreSQL schema and migrations live in `backend/divevault/postgres_store.py`.
-- Frontend: Vue 3 and Vite app under `frontend/`.
-- Frontend entrypoint: `frontend/src/main.js`.
-- Root component and router state: `frontend/src/app.js`.
-- Views: plain JavaScript Vue component objects in `frontend/src/components/`.
-- Frontend env: loaded from the repository root by `vite.config.js`.
+- Frontend: Nuxt-powered Vue 3 app under `frontend/`, with Nuxt UI registered as the component library.
+- Frontend entrypoint: `frontend/app/app.vue`, which wraps the app in Nuxt UI’s app provider, renders the Nuxt page in `frontend/app/pages/index.vue`, and mounts the existing DiveVault shell from `frontend/src/app/App.vue`.
+- Root component and hash-router state: `frontend/src/app/App.vue`.
+- Views and reusable UI remain Vue single-file components in `frontend/src/app/pages/` and `frontend/src/app/components/`.
+- Frontend env: loaded from the repository root by Nuxt configuration in `frontend/nuxt.config.js`.
 - Dev API proxy: `VITE_API_PROXY_TARGET`, defaulting to `http://127.0.0.1:8000`.
+- AI-assisted Nuxt UI work should read `frontend/llms.txt` first for the project-local Nuxt UI LLM context and official documentation links.
 
 When adding database migrations, update `CURRENT_SCHEMA_VERSION` in `backend/divevault/postgres_store.py`.
 
@@ -33,7 +34,7 @@ The backend expects PostgreSQL to be available unless tests are using fakes or m
 
 ## Local Frontend
 
-Install dependencies and start the Vite development server:
+Install dependencies and start the Nuxt development server:
 
 ```powershell
 Set-Location frontend
@@ -41,7 +42,7 @@ npm ci
 npm run dev
 ```
 
-The frontend runs on `http://localhost:5173` by default and proxies API requests to `VITE_API_PROXY_TARGET`.
+The frontend runs on Nuxt’s default development port unless `--port` is provided, and proxies API requests to `VITE_API_PROXY_TARGET`.
 
 ## Migrations
 
@@ -82,7 +83,7 @@ Run frontend tests from `frontend/`:
 npm test
 ```
 
-`npm run build` runs Playwright first and then `vite build`. Use `npm run build:app` only when you intentionally want to build the app without running the Playwright test suite.
+`npm run build` runs Playwright first and then `nuxt generate`. Use `npm run build:app` only when you intentionally want to generate the Nuxt app without running the Playwright test suite.
 
 There are no configured lint, formatter, or typecheck scripts in the current manifests.
 

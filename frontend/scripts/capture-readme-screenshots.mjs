@@ -164,8 +164,8 @@ async function startServer() {
   baseUrl = `http://127.0.0.1:${port}`;
 
   const server = spawn(
-    process.execPath,
-    ["./node_modules/vite/bin/vite.js", "--host", "127.0.0.1", "--port", String(port), "--strictPort"],
+    "npm",
+    ["run", "dev", "--", "--host", "127.0.0.1", "--port", String(port)],
     {
       cwd: frontendDir,
       stdio: ["ignore", "pipe", "pipe"],
@@ -184,7 +184,7 @@ async function startServer() {
   const started = await waitForServer(Date.now() + serverTimeoutMs);
   if (!started) {
     server.kill();
-    throw new Error(`Vite did not start at ${baseUrl} within ${serverTimeoutMs / 1000}s.\n${output}`);
+    throw new Error(`Nuxt did not start at ${baseUrl} within ${serverTimeoutMs / 1000}s.\n${output}`);
   }
 
   return server;
