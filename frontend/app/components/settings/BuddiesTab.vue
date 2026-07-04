@@ -38,13 +38,13 @@ export default {
         <p class="mt-3 max-w-3xl text-sm leading-7 text-secondary">Buddy names now scan as a compact grid instead of a long vertical stack.</p>
       </div>
       <div class="settings-toolbar">
-        <button @click="addBuddyEntry" :disabled="isInteractionLocked" class="settings-button settings-button-secondary">Add Buddy</button>
+        <UButton @click="addBuddyEntry" :disabled="isInteractionLocked" class="settings-button settings-button-secondary">Add Buddy</UButton>
       </div>
     </div>
 
     <label class="settings-filter-field mb-4">
       <span class="material-symbols-outlined text-[18px] text-secondary/70">search</span>
-      <input v-model="buddyFilter" type="text" class="settings-input" placeholder="Filter buddies" />
+      <UInput v-model="buddyFilter" type="text" class="settings-input" placeholder="Filter buddies" />
     </label>
 
     <div v-if="!areBuddiesEditing && buddies.length === 0" class="settings-empty-state">
@@ -70,23 +70,23 @@ export default {
             <h5 class="mt-2 font-headline text-xl font-bold text-on-surface">{{ buddyTitle(buddy, index) }}</h5>
           </div>
           <div class="settings-toolbar">
-            <button
+            <UButton
               v-if="!isBuddyEditing(buddy.id)"
               @click="editBuddyItem(buddy.id)"
               class="settings-button settings-button-secondary"
             >
               Edit Buddy
-            </button>
-            <button v-if="isBuddyEditing(buddy.id)" @click="confirmRemoveBuddyItem(buddy.id)" class="settings-button settings-button-danger">Remove</button>
-            <button v-if="isBuddyEditing(buddy.id)" @click="cancelBuddiesEdit" :disabled="isInteractionLocked" class="settings-button settings-button-ghost">Cancel</button>
-            <button v-if="isBuddyEditing(buddy.id)" @click="saveBuddies" :disabled="isInteractionLocked" class="settings-button settings-button-primary">{{ buddiesSaving ? 'Saving Buddy' : 'Save Buddy' }}</button>
+            </UButton>
+            <UButton v-if="isBuddyEditing(buddy.id)" @click="confirmRemoveBuddyItem(buddy.id)" class="settings-button settings-button-danger">Remove</UButton>
+            <UButton v-if="isBuddyEditing(buddy.id)" @click="cancelBuddiesEdit" :disabled="isInteractionLocked" class="settings-button settings-button-ghost">Cancel</UButton>
+            <UButton v-if="isBuddyEditing(buddy.id)" @click="saveBuddies" :disabled="isInteractionLocked" class="settings-button settings-button-primary">{{ buddiesSaving ? 'Saving Buddy' : 'Save Buddy' }}</UButton>
           </div>
         </div>
 
         <div v-if="isBuddyEditing(buddy.id)" class="mt-5 space-y-3">
           <label class="space-y-2">
             <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Buddy Name</span>
-            <input v-model="buddy.name" type="text" class="settings-input" placeholder="Sam Carter" />
+            <UInput v-model="buddy.name" type="text" class="settings-input" placeholder="Sam Carter" />
           </label>
         </div>
       </article>

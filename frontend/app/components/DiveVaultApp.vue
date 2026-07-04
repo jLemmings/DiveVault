@@ -1564,20 +1564,20 @@ export default {
         </div>
         <nav class="mt-6 flex-1 space-y-2">
           <div v-for="item in desktopNavItems" :key="item.id" class="space-y-2">
-            <button @click="handleNavItemClick(item.id)" :disabled="item.disabled" class="group flex w-full items-center gap-4 p-4 text-left transition-all duration-300 disabled:cursor-not-allowed disabled:opacity-100" :class="item.disabled ? 'border-l-4 border-tertiary bg-tertiary/12 text-tertiary' : ((activeView === item.id || (activeView === 'create' && item.id === 'logs')) ? 'border-r-4 border-primary bg-surface-container-high/70 text-primary' : 'text-secondary opacity-70 hover:bg-surface-container-high hover:text-primary hover:opacity-100')">
+            <UButton @click="handleNavItemClick(item.id)" :disabled="item.disabled" class="group flex w-full items-center gap-4 p-4 text-left transition-all duration-300 disabled:cursor-not-allowed disabled:opacity-100" :class="item.disabled ? 'border-l-4 border-tertiary bg-tertiary/12 text-tertiary' : ((activeView === item.id || (activeView === 'create' && item.id === 'logs')) ? 'border-r-4 border-primary bg-surface-container-high/70 text-primary' : 'text-secondary opacity-70 hover:bg-surface-container-high hover:text-primary hover:opacity-100')">
               <span class="material-symbols-outlined transition-transform group-active:scale-90" :style="(activeView === item.id || (activeView === 'create' && item.id === 'logs')) && !item.disabled ? filledIconStyle : ''">{{ item.icon }}</span>
               <span class="hidden items-center gap-2 font-label text-[11px] font-bold md:flex">
                 <span>{{ item.label }}</span>
                 <span v-if="item.badge" class="rounded bg-tertiary px-2 py-0.5 text-[9px] font-black tracking-[0.18em] text-background">{{ item.badge }}</span>
               </span>
-            </button>
+            </UButton>
           </div>
         </nav>
         <div class="mt-auto p-6">
-          <button @click="openManualDiveCreator()" class="hidden w-full items-center justify-center gap-2 bg-primary px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-on-primary transition-all hover:brightness-110 md:flex">
+          <UButton @click="openManualDiveCreator()" class="hidden w-full items-center justify-center gap-2 bg-primary px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-on-primary transition-all hover:brightness-110 md:flex">
             <span class="material-symbols-outlined text-sm">add</span>
             Log New Dive
-          </button>
+          </UButton>
         </div>
       </aside>
       <header class="fixed left-0 right-0 top-0 z-30 h-16 border-b border-primary/10 bg-surface-container-high/95 backdrop-blur-xl md:left-64 md:bg-background/80">
@@ -1589,24 +1589,24 @@ export default {
             <h2 class="font-headline text-lg font-bold uppercase tracking-[0.14em] text-primary">{{ activeMenuTitle }}</h2>
           </div>
           <div class="relative">
-            <button @click="toggleMobileAccountMenu" class="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-primary/15 bg-surface-container-high text-[11px] font-bold uppercase tracking-[0.12em] text-primary">
+            <UButton @click="toggleMobileAccountMenu" class="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-primary/15 bg-surface-container-high text-[11px] font-bold uppercase tracking-[0.12em] text-primary">
               {{ currentUserInitials }}
-            </button>
+            </UButton>
             <div v-if="mobileAccountMenuOpen" class="absolute right-0 top-[calc(100%+0.75rem)] z-40 w-56 rounded-2xl border border-primary/10 bg-surface-container-low p-3 shadow-panel">
               <div class="border-b border-primary/10 pb-3">
                 <p class="truncate text-sm font-semibold text-on-surface">{{ currentUserName }}</p>
                 <p class="mt-1 truncate text-xs text-secondary">{{ currentUserEmail }}</p>
               </div>
               <div class="mt-3 flex flex-col gap-2">
-                <button @click="openMobileSettings()" class="inline-flex items-center justify-center rounded-xl bg-surface-container-high px-3 py-2 font-label text-[10px] font-bold uppercase tracking-[0.16em] text-primary transition-colors hover:bg-surface-container-highest">
+                <UButton @click="openMobileSettings()" class="inline-flex items-center justify-center rounded-xl bg-surface-container-high px-3 py-2 font-label text-[10px] font-bold uppercase tracking-[0.16em] text-primary transition-colors hover:bg-surface-container-highest">
                   Open Settings
-                </button>
-                <button @click="openPasswordDialog" class="inline-flex items-center justify-center rounded-xl bg-surface-container-high px-3 py-2 font-label text-[10px] font-bold uppercase tracking-[0.16em] text-primary transition-colors hover:bg-surface-container-highest">
+                </UButton>
+                <UButton @click="openPasswordDialog" class="inline-flex items-center justify-center rounded-xl bg-surface-container-high px-3 py-2 font-label text-[10px] font-bold uppercase tracking-[0.16em] text-primary transition-colors hover:bg-surface-container-highest">
                   Change Password
-                </button>
-                <button @click="signOutUser" class="inline-flex items-center justify-center rounded-xl border border-primary/15 px-3 py-2 font-label text-[10px] font-bold uppercase tracking-[0.16em] text-primary transition-colors hover:bg-surface-container-high">
+                </UButton>
+                <UButton @click="signOutUser" class="inline-flex items-center justify-center rounded-xl border border-primary/15 px-3 py-2 font-label text-[10px] font-bold uppercase tracking-[0.16em] text-primary transition-colors hover:bg-surface-container-high">
                   Sign Out
-                </button>
+                </UButton>
               </div>
             </div>
           </div>
@@ -1618,7 +1618,7 @@ export default {
               <p class="font-label text-[9px] font-bold uppercase tracking-[0.18em] text-secondary/70">Diver</p>
               <p class="max-w-[11rem] truncate text-sm font-semibold leading-5 text-on-surface">{{ currentUserName }}</p>
             </div>
-            <button
+            <UButton
               @click="toggleDesktopAccountMenu"
               type="button"
               aria-label="Account menu"
@@ -1629,19 +1629,19 @@ export default {
               <span class="absolute -bottom-0.5 -right-0.5 flex h-5 w-5 items-center justify-center rounded-full border border-background bg-surface-container-high text-secondary">
                 <span class="material-symbols-outlined text-[14px] transition-transform" :class="desktopAccountMenuOpen ? 'rotate-180 text-primary' : ''">expand_more</span>
               </span>
-            </button>
+            </UButton>
             <div v-if="desktopAccountMenuOpen" class="absolute right-0 top-[calc(100%+0.75rem)] z-40 w-56 rounded-2xl border border-primary/10 bg-surface-container-low p-3 shadow-panel">
               <div class="border-b border-primary/10 pb-3">
                 <p class="truncate text-sm font-semibold text-on-surface">{{ currentUserName }}</p>
                 <p class="mt-1 truncate text-xs text-secondary">{{ currentUserEmail }}</p>
               </div>
               <div class="mt-3 flex flex-col gap-2">
-                <button @click="openPasswordDialog" class="inline-flex items-center justify-center rounded-xl bg-surface-container-high px-3 py-2 font-label text-[10px] font-bold uppercase tracking-[0.16em] text-primary transition-colors hover:bg-surface-container-highest">
+                <UButton @click="openPasswordDialog" class="inline-flex items-center justify-center rounded-xl bg-surface-container-high px-3 py-2 font-label text-[10px] font-bold uppercase tracking-[0.16em] text-primary transition-colors hover:bg-surface-container-highest">
                   Change Password
-                </button>
-                <button @click="signOutUser" class="inline-flex items-center justify-center rounded-xl border border-primary/15 px-3 py-2 font-label text-[10px] font-bold uppercase tracking-[0.16em] text-primary transition-colors hover:bg-surface-container-high">
+                </UButton>
+                <UButton @click="signOutUser" class="inline-flex items-center justify-center rounded-xl border border-primary/15 px-3 py-2 font-label text-[10px] font-bold uppercase tracking-[0.16em] text-primary transition-colors hover:bg-surface-container-high">
                   Sign Out
-                </button>
+                </UButton>
               </div>
             </div>
           </div>
@@ -1846,7 +1846,7 @@ export default {
           <section v-else-if="error" class="bg-error-container/25 p-10 shadow-panel">
             <p class="font-headline text-2xl font-bold text-on-error-container">Frontend could not load dive data</p>
             <p class="mt-2 text-sm text-on-error-container">{{ error }}</p>
-            <button @click="fetchDives" class="mt-5 bg-primary px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-on-primary">Retry</button>
+            <UButton @click="fetchDives" class="mt-5 bg-primary px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-on-primary">Retry</UButton>
           </section>
           <dashboard-view v-else-if="activeView === 'dashboard'" display-mode="dashboard" :dives="committedDives" :all-dives="dives" :dive-sites="profileDiveSites" :stats="stats" :set-view="setView" :backend-healthy="backendHealthy" :open-dive="openDive" :current-user-name="currentUserName" :imported-dive-count="importedDiveCount" :open-import-queue="openImportQueue"></dashboard-view>
           <dashboard-view v-else-if="activeView === 'map'" display-mode="map" :dives="committedDives" :all-dives="dives" :dive-sites="profileDiveSites" :stats="stats" :set-view="setView" :backend-healthy="backendHealthy" :open-dive="openDive" :current-user-name="currentUserName" :imported-dive-count="importedDiveCount" :open-import-queue="openImportQueue"></dashboard-view>
@@ -1861,7 +1861,7 @@ export default {
         </div>
       </main>
       <nav class="fixed bottom-0 left-0 right-0 z-40 flex items-center justify-around border-t border-primary/10 bg-surface-container-low/80 px-4 pb-6 pt-3 backdrop-blur-xl md:hidden">
-        <button
+        <UButton
           v-for="item in mobileNavItems"
           :key="item.id"
           @click="setView(item.id)"
@@ -1871,7 +1871,7 @@ export default {
         >
           <span class="material-symbols-outlined mb-1" :style="!item.disabled && (activeView === item.id || ((activeView === 'imports' || activeView === 'edit' || activeView === 'create') && item.id === 'logs')) ? filledIconStyle : ''">{{ item.mobileIcon || item.icon }}</span>
           <span class="font-label text-[10px] font-bold">{{ item.mobileLabel }}</span>
-        </button>
+        </UButton>
       </nav>
       <div
         v-if="passwordDialogOpen"
@@ -1885,9 +1885,9 @@ export default {
               <h3 class="mt-3 font-headline text-2xl font-bold tracking-tight text-on-surface">Change Password</h3>
               <p class="mt-3 text-sm leading-6 text-secondary">Update the password for your current DiveVault account.</p>
             </div>
-            <button @click="closePasswordDialog" :disabled="passwordSubmitting" class="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-primary/10 text-secondary transition-colors hover:bg-surface-container-high">
+            <UButton @click="closePasswordDialog" :disabled="passwordSubmitting" class="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-primary/10 text-secondary transition-colors hover:bg-surface-container-high">
               <span class="material-symbols-outlined text-lg">close</span>
-            </button>
+            </UButton>
           </div>
 
           <p v-if="passwordStatus" class="mt-5 text-sm text-primary">{{ passwordStatus }}</p>
@@ -1896,25 +1896,25 @@ export default {
           <div class="mt-5 space-y-4">
             <label class="space-y-2">
               <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Current Password</span>
-              <input v-model="passwordForm.currentPassword" type="password" class="w-full rounded-2xl border border-primary/15 bg-background/20 px-4 py-3 text-sm text-on-surface outline-none transition-colors focus:border-primary/40" />
+              <UInput v-model="passwordForm.currentPassword" type="password" class="w-full rounded-2xl border border-primary/15 bg-background/20 px-4 py-3 text-sm text-on-surface outline-none transition-colors focus:border-primary/40" />
             </label>
             <label class="space-y-2">
               <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">New Password</span>
-              <input v-model="passwordForm.newPassword" type="password" class="w-full rounded-2xl border border-primary/15 bg-background/20 px-4 py-3 text-sm text-on-surface outline-none transition-colors focus:border-primary/40" />
+              <UInput v-model="passwordForm.newPassword" type="password" class="w-full rounded-2xl border border-primary/15 bg-background/20 px-4 py-3 text-sm text-on-surface outline-none transition-colors focus:border-primary/40" />
             </label>
             <label class="space-y-2">
               <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Confirm New Password</span>
-              <input v-model="passwordForm.confirmPassword" type="password" class="w-full rounded-2xl border border-primary/15 bg-background/20 px-4 py-3 text-sm text-on-surface outline-none transition-colors focus:border-primary/40" />
+              <UInput v-model="passwordForm.confirmPassword" type="password" class="w-full rounded-2xl border border-primary/15 bg-background/20 px-4 py-3 text-sm text-on-surface outline-none transition-colors focus:border-primary/40" />
             </label>
           </div>
 
           <div class="mt-6 flex flex-wrap gap-3">
-            <button @click="submitPasswordChange" :disabled="passwordSubmitting" class="inline-flex items-center justify-center rounded-xl bg-primary px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.16em] text-on-primary transition-all hover:brightness-110">
+            <UButton @click="submitPasswordChange" :disabled="passwordSubmitting" class="inline-flex items-center justify-center rounded-xl bg-primary px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.16em] text-on-primary transition-all hover:brightness-110">
               {{ passwordSubmitting ? 'Updating Password' : 'Update Password' }}
-            </button>
-            <button @click="closePasswordDialog" :disabled="passwordSubmitting" class="inline-flex items-center justify-center rounded-xl border border-primary/15 px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.16em] text-primary transition-colors hover:bg-surface-container-high">
+            </UButton>
+            <UButton @click="closePasswordDialog" :disabled="passwordSubmitting" class="inline-flex items-center justify-center rounded-xl border border-primary/15 px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.16em] text-primary transition-colors hover:bg-surface-container-high">
               Cancel
-            </button>
+            </UButton>
           </div>
         </div>
       </div>

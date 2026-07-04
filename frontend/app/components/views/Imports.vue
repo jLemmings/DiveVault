@@ -138,12 +138,12 @@ export default {
               </div>
 
               <div class="grid grid-cols-2 gap-3">
-                <button @click="selectImportDive(dive.id)" class="rounded-lg bg-primary px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-on-primary">
+                <UButton @click="selectImportDive(dive.id)" class="rounded-lg bg-primary px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-on-primary">
                   Edit Imported Dive
-                </button>
-                <button @click="removeDive(dive.id)" :disabled="isDeleting(dive.id)" class="rounded-lg bg-error-container/20 px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-on-error-container disabled:opacity-50">
+                </UButton>
+                <UButton @click="removeDive(dive.id)" :disabled="isDeleting(dive.id)" class="rounded-lg bg-error-container/20 px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-on-error-container disabled:opacity-50">
                   {{ isDeleting(dive.id) ? 'Removing...' : 'Remove Dive' }}
-                </button>
+                </UButton>
               </div>
             </div>
           </article>
@@ -153,8 +153,8 @@ export default {
           <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-primary">Import Queue Clear</p>
           <p class="font-headline text-2xl font-bold">All imported dives have been committed.</p>
           <div class="flex flex-col gap-3">
-            <button @click="setView('logs')" class="rounded-lg bg-primary px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-on-primary">Return To Logs</button>
-            <button @click="fetchDives" class="rounded-lg bg-surface-container-high px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-primary">Refresh Queue</button>
+            <UButton @click="setView('logs')" class="rounded-lg bg-primary px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-on-primary">Return To Logs</UButton>
+            <UButton @click="fetchDives" class="rounded-lg bg-surface-container-high px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-primary">Refresh Queue</UButton>
           </div>
         </section>
       </section>
@@ -170,14 +170,14 @@ export default {
               <h3 class="font-headline text-5xl font-bold tracking-tight">Imported Dives</h3>
             </div>
             <div class="flex gap-3">
-              <button @click="setView('logs')" class="inline-flex items-center gap-2 bg-surface-container-high px-5 py-3 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-on-surface transition-colors hover:text-primary">
+              <UButton @click="setView('logs')" class="inline-flex items-center gap-2 bg-surface-container-high px-5 py-3 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-on-surface transition-colors hover:text-primary">
                 <span class="material-symbols-outlined text-sm">chevron_left</span>
                 Return To Logs
-              </button>
-              <button @click="fetchDives" class="inline-flex items-center gap-2 bg-surface-container-high px-5 py-3 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-primary transition-colors hover:bg-surface-container-highest">
+              </UButton>
+              <UButton @click="fetchDives" class="inline-flex items-center gap-2 bg-surface-container-high px-5 py-3 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-primary transition-colors hover:bg-surface-container-highest">
                 <span class="material-symbols-outlined text-sm">sync</span>
                 Refresh Queue
-              </button>
+              </UButton>
             </div>
           </div>
 
@@ -319,12 +319,12 @@ export default {
                     <p class="mt-2 text-sm font-semibold" :class="missingFields(dive).length ? 'text-tertiary' : 'text-primary'">{{ missingFields(dive).length ? missingFields(dive)[0].label : 'Ready To Commit' }}</p>
                   </div>
                   <div class="grid grid-cols-2 gap-3">
-                    <button @click="selectImportDive(dive.id)" class="w-full bg-primary px-5 py-3 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-on-primary transition-all hover:brightness-110">
+                    <UButton @click="selectImportDive(dive.id)" class="w-full bg-primary px-5 py-3 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-on-primary transition-all hover:brightness-110">
                       Edit Imported Dive
-                    </button>
-                    <button @click="removeDive(dive.id)" :disabled="isDeleting(dive.id)" class="w-full bg-error-container/20 px-5 py-3 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-on-error-container transition-colors hover:bg-error-container/30 disabled:opacity-50">
+                    </UButton>
+                    <UButton @click="removeDive(dive.id)" :disabled="isDeleting(dive.id)" class="w-full bg-error-container/20 px-5 py-3 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-on-error-container transition-colors hover:bg-error-container/30 disabled:opacity-50">
                       {{ isDeleting(dive.id) ? 'Removing...' : 'Remove Dive' }}
-                    </button>
+                    </UButton>
                   </div>
                 </div>
               </div>
@@ -337,8 +337,8 @@ export default {
           <h4 class="font-headline text-4xl font-bold tracking-tight">All imported dives have been committed.</h4>
           <p class="max-w-2xl text-sm leading-7 text-on-surface-variant">The imported queue is empty. Continue with the dive log or inspect the most recent telemetry detail.</p>
           <div class="flex flex-wrap gap-3">
-            <button @click="setView('logs')" class="bg-primary px-5 py-3 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-on-primary">Return To Logs</button>
-            <button @click="fetchDives" class="bg-surface-container-high px-5 py-3 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-primary">Refresh Queue</button>
+            <UButton @click="setView('logs')" class="bg-primary px-5 py-3 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-on-primary">Return To Logs</UButton>
+            <UButton @click="fetchDives" class="bg-surface-container-high px-5 py-3 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-primary">Refresh Queue</UButton>
           </div>
         </section>
       </section>

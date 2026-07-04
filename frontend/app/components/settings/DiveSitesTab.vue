@@ -55,13 +55,13 @@ export default {
         <p class="mt-3 max-w-3xl text-sm leading-7 text-secondary">Locations are summarized first, with GPS detail tucked underneath so the list feels more like a directory and less like a long form dump.</p>
       </div>
       <div class="settings-toolbar">
-        <button @click="addDiveSiteEntry" :disabled="isInteractionLocked" class="settings-button settings-button-secondary">Add Dive Site</button>
+        <UButton @click="addDiveSiteEntry" :disabled="isInteractionLocked" class="settings-button settings-button-secondary">Add Dive Site</UButton>
       </div>
     </div>
 
     <label class="settings-filter-field mb-4">
       <span class="material-symbols-outlined text-[18px] text-secondary/70">search</span>
-      <input v-model="diveSiteFilter" type="text" class="settings-input" placeholder="Filter dive sites" />
+      <UInput v-model="diveSiteFilter" type="text" class="settings-input" placeholder="Filter dive sites" />
     </label>
 
     <div v-if="!areDiveSitesEditing && diveSites.length === 0" class="settings-empty-state">
@@ -85,14 +85,12 @@ export default {
         <div class="flex flex-col gap-3 sm:flex-row sm:items-center">
           <label class="flex items-center gap-3">
             <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Dive Sites Per Page</span>
-            <select v-model.number="diveSitePageSize" class="settings-input min-w-[5.5rem] py-2">
-              <option v-for="size in diveSitePageSizeOptions" :key="'settings-dive-site-page-size-' + size" :value="size">{{ size }}</option>
-            </select>
+            <USelect v-model.number="diveSitePageSize" :items="diveSitePageSizeOptions" class="settings-input min-w-[5.5rem] py-2" />
           </label>
           <div class="flex items-center gap-2">
-            <button @click="previousDiveSitePage" :disabled="diveSitePage === 1" class="settings-button settings-button-secondary" :class="diveSitePage === 1 ? 'opacity-50' : ''">Previous</button>
+            <UButton @click="previousDiveSitePage" :disabled="diveSitePage === 1" class="settings-button settings-button-secondary" :class="diveSitePage === 1 ? 'opacity-50' : ''">Previous</UButton>
             <span class="settings-chip">Page {{ diveSitePage }} / {{ diveSitePageCount }}</span>
-            <button @click="nextDiveSitePage" :disabled="diveSitePage >= diveSitePageCount" class="settings-button settings-button-secondary" :class="diveSitePage >= diveSitePageCount ? 'opacity-50' : ''">Next</button>
+            <UButton @click="nextDiveSitePage" :disabled="diveSitePage >= diveSitePageCount" class="settings-button settings-button-secondary" :class="diveSitePage >= diveSitePageCount ? 'opacity-50' : ''">Next</UButton>
           </div>
         </div>
       </div>
@@ -118,36 +116,36 @@ export default {
           </div>
 
           <div class="settings-toolbar">
-            <button
+            <UButton
               v-if="!isDiveSiteEditing(site.id)"
               @click="editDiveSiteItem(site.id)"
               class="settings-button settings-button-secondary"
             >
               Edit Site
-            </button>
-            <button
+            </UButton>
+            <UButton
               v-if="isDiveSiteEditing(site.id)"
               @click="confirmRemoveDiveSiteItem(site.id)"
               class="settings-button settings-button-danger"
             >
               Remove
-            </button>
-            <button
+            </UButton>
+            <UButton
               v-if="isDiveSiteEditing(site.id)"
               @click="cancelDiveSitesEdit"
               :disabled="isInteractionLocked"
               class="settings-button settings-button-ghost"
             >
               Cancel
-            </button>
-            <button
+            </UButton>
+            <UButton
               v-if="isDiveSiteEditing(site.id)"
               @click="saveDiveSites"
               :disabled="isInteractionLocked"
               class="settings-button settings-button-primary"
             >
               {{ diveSitesSaving ? 'Saving Dive Site' : 'Save Dive Site' }}
-            </button>
+            </UButton>
           </div>
         </div>
 
@@ -155,7 +153,7 @@ export default {
           <div v-if="isDiveSiteEditing(site.id)" class="space-y-5">
             <label class="space-y-2">
               <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Site Name</span>
-              <input v-model="site.name" type="text" class="settings-input" placeholder="North Wall / Training Reef" />
+              <UInput v-model="site.name" type="text" class="settings-input" placeholder="North Wall / Training Reef" />
             </label>
             <div class="settings-side-panel mt-3">
               <div class="flex flex-col gap-4">
@@ -164,38 +162,38 @@ export default {
                     <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-primary">GPS Lookup</p>
                     <p class="mt-2 text-sm text-secondary">Search from the location text, or open the map here and drag the marker to set the exact coordinate.</p>
                   </div>
-                  <button
+                  <UButton
                     @click="searchDiveSiteLocationById(site.id)"
                     :disabled="isLookingUpDiveSite(site.id)"
                     class="settings-button settings-button-secondary"
                   >
                     {{ isLookingUpDiveSite(site.id) ? 'Searching GPS' : 'Search GPS From Location' }}
-                  </button>
-                  <button
+                  </UButton>
+                  <UButton
                     @click="toggleDiveSiteMap(site.id)"
                     class="settings-button settings-button-secondary"
                   >
                     {{ diveSiteMapOpen(site.id) ? 'Close Map' : 'Map' }}
-                  </button>
+                  </UButton>
                 </div>
                 <div class="settings-form-grid settings-form-grid-wide">
                   <label class="space-y-2 md:col-span-2">
                     <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Location</span>
-                    <input v-model="site.location" type="text" class="settings-input" placeholder="Blue Hole, Dahab, Egypt" />
+                    <UInput v-model="site.location" type="text" class="settings-input" placeholder="Blue Hole, Dahab, Egypt" />
                   </label>
                   <label class="space-y-2">
                     <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Country</span>
-                    <input v-model="site.country" type="text" class="settings-input" placeholder="Egypt" />
+                    <UInput v-model="site.country" type="text" class="settings-input" placeholder="Egypt" />
                   </label>
                 </div>
                 <div class="settings-form-grid settings-form-grid-wide">
                   <label class="space-y-2">
                     <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Latitude</span>
-                    <input v-model="site.latitude" @input="syncDiveSiteMapFromFields(site.id)" type="number" step="any" min="-90" max="90" class="settings-input" placeholder="25.1234" />
+                    <UInput v-model="site.latitude" @input="syncDiveSiteMapFromFields(site.id)" type="number" step="any" min="-90" max="90" class="settings-input" placeholder="25.1234" />
                   </label>
                   <label class="space-y-2">
                     <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Longitude</span>
-                    <input v-model="site.longitude" @input="syncDiveSiteMapFromFields(site.id)" type="number" step="any" min="-180" max="180" class="settings-input" placeholder="-80.4567" />
+                    <UInput v-model="site.longitude" @input="syncDiveSiteMapFromFields(site.id)" type="number" step="any" min="-180" max="180" class="settings-input" placeholder="-80.4567" />
                   </label>
                 </div>
                 <div v-if="diveSiteMapOpen(site.id)" class="space-y-3">
@@ -237,9 +235,9 @@ export default {
       <div class="flex flex-col gap-4 border-t border-primary/10 pt-4 md:flex-row md:items-center md:justify-between">
         <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">{{ diveSitePaginationLabel }}</p>
         <div class="flex items-center gap-2">
-          <button @click="previousDiveSitePage" :disabled="diveSitePage === 1" class="settings-button settings-button-secondary" :class="diveSitePage === 1 ? 'opacity-50' : ''">Previous</button>
+          <UButton @click="previousDiveSitePage" :disabled="diveSitePage === 1" class="settings-button settings-button-secondary" :class="diveSitePage === 1 ? 'opacity-50' : ''">Previous</UButton>
           <span class="settings-chip">Page {{ diveSitePage }} / {{ diveSitePageCount }}</span>
-          <button @click="nextDiveSitePage" :disabled="diveSitePage >= diveSitePageCount" class="settings-button settings-button-secondary" :class="diveSitePage >= diveSitePageCount ? 'opacity-50' : ''">Next</button>
+          <UButton @click="nextDiveSitePage" :disabled="diveSitePage >= diveSitePageCount" class="settings-button settings-button-secondary" :class="diveSitePage >= diveSitePageCount ? 'opacity-50' : ''">Next</UButton>
         </div>
       </div>
     </div>

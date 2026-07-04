@@ -2,6 +2,11 @@ import { expect, test } from "@playwright/test";
 
 import { gotoAndWait, installAppMocks } from "./helpers/app-fixtures.js";
 
+async function chooseComboboxOption(page, name, optionName) {
+  await page.getByRole("combobox", { name }).first().click();
+  await page.getByRole("option", { name: optionName, exact: true }).click();
+}
+
 test("renders login flows with the local auth screen", async ({ page }) => {
   await installAppMocks(page, {
     signedIn: false,
@@ -19,7 +24,9 @@ test("renders login flows with the local auth screen", async ({ page }) => {
   await expect(page.getByRole("button", { name: "Sign In" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Create Account" })).toBeVisible();
   await expect(page.getByLabel("Language")).toBeVisible();
-  await expect(page.getByLabel("Language").locator("option")).toHaveText(["English", "Deutsch", "Français"]);
+  await page.getByRole("combobox", { name: "Language" }).click();
+  await expect(page.getByRole("option")).toHaveText(["English", "Deutsch", "Français"]);
+  await page.keyboard.press("Escape");
 
   await page.getByRole("button", { name: "Create Account" }).last().click();
   await expect(page.getByRole("heading", { name: "Create your DiveVault account" })).toBeVisible();
@@ -69,7 +76,8 @@ test("covers dashboard, logs, dive detail, and logbook editing", async ({ page }
   await expect(visibleLogRow.locator(".material-symbols-outlined", { hasText: "fitness_center" }).first()).toBeVisible();
   await expect(visibleLogRow).toContainText("8 kg integrated");
 
-  await visibleLogRow.click();
+  await visibleLogRow.focus();
+  await page.keyboard.press("Enter");
   await expect(page.getByText("Back To Logs")).toBeVisible();
   await expect(page.getByRole("heading", { name: "Logbook Details" })).toBeVisible();
   await expect(page.locator("article:visible", { hasText: "Suit" }).filter({ hasText: "5mm full suit" }).first()).toBeVisible();
@@ -94,7 +102,7 @@ test("covers the import queue and import completion flow", async ({ page }) => {
   await page.getByRole("button", { name: "Edit Imported Dive" }).first().click();
 
   await page.locator("input[placeholder='Blue Hole / House Reef']:visible").fill("House Reef");
-  await page.locator("select:visible").selectOption("15");
+  await chooseComboboxOption(page, "Tank Volume", "15L");
   await page.getByRole("button", { name: "Complete Record" }).click();
 
   await expect(page.locator("div:visible").filter({ hasText: "committed to the registry." }).first()).toBeVisible();
@@ -112,7 +120,7 @@ test("creates a manual dive entry outside the importer workflow", async ({ page 
   await page.getByPlaceholder("45").fill("52");
   await page.getByPlaceholder("18.0").fill("21.4");
   await page.getByPlaceholder("27").fill("26");
-  await page.getByLabel("Tank Volume").selectOption("12");
+  await chooseComboboxOption(page, "Tank Volume", "12L");
   await page.getByPlaceholder("House Reef").fill("Cathedral");
   await page.keyboard.press("Tab");
   await page.getByRole("button", { name: "Save As Reusable Dive Site" }).click();

@@ -37,11 +37,11 @@ export default {
     ]),
     triggerCsvImport() {
       this.resetDataManagementFeedback();
-      this.$refs.csvImportInput?.click();
+      this.$refs.csvImportInput?.inputRef?.click();
     },
     triggerSubsurfaceImport() {
       this.resetDataManagementFeedback();
-      this.$refs.subsurfaceImportInput?.click();
+      this.$refs.subsurfaceImportInput?.inputRef?.click();
     }
   }
 };
@@ -60,14 +60,14 @@ export default {
     <div v-if="dataManagementStatus" class="settings-feedback border-primary/20 bg-primary/10 text-primary">
       <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <span>{{ dataManagementStatus }}</span>
-        <button
+        <UButton
           v-if="importReadyForReview"
           type="button"
           @click="reviewImportQueue"
           class="settings-button settings-button-primary shrink-0"
         >
           Review Imported Dives
-        </button>
+        </UButton>
       </div>
     </div>
     <div v-if="dataManagementError" class="settings-feedback border-error/20 bg-error-container/20 text-on-error-container">{{ dataManagementError }}</div>
@@ -79,7 +79,7 @@ export default {
     </div>
 
     <div class="settings-action-grid">
-      <button
+      <UButton
         @click="exportDivePdf"
         :disabled="isDataManagementBusy || isInteractionLocked"
         class="settings-action-card"
@@ -92,9 +92,9 @@ export default {
           <p class="mt-3 text-sm leading-6 text-secondary">Generate a printable logbook export for review, sharing, or offline archiving.</p>
         </div>
         <span class="material-symbols-outlined text-secondary/60">north_east</span>
-      </button>
+      </UButton>
 
-      <button
+      <UButton
         @click="exportDiveCsv"
         :disabled="isDataManagementBusy || isInteractionLocked"
         class="settings-action-card"
@@ -107,9 +107,9 @@ export default {
           <p class="mt-3 text-sm leading-6 text-secondary">Download the raw dive telemetry for spreadsheet analysis or external processing.</p>
         </div>
         <span class="material-symbols-outlined text-secondary/60">north_east</span>
-      </button>
+      </UButton>
 
-      <button
+      <UButton
         @click="triggerCsvImport"
         :disabled="isDataManagementBusy || isInteractionLocked"
         class="settings-action-card"
@@ -122,9 +122,9 @@ export default {
           <p class="mt-3 text-sm leading-6 text-secondary">Load spreadsheet dive rows into the imported dive queue for review before they enter the logbook.</p>
         </div>
         <span class="material-symbols-outlined text-secondary/60">upload</span>
-      </button>
+      </UButton>
 
-      <button
+      <UButton
         @click="triggerSubsurfaceImport"
         :disabled="isDataManagementBusy || isInteractionLocked"
         class="settings-action-card"
@@ -137,16 +137,16 @@ export default {
           <p class="mt-3 text-sm leading-6 text-secondary">Preview a Subsurface XML or archive export, then confirm before adding the dives to the review queue.</p>
         </div>
         <span class="material-symbols-outlined text-secondary/60">upload</span>
-      </button>
+      </UButton>
     </div>
-    <input
+    <UInput
       ref="csvImportInput"
       type="file"
       accept=".csv,text/csv"
       class="hidden"
       @change="handleCsvImportSelection"
     />
-    <input
+    <UInput
       ref="subsurfaceImportInput"
       type="file"
       accept=".xml,.ssrf,application/xml,text/xml,application/zip,application/gzip"
@@ -168,22 +168,22 @@ export default {
           <p v-else class="mt-2 text-sm text-secondary">Confirming adds ready rows to the imported-dive queue. Duplicates are skipped and finished logs still require queue review.</p>
         </div>
         <div class="flex flex-wrap gap-3">
-          <button
+          <UButton
             type="button"
             @click="confirmImportPreview"
             :disabled="isDataManagementBusy || isInteractionLocked || !canConfirmImportPreview"
             class="settings-button settings-button-primary"
           >
             Confirm Import
-          </button>
-          <button
+          </UButton>
+          <UButton
             type="button"
             @click="cancelImportPreview"
             :disabled="isDataManagementBusy"
             class="settings-button settings-button-ghost"
           >
             Cancel
-          </button>
+          </UButton>
         </div>
       </div>
       <div class="mt-5 overflow-x-auto rounded-2xl border border-primary/10">
@@ -232,7 +232,7 @@ export default {
         <span class="settings-chip" :class="hasCliAuthCode ? 'is-accent' : ''">{{ hasCliAuthCode ? 'Approval waiting' : 'Idle' }}</span>
       </div>
 
-      <button
+      <UButton
         v-if="hasCliAuthCode"
         @click="approveDesktopSync"
         :disabled="desktopSyncApproving"
@@ -243,7 +243,7 @@ export default {
           <span>{{ desktopSyncApproving ? 'Approving Desktop Sync' : 'Approve Desktop Sync' }}</span>
         </span>
         <span class="material-symbols-outlined text-sm">login</span>
-      </button>
+      </UButton>
       <p v-if="desktopSyncStatus" class="mt-3 text-sm text-primary">{{ desktopSyncStatus }}</p>
       <p v-if="desktopSyncError" class="mt-3 text-sm text-error">{{ desktopSyncError }}</p>
     </div>

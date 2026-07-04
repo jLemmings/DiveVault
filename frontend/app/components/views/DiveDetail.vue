@@ -305,14 +305,14 @@ export default {
         <section class="space-y-8 md:hidden">
           <header class="space-y-4">
             <div class="flex items-center justify-between gap-3">
-              <button @click="closeDetail" class="inline-flex items-center gap-2 rounded-lg bg-surface-container-high px-4 py-2 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-primary">
+              <UButton @click="closeDetail" class="inline-flex items-center gap-2 rounded-lg bg-surface-container-high px-4 py-2 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-primary">
                 <span class="material-symbols-outlined text-base">arrow_back</span>
                 Back
-              </button>
+              </UButton>
               <div class="flex items-center gap-2">
-                <button v-if="!publicView" @click="removeDive()" :disabled="isDeleting" aria-label="Remove dive" title="Remove dive" class="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-error-container/20 text-on-error-container transition-colors hover:bg-error-container/30 disabled:opacity-50">
+                <UButton v-if="!publicView" @click="removeDive()" :disabled="isDeleting" aria-label="Remove dive" title="Remove dive" class="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-error-container/20 text-on-error-container transition-colors hover:bg-error-container/30 disabled:opacity-50">
                   <span class="material-symbols-outlined text-sm">delete</span>
-                </button>
+                </UButton>
                 <span class="rounded bg-surface-container-high px-3 py-2 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Dive {{ displayDiveIndex }}</span>
               </div>
             </div>
@@ -489,17 +489,17 @@ export default {
             <div class="absolute inset-0 technical-grid opacity-[0.1]"></div>
             <div class="absolute inset-x-0 bottom-0 h-36 bg-[linear-gradient(180deg,transparent,rgb(var(--color-background)_/_0.82))]"></div>
             <div class="relative z-10 flex items-start justify-between gap-5 p-8">
-              <button @click="closeDetail" class="inline-flex items-center gap-2 rounded-xl border border-primary/20 bg-background/35 px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-primary shadow-panel transition-colors hover:bg-primary/10">
+              <UButton @click="closeDetail" class="inline-flex items-center gap-2 rounded-xl border border-primary/20 bg-background/35 px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-primary shadow-panel transition-colors hover:bg-primary/10">
                 <span class="material-symbols-outlined text-base">arrow_back</span>
                 Back To Logs
-              </button>
+              </UButton>
               <div v-if="!publicView" class="flex gap-2">
-                <button @click="openDiveEditor(dive.id)" aria-label="Edit dive" title="Edit dive" class="group inline-flex h-11 w-11 items-center justify-center rounded-xl border border-primary/20 bg-background/35 text-secondary transition-colors hover:bg-primary/10 hover:text-primary">
+                <UButton @click="openDiveEditor(dive.id)" aria-label="Edit dive" title="Edit dive" class="group inline-flex h-11 w-11 items-center justify-center rounded-xl border border-primary/20 bg-background/35 text-secondary transition-colors hover:bg-primary/10 hover:text-primary">
                   <span class="material-symbols-outlined text-[21px] leading-none transition-transform group-hover:-rotate-6 group-hover:scale-110">edit</span>
-                </button>
-                <button @click="removeDive()" :disabled="isDeleting" aria-label="Remove dive" title="Remove dive" class="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-error/20 bg-error-container/15 text-on-error-container transition-colors hover:bg-error-container/30 disabled:opacity-50">
+                </UButton>
+                <UButton @click="removeDive()" :disabled="isDeleting" aria-label="Remove dive" title="Remove dive" class="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-error/20 bg-error-container/15 text-on-error-container transition-colors hover:bg-error-container/30 disabled:opacity-50">
                   <span class="material-symbols-outlined text-[21px] leading-none">delete</span>
-                </button>
+                </UButton>
               </div>
             </div>
 
@@ -618,7 +618,7 @@ export default {
     </section>
     <section v-else class="rounded-[2rem] bg-surface-container-low p-10 shadow-panel">
       <p class="font-headline text-2xl font-bold">Selected dive is unavailable</p>
-      <button @click="closeDetail" class="mt-5 bg-primary px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-on-primary">Return to dive logs</button>
+      <UButton @click="closeDetail" class="mt-5 bg-primary px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-on-primary">Return to dive logs</UButton>
     </section>
 </template>
 

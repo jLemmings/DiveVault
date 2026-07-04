@@ -21,7 +21,7 @@ export default {
     ]),
     triggerBackupImport() {
       this.resetDataManagementFeedback();
-      this.$refs.backupImportInput?.click();
+      this.$refs.backupImportInput?.inputRef?.click();
     }
   }
 };
@@ -41,7 +41,7 @@ export default {
     <div v-if="dataManagementError" class="settings-feedback border-error/20 bg-error-container/20 text-on-error-container">{{ dataManagementError }}</div>
 
     <div class="settings-action-grid">
-      <button
+      <UButton
         @click="exportBackup"
         :disabled="isDataManagementBusy || isInteractionLocked"
         class="settings-action-card"
@@ -54,9 +54,9 @@ export default {
           <p class="mt-3 text-sm leading-6 text-secondary">Save your account data, saved lists, PDFs, and imported dive state into one ZIP archive.</p>
         </div>
         <span class="material-symbols-outlined text-secondary/60">download</span>
-      </button>
+      </UButton>
 
-      <button
+      <UButton
         @click="triggerBackupImport"
         :disabled="isDataManagementBusy || isInteractionLocked"
         class="settings-action-card"
@@ -69,9 +69,9 @@ export default {
           <p class="mt-3 text-sm leading-6 text-secondary">Restore from a previously exported ZIP backup when moving systems or recovering state.</p>
         </div>
         <span class="material-symbols-outlined text-secondary/60">upload</span>
-      </button>
+      </UButton>
     </div>
-    <input
+    <UInput
       ref="backupImportInput"
       type="file"
       accept=".zip,application/zip,application/x-zip-compressed,.json,application/json"

@@ -288,31 +288,31 @@ export default {
         <div class="flex gap-2">
           <div class="relative flex-1">
             <span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-lg text-on-surface-variant">search</span>
-            <input :value="searchText" @input="setSearchText($event.target.value)" type="text" class="w-full rounded-lg border border-primary/10 bg-surface-container-high/70 py-2.5 pl-10 pr-4 text-sm font-label tracking-[0.12em] text-on-surface placeholder:text-on-surface-variant/50 focus:ring-1 focus:ring-primary/20" placeholder="Search Logs..." />
+            <UInput :value="searchText" @input="setSearchText($event.target.value)" type="text" class="w-full rounded-lg border border-primary/10 bg-surface-container-high/70 py-2.5 pl-10 pr-4 text-sm font-label tracking-[0.12em] text-on-surface placeholder:text-on-surface-variant/50 focus:ring-1 focus:ring-primary/20" placeholder="Search Logs..." />
           </div>
-          <button @click="toggleMobileControls" class="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-lg border border-primary/10 bg-surface-container-high/70 active:scale-95" :class="mobileControlsOpen ? 'text-primary' : 'text-on-surface-variant'">
+          <UButton @click="toggleMobileControls" class="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-lg border border-primary/10 bg-surface-container-high/70 active:scale-95" :class="mobileControlsOpen ? 'text-primary' : 'text-on-surface-variant'">
             <span class="material-symbols-outlined">{{ mobileControlsOpen ? 'close' : 'filter_list' }}</span>
-          </button>
+          </UButton>
         </div>
 
         <div class="mt-3 grid grid-cols-2 gap-2">
-          <button @click="openManualDive()" class="rounded-lg bg-primary px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-on-primary">
+          <UButton @click="openManualDive()" class="rounded-lg bg-primary px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-on-primary">
             New Entry
-          </button>
-          <button @click="openImportQueue()" class="rounded-lg bg-surface-container-high px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-primary">
+          </UButton>
+          <UButton @click="openImportQueue()" class="rounded-lg bg-surface-container-high px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-primary">
             Imported Queue
-          </button>
+          </UButton>
         </div>
         <div class="mt-3 grid gap-2">
           <label class="rounded-lg border border-primary/10 bg-surface-container-high/70 px-3 py-2">
             <span class="block font-label text-[9px] font-bold uppercase tracking-[0.14em] text-on-surface-variant">Location</span>
             <div class="mt-2 max-h-36 space-y-1 overflow-y-auto">
               <label v-for="site in siteFilterOptions" :key="'mobile-site-filter-' + site" class="flex items-center gap-2 text-sm font-semibold text-on-surface">
-                <input :checked="siteFilters.includes(site)" @change="toggleNamedFilter('siteFilters', site)" type="checkbox" class="h-4 w-4 rounded border-primary/20 bg-surface-container-high text-primary focus:ring-primary/30" />
+                <UCheckbox :model-value="siteFilters.includes(site)" @update:model-value="toggleNamedFilter('siteFilters', site)" :ui="{ base: 'h-4 w-4 rounded border-primary/20 bg-surface-container-high text-primary focus:ring-primary/30' }" />
                 <span class="truncate">{{ site }}</span>
               </label>
             </div>
-            <button v-if="siteFilters.length" type="button" @click="clearNamedFilter('siteFilters')" class="mt-2 text-[10px] font-bold uppercase tracking-[0.14em] text-primary">Clear locations</button>
+            <UButton v-if="siteFilters.length" type="button" @click="clearNamedFilter('siteFilters')" class="mt-2 text-[10px] font-bold uppercase tracking-[0.14em] text-primary">Clear locations</UButton>
             <span v-else class="mt-1 block text-[10px] text-on-surface-variant">All locations</span>
           </label>
         </div>
@@ -321,22 +321,22 @@ export default {
             <span class="block font-label text-[9px] font-bold uppercase tracking-[0.14em] text-on-surface-variant">Buddy</span>
             <div class="mt-2 max-h-36 space-y-1 overflow-y-auto">
               <label v-for="buddy in buddyFilterOptions" :key="'mobile-buddy-filter-' + buddy" class="flex items-center gap-2 text-sm font-semibold text-on-surface">
-                <input :checked="buddyFilters.includes(buddy)" @change="toggleNamedFilter('buddyFilters', buddy)" type="checkbox" class="h-4 w-4 rounded border-primary/20 bg-surface-container-high text-primary focus:ring-primary/30" />
+                <UCheckbox :model-value="buddyFilters.includes(buddy)" @update:model-value="toggleNamedFilter('buddyFilters', buddy)" :ui="{ base: 'h-4 w-4 rounded border-primary/20 bg-surface-container-high text-primary focus:ring-primary/30' }" />
                 <span class="truncate">{{ buddy }}</span>
               </label>
             </div>
-            <button v-if="buddyFilters.length" type="button" @click="clearNamedFilter('buddyFilters')" class="mt-2 text-[10px] font-bold uppercase tracking-[0.14em] text-primary">Clear buddies</button>
+            <UButton v-if="buddyFilters.length" type="button" @click="clearNamedFilter('buddyFilters')" class="mt-2 text-[10px] font-bold uppercase tracking-[0.14em] text-primary">Clear buddies</UButton>
             <span v-else class="mt-1 block text-[10px] text-on-surface-variant">All buddies</span>
           </label>
           <label class="rounded-lg border border-primary/10 bg-surface-container-high/70 px-3 py-2">
             <span class="block font-label text-[9px] font-bold uppercase tracking-[0.14em] text-on-surface-variant">Guide</span>
             <div class="mt-2 max-h-36 space-y-1 overflow-y-auto">
               <label v-for="guide in guideFilterOptions" :key="'mobile-guide-filter-' + guide" class="flex items-center gap-2 text-sm font-semibold text-on-surface">
-                <input :checked="guideFilters.includes(guide)" @change="toggleNamedFilter('guideFilters', guide)" type="checkbox" class="h-4 w-4 rounded border-primary/20 bg-surface-container-high text-primary focus:ring-primary/30" />
+                <UCheckbox :model-value="guideFilters.includes(guide)" @update:model-value="toggleNamedFilter('guideFilters', guide)" :ui="{ base: 'h-4 w-4 rounded border-primary/20 bg-surface-container-high text-primary focus:ring-primary/30' }" />
                 <span class="truncate">{{ guide }}</span>
               </label>
             </div>
-            <button v-if="guideFilters.length" type="button" @click="clearNamedFilter('guideFilters')" class="mt-2 text-[10px] font-bold uppercase tracking-[0.14em] text-primary">Clear guides</button>
+            <UButton v-if="guideFilters.length" type="button" @click="clearNamedFilter('guideFilters')" class="mt-2 text-[10px] font-bold uppercase tracking-[0.14em] text-primary">Clear guides</UButton>
             <span v-else class="mt-1 block text-[10px] text-on-surface-variant">All guides</span>
           </label>
         </div>
@@ -348,18 +348,18 @@ export default {
               <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-on-surface-variant">Order By</p>
               <p class="mt-1 text-sm font-semibold text-on-surface">{{ activeSortLabel }} · {{ sortDirection === 'asc' ? 'Ascending' : 'Descending' }}</p>
             </div>
-            <button
+            <UButton
               type="button"
               @click="toggleSort(sortKey)"
               class="inline-flex items-center gap-2 rounded-lg bg-surface-container-high px-3 py-2 font-label text-[10px] font-bold uppercase tracking-[0.16em] text-primary"
             >
               <span class="material-symbols-outlined text-sm">{{ sortDirection === 'asc' ? 'north' : 'south' }}</span>
               {{ sortDirection === 'asc' ? 'Asc' : 'Desc' }}
-            </button>
+            </UButton>
           </div>
 
           <div class="grid grid-cols-2 gap-2">
-            <button
+            <UButton
               v-for="option in mobileSortOptions"
               :key="'mobile-sort-' + option.key"
               type="button"
@@ -368,7 +368,7 @@ export default {
               :class="sortKey === option.key ? 'bg-primary/12 text-primary' : 'bg-surface-container-high text-on-surface-variant'"
             >
               {{ option.label }}
-            </button>
+            </UButton>
           </div>
         </div>
 
@@ -413,9 +413,7 @@ export default {
         <div class="rounded-xl bg-surface-container-low px-4 py-3">
           <label class="flex items-center justify-between gap-4">
             <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-on-surface-variant">Dives Per Page</span>
-            <select v-model.number="pageSize" class="rounded-lg border-none bg-surface-container-high px-3 py-2 text-sm font-bold text-on-surface focus:ring-1 focus:ring-primary/20">
-              <option v-for="size in pageSizeOptions" :key="'mobile-page-size-' + size" :value="size">{{ size }}</option>
-            </select>
+            <USelect v-model.number="pageSize" :items="pageSizeOptions" class="rounded-lg border-none bg-surface-container-high px-3 py-2 text-sm font-bold text-on-surface focus:ring-1 focus:ring-primary/20" />
           </label>
         </div>
 
@@ -425,23 +423,23 @@ export default {
             <p class="mt-1 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-primary">Page {{ pageCountLabel }}</p>
           </div>
           <div class="flex items-center gap-2">
-            <button
+            <UButton
               type="button"
               @click="previousPage"
               :disabled="currentPage === 1"
               class="flex h-10 w-10 items-center justify-center rounded-lg bg-surface-container-high text-on-surface-variant transition-colors hover:text-primary disabled:opacity-30"
             >
               <span class="material-symbols-outlined">chevron_left</span>
-            </button>
+            </UButton>
             <span class="rounded-lg border border-primary/20 bg-primary/10 px-3 py-2 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-primary">{{ currentPage }}</span>
-            <button
+            <UButton
               type="button"
               @click="nextPage"
               :disabled="currentPage >= pageCount"
               class="flex h-10 w-10 items-center justify-center rounded-lg bg-surface-container-high text-on-surface-variant transition-colors hover:text-primary disabled:opacity-30"
             >
               <span class="material-symbols-outlined">chevron_right</span>
-            </button>
+            </UButton>
           </div>
         </div>
       </section>
@@ -454,7 +452,7 @@ export default {
         <div class="flex flex-col gap-3 sm:flex-row sm:items-center">
           <div class="relative min-w-[18rem] flex-1 sm:w-[24rem] sm:flex-none">
             <span class="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-lg text-on-surface-variant">search</span>
-            <input
+            <UInput
               :value="searchText"
               @input="setSearchText($event.target.value)"
               type="text"
@@ -462,79 +460,79 @@ export default {
               placeholder="Search dive logs..."
             />
           </div>
-          <button @click="openManualDive()" class="flex items-center gap-2 rounded-xl bg-primary px-6 py-3 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-on-primary">
+          <UButton @click="openManualDive()" class="flex items-center gap-2 rounded-xl bg-primary px-6 py-3 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-on-primary">
             <span class="material-symbols-outlined text-sm">add</span>
             New Entry
-          </button>
+          </UButton>
         </div>
       </div>
 
       <div class="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
         <div class="flex flex-wrap items-center gap-3">
-          <button type="button" @click="toggleSort('date')" class="log-filter-chip" :class="sortHeaderClass('date')">
+          <UButton type="button" @click="toggleSort('date')" class="log-filter-chip" :class="sortHeaderClass('date')">
             <span class="material-symbols-outlined text-base">calendar_month</span>
             Date
             <span class="material-symbols-outlined text-sm">{{ sortIndicator('date') }}</span>
-          </button>
-          <button type="button" @click="toggleSort('depth')" class="log-filter-chip" :class="sortHeaderClass('depth')">
+          </UButton>
+          <UButton type="button" @click="toggleSort('depth')" class="log-filter-chip" :class="sortHeaderClass('depth')">
             <span class="material-symbols-outlined text-base">straighten</span>
             {{ t("Depth", "Depth") }}
             <span class="material-symbols-outlined text-sm">{{ sortIndicator('depth') }}</span>
-          </button>
-          <button type="button" @click="toggleSort('duration')" class="log-filter-chip" :class="sortHeaderClass('duration')">
+          </UButton>
+          <UButton type="button" @click="toggleSort('duration')" class="log-filter-chip" :class="sortHeaderClass('duration')">
             <span class="material-symbols-outlined text-base">timer</span>
             {{ t("Duration", "Duration") }}
             <span class="material-symbols-outlined text-sm">{{ sortIndicator('duration') }}</span>
-          </button>
+          </UButton>
           <div class="relative">
-            <button type="button" @click="siteFilterOpen = !siteFilterOpen; buddyFilterOpen = false; guideFilterOpen = false" class="log-filter-chip">
+            <UButton type="button" @click="siteFilterOpen = !siteFilterOpen; buddyFilterOpen = false; guideFilterOpen = false" class="log-filter-chip">
               <span class="material-symbols-outlined text-base">location_on</span>
               Locations
               <span class="font-label text-[10px] font-bold uppercase tracking-[0.14em] text-secondary">{{ siteFilters.length ? siteFilters.length + ' selected' : 'All' }}</span>
               <span class="material-symbols-outlined text-sm">{{ siteFilterOpen ? 'expand_less' : 'expand_more' }}</span>
-            </button>
+            </UButton>
             <div v-if="siteFilterOpen" class="absolute left-0 z-20 mt-2 w-72 rounded-xl border border-primary/15 bg-surface-container-low p-3 shadow-panel">
               <div class="max-h-64 space-y-2 overflow-y-auto">
                 <label v-for="site in siteFilterOptions" :key="'desktop-site-filter-' + site" class="flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm font-semibold text-on-surface hover:bg-surface-container-high">
-                  <input :checked="siteFilters.includes(site)" @change="toggleNamedFilter('siteFilters', site)" type="checkbox" class="h-4 w-4 rounded border-primary/20 bg-surface-container-high text-primary focus:ring-primary/30" />
+                  <UCheckbox :model-value="siteFilters.includes(site)" @update:model-value="toggleNamedFilter('siteFilters', site)" :ui="{ base: 'h-4 w-4 rounded border-primary/20 bg-surface-container-high text-primary focus:ring-primary/30' }" />
                   <span class="truncate">{{ site }}</span>
                 </label>
               </div>
-              <button v-if="siteFilters.length" type="button" @click="clearNamedFilter('siteFilters')" class="mt-3 text-[10px] font-bold uppercase tracking-[0.14em] text-primary">Clear locations</button>
+              <UButton v-if="siteFilters.length" type="button" @click="clearNamedFilter('siteFilters')" class="mt-3 text-[10px] font-bold uppercase tracking-[0.14em] text-primary">Clear locations</UButton>
             </div>
           </div>
           <div class="relative">
-            <button type="button" @click="buddyFilterOpen = !buddyFilterOpen; siteFilterOpen = false; guideFilterOpen = false" class="log-filter-chip">
+            <UButton type="button" @click="buddyFilterOpen = !buddyFilterOpen; siteFilterOpen = false; guideFilterOpen = false" class="log-filter-chip">
               <span class="material-symbols-outlined text-base">diversity_3</span>
               Buddy
               <span class="font-label text-[10px] font-bold uppercase tracking-[0.14em] text-secondary">{{ buddyFilters.length ? buddyFilters.length + ' selected' : 'All' }}</span>
               <span class="material-symbols-outlined text-sm">{{ buddyFilterOpen ? 'expand_less' : 'expand_more' }}</span>
-            </button>
+            </UButton>
             <div v-if="buddyFilterOpen" class="absolute left-0 z-20 mt-2 w-64 rounded-xl border border-primary/15 bg-surface-container-low p-3 shadow-panel">
               <div class="max-h-64 space-y-2 overflow-y-auto">
                 <label v-for="buddy in buddyFilterOptions" :key="'desktop-buddy-filter-' + buddy" class="flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm font-semibold text-on-surface hover:bg-surface-container-high">
-                  <input :checked="buddyFilters.includes(buddy)" @change="toggleNamedFilter('buddyFilters', buddy)" type="checkbox" class="h-4 w-4 rounded border-primary/20 bg-surface-container-high text-primary focus:ring-primary/30" />
+                  <UCheckbox :model-value="buddyFilters.includes(buddy)" @update:model-value="toggleNamedFilter('buddyFilters', buddy)" :ui="{ base: 'h-4 w-4 rounded border-primary/20 bg-surface-container-high text-primary focus:ring-primary/30' }" />
                   <span class="truncate">{{ buddy }}</span>
                 </label>
               </div>
-              <button v-if="buddyFilters.length" type="button" @click="clearNamedFilter('buddyFilters')" class="mt-3 text-[10px] font-bold uppercase tracking-[0.14em] text-primary">Clear buddies</button>
+              <UButton v-if="buddyFilters.length" type="button" @click="clearNamedFilter('buddyFilters')" class="mt-3 text-[10px] font-bold uppercase tracking-[0.14em] text-primary">Clear buddies</UButton>
             </div>
           </div>
           <div class="relative">
-            <button type="button" @click="guideFilterOpen = !guideFilterOpen; siteFilterOpen = false; buddyFilterOpen = false" class="log-filter-chip">
+            <UButton type="button" @click="guideFilterOpen = !guideFilterOpen; siteFilterOpen = false; buddyFilterOpen = false" class="log-filter-chip">
               <span class="material-symbols-outlined text-base">badge</span>
               Guide
               <span class="font-label text-[10px] font-bold uppercase tracking-[0.14em] text-secondary">{{ guideFilters.length ? guideFilters.length + ' selected' : 'All' }}</span>
               <span class="material-symbols-outlined text-sm">{{ guideFilterOpen ? 'expand_less' : 'expand_more' }}</span>
-            </button>
+            </UButton>
             <div v-if="guideFilterOpen" class="absolute left-0 z-20 mt-2 w-64 rounded-xl border border-primary/15 bg-surface-container-low p-3 shadow-panel">
               <div class="max-h-64 space-y-2 overflow-y-auto">
                 <label v-for="guide in guideFilterOptions" :key="'desktop-guide-filter-' + guide" class="flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm font-semibold text-on-surface hover:bg-surface-container-high">
-                  <input :checked="guideFilters.includes(guide)" @change="toggleNamedFilter('guideFilters', guide)" type="checkbox" class="h-4 w-4 rounded border-primary/20 bg-surface-container-high text-primary focus:ring-primary/30" />
+                  <UCheckbox :model-value="guideFilters.includes(guide)" @update:model-value="toggleNamedFilter('guideFilters', guide)" :ui="{ base: 'h-4 w-4 rounded border-primary/20 bg-surface-container-high text-primary focus:ring-primary/30' }" />
                   <span class="truncate">{{ guide }}</span>
                 </label>
               </div>
-              <button v-if="guideFilters.length" type="button" @click="clearNamedFilter('guideFilters')" class="mt-3 text-[10px] font-bold uppercase tracking-[0.14em] text-primary">Clear guides</button>
+              <UButton v-if="guideFilters.length" type="button" @click="clearNamedFilter('guideFilters')" class="mt-3 text-[10px] font-bold uppercase tracking-[0.14em] text-primary">Clear guides</UButton>
             </div>
           </div>
         </div>
@@ -618,20 +616,18 @@ export default {
       <div v-else class="log-empty-card px-8 py-16 text-center">
         <p class="font-headline text-2xl font-bold">No dives match the current filters</p>
         <p class="mt-2 text-on-surface-variant">Change the search or complete imported dives before they enter the logbook.</p>
-        <button @click="openImportQueue()" class="mt-5 bg-primary px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-on-primary">
+        <UButton @click="openImportQueue()" class="mt-5 bg-primary px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-on-primary">
           Open Imported Queue
-        </button>
+        </UButton>
       </div>
 
       <div class="flex flex-col items-center justify-center gap-4 pt-6 md:flex-row">
-        <button @click="previousPage" :disabled="currentPage === 1" class="log-page-button"><span class="material-symbols-outlined">chevron_left</span></button>
+        <UButton @click="previousPage" :disabled="currentPage === 1" class="log-page-button"><span class="material-symbols-outlined">chevron_left</span></UButton>
         <span class="font-label text-sm font-bold text-on-surface">Page {{ pageCountLabel }}</span>
-        <button @click="nextPage" :disabled="currentPage >= pageCount" class="log-page-button"><span class="material-symbols-outlined">chevron_right</span></button>
+        <UButton @click="nextPage" :disabled="currentPage >= pageCount" class="log-page-button"><span class="material-symbols-outlined">chevron_right</span></UButton>
         <label class="ml-0 flex items-center gap-3 rounded-lg border border-primary/12 bg-surface-container-high/55 px-4 py-2 text-sm font-bold text-on-surface md:ml-6">
           <span>Dives Per Page</span>
-          <select v-model.number="pageSize" class="border-none bg-transparent p-0 pr-6 text-sm font-bold text-on-surface focus:ring-0">
-            <option v-for="size in pageSizeOptions" :key="'desktop-page-size-' + size" :value="size">{{ size }}</option>
-          </select>
+          <USelect v-model.number="pageSize" :items="pageSizeOptions" class="border-none bg-transparent p-0 pr-6 text-sm font-bold text-on-surface focus:ring-0" />
         </label>
       </div>
       </section>

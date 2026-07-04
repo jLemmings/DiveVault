@@ -180,7 +180,7 @@ export default {
 <template>
     <div class="metadata-autocomplete" @focusout="scheduleClose">
       <div class="metadata-autocomplete-input-shell">
-        <input
+        <UInput
           ref="input"
           :value="modelValue"
           :disabled="disabled"
@@ -191,7 +191,7 @@ export default {
           @input="handleInput"
           @keydown="handleKeydown"
         />
-        <button
+        <UButton
           v-if="normalizedOptions.length"
           type="button"
           class="metadata-autocomplete-toggle"
@@ -200,7 +200,7 @@ export default {
           @click="toggleMenu"
         >
           <span class="material-symbols-outlined text-[18px]">{{ showMenu ? 'keyboard_arrow_up' : 'keyboard_arrow_down' }}</span>
-        </button>
+        </UButton>
       </div>
       <transition
         enter-active-class="transition duration-150 ease-out"
@@ -211,7 +211,7 @@ export default {
         leave-to-class="translate-y-[-4px] opacity-0"
       >
         <div v-if="showMenu" class="metadata-autocomplete-menu">
-          <button
+          <UButton
             v-for="(option, index) in filteredOptions"
             :key="optionKey(option, index)"
             type="button"
@@ -222,7 +222,7 @@ export default {
           >
             <span class="metadata-autocomplete-option-label">{{ option.name }}</span>
             <span v-if="optionDetailText(option)" class="metadata-autocomplete-option-detail">{{ optionDetailText(option) }}</span>
-          </button>
+          </UButton>
           <div v-if="!filteredOptions.length" class="metadata-autocomplete-empty">{{ emptyMessage }}</div>
         </div>
       </transition>

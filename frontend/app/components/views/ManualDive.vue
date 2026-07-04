@@ -300,10 +300,10 @@ export default {
 <template>
     <section class="space-y-8 text-on-surface">
       <header class="space-y-5">
-        <button @click="closeCreator()" class="inline-flex items-center gap-2 bg-surface-container-high px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-on-surface transition-colors hover:text-primary">
+        <UButton @click="closeCreator()" class="inline-flex items-center gap-2 bg-surface-container-high px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-on-surface transition-colors hover:text-primary">
           <span class="material-symbols-outlined text-sm">arrow_back</span>
           Back To Logs
-        </button>
+        </UButton>
         <section class="border border-primary/10 bg-surface-container-low p-8 shadow-panel">
           <div class="flex flex-wrap items-center gap-3">
             <span class="bg-primary/10 px-3 py-1 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-primary">Manual Entry</span>
@@ -328,23 +328,23 @@ export default {
           <div class="grid gap-4 md:grid-cols-2">
             <label class="space-y-2">
               <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Date</span>
-              <input :value="draft.date" @input="updateField('date', $event.target.value)" type="date" class="w-full border border-primary/10 bg-background/35 px-4 py-3 text-sm text-on-surface focus:border-primary/30 focus:ring-1 focus:ring-primary" />
+              <UInput :value="draft.date" @input="updateField('date', $event.target.value)" type="date" class="w-full border border-primary/10 bg-background/35 px-4 py-3 text-sm text-on-surface focus:border-primary/30 focus:ring-1 focus:ring-primary" />
             </label>
             <label class="space-y-2">
               <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Start Time</span>
-              <input :value="draft.time" @input="updateField('time', $event.target.value)" type="time" class="w-full border border-primary/10 bg-background/35 px-4 py-3 text-sm text-on-surface focus:border-primary/30 focus:ring-1 focus:ring-primary" />
+              <UInput :value="draft.time" @input="updateField('time', $event.target.value)" type="time" class="w-full border border-primary/10 bg-background/35 px-4 py-3 text-sm text-on-surface focus:border-primary/30 focus:ring-1 focus:ring-primary" />
             </label>
             <label class="space-y-2">
               <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Duration</span>
-              <input :value="draft.durationMinutes" @input="updateField('durationMinutes', $event.target.value)" type="number" min="1" step="1" placeholder="45" class="ui-number-input w-full border border-primary/10 bg-background/35 px-4 py-3 text-sm text-on-surface placeholder:text-secondary/50 focus:border-primary/30 focus:ring-1 focus:ring-primary" />
+              <UInput :value="draft.durationMinutes" @input="updateField('durationMinutes', $event.target.value)" type="number" min="1" step="1" placeholder="45" class="ui-number-input w-full border border-primary/10 bg-background/35 px-4 py-3 text-sm text-on-surface placeholder:text-secondary/50 focus:border-primary/30 focus:ring-1 focus:ring-primary" />
             </label>
             <label class="space-y-2">
               <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Max Depth</span>
-              <input :value="draft.maxDepthM" @input="updateField('maxDepthM', $event.target.value)" type="number" min="0" step="0.1" placeholder="18.0" class="ui-number-input w-full border border-primary/10 bg-background/35 px-4 py-3 text-sm text-on-surface placeholder:text-secondary/50 focus:border-primary/30 focus:ring-1 focus:ring-primary" />
+              <UInput :value="draft.maxDepthM" @input="updateField('maxDepthM', $event.target.value)" type="number" min="0" step="0.1" placeholder="18.0" class="ui-number-input w-full border border-primary/10 bg-background/35 px-4 py-3 text-sm text-on-surface placeholder:text-secondary/50 focus:border-primary/30 focus:ring-1 focus:ring-primary" />
             </label>
             <label class="space-y-2">
               <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Water Temperature</span>
-              <input :value="draft.temperatureC" @input="updateField('temperatureC', $event.target.value)" type="number" step="0.1" placeholder="27" class="ui-number-input w-full border border-primary/10 bg-background/35 px-4 py-3 text-sm text-on-surface placeholder:text-secondary/50 focus:border-primary/30 focus:ring-1 focus:ring-primary" />
+              <UInput :value="draft.temperatureC" @input="updateField('temperatureC', $event.target.value)" type="number" step="0.1" placeholder="27" class="ui-number-input w-full border border-primary/10 bg-background/35 px-4 py-3 text-sm text-on-surface placeholder:text-secondary/50 focus:border-primary/30 focus:ring-1 focus:ring-primary" />
             </label>
           </div>
 
@@ -363,7 +363,7 @@ export default {
                 {{ savedDiveSites.length ? 'Search saved dive sites from Settings or enter a custom value.' : 'No saved dive sites yet. Add them in Settings to reuse them here.' }}
               </p>
               <div v-if="canCreateDiveSite || diveSiteCreateStatus || diveSiteCreateError" class="space-y-2">
-                <button
+                <UButton
                   v-if="canCreateDiveSite"
                   type="button"
                   @click="openDiveSiteCreateDialog()"
@@ -371,7 +371,7 @@ export default {
                 >
                   <span class="material-symbols-outlined text-sm">add_location_alt</span>
                   Save As Reusable Dive Site
-                </button>
+                </UButton>
                 <p v-if="diveSiteCreateStatus" class="text-xs leading-5 text-primary">{{ diveSiteCreateStatus }}</p>
                 <p v-if="diveSiteCreateError" class="text-xs leading-5 text-on-error-container">{{ diveSiteCreateError }}</p>
               </div>
@@ -403,44 +403,41 @@ export default {
           <div class="grid gap-4 md:grid-cols-4">
             <label class="space-y-2">
               <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">{{ t('Weather', 'Weather') }}</span>
-              <input :value="draft.weatherDescription" @input="updateField('weatherDescription', $event.target.value)" type="text" :placeholder="t('manualDive.weather.placeholder', 'Sunny, overcast, current building')" class="w-full border border-primary/10 bg-background/35 px-4 py-3 text-sm text-on-surface placeholder:text-secondary/50 focus:border-primary/30 focus:ring-1 focus:ring-primary" />
+              <UInput :value="draft.weatherDescription" @input="updateField('weatherDescription', $event.target.value)" type="text" :placeholder="t('manualDive.weather.placeholder', 'Sunny, overcast, current building')" class="w-full border border-primary/10 bg-background/35 px-4 py-3 text-sm text-on-surface placeholder:text-secondary/50 focus:border-primary/30 focus:ring-1 focus:ring-primary" />
             </label>
             <label class="space-y-2">
               <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">{{ t('Visibility', 'Visibility') }}</span>
-              <input :value="draft.visibility" @input="updateField('visibility', $event.target.value)" type="text" :placeholder="t('manualDive.visibility.placeholder', '18 m / excellent')" class="w-full border border-primary/10 bg-background/35 px-4 py-3 text-sm text-on-surface placeholder:text-secondary/50 focus:border-primary/30 focus:ring-1 focus:ring-primary" />
+              <UInput :value="draft.visibility" @input="updateField('visibility', $event.target.value)" type="text" :placeholder="t('manualDive.visibility.placeholder', '18 m / excellent')" class="w-full border border-primary/10 bg-background/35 px-4 py-3 text-sm text-on-surface placeholder:text-secondary/50 focus:border-primary/30 focus:ring-1 focus:ring-primary" />
             </label>
             <label class="space-y-2">
               <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">{{ t('Wetsuit', 'Wetsuit') }}</span>
-              <input :value="draft.wetsuitDescription" @input="updateField('wetsuitDescription', $event.target.value)" type="text" :placeholder="t('manualDive.wetsuit.placeholder', '5mm full suit')" class="w-full border border-primary/10 bg-background/35 px-4 py-3 text-sm text-on-surface placeholder:text-secondary/50 focus:border-primary/30 focus:ring-1 focus:ring-primary" />
+              <UInput :value="draft.wetsuitDescription" @input="updateField('wetsuitDescription', $event.target.value)" type="text" :placeholder="t('manualDive.wetsuit.placeholder', '5mm full suit')" class="w-full border border-primary/10 bg-background/35 px-4 py-3 text-sm text-on-surface placeholder:text-secondary/50 focus:border-primary/30 focus:ring-1 focus:ring-primary" />
             </label>
             <label class="space-y-2">
               <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">{{ t('Weights', 'Weights') }}</span>
-              <input :value="draft.weightDescription" @input="updateField('weightDescription', $event.target.value)" type="text" :placeholder="t('manualDive.weights.placeholder', '8 kg integrated + 1 kg trim')" class="w-full border border-primary/10 bg-background/35 px-4 py-3 text-sm text-on-surface placeholder:text-secondary/50 focus:border-primary/30 focus:ring-1 focus:ring-primary" />
+              <UInput :value="draft.weightDescription" @input="updateField('weightDescription', $event.target.value)" type="text" :placeholder="t('manualDive.weights.placeholder', '8 kg integrated + 1 kg trim')" class="w-full border border-primary/10 bg-background/35 px-4 py-3 text-sm text-on-surface placeholder:text-secondary/50 focus:border-primary/30 focus:ring-1 focus:ring-primary" />
             </label>
           </div>
 
           <div class="grid gap-4 md:grid-cols-[minmax(0,1fr)_16rem]">
             <label class="space-y-2">
               <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Notes</span>
-              <textarea :value="draft.notes" @input="updateField('notes', $event.target.value)" rows="12" placeholder="Conditions, wildlife, route, entry, navigation, visibility..." class="min-h-[18rem] w-full resize-y border border-primary/10 bg-surface-container-high/35 px-5 py-4 text-sm leading-7 text-on-surface placeholder:text-secondary/50 focus:border-primary/30 focus:ring-1 focus:ring-primary"></textarea>
+              <UTextarea :value="draft.notes" @input="updateField('notes', $event.target.value)" rows="12" placeholder="Conditions, wildlife, route, entry, navigation, visibility..." class="min-h-[18rem] w-full resize-y border border-primary/10 bg-surface-container-high/35 px-5 py-4 text-sm leading-7 text-on-surface placeholder:text-secondary/50 focus:border-primary/30 focus:ring-1 focus:ring-primary"></UTextarea>
             </label>
 
             <div class="space-y-4">
               <label class="space-y-2">
                 <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Tank Volume</span>
-                <select :value="draft.tankVolumeL" @change="updateField('tankVolumeL', $event.target.value)" class="w-full border border-primary/10 bg-background/35 px-4 py-3 text-sm text-on-surface focus:border-primary/30 focus:ring-1 focus:ring-primary">
-                  <option value="">Select Tank Size</option>
-                  <option v-for="option in tankVolumeOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
-                </select>
+                <USelect :model-value="draft.tankVolumeL" :items="[{ label: 'Select Tank Size', value: '' }, ...tankVolumeOptions]" @update:model-value="updateField('tankVolumeL', $event)" class="w-full border border-primary/10 bg-background/35 px-4 py-3 text-sm text-on-surface focus:border-primary/30 focus:ring-1 focus:ring-primary" />
               </label>
               <div class="grid gap-3 sm:grid-cols-2 md:grid-cols-1">
                 <label class="space-y-2">
                   <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Entry Pressure</span>
-                  <input :value="draft.beginPressureBar" @input="updateField('beginPressureBar', $event.target.value)" type="number" min="0" max="400" step="1" placeholder="200" class="ui-number-input w-full border border-primary/10 bg-background/35 px-4 py-3 text-sm text-on-surface placeholder:text-secondary/50 focus:border-primary/30 focus:ring-1 focus:ring-primary" />
+                  <UInput :value="draft.beginPressureBar" @input="updateField('beginPressureBar', $event.target.value)" type="number" min="0" max="400" step="1" placeholder="200" class="ui-number-input w-full border border-primary/10 bg-background/35 px-4 py-3 text-sm text-on-surface placeholder:text-secondary/50 focus:border-primary/30 focus:ring-1 focus:ring-primary" />
                 </label>
                 <label class="space-y-2">
                   <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Exit Pressure</span>
-                  <input :value="draft.endPressureBar" @input="updateField('endPressureBar', $event.target.value)" type="number" min="0" max="400" step="1" placeholder="70" class="ui-number-input w-full border border-primary/10 bg-background/35 px-4 py-3 text-sm text-on-surface placeholder:text-secondary/50 focus:border-primary/30 focus:ring-1 focus:ring-primary" />
+                  <UInput :value="draft.endPressureBar" @input="updateField('endPressureBar', $event.target.value)" type="number" min="0" max="400" step="1" placeholder="70" class="ui-number-input w-full border border-primary/10 bg-background/35 px-4 py-3 text-sm text-on-surface placeholder:text-secondary/50 focus:border-primary/30 focus:ring-1 focus:ring-primary" />
                 </label>
               </div>
               <div class="border border-primary/10 bg-background/35 p-4">
@@ -461,14 +458,14 @@ export default {
                 </p>
               </div>
               <div class="flex flex-wrap gap-2">
-                <button @click="useDefaultEquipment()" type="button" class="bg-surface-container-high px-3 py-2 font-label text-[10px] font-bold uppercase tracking-[0.16em] text-primary">{{ t('Use Defaults', 'Use Defaults') }}</button>
-                <button @click="clearEquipment()" type="button" class="bg-background/30 px-3 py-2 font-label text-[10px] font-bold uppercase tracking-[0.16em] text-secondary">{{ t('Clear', 'Clear') }}</button>
+                <UButton @click="useDefaultEquipment()" type="button" class="bg-surface-container-high px-3 py-2 font-label text-[10px] font-bold uppercase tracking-[0.16em] text-primary">{{ t('Use Defaults', 'Use Defaults') }}</UButton>
+                <UButton @click="clearEquipment()" type="button" class="bg-background/30 px-3 py-2 font-label text-[10px] font-bold uppercase tracking-[0.16em] text-secondary">{{ t('Clear', 'Clear') }}</UButton>
               </div>
             </div>
             <div v-if="equipmentGroups.length" class="grid gap-4 lg:grid-cols-2">
               <div v-for="group in equipmentGroups" :key="'manual-equipment-' + group.category" class="space-y-2">
                 <p class="font-label text-[10px] font-bold uppercase tracking-[0.16em] text-secondary">{{ group.category }}</p>
-                <button
+                <UButton
                   v-for="item in group.items"
                   :key="'manual-equipment-item-' + item.id"
                   type="button"
@@ -481,7 +478,7 @@ export default {
                     <span class="mt-1 block text-xs" :class="equipmentWarning(item) ? 'text-tertiary' : 'text-primary'">{{ serviceStatusForDive(item, draftDateTime).label }}</span>
                   </span>
                   <span class="material-symbols-outlined text-base">{{ equipmentChecked(item.id) ? 'check_circle' : 'radio_button_unchecked' }}</span>
-                </button>
+                </UButton>
               </div>
             </div>
             <p v-else class="text-sm leading-6 text-on-surface-variant">{{ t('manualDive.equipment.noneAvailable', 'Add equipment in the Equipment section to reuse it here.') }}</p>
@@ -516,12 +513,12 @@ export default {
           </div>
 
           <div class="space-y-3">
-            <button type="submit" :disabled="creating || !canSubmit" class="w-full bg-primary px-5 py-4 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-on-primary transition-all hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50">
+            <UButton type="submit" :disabled="creating || !canSubmit" class="w-full bg-primary px-5 py-4 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-on-primary transition-all hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50">
               {{ creating ? 'Creating Dive Log...' : 'Create Dive Log' }}
-            </button>
-            <button type="button" @click="closeCreator()" :disabled="creating" class="w-full bg-surface-container-high px-5 py-4 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-on-surface transition-colors hover:text-primary disabled:opacity-50">
+            </UButton>
+            <UButton type="button" @click="closeCreator()" :disabled="creating" class="w-full bg-surface-container-high px-5 py-4 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-on-surface transition-colors hover:text-primary disabled:opacity-50">
               Cancel
-            </button>
+            </UButton>
           </div>
         </section>
       </form>
@@ -538,14 +535,14 @@ export default {
               <h3 class="mt-3 font-headline text-2xl font-bold tracking-tight text-on-surface">Add Dive Site</h3>
               <p class="mt-3 text-sm text-secondary">This entry stays out of the list until you save it here.</p>
             </div>
-            <button
+            <UButton
               type="button"
               @click="closeDiveSiteCreateDialog"
               :disabled="pendingDiveSiteSubmitting"
               class="settings-button settings-button-ghost"
             >
               Close
-            </button>
+            </UButton>
           </div>
 
           <div v-if="diveSiteCreateError" class="settings-feedback mt-5 border-error/20 bg-error-container/20 text-on-error-container">
@@ -555,7 +552,7 @@ export default {
           <div class="settings-modal-section mt-6">
             <label class="space-y-2">
               <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Site Name</span>
-              <input v-model="pendingDiveSiteDraft.name" type="text" class="settings-input" placeholder="North Wall / Training Reef" />
+              <UInput v-model="pendingDiveSiteDraft.name" type="text" class="settings-input" placeholder="North Wall / Training Reef" />
             </label>
             <div class="settings-side-panel settings-modal-subsection">
               <div class="settings-modal-section">
@@ -564,31 +561,31 @@ export default {
                     <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-primary">GPS Lookup</p>
                     <p class="settings-modal-copy mt-2 text-sm text-secondary">Search from the location text, then adjust latitude and longitude if needed.</p>
                   </div>
-                  <button
+                  <UButton
                     type="button"
                     @click="searchPendingDiveSiteGps"
                     :disabled="pendingDiveSiteLookupLoading || pendingDiveSiteSubmitting"
                     class="settings-button settings-button-secondary settings-modal-lookup-button"
                   >
                     {{ pendingDiveSiteLookupLoading ? 'Searching GPS' : 'Search GPS From Location' }}
-                  </button>
+                  </UButton>
                 </div>
                 <label class="space-y-2">
                   <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Location</span>
-                  <input v-model="pendingDiveSiteDraft.location" type="text" class="settings-input" placeholder="Blue Hole, Dahab, Egypt" />
+                  <UInput v-model="pendingDiveSiteDraft.location" type="text" class="settings-input" placeholder="Blue Hole, Dahab, Egypt" />
                 </label>
                 <div class="settings-modal-site-grid">
                   <label class="space-y-2">
                     <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Country</span>
-                    <input v-model="pendingDiveSiteDraft.country" type="text" class="settings-input" placeholder="Egypt" />
+                    <UInput v-model="pendingDiveSiteDraft.country" type="text" class="settings-input" placeholder="Egypt" />
                   </label>
                   <label class="space-y-2">
                     <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Latitude</span>
-                    <input v-model="pendingDiveSiteDraft.latitude" type="number" step="any" min="-90" max="90" class="settings-input ui-number-input" placeholder="25.1234" />
+                    <UInput v-model="pendingDiveSiteDraft.latitude" type="number" step="any" min="-90" max="90" class="settings-input ui-number-input" placeholder="25.1234" />
                   </label>
                   <label class="space-y-2">
                     <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Longitude</span>
-                    <input v-model="pendingDiveSiteDraft.longitude" type="number" step="any" min="-180" max="180" class="settings-input ui-number-input" placeholder="-80.4567" />
+                    <UInput v-model="pendingDiveSiteDraft.longitude" type="number" step="any" min="-180" max="180" class="settings-input ui-number-input" placeholder="-80.4567" />
                   </label>
                 </div>
               </div>
@@ -596,22 +593,22 @@ export default {
           </div>
 
           <div class="settings-modal-actions">
-            <button
+            <UButton
               type="button"
               @click="closeDiveSiteCreateDialog"
               :disabled="pendingDiveSiteSubmitting"
               class="settings-button settings-button-ghost"
             >
               Cancel
-            </button>
-            <button
+            </UButton>
+            <UButton
               type="button"
               @click="saveCurrentDiveSite"
               :disabled="pendingDiveSiteSubmitting"
               class="settings-button settings-button-primary"
             >
               {{ pendingDiveSiteSubmitting ? 'Saving...' : 'Save Dive Site' }}
-            </button>
+            </UButton>
           </div>
         </div>
       </div>

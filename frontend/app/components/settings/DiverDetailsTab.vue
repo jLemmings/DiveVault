@@ -62,7 +62,7 @@ export default {
       }
 
       settings.pendingLicenseUploadId = licenseId;
-      this.$refs.licenseInput?.click();
+      this.$refs.licenseInput?.inputRef?.click();
     }
   }
 };
@@ -78,22 +78,22 @@ export default {
           <p class="mt-3 text-sm leading-7 text-secondary">Keep the public-facing diver identity separate from application behavior and instance settings.</p>
         </div>
         <div class="settings-toolbar">
-          <button v-if="!isProfileEditing" @click="beginProfileEdit" :disabled="isInteractionLocked" class="settings-button settings-button-secondary">Edit Diver</button>
-          <button v-if="isProfileEditing" @click="cancelProfileEdit" :disabled="isInteractionLocked" class="settings-button settings-button-ghost">Cancel</button>
-          <button v-if="isProfileEditing" @click="saveProfile" :disabled="isInteractionLocked || !hasUnsavedProfileChanges" class="settings-button settings-button-primary">
+          <UButton v-if="!isProfileEditing" @click="beginProfileEdit" :disabled="isInteractionLocked" class="settings-button settings-button-secondary">Edit Diver</UButton>
+          <UButton v-if="isProfileEditing" @click="cancelProfileEdit" :disabled="isInteractionLocked" class="settings-button settings-button-ghost">Cancel</UButton>
+          <UButton v-if="isProfileEditing" @click="saveProfile" :disabled="isInteractionLocked || !hasUnsavedProfileChanges" class="settings-button settings-button-primary">
             {{ profileSaving ? 'Saving Diver' : 'Save Diver' }}
-          </button>
+          </UButton>
         </div>
       </div>
 
       <div v-if="isProfileEditing" class="settings-form-grid mt-6">
         <label class="space-y-2">
           <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Name</span>
-          <input v-model="profileDraft.name" type="text" class="settings-input" placeholder="Alex Diver" />
+          <UInput v-model="profileDraft.name" type="text" class="settings-input" placeholder="Alex Diver" />
         </label>
         <label class="space-y-2">
           <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Email</span>
-          <input v-model="profileDraft.email" type="email" class="settings-input" placeholder="diver@example.com" />
+          <UInput v-model="profileDraft.email" type="email" class="settings-input" placeholder="diver@example.com" />
         </label>
       </div>
 
@@ -116,13 +116,13 @@ export default {
         <p class="mt-3 max-w-3xl text-sm leading-7 text-secondary">Certificates stay compact until opened, so the saved list is easier to scan and the attached PDFs are still one click away.</p>
       </div>
       <div class="settings-toolbar">
-        <button @click="addLicenseEntry" :disabled="isInteractionLocked" class="settings-button settings-button-secondary">Add License</button>
+        <UButton @click="addLicenseEntry" :disabled="isInteractionLocked" class="settings-button settings-button-secondary">Add License</UButton>
       </div>
     </div>
 
     <label class="settings-filter-field mb-4">
       <span class="material-symbols-outlined text-[18px] text-secondary/70">search</span>
-      <input v-model="licenseFilter" type="text" class="settings-input" placeholder="Filter licenses" />
+      <UInput v-model="licenseFilter" type="text" class="settings-input" placeholder="Filter licenses" />
     </label>
 
     <div v-if="!areLicensesEditing && licenses.length === 0" class="settings-empty-state">
@@ -153,43 +153,43 @@ export default {
           </div>
 
           <div class="settings-toolbar">
-            <button
+            <UButton
               v-if="license.pdf"
               @click="viewLicensePdf(license)"
               class="settings-button settings-button-secondary"
             >
               View PDF
-            </button>
-            <button
+            </UButton>
+            <UButton
               v-if="!isLicenseEditing(license.id)"
               @click="editLicenseItem(license.id)"
               class="settings-button settings-button-secondary"
             >
               Edit License
-            </button>
-            <button
+            </UButton>
+            <UButton
               v-if="isLicenseEditing(license.id)"
               @click="confirmRemoveLicenseItem(license.id)"
               class="settings-button settings-button-danger"
             >
               Remove
-            </button>
-            <button
+            </UButton>
+            <UButton
               v-if="isLicenseEditing(license.id)"
               @click="cancelLicensesEdit"
               :disabled="isInteractionLocked"
               class="settings-button settings-button-ghost"
             >
               Cancel
-            </button>
-            <button
+            </UButton>
+            <UButton
               v-if="isLicenseEditing(license.id)"
               @click="saveLicenses"
               :disabled="isInteractionLocked"
               class="settings-button settings-button-primary"
             >
               {{ licensesSaving ? 'Saving License' : 'Save License' }}
-            </button>
+            </UButton>
           </div>
         </div>
 
@@ -197,23 +197,23 @@ export default {
           <div v-if="isLicenseEditing(license.id)" class="settings-form-grid">
             <label class="space-y-2">
               <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Company</span>
-              <input v-model="license.company" type="text" class="settings-input" placeholder="PADI / SSI / NAUI" />
+              <UInput v-model="license.company" type="text" class="settings-input" placeholder="PADI / SSI / NAUI" />
             </label>
             <label class="space-y-2">
               <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Certification Name</span>
-              <input v-model="license.certification_name" type="text" class="settings-input" placeholder="Advanced Open Water" />
+              <UInput v-model="license.certification_name" type="text" class="settings-input" placeholder="Advanced Open Water" />
             </label>
             <label class="space-y-2">
               <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Student Number</span>
-              <input v-model="license.student_number" type="text" class="settings-input" placeholder="Student or certification number" />
+              <UInput v-model="license.student_number" type="text" class="settings-input" placeholder="Student or certification number" />
             </label>
             <label class="space-y-2">
               <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Certification Date</span>
-              <input v-model="license.certification_date" type="text" class="settings-input" placeholder="YYYY-MM-DD" />
+              <UInput v-model="license.certification_date" type="text" class="settings-input" placeholder="YYYY-MM-DD" />
             </label>
             <label class="space-y-2 md:col-span-2">
               <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Instructor Number</span>
-              <input v-model="license.instructor_number" type="text" class="settings-input" placeholder="Instructor number" />
+              <UInput v-model="license.instructor_number" type="text" class="settings-input" placeholder="Instructor number" />
             </label>
           </div>
 
@@ -243,14 +243,14 @@ export default {
           <div class="settings-side-panel">
             <div class="flex items-center justify-between gap-3">
               <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-primary">License PDF</p>
-              <button
+              <UButton
                 v-if="isLicenseEditing(license.id)"
                 @click="triggerLicensePicker(license.id)"
                 :disabled="isUploadingLicense(license.id)"
                 class="settings-button settings-button-secondary"
               >
                 {{ isUploadingLicense(license.id) ? 'Uploading...' : (license.pdf ? 'Replace PDF' : 'Upload PDF') }}
-              </button>
+              </UButton>
             </div>
 
             <div v-if="license.pdf" class="space-y-3">
@@ -258,13 +258,13 @@ export default {
                 <p class="font-semibold text-on-surface">{{ license.pdf.filename }}</p>
                 <p class="mt-1 text-sm text-secondary">{{ formatBytes(license.pdf.size_bytes) }} &middot; Uploaded {{ formatDateTime(license.pdf.uploaded_at) }}</p>
               </div>
-              <button
+              <UButton
                 type="button"
                 @click="viewLicensePdf(license)"
                 class="settings-button settings-button-secondary"
               >
                 Open PDF Preview
-              </button>
+              </UButton>
             </div>
 
             <div v-else class="settings-empty-state">
@@ -280,7 +280,7 @@ export default {
       </article>
     </div>
 
-    <input ref="licenseInput" @change="handleLicenseSelection" type="file" accept="application/pdf,.pdf" class="hidden" />
+    <UInput ref="licenseInput" @change="handleLicenseSelection" type="file" accept="application/pdf,.pdf" class="hidden" />
   </div>
 </template>
 

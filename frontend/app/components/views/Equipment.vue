@@ -276,7 +276,7 @@ export default {
         <div class="flex flex-col gap-3 sm:flex-row sm:items-center">
           <div class="relative min-w-[18rem] flex-1 sm:w-[24rem] sm:flex-none">
             <span class="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-lg text-on-surface-variant">search</span>
-            <input
+            <UInput
               :value="searchText"
               @input="updateSearch($event.target.value)"
               type="text"
@@ -284,10 +284,10 @@ export default {
               placeholder="Search equipment..."
             />
           </div>
-          <button @click="addItem" class="flex items-center gap-2 rounded-xl bg-primary px-6 py-3 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-on-primary">
+          <UButton @click="addItem" class="flex items-center gap-2 rounded-xl bg-primary px-6 py-3 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-on-primary">
             <span class="material-symbols-outlined text-sm">add</span>
             New Entry
-          </button>
+          </UButton>
         </div>
       </div>
 
@@ -352,7 +352,7 @@ export default {
               </div>
             </div>
             <div class="equipment-item-actions">
-              <button v-if="!editing" @click="beginEditItem(item.id)" class="settings-button settings-button-secondary">Edit</button>
+              <UButton v-if="!editing" @click="beginEditItem(item.id)" class="settings-button settings-button-secondary">Edit</UButton>
             </div>
           </div>
           <div v-if="item.track_service !== false" class="equipment-service-countdown">
@@ -387,22 +387,22 @@ export default {
               <p class="dashboard-micro-label text-secondary">Equipment</p>
               <h3 class="mt-2 font-headline text-2xl font-bold text-primary">{{ editingItem.name || 'New Equipment' }}</h3>
             </div>
-            <button type="button" @click="cancelEdit" :disabled="saving" class="settings-button settings-button-ghost">Close</button>
+            <UButton type="button" @click="cancelEdit" :disabled="saving" class="settings-button settings-button-ghost">Close</UButton>
           </div>
 
           <div class="mt-6 grid gap-4 md:grid-cols-2">
             <label class="space-y-2">
               <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Name</span>
-              <input :value="editingItem.name" @input="updateItem(editingItem.id, 'name', $event.target.value)" class="settings-input" placeholder="Equipment name" />
+              <UInput :value="editingItem.name" @input="updateItem(editingItem.id, 'name', $event.target.value)" class="settings-input" placeholder="Equipment name" />
             </label>
             <label class="space-y-2">
               <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Category</span>
-              <input :value="editingItem.category" @input="updateItem(editingItem.id, 'category', $event.target.value)" class="settings-input" placeholder="Regulator" />
+              <UInput :value="editingItem.category" @input="updateItem(editingItem.id, 'category', $event.target.value)" class="settings-input" placeholder="Regulator" />
             </label>
             <fieldset class="space-y-3 md:col-span-2">
               <legend class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Icon</legend>
               <div class="grid grid-cols-4 gap-2 md:grid-cols-6">
-                <button
+                <UButton
                   v-for="option in equipmentIconOptions"
                   :key="'equipment-icon-' + option.icon"
                   type="button"
@@ -414,58 +414,58 @@ export default {
                 >
                   <span class="material-symbols-outlined text-xl">{{ option.icon }}</span>
                   <span class="truncate text-xs font-bold">{{ option.label }}</span>
-                </button>
+                </UButton>
               </div>
             </fieldset>
             <label class="space-y-2">
               <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Year Bought</span>
-              <input :value="editingItem.year_bought" @input="updateItem(editingItem.id, 'year_bought', $event.target.value)" class="settings-input" placeholder="2024" />
+              <UInput :value="editingItem.year_bought" @input="updateItem(editingItem.id, 'year_bought', $event.target.value)" class="settings-input" placeholder="2024" />
             </label>
             <label class="space-y-2">
               <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Vendor</span>
-              <input :value="editingItem.vendor" @input="updateItem(editingItem.id, 'vendor', $event.target.value)" class="settings-input" placeholder="Dive Shop" />
+              <UInput :value="editingItem.vendor" @input="updateItem(editingItem.id, 'vendor', $event.target.value)" class="settings-input" placeholder="Dive Shop" />
             </label>
             <label class="space-y-2">
               <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Brand</span>
-              <input :value="editingItem.brand" @input="updateItem(editingItem.id, 'brand', $event.target.value)" class="settings-input" placeholder="Aqualung" />
+              <UInput :value="editingItem.brand" @input="updateItem(editingItem.id, 'brand', $event.target.value)" class="settings-input" placeholder="Aqualung" />
             </label>
             <label class="space-y-2">
               <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Model</span>
-              <input :value="editingItem.model" @input="updateItem(editingItem.id, 'model', $event.target.value)" class="settings-input" placeholder="MK25" />
+              <UInput :value="editingItem.model" @input="updateItem(editingItem.id, 'model', $event.target.value)" class="settings-input" placeholder="MK25" />
             </label>
             <label class="space-y-2">
               <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Serial</span>
-              <input :value="editingItem.serial" @input="updateItem(editingItem.id, 'serial', $event.target.value)" class="settings-input" placeholder="Serial number" />
+              <UInput :value="editingItem.serial" @input="updateItem(editingItem.id, 'serial', $event.target.value)" class="settings-input" placeholder="Serial number" />
             </label>
             <label class="space-y-2">
               <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Warranty</span>
-              <input :value="editingItem.warranty" @input="updateItem(editingItem.id, 'warranty', $event.target.value)" class="settings-input" placeholder="2 years, shop receipt, serial number..." />
+              <UInput :value="editingItem.warranty" @input="updateItem(editingItem.id, 'warranty', $event.target.value)" class="settings-input" placeholder="2 years, shop receipt, serial number..." />
             </label>
             <label class="space-y-2">
               <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Max Dives Before Service</span>
-              <input :value="editingItem.max_dives_before_service" @input="updateItem(editingItem.id, 'max_dives_before_service', $event.target.value)" class="settings-input" placeholder="100" />
+              <UInput :value="editingItem.max_dives_before_service" @input="updateItem(editingItem.id, 'max_dives_before_service', $event.target.value)" class="settings-input" placeholder="100" />
             </label>
             <label class="space-y-2">
               <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Service Tag</span>
-              <input :value="editingItem.service_tag" @input="updateItem(editingItem.id, 'service_tag', $event.target.value)" class="settings-input" placeholder="Primary regulator, travel kit..." />
+              <UInput :value="editingItem.service_tag" @input="updateItem(editingItem.id, 'service_tag', $event.target.value)" class="settings-input" placeholder="Primary regulator, travel kit..." />
             </label>
             <label class="space-y-2">
               <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Service Interval Months</span>
-              <input :value="editingItem.service_interval_months" @input="updateItem(editingItem.id, 'service_interval_months', $event.target.value)" type="number" min="1" class="settings-input" />
+              <UInput :value="editingItem.service_interval_months" @input="updateItem(editingItem.id, 'service_interval_months', $event.target.value)" type="number" min="1" class="settings-input" />
             </label>
             <label class="space-y-2">
               <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Latest Service Date</span>
-              <input :value="editingItem.last_service_date" @input="updateItem(editingItem.id, 'last_service_date', $event.target.value)" class="settings-input" placeholder="YYYY-MM-DD" />
+              <UInput :value="editingItem.last_service_date" @input="updateItem(editingItem.id, 'last_service_date', $event.target.value)" class="settings-input" placeholder="YYYY-MM-DD" />
             </label>
             <label class="flex items-start gap-3 rounded-xl border border-primary/10 bg-background/20 p-4 md:col-span-2">
-              <input :checked="editingItem.track_service !== false" @change="updateItem(editingItem.id, 'track_service', $event.target.checked)" type="checkbox" class="mt-1 h-5 w-5 rounded border-primary/20 bg-surface-container-high text-primary focus:ring-primary/30" />
+              <UCheckbox :model-value="editingItem.track_service !== false" @update:model-value="updateItem(editingItem.id, 'track_service', $event)" class="mt-1" :ui="{ base: 'h-5 w-5 rounded border-primary/20 bg-surface-container-high text-primary focus:ring-primary/30' }" />
               <span>
                 <span class="block text-sm font-semibold">Track next service</span>
                 <span class="mt-1 block text-xs leading-5 text-secondary">Show this item in the service timeline and calculate due dates or dives remaining.</span>
               </span>
             </label>
             <label class="flex items-start gap-3 rounded-xl border border-primary/10 bg-background/20 p-4 md:col-span-2">
-              <input :checked="editingItem.is_default" @change="updateItem(editingItem.id, 'is_default', $event.target.checked)" type="checkbox" class="mt-1 h-5 w-5 rounded border-primary/20 bg-surface-container-high text-primary focus:ring-primary/30" />
+              <UCheckbox :model-value="editingItem.is_default" @update:model-value="updateItem(editingItem.id, 'is_default', $event)" class="mt-1" :ui="{ base: 'h-5 w-5 rounded border-primary/20 bg-surface-container-high text-primary focus:ring-primary/30' }" />
               <span>
                 <span class="block text-sm font-semibold">Use by default on each dive</span>
                 <span class="mt-1 block text-xs leading-5 text-secondary">Defaults are applied to new imported dives.</span>
@@ -474,9 +474,9 @@ export default {
           </div>
 
           <div class="settings-modal-actions">
-            <button type="button" @click="removeAndSave(editingItem.id)" :disabled="saving" class="settings-button settings-button-danger">Remove</button>
-            <button type="button" @click="cancelEdit" :disabled="saving" class="settings-button settings-button-ghost">Cancel</button>
-            <button type="button" @click="save" :disabled="saving" class="settings-button settings-button-primary">{{ saving ? 'Saving' : 'Save Gear' }}</button>
+            <UButton type="button" @click="removeAndSave(editingItem.id)" :disabled="saving" class="settings-button settings-button-danger">Remove</UButton>
+            <UButton type="button" @click="cancelEdit" :disabled="saving" class="settings-button settings-button-ghost">Cancel</UButton>
+            <UButton type="button" @click="save" :disabled="saving" class="settings-button settings-button-primary">{{ saving ? 'Saving' : 'Save Gear' }}</UButton>
           </div>
         </section>
       </div>

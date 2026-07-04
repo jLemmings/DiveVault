@@ -106,7 +106,7 @@ export default {
         {{ error }}
       </div>
       <div v-else class="space-y-3">
-        <button
+        <UButton
           v-for="page in pages"
           :key="page.pageNumber"
           type="button"
@@ -118,7 +118,7 @@ export default {
             :alt="`License PDF page ${page.pageNumber}`"
             class="w-full cursor-zoom-in"
           />
-        </button>
+        </UButton>
       </div>
     </div>
 </template>

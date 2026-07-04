@@ -38,13 +38,13 @@ export default {
         <p class="mt-3 max-w-3xl text-sm leading-7 text-secondary">Guides and instructors now use the same denser layout as buddies, which makes longer lists much easier to browse.</p>
       </div>
       <div class="settings-toolbar">
-        <button @click="addGuideEntry" :disabled="isInteractionLocked" class="settings-button settings-button-secondary">Add Guide</button>
+        <UButton @click="addGuideEntry" :disabled="isInteractionLocked" class="settings-button settings-button-secondary">Add Guide</UButton>
       </div>
     </div>
 
     <label class="settings-filter-field mb-4">
       <span class="material-symbols-outlined text-[18px] text-secondary/70">search</span>
-      <input v-model="guideFilter" type="text" class="settings-input" placeholder="Filter guides" />
+      <UInput v-model="guideFilter" type="text" class="settings-input" placeholder="Filter guides" />
     </label>
 
     <div v-if="!areGuidesEditing && guides.length === 0" class="settings-empty-state">
@@ -70,23 +70,23 @@ export default {
             <h5 class="mt-2 font-headline text-xl font-bold text-on-surface">{{ guideTitle(guide, index) }}</h5>
           </div>
           <div class="settings-toolbar">
-            <button
+            <UButton
               v-if="!isGuideEditing(guide.id)"
               @click="editGuideItem(guide.id)"
               class="settings-button settings-button-secondary"
             >
               Edit Guide
-            </button>
-            <button v-if="isGuideEditing(guide.id)" @click="confirmRemoveGuideItem(guide.id)" class="settings-button settings-button-danger">Remove</button>
-            <button v-if="isGuideEditing(guide.id)" @click="cancelGuidesEdit" :disabled="isInteractionLocked" class="settings-button settings-button-ghost">Cancel</button>
-            <button v-if="isGuideEditing(guide.id)" @click="saveGuides" :disabled="isInteractionLocked" class="settings-button settings-button-primary">{{ guidesSaving ? 'Saving Guide' : 'Save Guide' }}</button>
+            </UButton>
+            <UButton v-if="isGuideEditing(guide.id)" @click="confirmRemoveGuideItem(guide.id)" class="settings-button settings-button-danger">Remove</UButton>
+            <UButton v-if="isGuideEditing(guide.id)" @click="cancelGuidesEdit" :disabled="isInteractionLocked" class="settings-button settings-button-ghost">Cancel</UButton>
+            <UButton v-if="isGuideEditing(guide.id)" @click="saveGuides" :disabled="isInteractionLocked" class="settings-button settings-button-primary">{{ guidesSaving ? 'Saving Guide' : 'Save Guide' }}</UButton>
           </div>
         </div>
 
         <div v-if="isGuideEditing(guide.id)" class="mt-5 space-y-3">
           <label class="space-y-2">
             <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Guide Name</span>
-            <input v-model="guide.name" type="text" class="settings-input" placeholder="Kai Jensen" />
+            <UInput v-model="guide.name" type="text" class="settings-input" placeholder="Kai Jensen" />
           </label>
         </div>
       </article>

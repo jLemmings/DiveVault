@@ -618,9 +618,9 @@ export default {
             <h4 class="mt-2 font-headline text-2xl font-bold text-primary">{{ importedDiveLabel }}</h4>
             <p class="mt-2 text-sm leading-6 text-on-surface-variant">Complete the dive site before these imported dives enter the logbook. Buddy and guide can stay blank.</p>
           </div>
-          <button @click="openImportQueue()" class="rounded-xl bg-tertiary px-5 py-3 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-background transition-transform hover:scale-[0.98]">
+          <UButton @click="openImportQueue()" class="rounded-xl bg-tertiary px-5 py-3 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-background transition-transform hover:scale-[0.98]">
             Review Imported Dives
-          </button>
+          </UButton>
         </div>
       </section>
 
@@ -650,9 +650,9 @@ export default {
                 No committed dives yet.
               </div>
             </div>
-            <button @click="setView('logs')" class="mt-6 flex items-center gap-2 self-start font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary hover:underline">
+            <UButton @click="setView('logs')" class="mt-6 flex items-center gap-2 self-start font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary hover:underline">
               View All Logs <span class="material-symbols-outlined text-sm">arrow_forward</span>
-            </button>
+            </UButton>
           </section>
 
         </aside>
@@ -679,14 +679,14 @@ export default {
           >
             <div :class="isMapExpanded ? 'w-full max-w-7xl' : 'h-full'">
               <div :class="['dashboard-glass-card dashboard-map-panel relative h-full overflow-hidden']" :style="isMapExpanded ? { height: '85vh' } : null">
-                <button
+                <UButton
                   v-if="isMapExpanded"
                   @click="closeMapExpanded()"
                   class="absolute right-6 top-6 z-[480] rounded-full border border-outline-variant/30 bg-background/65 px-4 py-2 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-primary backdrop-blur-sm"
                 >
                   Close
-                </button>
-                <button
+                </UButton>
+                <UButton
                   v-else
                   @click="toggleMapExpanded()"
                   class="dashboard-map-expand-button"
@@ -695,7 +695,7 @@ export default {
                   title="Expand map"
                 >
                   <span class="material-symbols-outlined text-lg">fullscreen</span>
-                </button>
+                </UButton>
                 <div ref="diveMapCanvas" class="dive-theme-map"></div>
               </div>
             </div>
@@ -725,9 +725,9 @@ export default {
               <h5 class="mt-2 font-headline text-3xl font-bold tracking-tight">{{ unmappedDiveCount }} {{ unmappedDiveCount === 1 ? 'Dive Needs Coordinates' : 'Dives Need Coordinates' }}</h5>
               <p class="mt-3 max-w-3xl text-sm leading-7 text-on-surface-variant">These committed logbook dives do not currently resolve to a saved dive-site coordinate or usable embedded GPS position.</p>
             </div>
-            <button @click="closeMissingCoordinateDives()" class="self-start bg-surface-container-high px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary transition-colors hover:text-primary">
+            <UButton @click="closeMissingCoordinateDives()" class="self-start bg-surface-container-high px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary transition-colors hover:text-primary">
               Close
-            </button>
+            </UButton>
           </div>
 
           <div class="mt-6 grid gap-4 xl:grid-cols-2">
@@ -738,9 +738,9 @@ export default {
                   <h6 class="mt-2 truncate font-headline text-xl font-bold text-on-surface">{{ dive.siteName }}</h6>
                   <p class="mt-1 text-sm text-on-surface-variant">{{ dive.title }}</p>
                 </div>
-                <button @click="openMissingCoordinateDive(dive.id)" class="bg-primary px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-on-primary">
+                <UButton @click="openMissingCoordinateDive(dive.id)" class="bg-primary px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-on-primary">
                   Open Dive
-                </button>
+                </UButton>
               </div>
 
               <div class="mt-4 grid gap-3 md:grid-cols-2">

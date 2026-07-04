@@ -68,11 +68,7 @@ export default {
       <div class="mt-6 grid gap-4 xl:grid-cols-[minmax(0,24rem)] xl:items-start">
         <label class="space-y-2">
           <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Language</span>
-          <select v-model="selectedLocale" @change="changePreferredLanguage" class="settings-input">
-            <option v-for="language in availableLanguages" :key="'settings-language-' + language.value" :value="language.value">
-              {{ language.label }}
-            </option>
-          </select>
+          <USelect v-model="selectedLocale" :items="availableLanguages" @update:model-value="changePreferredLanguage" class="settings-input" />
         </label>
       </div>
     </div>
@@ -90,7 +86,7 @@ export default {
       </div>
 
       <div class="mt-6 grid gap-3 md:grid-cols-3">
-        <button
+        <UButton
           v-for="theme in availableThemeOptions"
           :key="'settings-theme-' + theme.value"
           type="button"
@@ -103,7 +99,7 @@ export default {
             <span class="block font-label text-[10px] font-bold uppercase tracking-[0.18em]">{{ t(theme.label, theme.label) }}</span>
             <span v-if="theme.value === 'system'" class="mt-1 block text-xs opacity-80">{{ t('Currently', 'Currently') }} {{ t(resolvedTheme === 'light' ? 'Light' : 'Dark', resolvedTheme) }}</span>
           </span>
-        </button>
+        </UButton>
       </div>
     </div>
 
@@ -121,7 +117,7 @@ export default {
 
       <div class="mt-6 flex flex-col gap-6 xl:flex-row xl:items-end xl:justify-between">
         <label class="flex items-start gap-4 rounded-2xl border border-primary/10 bg-background/20 px-4 py-4">
-          <input v-model="publicSharingDraft.public_dives_enabled" type="checkbox" class="mt-1 h-5 w-5 rounded border-primary/20 bg-surface-container-high text-primary focus:ring-primary/30" />
+          <UCheckbox v-model="publicSharingDraft.public_dives_enabled" class="mt-1" :ui="{ base: 'h-5 w-5 rounded border-primary/20 bg-surface-container-high text-primary focus:ring-primary/30' }" />
           <div>
             <p class="text-sm font-semibold text-on-surface">Make My Completed Dives Public</p>
             <p class="mt-1 text-sm leading-6 text-secondary">Imported drafts stay private until they are completed in the logbook.</p>
@@ -129,10 +125,10 @@ export default {
         </label>
 
         <div class="flex flex-wrap gap-3">
-          <button @click="savePublicSharing" :disabled="publicSharingSaving || (!hasUnsavedPublicSharingChanges && publicSharingDraft.public_dives_enabled === settingsProfile.public_dives_enabled)" class="settings-button settings-button-primary">
+          <UButton @click="savePublicSharing" :disabled="publicSharingSaving || (!hasUnsavedPublicSharingChanges && publicSharingDraft.public_dives_enabled === settingsProfile.public_dives_enabled)" class="settings-button settings-button-primary">
             {{ publicSharingSaving ? 'Saving Share Settings' : 'Save Sharing' }}
-          </button>
-          <button v-if="settingsProfile.public_dives_enabled && publicProfileUrl" @click="copyPublicProfileUrl" class="settings-button settings-button-secondary">Copy Public Link</button>
+          </UButton>
+          <UButton v-if="settingsProfile.public_dives_enabled && publicProfileUrl" @click="copyPublicProfileUrl" class="settings-button settings-button-secondary">Copy Public Link</UButton>
         </div>
       </div>
 
@@ -156,7 +152,7 @@ export default {
 
       <div class="mt-6 grid gap-4 lg:grid-cols-3">
         <label v-for="option in optionalLogbookFieldOptions()" :key="'logbook-field-' + option.key" class="flex items-start gap-4 rounded-2xl border border-primary/10 bg-background/20 px-4 py-4">
-          <input :checked="logbookFieldEnabled(option.key)" @change="toggleLogbookDisplayField(option.key)" type="checkbox" class="mt-1 h-5 w-5 rounded border-primary/20 bg-surface-container-high text-primary focus:ring-primary/30" />
+          <UCheckbox :model-value="logbookFieldEnabled(option.key)" @update:model-value="toggleLogbookDisplayField(option.key)" class="mt-1" :ui="{ base: 'h-5 w-5 rounded border-primary/20 bg-surface-container-high text-primary focus:ring-primary/30' }" />
           <div>
             <p class="text-sm font-semibold text-on-surface">{{ option.label }}</p>
             <p class="mt-1 text-sm leading-6 text-secondary">{{ option.detail }}</p>
@@ -165,7 +161,7 @@ export default {
       </div>
 
       <label class="mt-5 flex items-start gap-4 rounded-2xl border border-primary/10 bg-background/20 px-4 py-4">
-        <input :checked="settingsProfile.equipment_selection_enabled" @change="toggleEquipmentSelectionEnabled()" type="checkbox" class="mt-1 h-5 w-5 rounded border-primary/20 bg-surface-container-high text-primary focus:ring-primary/30" />
+        <UCheckbox :model-value="settingsProfile.equipment_selection_enabled" @update:model-value="toggleEquipmentSelectionEnabled()" class="mt-1" :ui="{ base: 'h-5 w-5 rounded border-primary/20 bg-surface-container-high text-primary focus:ring-primary/30' }" />
         <div>
           <p class="text-sm font-semibold text-on-surface">{{ t('settings.logLayout.equipmentSelector', 'Used gear selector') }}</p>
           <p class="mt-1 text-sm leading-6 text-secondary">{{ t('settings.logLayout.equipmentSelector.detail', 'Show an optional equipment area when creating or completing dive logs. Service warnings are informational and do not block saving.') }}</p>
@@ -185,7 +181,7 @@ export default {
 
         <div class="mt-6 grid gap-4 lg:grid-cols-4">
           <label v-for="option in requiredLogbookFieldOptions()" :key="'required-logbook-field-' + option.key" class="flex items-start gap-4 rounded-2xl border border-primary/10 bg-background/20 px-4 py-4">
-            <input :checked="requiredLogbookFieldEnabled(option.key)" :disabled="option.key === 'site'" @change="toggleRequiredLogbookField(option.key)" type="checkbox" class="mt-1 h-5 w-5 rounded border-primary/20 bg-surface-container-high text-primary focus:ring-primary/30 disabled:opacity-60" />
+            <UCheckbox :model-value="requiredLogbookFieldEnabled(option.key)" :disabled="option.key === 'site'" @update:model-value="toggleRequiredLogbookField(option.key)" class="mt-1" :ui="{ base: 'h-5 w-5 rounded border-primary/20 bg-surface-container-high text-primary focus:ring-primary/30 disabled:opacity-60' }" />
             <div>
               <p class="text-sm font-semibold text-on-surface">{{ option.label }}</p>
               <p class="mt-1 text-sm leading-6 text-secondary">{{ option.detail }}</p>
@@ -195,9 +191,9 @@ export default {
       </div>
 
       <div class="mt-5 flex justify-end">
-        <button @click="saveProfile" :disabled="profileSaving" class="settings-button settings-button-primary">
+        <UButton @click="saveProfile" :disabled="profileSaving" class="settings-button settings-button-primary">
           {{ profileSaving ? t('Saving Profile', 'Saving Profile') : t('settings.logLayout.save', 'Save Log Layout') }}
-        </button>
+        </UButton>
       </div>
     </div>
   </div>

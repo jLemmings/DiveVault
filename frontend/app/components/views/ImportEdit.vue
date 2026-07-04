@@ -263,18 +263,18 @@ export default {
       <section v-if="!dive || !selectedDraft" class="space-y-4 bg-surface-container-low p-8 shadow-panel">
         <p class="font-label text-[10px] font-bold uppercase tracking-[0.2em] text-primary">Imported Dive Missing</p>
         <h3 class="font-headline text-3xl font-bold tracking-tight">This imported dive is no longer in the queue.</h3>
-        <button @click="backToQueue()" class="w-fit bg-primary px-5 py-3 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-on-primary">
+        <UButton @click="backToQueue()" class="w-fit bg-primary px-5 py-3 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-on-primary">
           Return To Queue
-        </button>
+        </UButton>
       </section>
 
       <template v-else>
         <section class="space-y-6 md:hidden">
           <div class="flex items-center justify-between gap-3">
-            <button @click="backToQueue()" class="inline-flex items-center gap-2 rounded-lg bg-surface-container-high px-3 py-2 font-label text-[10px] font-bold uppercase tracking-[0.16em] text-on-surface">
+            <UButton @click="backToQueue()" class="inline-flex items-center gap-2 rounded-lg bg-surface-container-high px-3 py-2 font-label text-[10px] font-bold uppercase tracking-[0.16em] text-on-surface">
               <span class="material-symbols-outlined text-sm">chevron_left</span>
               Queue
-            </button>
+            </UButton>
             <span class="rounded bg-tertiary-container px-2 py-1 font-label text-[10px] font-bold uppercase tracking-[0.14em] text-on-tertiary-container">{{ completionPercent }}% Ready</span>
           </div>
 
@@ -343,7 +343,7 @@ export default {
               </p>
               <p v-if="selectedDiveSite" class="text-xs leading-5 text-primary">{{ siteCoordinateLabel(selectedDiveSite) }}</p>
               <div v-if="canCreateDiveSite || diveSiteCreateStatus || diveSiteCreateError" class="space-y-2">
-                <button
+                <UButton
                   v-if="canCreateDiveSite"
                   @click="saveCurrentDiveSite()"
                   :disabled="diveSiteCreatePending"
@@ -351,7 +351,7 @@ export default {
                 >
                   <span class="material-symbols-outlined text-sm">add_location_alt</span>
                   {{ diveSiteCreatePending ? 'Saving Dive Site...' : 'Save As Reusable Dive Site' }}
-                </button>
+                </UButton>
                 <p v-if="diveSiteCreateStatus" class="text-xs leading-5 text-primary">{{ diveSiteCreateStatus }}</p>
                 <p v-if="diveSiteCreateError" class="text-xs leading-5 text-on-error-container">{{ diveSiteCreateError }}</p>
               </div>
@@ -385,19 +385,16 @@ export default {
               </label>
               <label class="block space-y-2">
                 <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Tank Volume</span>
-                <select :value="selectedDraft.tank_volume_l || ''" @change="updateField('tank_volume_l', $event.target.value)" class="w-full rounded-lg border-none bg-surface-container-high px-4 py-3 text-sm text-on-surface focus:ring-1 focus:ring-primary">
-                  <option value="">Select tank volume</option>
-                  <option v-for="option in tankVolumeOptions" :key="'mobile-tank-' + option.value" :value="option.value">{{ option.label }}</option>
-                </select>
+                <USelect :model-value="selectedDraft.tank_volume_l || ''" :items="[{ label: 'Select tank volume', value: '' }, ...tankVolumeOptions]" @update:model-value="updateField('tank_volume_l', $event)" class="w-full rounded-lg border-none bg-surface-container-high px-4 py-3 text-sm text-on-surface focus:ring-1 focus:ring-primary" />
               </label>
               <template v-if="canEditTankPressure">
                 <label class="block space-y-2">
                   <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Entry Pressure</span>
-                  <input :value="selectedDraft.begin_pressure_bar || ''" @input="updateField('begin_pressure_bar', $event.target.value)" type="number" min="0" max="400" step="1" placeholder="200" class="ui-number-input w-full rounded-lg border-none bg-surface-container-high px-4 py-3 text-sm text-on-surface placeholder:text-secondary/50 focus:ring-1 focus:ring-primary" />
+                  <UInput :value="selectedDraft.begin_pressure_bar || ''" @input="updateField('begin_pressure_bar', $event.target.value)" type="number" min="0" max="400" step="1" placeholder="200" class="ui-number-input w-full rounded-lg border-none bg-surface-container-high px-4 py-3 text-sm text-on-surface placeholder:text-secondary/50 focus:ring-1 focus:ring-primary" />
                 </label>
                 <label class="block space-y-2">
                   <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Exit Pressure</span>
-                  <input :value="selectedDraft.end_pressure_bar || ''" @input="updateField('end_pressure_bar', $event.target.value)" type="number" min="0" max="400" step="1" placeholder="70" class="ui-number-input w-full rounded-lg border-none bg-surface-container-high px-4 py-3 text-sm text-on-surface placeholder:text-secondary/50 focus:ring-1 focus:ring-primary" />
+                  <UInput :value="selectedDraft.end_pressure_bar || ''" @input="updateField('end_pressure_bar', $event.target.value)" type="number" min="0" max="400" step="1" placeholder="70" class="ui-number-input w-full rounded-lg border-none bg-surface-container-high px-4 py-3 text-sm text-on-surface placeholder:text-secondary/50 focus:ring-1 focus:ring-primary" />
                 </label>
               </template>
               <section v-if="equipmentSelectionEnabled" class="space-y-3 rounded-xl border border-primary/10 bg-surface-container-high/35 p-4">
@@ -411,13 +408,13 @@ export default {
                   <span class="material-symbols-outlined" :class="invalidSelectedEquipment.length ? 'text-tertiary' : 'text-primary'">{{ invalidSelectedEquipment.length ? 'warning' : 'verified' }}</span>
                 </div>
                 <div class="flex flex-wrap gap-2">
-                  <button @click="useDefaultEquipment()" type="button" class="rounded-lg bg-surface-container-highest px-3 py-2 font-label text-[10px] font-bold uppercase tracking-[0.14em] text-primary">Use Defaults</button>
-                  <button @click="clearEquipment()" type="button" class="rounded-lg bg-background/30 px-3 py-2 font-label text-[10px] font-bold uppercase tracking-[0.14em] text-secondary">Clear</button>
+                  <UButton @click="useDefaultEquipment()" type="button" class="rounded-lg bg-surface-container-highest px-3 py-2 font-label text-[10px] font-bold uppercase tracking-[0.14em] text-primary">Use Defaults</UButton>
+                  <UButton @click="clearEquipment()" type="button" class="rounded-lg bg-background/30 px-3 py-2 font-label text-[10px] font-bold uppercase tracking-[0.14em] text-secondary">Clear</UButton>
                 </div>
                 <div v-if="equipmentGroups.length" class="space-y-3">
                   <div v-for="group in equipmentGroups" :key="'mobile-equipment-' + group.category" class="space-y-2">
                     <p class="font-label text-[10px] font-bold uppercase tracking-[0.16em] text-secondary">{{ group.category }}</p>
-                    <button
+                    <UButton
                       v-for="item in group.items"
                       :key="'mobile-equipment-item-' + item.id"
                       type="button"
@@ -430,7 +427,7 @@ export default {
                         <span class="mt-1 block text-xs" :class="equipmentWarning(item) ? 'text-tertiary' : 'text-primary'">{{ serviceStatusForDive(item, dive.started_at).label }}</span>
                       </span>
                       <span class="material-symbols-outlined text-sm">{{ equipmentChecked(item.id) ? 'check_circle' : 'radio_button_unchecked' }}</span>
-                    </button>
+                    </UButton>
                   </div>
                 </div>
                 <p v-else class="text-xs leading-5 text-on-surface-variant">Add equipment in the Equipment section to reuse it here.</p>
@@ -440,23 +437,23 @@ export default {
               </section>
               <label class="block space-y-2">
                 <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">{{ t('Weather', 'Weather') }}</span>
-                <input :value="selectedDraft.weather_description" @input="updateField('weather_description', $event.target.value)" type="text" :placeholder="t('importEdit.weather.placeholder', 'Sunny, current building')" class="w-full rounded-lg border-none bg-surface-container-high px-4 py-3 text-sm text-on-surface placeholder:text-secondary/50 focus:ring-1 focus:ring-primary" />
+                <UInput :value="selectedDraft.weather_description" @input="updateField('weather_description', $event.target.value)" type="text" :placeholder="t('importEdit.weather.placeholder', 'Sunny, current building')" class="w-full rounded-lg border-none bg-surface-container-high px-4 py-3 text-sm text-on-surface placeholder:text-secondary/50 focus:ring-1 focus:ring-primary" />
               </label>
               <label class="block space-y-2">
                 <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">{{ t('Visibility', 'Visibility') }}</span>
-                <input :value="selectedDraft.visibility" @input="updateField('visibility', $event.target.value)" type="text" :placeholder="t('importEdit.visibility.placeholder', '20 m / good')" class="w-full rounded-lg border-none bg-surface-container-high px-4 py-3 text-sm text-on-surface placeholder:text-secondary/50 focus:ring-1 focus:ring-primary" />
+                <UInput :value="selectedDraft.visibility" @input="updateField('visibility', $event.target.value)" type="text" :placeholder="t('importEdit.visibility.placeholder', '20 m / good')" class="w-full rounded-lg border-none bg-surface-container-high px-4 py-3 text-sm text-on-surface placeholder:text-secondary/50 focus:ring-1 focus:ring-primary" />
               </label>
               <label class="block space-y-2">
                 <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">{{ t('Wetsuit', 'Wetsuit') }}</span>
-                <input :value="selectedDraft.wetsuit_description" @input="updateField('wetsuit_description', $event.target.value)" type="text" :placeholder="t('importEdit.wetsuit.placeholder', '3mm shorty / drysuit')" class="w-full rounded-lg border-none bg-surface-container-high px-4 py-3 text-sm text-on-surface placeholder:text-secondary/50 focus:ring-1 focus:ring-primary" />
+                <UInput :value="selectedDraft.wetsuit_description" @input="updateField('wetsuit_description', $event.target.value)" type="text" :placeholder="t('importEdit.wetsuit.placeholder', '3mm shorty / drysuit')" class="w-full rounded-lg border-none bg-surface-container-high px-4 py-3 text-sm text-on-surface placeholder:text-secondary/50 focus:ring-1 focus:ring-primary" />
               </label>
               <label class="block space-y-2">
                 <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">{{ t('Weights', 'Weights') }}</span>
-                <input :value="selectedDraft.weight_description" @input="updateField('weight_description', $event.target.value)" type="text" :placeholder="t('importEdit.weights.placeholder', '8 kg integrated + 1 kg trim')" class="w-full rounded-lg border-none bg-surface-container-high px-4 py-3 text-sm text-on-surface placeholder:text-secondary/50 focus:ring-1 focus:ring-primary" />
+                <UInput :value="selectedDraft.weight_description" @input="updateField('weight_description', $event.target.value)" type="text" :placeholder="t('importEdit.weights.placeholder', '8 kg integrated + 1 kg trim')" class="w-full rounded-lg border-none bg-surface-container-high px-4 py-3 text-sm text-on-surface placeholder:text-secondary/50 focus:ring-1 focus:ring-primary" />
               </label>
               <label class="block space-y-2">
                 <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Dive Notes</span>
-                <textarea :value="selectedDraft.notes" @input="updateField('notes', $event.target.value)" rows="5" placeholder="Visibility, current, wildlife, entry notes..." class="w-full resize-none rounded-lg border-none bg-surface-container-high px-4 py-3 text-sm leading-6 text-on-surface placeholder:text-secondary/50 focus:ring-1 focus:ring-primary"></textarea>
+                <UTextarea :value="selectedDraft.notes" @input="updateField('notes', $event.target.value)" rows="5" placeholder="Visibility, current, wildlife, entry notes..." class="w-full resize-none rounded-lg border-none bg-surface-container-high px-4 py-3 text-sm leading-6 text-on-surface placeholder:text-secondary/50 focus:ring-1 focus:ring-primary"></UTextarea>
               </label>
             </div>
             <div class="space-y-3 rounded-lg border border-primary/10 bg-surface-container-high p-4">
@@ -465,24 +462,24 @@ export default {
                 <span class="font-label text-[10px] font-bold uppercase tracking-[0.14em] text-secondary">Buddy + Guide</span>
               </div>
               <p class="text-xs leading-5 text-on-surface-variant">Copy the current buddy and guide to every imported dive. Dive sites stay per-dive.</p>
-              <button @click="applyBuddyGuide()" :disabled="bulkImportSavePending" class="w-full rounded-lg bg-surface-container-highest px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-primary disabled:opacity-50">
+              <UButton @click="applyBuddyGuide()" :disabled="bulkImportSavePending" class="w-full rounded-lg bg-surface-container-highest px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-primary disabled:opacity-50">
                 {{ bulkImportSavePending ? 'Applying...' : 'Apply Buddy + Guide To Imported Dives' }}
-              </button>
+              </UButton>
             </div>
             <div v-if="!isCommittedRecord" class="flex flex-col gap-3">
-              <button @click="saveDraft(false)" :disabled="saveLocked" class="w-full rounded-lg bg-surface-container-highest px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-on-surface disabled:opacity-50">
+              <UButton @click="saveDraft(false)" :disabled="saveLocked" class="w-full rounded-lg bg-surface-container-highest px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-on-surface disabled:opacity-50">
                 {{ bulkImportSavePending ? 'Applying...' : isSaving ? 'Saving...' : 'Save Draft' }}
-              </button>
-              <button @click="saveDraft(true)" :disabled="saveLocked || !canCompleteImport(selectedDraft)" class="w-full rounded-lg bg-primary px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-on-primary disabled:opacity-50">
+              </UButton>
+              <UButton @click="saveDraft(true)" :disabled="saveLocked || !canCompleteImport(selectedDraft)" class="w-full rounded-lg bg-primary px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-on-primary disabled:opacity-50">
                 {{ bulkImportSavePending ? 'Applying...' : isSaving ? 'Saving...' : 'Complete Record' }}
-              </button>
-              <button @click="removeDive()" :disabled="saveLocked" class="w-full rounded-lg bg-error-container/20 px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-on-error-container disabled:opacity-50">
+              </UButton>
+              <UButton @click="removeDive()" :disabled="saveLocked" class="w-full rounded-lg bg-error-container/20 px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-on-error-container disabled:opacity-50">
                 {{ isDeleting ? 'Removing...' : 'Remove Imported Dive' }}
-              </button>
+              </UButton>
             </div>
-            <button v-else @click="saveDraft(true)" :disabled="saveLocked || !canCompleteImport(selectedDraft)" class="w-full rounded-lg bg-primary px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-on-primary disabled:opacity-50">
+            <UButton v-else @click="saveDraft(true)" :disabled="saveLocked || !canCompleteImport(selectedDraft)" class="w-full rounded-lg bg-primary px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-on-primary disabled:opacity-50">
               {{ isSaving ? 'Saving...' : 'Save Changes' }}
-            </button>
+            </UButton>
           </section>
         </section>
 
@@ -490,10 +487,10 @@ export default {
           <header class="space-y-6">
             <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
               <div>
-                <button @click="backToQueue()" class="inline-flex items-center gap-2 bg-surface-container-high px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-on-surface transition-colors hover:text-primary">
+                <UButton @click="backToQueue()" class="inline-flex items-center gap-2 bg-surface-container-high px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-on-surface transition-colors hover:text-primary">
                   <span class="material-symbols-outlined text-sm">chevron_left</span>
                   Imported Queue
-                </button>
+                </UButton>
                 <div class="mt-4 flex items-center gap-2 text-primary/60">
                   <span class="material-symbols-outlined text-sm">edit_note</span>
                   <span class="font-label text-[10px] font-bold uppercase tracking-[0.28em]">Imported Dive / Metadata Editor</span>
@@ -565,7 +562,7 @@ export default {
                 </p>
                 <p v-if="selectedDiveSite" class="text-xs leading-5 text-primary">{{ siteCoordinateLabel(selectedDiveSite) }}</p>
                 <div v-if="canCreateDiveSite || diveSiteCreateStatus || diveSiteCreateError" class="space-y-2">
-                  <button
+                  <UButton
                     v-if="canCreateDiveSite"
                     @click="saveCurrentDiveSite()"
                     :disabled="diveSiteCreatePending"
@@ -573,7 +570,7 @@ export default {
                   >
                     <span class="material-symbols-outlined text-sm">add_location_alt</span>
                     {{ diveSiteCreatePending ? 'Saving Dive Site...' : 'Save As Reusable Dive Site' }}
-                  </button>
+                  </UButton>
                   <p v-if="diveSiteCreateStatus" class="text-xs leading-5 text-primary">{{ diveSiteCreateStatus }}</p>
                   <p v-if="diveSiteCreateError" class="text-xs leading-5 text-on-error-container">{{ diveSiteCreateError }}</p>
                 </div>
@@ -608,19 +605,16 @@ export default {
                 </label>
                 <label class="block space-y-2">
                   <span class="font-label text-[10px] font-bold uppercase tracking-[0.2em] text-secondary">Tank Volume</span>
-                  <select :value="selectedDraft.tank_volume_l || ''" @change="updateField('tank_volume_l', $event.target.value)" class="w-full border border-primary/10 bg-surface-container-high/35 px-4 py-3 text-sm text-on-surface focus:border-primary/30 focus:ring-1 focus:ring-primary">
-                    <option value="">Select tank volume</option>
-                    <option v-for="option in tankVolumeOptions" :key="'desktop-tank-' + option.value" :value="option.value">{{ option.label }}</option>
-                  </select>
+                  <USelect :model-value="selectedDraft.tank_volume_l || ''" :items="[{ label: 'Select tank volume', value: '' }, ...tankVolumeOptions]" @update:model-value="updateField('tank_volume_l', $event)" class="w-full border border-primary/10 bg-surface-container-high/35 px-4 py-3 text-sm text-on-surface focus:border-primary/30 focus:ring-1 focus:ring-primary" />
                 </label>
                 <template v-if="canEditTankPressure">
                   <label class="block space-y-2">
                     <span class="font-label text-[10px] font-bold uppercase tracking-[0.2em] text-secondary">Entry Pressure</span>
-                    <input :value="selectedDraft.begin_pressure_bar || ''" @input="updateField('begin_pressure_bar', $event.target.value)" type="number" min="0" max="400" step="1" placeholder="200" class="ui-number-input w-full border border-primary/10 bg-surface-container-high/35 px-4 py-3 text-sm text-on-surface placeholder:text-secondary/50 focus:border-primary/30 focus:ring-1 focus:ring-primary" />
+                    <UInput :value="selectedDraft.begin_pressure_bar || ''" @input="updateField('begin_pressure_bar', $event.target.value)" type="number" min="0" max="400" step="1" placeholder="200" class="ui-number-input w-full border border-primary/10 bg-surface-container-high/35 px-4 py-3 text-sm text-on-surface placeholder:text-secondary/50 focus:border-primary/30 focus:ring-1 focus:ring-primary" />
                   </label>
                   <label class="block space-y-2">
                     <span class="font-label text-[10px] font-bold uppercase tracking-[0.2em] text-secondary">Exit Pressure</span>
-                    <input :value="selectedDraft.end_pressure_bar || ''" @input="updateField('end_pressure_bar', $event.target.value)" type="number" min="0" max="400" step="1" placeholder="70" class="ui-number-input w-full border border-primary/10 bg-surface-container-high/35 px-4 py-3 text-sm text-on-surface placeholder:text-secondary/50 focus:border-primary/30 focus:ring-1 focus:ring-primary" />
+                    <UInput :value="selectedDraft.end_pressure_bar || ''" @input="updateField('end_pressure_bar', $event.target.value)" type="number" min="0" max="400" step="1" placeholder="70" class="ui-number-input w-full border border-primary/10 bg-surface-container-high/35 px-4 py-3 text-sm text-on-surface placeholder:text-secondary/50 focus:border-primary/30 focus:ring-1 focus:ring-primary" />
                   </label>
                 </template>
               </div>
@@ -634,14 +628,14 @@ export default {
                     </p>
                   </div>
                   <div class="flex flex-wrap gap-2">
-                    <button @click="useDefaultEquipment()" type="button" class="bg-surface-container-high px-3 py-2 font-label text-[10px] font-bold uppercase tracking-[0.16em] text-primary">Use Defaults</button>
-                    <button @click="clearEquipment()" type="button" class="bg-background/30 px-3 py-2 font-label text-[10px] font-bold uppercase tracking-[0.16em] text-secondary">Clear</button>
+                    <UButton @click="useDefaultEquipment()" type="button" class="bg-surface-container-high px-3 py-2 font-label text-[10px] font-bold uppercase tracking-[0.16em] text-primary">Use Defaults</UButton>
+                    <UButton @click="clearEquipment()" type="button" class="bg-background/30 px-3 py-2 font-label text-[10px] font-bold uppercase tracking-[0.16em] text-secondary">Clear</UButton>
                   </div>
                 </div>
                 <div v-if="equipmentGroups.length" class="grid gap-4 lg:grid-cols-2">
                   <div v-for="group in equipmentGroups" :key="'desktop-equipment-' + group.category" class="space-y-2">
                     <p class="font-label text-[10px] font-bold uppercase tracking-[0.16em] text-secondary">{{ group.category }}</p>
-                    <button
+                    <UButton
                       v-for="item in group.items"
                       :key="'desktop-equipment-item-' + item.id"
                       type="button"
@@ -654,7 +648,7 @@ export default {
                         <span class="mt-1 block text-xs" :class="equipmentWarning(item) ? 'text-tertiary' : 'text-primary'">{{ serviceStatusForDive(item, dive.started_at).label }}</span>
                       </span>
                       <span class="material-symbols-outlined text-base">{{ equipmentChecked(item.id) ? 'check_circle' : 'radio_button_unchecked' }}</span>
-                    </button>
+                    </UButton>
                   </div>
                 </div>
                 <p v-else class="text-sm leading-6 text-on-surface-variant">Add equipment in the Equipment section to reuse it here.</p>
@@ -666,25 +660,25 @@ export default {
               <div class="grid grid-cols-1 gap-4 md:grid-cols-4">
                 <label class="block space-y-2">
                   <span class="font-label text-[10px] font-bold uppercase tracking-[0.2em] text-secondary">{{ t('Weather', 'Weather') }}</span>
-                  <input :value="selectedDraft.weather_description" @input="updateField('weather_description', $event.target.value)" type="text" :placeholder="t('importEdit.weather.placeholder', 'Sunny, current building')" class="w-full border border-primary/10 bg-surface-container-high/35 px-4 py-3 text-sm text-on-surface placeholder:text-secondary/50 focus:border-primary/30 focus:ring-1 focus:ring-primary" />
+                  <UInput :value="selectedDraft.weather_description" @input="updateField('weather_description', $event.target.value)" type="text" :placeholder="t('importEdit.weather.placeholder', 'Sunny, current building')" class="w-full border border-primary/10 bg-surface-container-high/35 px-4 py-3 text-sm text-on-surface placeholder:text-secondary/50 focus:border-primary/30 focus:ring-1 focus:ring-primary" />
                 </label>
                 <label class="block space-y-2">
                   <span class="font-label text-[10px] font-bold uppercase tracking-[0.2em] text-secondary">{{ t('Visibility', 'Visibility') }}</span>
-                  <input :value="selectedDraft.visibility" @input="updateField('visibility', $event.target.value)" type="text" :placeholder="t('importEdit.visibility.placeholder', '20 m / good')" class="w-full border border-primary/10 bg-surface-container-high/35 px-4 py-3 text-sm text-on-surface placeholder:text-secondary/50 focus:border-primary/30 focus:ring-1 focus:ring-primary" />
+                  <UInput :value="selectedDraft.visibility" @input="updateField('visibility', $event.target.value)" type="text" :placeholder="t('importEdit.visibility.placeholder', '20 m / good')" class="w-full border border-primary/10 bg-surface-container-high/35 px-4 py-3 text-sm text-on-surface placeholder:text-secondary/50 focus:border-primary/30 focus:ring-1 focus:ring-primary" />
                 </label>
                 <label class="block space-y-2">
                   <span class="font-label text-[10px] font-bold uppercase tracking-[0.2em] text-secondary">{{ t('Wetsuit', 'Wetsuit') }}</span>
-                  <input :value="selectedDraft.wetsuit_description" @input="updateField('wetsuit_description', $event.target.value)" type="text" :placeholder="t('importEdit.wetsuit.placeholder', '3mm shorty / drysuit')" class="w-full border border-primary/10 bg-surface-container-high/35 px-4 py-3 text-sm text-on-surface placeholder:text-secondary/50 focus:border-primary/30 focus:ring-1 focus:ring-primary" />
+                  <UInput :value="selectedDraft.wetsuit_description" @input="updateField('wetsuit_description', $event.target.value)" type="text" :placeholder="t('importEdit.wetsuit.placeholder', '3mm shorty / drysuit')" class="w-full border border-primary/10 bg-surface-container-high/35 px-4 py-3 text-sm text-on-surface placeholder:text-secondary/50 focus:border-primary/30 focus:ring-1 focus:ring-primary" />
                 </label>
                 <label class="block space-y-2">
                   <span class="font-label text-[10px] font-bold uppercase tracking-[0.2em] text-secondary">{{ t('Weights', 'Weights') }}</span>
-                  <input :value="selectedDraft.weight_description" @input="updateField('weight_description', $event.target.value)" type="text" :placeholder="t('importEdit.weights.placeholder', '8 kg integrated + 1 kg trim')" class="w-full border border-primary/10 bg-surface-container-high/35 px-4 py-3 text-sm text-on-surface placeholder:text-secondary/50 focus:border-primary/30 focus:ring-1 focus:ring-primary" />
+                  <UInput :value="selectedDraft.weight_description" @input="updateField('weight_description', $event.target.value)" type="text" :placeholder="t('importEdit.weights.placeholder', '8 kg integrated + 1 kg trim')" class="w-full border border-primary/10 bg-surface-container-high/35 px-4 py-3 text-sm text-on-surface placeholder:text-secondary/50 focus:border-primary/30 focus:ring-1 focus:ring-primary" />
                 </label>
               </div>
 
               <label class="block space-y-2">
                 <span class="font-label text-[10px] font-bold uppercase tracking-[0.2em] text-secondary">Dive Notes</span>
-                <textarea :value="selectedDraft.notes" @input="updateField('notes', $event.target.value)" rows="7" placeholder="Visibility, current, wildlife, entry notes, incidents..." class="w-full resize-none border border-primary/10 bg-surface-container-high/35 px-4 py-3 text-sm leading-6 text-on-surface placeholder:text-secondary/50 focus:border-primary/30 focus:ring-1 focus:ring-primary"></textarea>
+                <UTextarea :value="selectedDraft.notes" @input="updateField('notes', $event.target.value)" rows="7" placeholder="Visibility, current, wildlife, entry notes, incidents..." class="w-full resize-none border border-primary/10 bg-surface-container-high/35 px-4 py-3 text-sm leading-6 text-on-surface placeholder:text-secondary/50 focus:border-primary/30 focus:ring-1 focus:ring-primary"></UTextarea>
               </label>
 
               <div v-if="!isCommittedRecord" class="space-y-3 border border-primary/10 bg-surface-container-high/18 p-5">
@@ -693,25 +687,25 @@ export default {
                   <span class="font-label text-[10px] font-bold uppercase tracking-[0.2em] text-tertiary">Buddy + Guide</span>
                 </div>
                 <p class="text-sm leading-6 text-on-surface-variant">Apply the current buddy and guide to every imported dive in the queue. Dive sites stay unique per record.</p>
-                <button @click="applyBuddyGuide()" :disabled="bulkImportSavePending" class="w-full bg-surface-container-high px-5 py-3 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-primary transition-colors hover:bg-surface-container-highest disabled:opacity-50">
+                <UButton @click="applyBuddyGuide()" :disabled="bulkImportSavePending" class="w-full bg-surface-container-high px-5 py-3 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-primary transition-colors hover:bg-surface-container-highest disabled:opacity-50">
                   {{ bulkImportSavePending ? 'Applying...' : 'Apply Buddy + Guide To Imported Dives' }}
-                </button>
+                </UButton>
               </div>
 
               <div v-if="!isCommittedRecord" class="grid grid-cols-2 gap-3">
-                <button @click="saveDraft(false)" :disabled="saveLocked" class="bg-surface-container-high px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-on-surface transition-colors hover:text-primary disabled:opacity-50">
+                <UButton @click="saveDraft(false)" :disabled="saveLocked" class="bg-surface-container-high px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-on-surface transition-colors hover:text-primary disabled:opacity-50">
                   {{ bulkImportSavePending ? 'Applying...' : isSaving ? 'Saving...' : 'Save Draft' }}
-                </button>
-                <button @click="saveDraft(true)" :disabled="saveLocked || !canCompleteImport(selectedDraft)" class="bg-primary px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-on-primary transition-all hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50">
+                </UButton>
+                <UButton @click="saveDraft(true)" :disabled="saveLocked || !canCompleteImport(selectedDraft)" class="bg-primary px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-on-primary transition-all hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50">
                   {{ bulkImportSavePending ? 'Applying...' : isSaving ? 'Saving...' : 'Complete Record' }}
-                </button>
+                </UButton>
               </div>
-              <button v-if="!isCommittedRecord" @click="removeDive()" :disabled="saveLocked" class="w-full bg-error-container/20 px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-on-error-container transition-colors hover:bg-error-container/30 disabled:opacity-50">
+              <UButton v-if="!isCommittedRecord" @click="removeDive()" :disabled="saveLocked" class="w-full bg-error-container/20 px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-on-error-container transition-colors hover:bg-error-container/30 disabled:opacity-50">
                 {{ isDeleting ? 'Removing...' : 'Remove Imported Dive' }}
-              </button>
-              <button v-else @click="saveDraft(true)" :disabled="saveLocked || !canCompleteImport(selectedDraft)" class="w-full bg-primary px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-on-primary transition-all hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50">
+              </UButton>
+              <UButton v-else @click="saveDraft(true)" :disabled="saveLocked || !canCompleteImport(selectedDraft)" class="w-full bg-primary px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-on-primary transition-all hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50">
                 {{ isSaving ? 'Saving...' : 'Save Changes' }}
-              </button>
+              </UButton>
             </section>
 
             <aside class="space-y-6">
