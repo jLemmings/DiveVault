@@ -7,6 +7,7 @@
     "dev": "nuxt dev --host 127.0.0.1 --port 3000",
     "build": "npm run test && npm run build:app",
     "build:app": "nuxt generate",
+    "check:structure": "node scripts/check-structure.mjs",
     "preview": "nuxt preview",
     "screenshots:readme": "node scripts/capture-readme-screenshots.mjs",
     "test": "npm run build:app && playwright test",
@@ -14,13 +15,13 @@
     "test:ui": "playwright test --ui"
   },
   "dependencies": {
+    "@nuxt/ui": "^4.6.1",
     "leaflet": "^1.9.4",
     "nuxt": "^4.2.1",
-    "@nuxt/ui": "^4.6.1",
-    "pdfjs-dist": "^6.1.200",
-    "vue-i18n": "^11.4.6"
+    "pdfjs-dist": "^6.1.200"
   },
   "devDependencies": {
+    "@nuxtjs/i18n": "^10.4.0",
     "@playwright/test": "1.61.1",
     "@tailwindcss/postcss": "^4.3.2",
     "autoprefixer": "^10.5.2",

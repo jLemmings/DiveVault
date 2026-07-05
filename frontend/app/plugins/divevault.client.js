@@ -1,4 +1,4 @@
-import { initializeAuth } from "~/composables/auth.js";
+import { initializeAuth } from "~/shared/composables/auth.js";
 import { installI18n } from "~/i18n/index.js";
 
 async function loadAppConfig() {
@@ -17,7 +17,7 @@ async function loadAppConfig() {
 export default defineNuxtPlugin(async (nuxtApp) => {
   await loadAppConfig();
   await initializeAuth();
-  installI18n(nuxtApp.vueApp);
+  installI18n(nuxtApp);
 });
 
 

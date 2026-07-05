@@ -1,23 +1,11 @@
-import { watch } from "vue";
-import { createI18n } from "vue-i18n";
-import en from "./en.json";
-import de from "./de.json";
-import fr from "./fr.json";
+import { nextTick, watch } from "vue";
+import { DEFAULT_LOCALE, LOCALES, SUPPORTED_LOCALE_SET, getTranslationCredits } from "./locales.js";
 
-export const MESSAGES = { en, de, fr };
+export { DEFAULT_LOCALE, LOCALES, getTranslationCredits };
 
-const DEFAULT_LOCALE = "en";
 const ORIGINAL_TEXT_NODES = new WeakMap();
 const ORIGINAL_ATTRIBUTES = new WeakMap();
-const TRANSLATION_CREDITS = {
-  en: "DiveVault core team (English source)",
-  de: "AI-assisted translation, reviewed by DiveVault contributors",
-  fr: "AI-assisted translation, reviewed by DiveVault contributors"
-};
-
-function normalizeLocale(locale) {
-  return MESSAGES[locale] ? locale : DEFAULT_LOCALE;
-}
+let activeComposer = null;
 
 function normalizeLookupKey(value) {
   return String(value).trim().replace(/\s+/g, " ");
@@ -30,17 +18,35 @@ function interpolate(message, params = {}) {
   });
 }
 
-function hasMessage(key, locale = vueI18n.global.locale.value) {
-  return vueI18n.global.te(key, locale) || vueI18n.global.te(key, DEFAULT_LOCALE);
+function composerLocaleValue(composer = activeComposer) {
+  const locale = composer?.locale;
+  return typeof locale === "object" && "value" in locale ? locale.value : locale;
+}
+
+function setComposerLocale(composer, locale) {
+  if (!composer) return;
+  if (typeof composer.setLocale === "function") {
+    return composer.setLocale(locale);
+  }
+  if (typeof composer.locale === "object" && "value" in composer.locale) {
+    composer.locale.value = locale;
+    return;
+  }
+  composer.locale = locale;
+}
+
+function composerHasMessage(composer, key, locale = composerLocaleValue(composer)) {
+  if (!composer || typeof composer.te !== "function") return false;
+  return composer.te(key, locale) || composer.te(key, DEFAULT_LOCALE);
 }
 
 function translateMessage(key, fallback = key, params = {}) {
   const normalizedKey = normalizeLookupKey(key);
   const normalizedFallback = normalizeLookupKey(fallback);
   const candidates = [key, normalizedKey].filter(Boolean);
-  const messageKey = candidates.find((candidate) => hasMessage(candidate));
-  if (messageKey) {
-    return vueI18n.global.t(messageKey, params);
+  const messageKey = candidates.find((candidate) => composerHasMessage(activeComposer, candidate));
+  if (messageKey && typeof activeComposer?.t === "function") {
+    return activeComposer.t(messageKey, params);
   }
   return interpolate(fallback || normalizedFallback, params);
 }
@@ -91,49 +97,37 @@ function translateRenderedElement(root, translate) {
   }
 }
 
-export const vueI18n = createI18n({
-  legacy: false,
-  globalInjection: true,
-  locale: DEFAULT_LOCALE,
-  fallbackLocale: DEFAULT_LOCALE,
-  missingWarn: false,
-  fallbackWarn: false,
-  messages: MESSAGES
-});
-
 export const i18n = {
   get locale() {
-    return vueI18n.global.locale.value;
+    return composerLocaleValue() || DEFAULT_LOCALE;
   },
-  setLocale(nextLocale) {
-    vueI18n.global.locale.value = normalizeLocale(nextLocale);
+  async setLocale(nextLocale) {
+    const normalizedLocale = SUPPORTED_LOCALE_SET.has(nextLocale) ? nextLocale : DEFAULT_LOCALE;
+    await setComposerLocale(activeComposer, normalizedLocale);
+    return this.locale;
   },
   t: translateMessage
 };
 
-export function installI18n(app) {
-  app.use(vueI18n);
-  app.config.globalProperties.$t = (key, fallback = key, params = {}) => i18n.t(key, fallback, params);
+export function installI18n(nuxtApp) {
+  activeComposer = nuxtApp.$i18n;
+  // Temporary bridge while hardcoded UI strings are converted to explicit useI18n/$t bindings.
+  nuxtApp.vueApp.config.globalProperties.$t = (key, fallback = key, params = {}) => i18n.t(key, fallback, params);
   watch(
     () => i18n.locale,
-    () => {
+    async () => {
+      await nextTick();
       if (typeof document !== "undefined") {
-        translateRenderedElement(document.body, app.config.globalProperties.$t);
+        translateRenderedElement(document.body, nuxtApp.vueApp.config.globalProperties.$t);
       }
     }
   );
-  app.mixin({
+  nuxtApp.vueApp.mixin({
     mounted() {
-      translateRenderedElement(this.$el, app.config.globalProperties.$t);
+      translateRenderedElement(this.$el, nuxtApp.vueApp.config.globalProperties.$t);
     },
     updated() {
-      translateRenderedElement(this.$el, app.config.globalProperties.$t);
+      translateRenderedElement(this.$el, nuxtApp.vueApp.config.globalProperties.$t);
     }
   });
 }
-
-export function getTranslationCredits() {
-  return { ...TRANSLATION_CREDITS };
-}
-
-

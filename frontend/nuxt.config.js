@@ -1,5 +1,7 @@
 import path from "node:path";
 import { defineNuxtConfig } from "nuxt/config";
+import { DEFAULT_LOCALE, NUXT_LOCALES } from "./app/i18n/locales.js";
+import { PRERENDER_ROUTES } from "./app/routing/routes.js";
 
 const repoRoot = path.resolve(__dirname, "..");
 const apiTarget = process.env.VITE_API_PROXY_TARGET || "http://127.0.0.1:8000";
@@ -22,9 +24,25 @@ export default defineNuxtConfig({
     }
   },
   css: ["~/assets/styles.css"],
-  modules: ["@nuxt/ui"],
+  alias: {
+    "#features": path.resolve(__dirname, "app/features"),
+    "#i18n": path.resolve(__dirname, "app/i18n"),
+    "#routing": path.resolve(__dirname, "app/routing"),
+    "#shared": path.resolve(__dirname, "app/shared")
+  },
+  modules: ["@nuxt/ui", "@nuxtjs/i18n"],
   ui: {
     fonts: false
+  },
+  i18n: {
+    defaultLocale: DEFAULT_LOCALE,
+    strategy: "no_prefix",
+    detectBrowserLanguage: false,
+    langDir: "locales",
+    locales: NUXT_LOCALES,
+    experimental: {
+      prerenderMessages: true
+    }
   },
   postcss: {
     plugins: {
@@ -45,6 +63,9 @@ export default defineNuxtConfig({
     }
   },
   nitro: {
+    prerender: {
+      routes: PRERENDER_ROUTES
+    },
     output: {
       publicDir: path.resolve(__dirname, "dist")
     }

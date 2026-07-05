@@ -8,11 +8,13 @@ This document is for contributors and maintainers. The main README is intentiona
 - API/runtime: serves `/api/*`, `/health`, `/config.js`, and built frontend assets from `FRONTEND_DIR`.
 - Database: PostgreSQL schema and migrations live in `backend/divevault/postgres_store.py`.
 - Frontend: Nuxt-powered Vue 3 app under `frontend/`, with Nuxt UI registered as the component library.
-- Frontend entrypoint: `frontend/app/app.vue`, which wraps the app in Nuxt UI’s app provider, renders the Nuxt page in `frontend/app/pages/index.vue`, and mounts the existing DiveVault shell from `frontend/src/app/App.vue`.
-- Root component and hash-router state: `frontend/src/app/App.vue`.
-- Views and reusable UI remain Vue single-file components in `frontend/src/app/pages/` and `frontend/src/app/components/`.
+- Frontend entrypoint: `frontend/app/app.vue`, which wraps the app in Nuxt UI's app provider and mounts the DiveVault shell.
+- Frontend shell: `frontend/app/components/DiveVaultApp.vue`; the current route/state controller is `frontend/app/features/app/AppRouteController.vue`.
+- Frontend route records and path-to-state mapping live together in `frontend/app/routing/routes.js`.
+- Feature views live under `frontend/app/features/`; reusable cross-feature code lives under `frontend/app/shared/{components,composables,utils}`.
 - Frontend env: loaded from the repository root by Nuxt configuration in `frontend/nuxt.config.js`.
 - Dev API proxy: `VITE_API_PROXY_TARGET`, defaulting to `http://127.0.0.1:8000`.
+- Import aliases use Nuxt app-root paths by default: `~/features/...`, `~/shared/...`, `~/routing/...`, and `~/i18n/...`. `nuxt.config.js` also defines `#features`, `#shared`, `#routing`, and `#i18n` for explicit infrastructure imports.
 - AI-assisted Nuxt UI work should read `frontend/llms.txt` first for the project-local Nuxt UI LLM context and official documentation links.
 
 When adding database migrations, update `CURRENT_SCHEMA_VERSION` in `backend/divevault/postgres_store.py`.
@@ -81,6 +83,12 @@ Run frontend tests from `frontend/`:
 
 ```powershell
 npm test
+```
+
+Check structural guardrails from `frontend/`:
+
+```powershell
+npm run check:structure
 ```
 
 `npm run build` runs Playwright first and then `nuxt generate`. Use `npm run build:app` only when you intentionally want to generate the Nuxt app without running the Playwright test suite.
