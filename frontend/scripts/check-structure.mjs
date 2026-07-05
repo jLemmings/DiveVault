@@ -28,15 +28,7 @@ const legacyReferences = [
   "components/settings"
 ];
 
-const ignoredDirs = new Set([
-  ".git",
-  ".nuxt",
-  ".output",
-  "dist",
-  "node_modules",
-  "playwright-report",
-  "test-results"
-]);
+const ignoredDirs = new Set([".git", ".nuxt", ".output", "dist", "node_modules", "playwright-report", "test-results"]);
 
 function toRepoPath(filePath) {
   return path.relative(repoRoot, filePath).replace(/\\/g, "/");
@@ -56,9 +48,7 @@ function listFiles(directory) {
 }
 
 function trackedFiles() {
-  return execFileSync("git", ["ls-files"], { cwd: repoRoot, encoding: "utf8" })
-    .split(/\r?\n/)
-    .filter(Boolean);
+  return execFileSync("git", ["ls-files"], { cwd: repoRoot, encoding: "utf8" }).split(/\r?\n/).filter(Boolean);
 }
 
 function findLegacyReferences(files) {
@@ -70,12 +60,14 @@ function findLegacyReferences(files) {
 }
 
 function findTrackedGeneratedFiles(files) {
-  return files.filter((filePath) => {
-    if (!existsSync(path.join(repoRoot, filePath))) return false;
-    return generatedTrackedPaths.some((generatedPath) => {
-      return filePath === generatedPath || filePath.startsWith(`${generatedPath}/`);
-    });
-  }).map((filePath) => `${filePath} is generated/runtime output and should not be tracked`);
+  return files
+    .filter((filePath) => {
+      if (!existsSync(path.join(repoRoot, filePath))) return false;
+      return generatedTrackedPaths.some((generatedPath) => {
+        return filePath === generatedPath || filePath.startsWith(`${generatedPath}/`);
+      });
+    })
+    .map((filePath) => `${filePath} is generated/runtime output and should not be tracked`);
 }
 
 function findFeatureInternalImports(files) {
@@ -102,11 +94,7 @@ function findFeatureInternalImports(files) {
 
 const sourceFiles = listFiles(appRoot).filter((filePath) => /\.(js|mjs|vue|json)$/.test(filePath));
 const tracked = trackedFiles();
-const failures = [
-  ...findTrackedGeneratedFiles(tracked),
-  ...findLegacyReferences(sourceFiles),
-  ...findFeatureInternalImports(sourceFiles)
-];
+const failures = [...findTrackedGeneratedFiles(tracked), ...findLegacyReferences(sourceFiles), ...findFeatureInternalImports(sourceFiles)];
 
 if (failures.length > 0) {
   console.error("Structure check failed:");

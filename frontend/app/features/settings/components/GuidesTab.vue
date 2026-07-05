@@ -35,10 +35,14 @@ export default {
       <div>
         <p class="font-label text-[10px] font-bold uppercase tracking-[0.24em] text-primary">Dive Guide</p>
         <h4 class="mt-2 font-headline text-3xl font-bold tracking-tight text-on-surface">Saved Guide List</h4>
-        <p class="mt-3 max-w-3xl text-sm leading-7 text-secondary">Guides and instructors now use the same denser layout as buddies, which makes longer lists much easier to browse.</p>
+        <p class="mt-3 max-w-3xl text-sm leading-7 text-secondary">
+          Guides and instructors now use the same denser layout as buddies, which makes longer lists much easier to browse.
+        </p>
       </div>
       <div class="settings-toolbar">
-        <UButton @click="addGuideEntry" :disabled="isInteractionLocked" class="settings-button settings-button-secondary">Add Guide</UButton>
+        <UButton @click="addGuideEntry" :disabled="isInteractionLocked" class="settings-button settings-button-secondary"
+          >Add Guide</UButton
+        >
       </div>
     </div>
 
@@ -49,7 +53,9 @@ export default {
 
     <div v-if="!areGuidesEditing && guides.length === 0" class="settings-empty-state">
       <p class="font-headline text-lg font-bold">No saved guides</p>
-      <p class="mt-2 text-sm text-secondary">Create a reusable guide list here so dive logs can search and reuse names instead of retyping them.</p>
+      <p class="mt-2 text-sm text-secondary">
+        Create a reusable guide list here so dive logs can search and reuse names instead of retyping them.
+      </p>
     </div>
 
     <div v-else-if="areGuidesEditing && guideDrafts.length === 0" class="settings-empty-state">
@@ -70,16 +76,29 @@ export default {
             <h5 class="mt-2 font-headline text-xl font-bold text-on-surface">{{ guideTitle(guide, index) }}</h5>
           </div>
           <div class="settings-toolbar">
-            <UButton
-              v-if="!isGuideEditing(guide.id)"
-              @click="editGuideItem(guide.id)"
-              class="settings-button settings-button-secondary"
-            >
+            <UButton v-if="!isGuideEditing(guide.id)" @click="editGuideItem(guide.id)" class="settings-button settings-button-secondary">
               Edit Guide
             </UButton>
-            <UButton v-if="isGuideEditing(guide.id)" @click="confirmRemoveGuideItem(guide.id)" class="settings-button settings-button-danger">Remove</UButton>
-            <UButton v-if="isGuideEditing(guide.id)" @click="cancelGuidesEdit" :disabled="isInteractionLocked" class="settings-button settings-button-ghost">Cancel</UButton>
-            <UButton v-if="isGuideEditing(guide.id)" @click="saveGuides" :disabled="isInteractionLocked" class="settings-button settings-button-primary">{{ guidesSaving ? 'Saving Guide' : 'Save Guide' }}</UButton>
+            <UButton
+              v-if="isGuideEditing(guide.id)"
+              @click="confirmRemoveGuideItem(guide.id)"
+              class="settings-button settings-button-danger"
+              >Remove</UButton
+            >
+            <UButton
+              v-if="isGuideEditing(guide.id)"
+              @click="cancelGuidesEdit"
+              :disabled="isInteractionLocked"
+              class="settings-button settings-button-ghost"
+              >Cancel</UButton
+            >
+            <UButton
+              v-if="isGuideEditing(guide.id)"
+              @click="saveGuides"
+              :disabled="isInteractionLocked"
+              class="settings-button settings-button-primary"
+              >{{ guidesSaving ? "Saving Guide" : "Save Guide" }}</UButton
+            >
           </div>
         </div>
 
@@ -93,5 +112,3 @@ export default {
     </div>
   </div>
 </template>
-
-

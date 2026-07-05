@@ -52,10 +52,15 @@ export default {
       <div>
         <p class="font-label text-[10px] font-bold uppercase tracking-[0.24em] text-primary">Dive Sites</p>
         <h4 class="mt-2 font-headline text-3xl font-bold tracking-tight text-on-surface">Reusable Site Directory</h4>
-        <p class="mt-3 max-w-3xl text-sm leading-7 text-secondary">Locations are summarized first, with GPS detail tucked underneath so the list feels more like a directory and less like a long form dump.</p>
+        <p class="mt-3 max-w-3xl text-sm leading-7 text-secondary">
+          Locations are summarized first, with GPS detail tucked underneath so the list feels more like a directory and less like a long
+          form dump.
+        </p>
       </div>
       <div class="settings-toolbar">
-        <UButton @click="addDiveSiteEntry" :disabled="isInteractionLocked" class="settings-button settings-button-secondary">Add Dive Site</UButton>
+        <UButton @click="addDiveSiteEntry" :disabled="isInteractionLocked" class="settings-button settings-button-secondary"
+          >Add Dive Site</UButton
+        >
       </div>
     </div>
 
@@ -66,7 +71,9 @@ export default {
 
     <div v-if="!areDiveSitesEditing && diveSites.length === 0" class="settings-empty-state">
       <p class="font-headline text-lg font-bold">No saved dive sites</p>
-      <p class="mt-2 text-sm text-secondary">Create sites here so logbook entries can reuse them and the dashboard map can plot your dives.</p>
+      <p class="mt-2 text-sm text-secondary">
+        Create sites here so logbook entries can reuse them and the dashboard map can plot your dives.
+      </p>
     </div>
 
     <div v-else-if="areDiveSitesEditing && diveSiteDrafts.length === 0" class="settings-empty-state">
@@ -88,9 +95,21 @@ export default {
             <USelect v-model.number="diveSitePageSize" :items="diveSitePageSizeOptions" class="settings-input min-w-[5.5rem] py-2" />
           </label>
           <div class="flex items-center gap-2">
-            <UButton @click="previousDiveSitePage" :disabled="diveSitePage === 1" class="settings-button settings-button-secondary" :class="diveSitePage === 1 ? 'opacity-50' : ''">Previous</UButton>
+            <UButton
+              @click="previousDiveSitePage"
+              :disabled="diveSitePage === 1"
+              class="settings-button settings-button-secondary"
+              :class="diveSitePage === 1 ? 'opacity-50' : ''"
+              >Previous</UButton
+            >
             <span class="settings-chip">Page {{ diveSitePage }} / {{ diveSitePageCount }}</span>
-            <UButton @click="nextDiveSitePage" :disabled="diveSitePage >= diveSitePageCount" class="settings-button settings-button-secondary" :class="diveSitePage >= diveSitePageCount ? 'opacity-50' : ''">Next</UButton>
+            <UButton
+              @click="nextDiveSitePage"
+              :disabled="diveSitePage >= diveSitePageCount"
+              class="settings-button settings-button-secondary"
+              :class="diveSitePage >= diveSitePageCount ? 'opacity-50' : ''"
+              >Next</UButton
+            >
           </div>
         </div>
       </div>
@@ -102,15 +121,17 @@ export default {
             <div class="settings-chip-row mt-3">
               <span class="settings-chip">
                 <span class="material-symbols-outlined text-[14px]">location_on</span>
-                {{ displayValue(site.location, 'Location pending') }}
+                {{ displayValue(site.location, "Location pending") }}
               </span>
               <span class="settings-chip">
                 <span class="material-symbols-outlined text-[14px]">public</span>
-                {{ displayValue(site.country, 'Country pending') }}
+                {{ displayValue(site.country, "Country pending") }}
               </span>
               <span class="settings-chip" :class="diveSiteHasCoordinates(site) ? 'is-accent' : ''">
-                <span class="material-symbols-outlined text-[14px]">{{ diveSiteHasCoordinates(site) ? 'my_location' : 'location_off' }}</span>
-                {{ diveSiteHasCoordinates(site) ? 'GPS ready' : 'No GPS' }}
+                <span class="material-symbols-outlined text-[14px]">{{
+                  diveSiteHasCoordinates(site) ? "my_location" : "location_off"
+                }}</span>
+                {{ diveSiteHasCoordinates(site) ? "GPS ready" : "No GPS" }}
               </span>
             </div>
           </div>
@@ -144,7 +165,7 @@ export default {
               :disabled="isInteractionLocked"
               class="settings-button settings-button-primary"
             >
-              {{ diveSitesSaving ? 'Saving Dive Site' : 'Save Dive Site' }}
+              {{ diveSitesSaving ? "Saving Dive Site" : "Save Dive Site" }}
             </UButton>
           </div>
         </div>
@@ -160,20 +181,19 @@ export default {
                 <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                   <div>
                     <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-primary">GPS Lookup</p>
-                    <p class="mt-2 text-sm text-secondary">Search from the location text, or open the map here and drag the marker to set the exact coordinate.</p>
+                    <p class="mt-2 text-sm text-secondary">
+                      Search from the location text, or open the map here and drag the marker to set the exact coordinate.
+                    </p>
                   </div>
                   <UButton
                     @click="searchDiveSiteLocationById(site.id)"
                     :disabled="isLookingUpDiveSite(site.id)"
                     class="settings-button settings-button-secondary"
                   >
-                    {{ isLookingUpDiveSite(site.id) ? 'Searching GPS' : 'Search GPS From Location' }}
+                    {{ isLookingUpDiveSite(site.id) ? "Searching GPS" : "Search GPS From Location" }}
                   </UButton>
-                  <UButton
-                    @click="toggleDiveSiteMap(site.id)"
-                    class="settings-button settings-button-secondary"
-                  >
-                    {{ diveSiteMapOpen(site.id) ? 'Close Map' : 'Map' }}
+                  <UButton @click="toggleDiveSiteMap(site.id)" class="settings-button settings-button-secondary">
+                    {{ diveSiteMapOpen(site.id) ? "Close Map" : "Map" }}
                   </UButton>
                 </div>
                 <div class="settings-form-grid settings-form-grid-wide">
@@ -189,11 +209,29 @@ export default {
                 <div class="settings-form-grid settings-form-grid-wide">
                   <label class="space-y-2">
                     <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Latitude</span>
-                    <UInput v-model="site.latitude" @input="syncDiveSiteMapFromFields(site.id)" type="number" step="any" min="-90" max="90" class="settings-input" placeholder="25.1234" />
+                    <UInput
+                      v-model="site.latitude"
+                      @input="syncDiveSiteMapFromFields(site.id)"
+                      type="number"
+                      step="any"
+                      min="-90"
+                      max="90"
+                      class="settings-input"
+                      placeholder="25.1234"
+                    />
                   </label>
                   <label class="space-y-2">
                     <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Longitude</span>
-                    <UInput v-model="site.longitude" @input="syncDiveSiteMapFromFields(site.id)" type="number" step="any" min="-180" max="180" class="settings-input" placeholder="-80.4567" />
+                    <UInput
+                      v-model="site.longitude"
+                      @input="syncDiveSiteMapFromFields(site.id)"
+                      type="number"
+                      step="any"
+                      min="-180"
+                      max="180"
+                      class="settings-input"
+                      placeholder="-80.4567"
+                    />
                   </label>
                 </div>
                 <div v-if="diveSiteMapOpen(site.id)" class="space-y-3">
@@ -201,7 +239,9 @@ export default {
                     :ref="(element) => setDiveSiteMapRef(site.id, element)"
                     class="dive-theme-map h-80 min-h-80 overflow-hidden rounded-2xl border border-primary/10"
                   ></div>
-                  <p class="text-xs leading-5 text-secondary">Drag the marker or click the map to set the exact GPS coordinate. Save the dive site to keep the new location.</p>
+                  <p class="text-xs leading-5 text-secondary">
+                    Drag the marker or click the map to set the exact GPS coordinate. Save the dive site to keep the new location.
+                  </p>
                 </div>
               </div>
             </div>
@@ -214,19 +254,19 @@ export default {
             </div>
             <div class="settings-info-card">
               <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Country</p>
-              <p class="mt-2 text-base font-semibold text-on-surface">{{ displayValue(site.country, 'Not set') }}</p>
+              <p class="mt-2 text-base font-semibold text-on-surface">{{ displayValue(site.country, "Not set") }}</p>
             </div>
             <div class="settings-info-card md:col-span-2">
               <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Location</p>
-              <p class="mt-2 text-base font-semibold text-on-surface">{{ displayValue(site.location, 'Not set') }}</p>
+              <p class="mt-2 text-base font-semibold text-on-surface">{{ displayValue(site.location, "Not set") }}</p>
             </div>
             <div class="settings-info-card">
               <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Latitude</p>
-              <p class="mt-2 text-base font-semibold text-on-surface">{{ displayValue(site.latitude, 'Not set') }}</p>
+              <p class="mt-2 text-base font-semibold text-on-surface">{{ displayValue(site.latitude, "Not set") }}</p>
             </div>
             <div class="settings-info-card">
               <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Longitude</p>
-              <p class="mt-2 text-base font-semibold text-on-surface">{{ displayValue(site.longitude, 'Not set') }}</p>
+              <p class="mt-2 text-base font-semibold text-on-surface">{{ displayValue(site.longitude, "Not set") }}</p>
             </div>
           </div>
         </div>
@@ -235,13 +275,23 @@ export default {
       <div class="flex flex-col gap-4 border-t border-primary/10 pt-4 md:flex-row md:items-center md:justify-between">
         <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">{{ diveSitePaginationLabel }}</p>
         <div class="flex items-center gap-2">
-          <UButton @click="previousDiveSitePage" :disabled="diveSitePage === 1" class="settings-button settings-button-secondary" :class="diveSitePage === 1 ? 'opacity-50' : ''">Previous</UButton>
+          <UButton
+            @click="previousDiveSitePage"
+            :disabled="diveSitePage === 1"
+            class="settings-button settings-button-secondary"
+            :class="diveSitePage === 1 ? 'opacity-50' : ''"
+            >Previous</UButton
+          >
           <span class="settings-chip">Page {{ diveSitePage }} / {{ diveSitePageCount }}</span>
-          <UButton @click="nextDiveSitePage" :disabled="diveSitePage >= diveSitePageCount" class="settings-button settings-button-secondary" :class="diveSitePage >= diveSitePageCount ? 'opacity-50' : ''">Next</UButton>
+          <UButton
+            @click="nextDiveSitePage"
+            :disabled="diveSitePage >= diveSitePageCount"
+            class="settings-button settings-button-secondary"
+            :class="diveSitePage >= diveSitePageCount ? 'opacity-50' : ''"
+            >Next</UButton
+          >
         </div>
       </div>
     </div>
   </div>
 </template>
-
-

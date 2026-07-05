@@ -40,12 +40,16 @@ export default {
       <div>
         <p class="font-label text-[10px] font-bold uppercase tracking-[0.24em] text-primary">Manage Users</p>
         <h4 class="mt-2 font-headline text-3xl font-bold tracking-tight text-on-surface">Invites And Access Control</h4>
-        <p class="mt-3 max-w-3xl text-sm leading-7 text-secondary">Invite new divers, review who can sign in, and control whether self-registration is open on this instance.</p>
+        <p class="mt-3 max-w-3xl text-sm leading-7 text-secondary">
+          Invite new divers, review who can sign in, and control whether self-registration is open on this instance.
+        </p>
       </div>
     </div>
 
     <div v-if="manageUsersStatus" class="settings-feedback border-primary/20 bg-primary/10 text-primary">{{ manageUsersStatus }}</div>
-    <div v-if="manageUsersError" class="settings-feedback border-error/20 bg-error-container/20 text-on-error-container">{{ manageUsersError }}</div>
+    <div v-if="manageUsersError" class="settings-feedback border-error/20 bg-error-container/20 text-on-error-container">
+      {{ manageUsersError }}
+    </div>
 
     <div class="settings-action-grid">
       <div class="settings-action-card">
@@ -55,21 +59,33 @@ export default {
               <span class="material-symbols-outlined text-primary">how_to_reg</span>
               <p class="font-headline text-xl font-bold text-on-surface">Public Registration</p>
             </div>
-            <p class="mt-3 text-sm leading-6 text-secondary">Keep sign-up closed and use invitations only, or open self-registration for this DiveVault instance.</p>
+            <p class="mt-3 text-sm leading-6 text-secondary">
+              Keep sign-up closed and use invitations only, or open self-registration for this DiveVault instance.
+            </p>
           </div>
           <span class="settings-chip" :class="authSettings.public_registration_enabled ? 'is-accent' : ''">
-            {{ authSettings.public_registration_enabled ? 'Open' : 'Invite only' }}
+            {{ authSettings.public_registration_enabled ? "Open" : "Invite only" }}
           </span>
         </div>
         <label class="mt-5 flex items-start gap-4 rounded-2xl border border-primary/10 bg-background/20 px-4 py-4">
-          <UCheckbox v-model="authSettings.public_registration_enabled" class="mt-1" :ui="{ base: 'h-5 w-5 rounded border-primary/20 bg-surface-container-high text-primary focus:ring-primary/30' }" />
+          <UCheckbox
+            v-model="authSettings.public_registration_enabled"
+            class="mt-1"
+            :ui="{ base: 'h-5 w-5 rounded border-primary/20 bg-surface-container-high text-primary focus:ring-primary/30' }"
+          />
           <div>
             <p class="text-sm font-semibold text-on-surface">Allow direct account creation</p>
-            <p class="mt-1 text-sm leading-6 text-secondary">When disabled, new users must come through an invite link from the instance owner.</p>
+            <p class="mt-1 text-sm leading-6 text-secondary">
+              When disabled, new users must come through an invite link from the instance owner.
+            </p>
           </div>
         </label>
-        <UButton @click="savePublicRegistrationSetting" :disabled="manageUsersSaving || manageUsersLoading" class="settings-button settings-button-primary mt-5">
-          {{ manageUsersSaving ? 'Saving Access Policy' : 'Save Access Policy' }}
+        <UButton
+          @click="savePublicRegistrationSetting"
+          :disabled="manageUsersSaving || manageUsersLoading"
+          class="settings-button settings-button-primary mt-5"
+        >
+          {{ manageUsersSaving ? "Saving Access Policy" : "Save Access Policy" }}
         </UButton>
       </div>
 
@@ -80,7 +96,9 @@ export default {
               <span class="material-symbols-outlined text-primary">person_add</span>
               <p class="font-headline text-xl font-bold text-on-surface">Invite User</p>
             </div>
-            <p class="mt-3 text-sm leading-6 text-secondary">Create a one-time sign-up link for a second diver or admin on this instance.</p>
+            <p class="mt-3 text-sm leading-6 text-secondary">
+              Create a one-time sign-up link for a second diver or admin on this instance.
+            </p>
           </div>
           <span class="settings-chip">{{ authUsers.length }} users</span>
         </div>
@@ -99,7 +117,14 @@ export default {
           </label>
           <label class="space-y-2">
             <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Role</span>
-            <USelect v-model="inviteDraft.role" :items="[{ label: 'User', value: 'user' }, { label: 'Admin', value: 'admin' }]" class="settings-input" />
+            <USelect
+              v-model="inviteDraft.role"
+              :items="[
+                { label: 'User', value: 'user' },
+                { label: 'Admin', value: 'admin' }
+              ]"
+              class="settings-input"
+            />
           </label>
           <label class="space-y-2">
             <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Expires In Days</span>
@@ -107,10 +132,16 @@ export default {
           </label>
         </div>
         <div class="mt-5 flex flex-wrap gap-3">
-          <UButton @click="createUserInvite" :disabled="inviteSubmitting || manageUsersLoading" class="settings-button settings-button-primary">
-            {{ inviteSubmitting ? 'Creating Invite' : 'Create Invite' }}
+          <UButton
+            @click="createUserInvite"
+            :disabled="inviteSubmitting || manageUsersLoading"
+            class="settings-button settings-button-primary"
+          >
+            {{ inviteSubmitting ? "Creating Invite" : "Create Invite" }}
           </UButton>
-          <UButton v-if="latestInviteUrl" @click="copyLatestInviteUrl" class="settings-button settings-button-secondary">Copy Invite Link</UButton>
+          <UButton v-if="latestInviteUrl" @click="copyLatestInviteUrl" class="settings-button settings-button-secondary"
+            >Copy Invite Link</UButton
+          >
         </div>
         <div v-if="latestInviteUrl" class="mt-5 rounded-2xl border border-primary/10 bg-background/20 px-4 py-4">
           <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Latest Invite Link</p>
@@ -123,10 +154,16 @@ export default {
       <div class="flex items-center justify-between gap-4">
         <div>
           <p class="font-label text-[10px] font-bold uppercase tracking-[0.24em] text-primary">Current Users</p>
-          <p class="mt-2 text-sm text-secondary">The owner account stays protected. Other users can be promoted, disabled, or removed here.</p>
+          <p class="mt-2 text-sm text-secondary">
+            The owner account stays protected. Other users can be promoted, disabled, or removed here.
+          </p>
         </div>
-        <UButton @click="fetchUserManagement" :disabled="manageUsersLoading || manageUsersSaving" class="settings-button settings-button-secondary">
-          {{ manageUsersLoading ? 'Refreshing' : 'Refresh' }}
+        <UButton
+          @click="fetchUserManagement"
+          :disabled="manageUsersLoading || manageUsersSaving"
+          class="settings-button settings-button-secondary"
+        >
+          {{ manageUsersLoading ? "Refreshing" : "Refresh" }}
         </UButton>
       </div>
 
@@ -144,30 +181,40 @@ export default {
         <article v-for="user in authUsers" :key="user.id" class="settings-item-card">
           <div class="settings-item-header">
             <div class="min-w-0">
-              <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">{{ user.id === ownerUserId ? 'Owner' : 'User' }}</p>
+              <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">
+                {{ user.id === ownerUserId ? "Owner" : "User" }}
+              </p>
               <h5 class="mt-2 font-headline text-2xl font-bold tracking-tight text-on-surface">{{ user.email }}</h5>
               <div class="settings-chip-row mt-3">
                 <span class="settings-chip" :class="user.role === 'admin' ? 'is-accent' : ''">{{ user.role }}</span>
-                <span class="settings-chip" :class="user.is_active ? 'is-accent' : ''">{{ user.is_active ? 'Active' : 'Inactive' }}</span>
+                <span class="settings-chip" :class="user.is_active ? 'is-accent' : ''">{{ user.is_active ? "Active" : "Inactive" }}</span>
                 <span v-if="user.id === ownerUserId" class="settings-chip">Protected</span>
               </div>
             </div>
 
             <div v-if="user.id !== ownerUserId" class="settings-toolbar">
               <UButton @click="toggleManagedUserRole(user)" :disabled="manageUsersSaving" class="settings-button settings-button-secondary">
-                {{ user.role === 'admin' ? 'Make User' : 'Make Admin' }}
+                {{ user.role === "admin" ? "Make User" : "Make Admin" }}
               </UButton>
-              <UButton @click="toggleManagedUserActive(user)" :disabled="manageUsersSaving" class="settings-button settings-button-secondary">
-                {{ user.is_active ? 'Deactivate' : 'Activate' }}
+              <UButton
+                @click="toggleManagedUserActive(user)"
+                :disabled="manageUsersSaving"
+                class="settings-button settings-button-secondary"
+              >
+                {{ user.is_active ? "Deactivate" : "Activate" }}
               </UButton>
-              <UButton @click="deleteManagedUser(user)" :disabled="manageUsersSaving" class="settings-button settings-button-danger">Delete</UButton>
+              <UButton @click="deleteManagedUser(user)" :disabled="manageUsersSaving" class="settings-button settings-button-danger"
+                >Delete</UButton
+              >
             </div>
           </div>
 
           <div class="settings-detail-grid">
             <div class="settings-info-card">
               <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Name</p>
-              <p class="mt-2 text-base font-semibold text-on-surface">{{ displayValue([user.first_name, user.last_name].filter(Boolean).join(' ')) }}</p>
+              <p class="mt-2 text-base font-semibold text-on-surface">
+                {{ displayValue([user.first_name, user.last_name].filter(Boolean).join(" ")) }}
+              </p>
             </div>
             <div class="settings-info-card">
               <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Last Login</p>
@@ -187,5 +234,3 @@ export default {
     </div>
   </div>
 </template>
-
-

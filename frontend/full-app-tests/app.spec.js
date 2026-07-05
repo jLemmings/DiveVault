@@ -57,7 +57,9 @@ test("runs auth, frontend, and backend against a deployed app stack", async ({ p
   await page.getByPlaceholder("18.0").fill("14.2");
   await page.getByLabel("Tank Volume").selectOption("12");
   await page.getByPlaceholder("House Reef").fill(TEST_SITE);
-  await page.getByPlaceholder("Conditions, wildlife, route, entry, navigation, visibility...").fill("Created by the full application CI pipeline.");
+  await page
+    .getByPlaceholder("Conditions, wildlife, route, entry, navigation, visibility...")
+    .fill("Created by the full application CI pipeline.");
   await page.getByRole("button", { name: "Create Dive Log" }).click();
 
   await expect(page.getByRole("heading", { name: TEST_SITE })).toBeVisible({ timeout: 30000 });

@@ -45,5 +45,3 @@ export function serviceStatusForDive(item, diveDateSource) {
   }
   return { status: dueDate <= addMonths(diveDate, 1) ? "due_soon" : "serviced", label: `OK until ${dueDate.toISOString().slice(0, 10)}` };
 }
-
-

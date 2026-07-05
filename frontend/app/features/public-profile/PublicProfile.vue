@@ -1,7 +1,18 @@
 <script>
 import { DiveDetailView } from "~/features/logbook/index.js";
-import { buildDiveSequenceMap, diveTitle, diveDeviceLabel, formatDate, formatDepth, durationShort, numberOrZero, parseDate, paddedDiveIndex } from "~/shared/utils/core.js";
+import {
+  buildDiveSequenceMap,
+  diveTitle,
+  diveDeviceLabel,
+  formatDate,
+  formatDepth,
+  durationShort,
+  numberOrZero,
+  parseDate,
+  paddedDiveIndex
+} from "~/shared/utils/core.js";
 import { coordinateLabel, diveCoordinates, diveSiteName, escapeHtml, markerDiameter, normalizeSiteName } from "~/shared/utils/dive-map.js";
+import { publicDiverUrl } from "~/shared/api/endpoints.js";
 import { loadLeaflet } from "~/shared/utils/leaflet-loader.js";
 
 export default {
@@ -144,7 +155,7 @@ export default {
       this.loading = true;
       this.error = "";
       try {
-        const response = await fetch(`/api/public/divers/${encodeURIComponent(this.slug)}`, {
+        const response = await fetch(publicDiverUrl(this.slug), {
           credentials: "include"
         });
         const payload = await response.json().catch(() => null);
@@ -227,9 +238,10 @@ export default {
     diveMarkerBubble(marker) {
       const diveLabel = marker.count === 1 ? "1 dive" : `${marker.count} dives`;
       const locationLabel = marker.siteCount > 1 ? `${marker.siteCount} sites in this area` : marker.label;
-      const sitePreview = marker.siteCount > 1
-        ? `${marker.siteLabels.slice(0, 3).join(" / ")}${marker.siteCount > 3 ? ` +${marker.siteCount - 3} more` : ""}`
-        : "";
+      const sitePreview =
+        marker.siteCount > 1
+          ? `${marker.siteLabels.slice(0, 3).join(" / ")}${marker.siteCount > 3 ? ` +${marker.siteCount - 3} more` : ""}`
+          : "";
       return `
         <div class="dive-map-info-bubble">
           <p class="dive-map-info-title">${escapeHtml(locationLabel)}</p>
@@ -420,124 +432,133 @@ export default {
 
       this.handleMapResize();
     }
-  },
-}
+  }
+};
 </script>
 
 <template>
-    <div class="min-h-screen bg-background px-4 py-6 text-on-background md:px-8 md:py-8">
-      <div class="mx-auto max-w-7xl">
-        <section v-if="loading" class="bg-surface-container-low p-10 shadow-panel">
-          <p class="font-headline text-2xl font-bold">Loading public dive profile...</p>
-          <p class="mt-2 text-on-surface-variant">Fetching the published dive log and map.</p>
-        </section>
+  <div class="min-h-screen bg-background px-4 py-6 text-on-background md:px-8 md:py-8">
+    <div class="mx-auto max-w-7xl">
+      <section v-if="loading" class="bg-surface-container-low p-10 shadow-panel">
+        <p class="font-headline text-2xl font-bold">Loading public dive profile...</p>
+        <p class="mt-2 text-on-surface-variant">Fetching the published dive log and map.</p>
+      </section>
 
-        <section v-else-if="error" class="bg-error-container/25 p-10 shadow-panel">
-          <p class="font-headline text-2xl font-bold text-on-error-container">Public profile unavailable</p>
-          <p class="mt-2 text-sm text-on-error-container">{{ error }}</p>
-        </section>
+      <section v-else-if="error" class="bg-error-container/25 p-10 shadow-panel">
+        <p class="font-headline text-2xl font-bold text-on-error-container">Public profile unavailable</p>
+        <p class="mt-2 text-sm text-on-error-container">{{ error }}</p>
+      </section>
 
-        <section v-else class="space-y-8">
-          <div class="relative overflow-hidden bg-surface-container-low p-8 shadow-panel">
-            <div class="absolute inset-0 pointer-events-none technical-grid opacity-10"></div>
-            <div class="relative z-10 flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
-              <div>
-                <p class="font-label text-[10px] font-bold uppercase tracking-[0.24em] text-primary">Public Dive Log</p>
-                <h1 class="mt-3 font-headline text-4xl font-bold tracking-tight text-on-surface md:text-5xl">{{ diver?.name || 'DiveVault Diver' }}</h1>
+      <section v-else class="space-y-8">
+        <div class="relative overflow-hidden bg-surface-container-low p-8 shadow-panel">
+          <div class="absolute inset-0 pointer-events-none technical-grid opacity-10"></div>
+          <div class="relative z-10 flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+            <div>
+              <p class="font-label text-[10px] font-bold uppercase tracking-[0.24em] text-primary">Public Dive Log</p>
+              <h1 class="mt-3 font-headline text-4xl font-bold tracking-tight text-on-surface md:text-5xl">
+                {{ diver?.name || "DiveVault Diver" }}
+              </h1>
+            </div>
+            <div class="grid grid-cols-3 gap-3">
+              <div class="rounded-2xl bg-surface-container-high px-5 py-4">
+                <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Dives</p>
+                <p class="mt-2 font-headline text-3xl font-bold text-primary">{{ stats.totalDives || dives.length }}</p>
               </div>
-              <div class="grid grid-cols-3 gap-3">
-                <div class="rounded-2xl bg-surface-container-high px-5 py-4">
-                  <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Dives</p>
-                  <p class="mt-2 font-headline text-3xl font-bold text-primary">{{ stats.totalDives || dives.length }}</p>
-                </div>
-                <div class="rounded-2xl bg-surface-container-high px-5 py-4">
-                  <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Hours</p>
-                  <p class="mt-2 font-headline text-3xl font-bold">{{ totalHoursLabel }}</p>
-                </div>
-                <div class="rounded-2xl bg-surface-container-high px-5 py-4">
-                  <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Max Depth</p>
-                  <p class="mt-2 font-headline text-3xl font-bold">{{ maxDepthLabel }}</p>
-                </div>
+              <div class="rounded-2xl bg-surface-container-high px-5 py-4">
+                <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Hours</p>
+                <p class="mt-2 font-headline text-3xl font-bold">{{ totalHoursLabel }}</p>
+              </div>
+              <div class="rounded-2xl bg-surface-container-high px-5 py-4">
+                <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Max Depth</p>
+                <p class="mt-2 font-headline text-3xl font-bold">{{ maxDepthLabel }}</p>
               </div>
             </div>
           </div>
+        </div>
 
-          <section class="rounded-[1.5rem] bg-surface-container-low p-6 shadow-panel">
-            <div class="mb-6 flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-              <div>
-                <p class="font-label text-[10px] font-bold uppercase tracking-[0.22em] text-primary">Published Dive Map</p>
-                <h2 class="mt-2 font-headline text-3xl font-bold tracking-tight text-on-surface">Dive Map</h2>
-              </div>
-              <div class="flex flex-wrap gap-3">
-                <span class="bg-surface-container-high px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-primary">{{ mappedDiveCount }} mapped dives</span>
-                <span class="bg-surface-container-high px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-tertiary">{{ mappedSiteCount }} unique sites</span>
-              </div>
+        <section class="rounded-[1.5rem] bg-surface-container-low p-6 shadow-panel">
+          <div class="mb-6 flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+            <div>
+              <p class="font-label text-[10px] font-bold uppercase tracking-[0.22em] text-primary">Published Dive Map</p>
+              <h2 class="mt-2 font-headline text-3xl font-bold tracking-tight text-on-surface">Dive Map</h2>
             </div>
-            <div class="dive-map-shell relative overflow-hidden border border-primary/10 bg-surface-container-low shadow-panel">
-              <div ref="diveMapCanvas" class="dive-theme-map"></div>
-            </div>
-          </section>
-
-          <dive-detail-view
-            v-if="selectedDive"
-            :dive="selectedDive"
-            :all-dives="dives"
-            :dive-sites="[]"
-            :public-view="true"
-            :close-detail="closeDive"
-          ></dive-detail-view>
-
-          <section class="space-y-5">
-            <div class="flex items-center justify-between gap-4">
-              <div>
-                <p class="font-label text-[10px] font-bold uppercase tracking-[0.22em] text-primary">Published Entries</p>
-                <h2 class="mt-2 font-headline text-3xl font-bold tracking-tight text-on-surface">Dive Log</h2>
-              </div>
-            </div>
-
-            <div v-if="!dives.length" class="rounded-[1.5rem] bg-surface-container-low p-8 shadow-panel">
-              <p class="font-headline text-2xl font-bold">No public dives available</p>
-              <p class="mt-2 text-secondary">This diver has not published any completed dives yet.</p>
-            </div>
-
-            <div v-else class="grid grid-cols-1 gap-4 xl:grid-cols-2">
-              <article
-                v-for="dive in dives"
-                :key="dive.id"
-                @click="openDive(dive.id)"
-                @keyup.enter="openDive(dive.id)"
-                tabindex="0"
-                role="button"
-                class="rounded-[1.5rem] bg-surface-container-low p-6 shadow-panel transition-colors hover:bg-surface-container-high focus:bg-surface-container-high focus:outline-none"
+            <div class="flex flex-wrap gap-3">
+              <span class="bg-surface-container-high px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-primary"
+                >{{ mappedDiveCount }} mapped dives</span
               >
-                <div class="flex items-start justify-between gap-4">
-                  <div>
-                    <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">{{ formatDate(dive.started_at) }}</p>
-                    <h3 class="mt-2 font-headline text-2xl font-bold tracking-tight text-on-surface">{{ diveTitle(dive) }}</h3>
-                    <p class="mt-2 text-sm text-secondary">{{ diveSiteLabel(dive) }}</p>
-                  </div>
-                  <span class="rounded-xl bg-surface-container-high px-3 py-2 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-primary">{{ displayDiveIndex(dive) }}</span>
-                </div>
-                <div class="mt-6 grid grid-cols-3 gap-3">
-                  <div class="rounded-xl bg-surface-container-high px-4 py-3">
-                    <p class="font-label text-[10px] font-bold uppercase tracking-[0.16em] text-secondary">Depth</p>
-                    <p class="mt-2 font-headline text-xl font-bold text-primary">{{ formatDepth(dive.max_depth_m) }}</p>
-                  </div>
-                  <div class="rounded-xl bg-surface-container-high px-4 py-3">
-                    <p class="font-label text-[10px] font-bold uppercase tracking-[0.16em] text-secondary">Duration</p>
-                    <p class="mt-2 font-headline text-xl font-bold">{{ formatDurationShort(dive.duration_seconds) }}</p>
-                  </div>
-                  <div class="rounded-xl bg-surface-container-high px-4 py-3">
-                    <p class="font-label text-[10px] font-bold uppercase tracking-[0.16em] text-secondary">Computer</p>
-                    <p class="mt-2 text-sm font-semibold text-on-surface">{{ diveDeviceLabel(dive) }}</p>
-                  </div>
-                </div>
-              </article>
+              <span class="bg-surface-container-high px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-tertiary"
+                >{{ mappedSiteCount }} unique sites</span
+              >
             </div>
-          </section>
+          </div>
+          <div class="dive-map-shell relative overflow-hidden border border-primary/10 bg-surface-container-low shadow-panel">
+            <div ref="diveMapCanvas" class="dive-theme-map"></div>
+          </div>
         </section>
-      </div>
+
+        <dive-detail-view
+          v-if="selectedDive"
+          :dive="selectedDive"
+          :all-dives="dives"
+          :dive-sites="[]"
+          :public-view="true"
+          :close-detail="closeDive"
+        ></dive-detail-view>
+
+        <section class="space-y-5">
+          <div class="flex items-center justify-between gap-4">
+            <div>
+              <p class="font-label text-[10px] font-bold uppercase tracking-[0.22em] text-primary">Published Entries</p>
+              <h2 class="mt-2 font-headline text-3xl font-bold tracking-tight text-on-surface">Dive Log</h2>
+            </div>
+          </div>
+
+          <div v-if="!dives.length" class="rounded-[1.5rem] bg-surface-container-low p-8 shadow-panel">
+            <p class="font-headline text-2xl font-bold">No public dives available</p>
+            <p class="mt-2 text-secondary">This diver has not published any completed dives yet.</p>
+          </div>
+
+          <div v-else class="grid grid-cols-1 gap-4 xl:grid-cols-2">
+            <article
+              v-for="dive in dives"
+              :key="dive.id"
+              @click="openDive(dive.id)"
+              @keyup.enter="openDive(dive.id)"
+              tabindex="0"
+              role="button"
+              class="rounded-[1.5rem] bg-surface-container-low p-6 shadow-panel transition-colors hover:bg-surface-container-high focus:bg-surface-container-high focus:outline-none"
+            >
+              <div class="flex items-start justify-between gap-4">
+                <div>
+                  <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">
+                    {{ formatDate(dive.started_at) }}
+                  </p>
+                  <h3 class="mt-2 font-headline text-2xl font-bold tracking-tight text-on-surface">{{ diveTitle(dive) }}</h3>
+                  <p class="mt-2 text-sm text-secondary">{{ diveSiteLabel(dive) }}</p>
+                </div>
+                <span
+                  class="rounded-xl bg-surface-container-high px-3 py-2 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-primary"
+                  >{{ displayDiveIndex(dive) }}</span
+                >
+              </div>
+              <div class="mt-6 grid grid-cols-3 gap-3">
+                <div class="rounded-xl bg-surface-container-high px-4 py-3">
+                  <p class="font-label text-[10px] font-bold uppercase tracking-[0.16em] text-secondary">Depth</p>
+                  <p class="mt-2 font-headline text-xl font-bold text-primary">{{ formatDepth(dive.max_depth_m) }}</p>
+                </div>
+                <div class="rounded-xl bg-surface-container-high px-4 py-3">
+                  <p class="font-label text-[10px] font-bold uppercase tracking-[0.16em] text-secondary">Duration</p>
+                  <p class="mt-2 font-headline text-xl font-bold">{{ formatDurationShort(dive.duration_seconds) }}</p>
+                </div>
+                <div class="rounded-xl bg-surface-container-high px-4 py-3">
+                  <p class="font-label text-[10px] font-bold uppercase tracking-[0.16em] text-secondary">Computer</p>
+                  <p class="mt-2 text-sm font-semibold text-on-surface">{{ diveDeviceLabel(dive) }}</p>
+                </div>
+              </div>
+            </article>
+          </div>
+        </section>
+      </section>
     </div>
+  </div>
 </template>
-
-

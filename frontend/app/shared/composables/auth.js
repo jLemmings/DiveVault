@@ -1,6 +1,7 @@
 import { computed, reactive } from "vue";
+import { TOKEN_STORAGE_KEY } from "~/config/storage.js";
+import { API_ENDPOINTS } from "~/shared/api/endpoints.js";
 
-const TOKEN_STORAGE_KEY = "divevault_auth_token";
 const state = reactive({
   loaded: false,
   token: null,
@@ -12,20 +13,20 @@ function applySession(token, mePayload) {
   state.token = token || null;
   state.user = mePayload
     ? {
-      id: mePayload.user_id,
-      firstName: mePayload.first_name || "",
-      lastName: mePayload.last_name || "",
-      role: mePayload.role || "user",
-      isOwner: Boolean(mePayload.is_owner),
-      primaryEmailAddress: { emailAddress: mePayload.email || "" },
-      emailAddresses: [{ emailAddress: mePayload.email || "" }]
-    }
+        id: mePayload.user_id,
+        firstName: mePayload.first_name || "",
+        lastName: mePayload.last_name || "",
+        role: mePayload.role || "user",
+        isOwner: Boolean(mePayload.is_owner),
+        primaryEmailAddress: { emailAddress: mePayload.email || "" },
+        emailAddresses: [{ emailAddress: mePayload.email || "" }]
+      }
     : null;
   state.sessionId = mePayload?.session_id || null;
 }
 
 async function loadUserFromToken(token) {
-  const response = await fetch("/api/auth/me", {
+  const response = await fetch(API_ENDPOINTS.authMe, {
     headers: { Authorization: `Bearer ${token}` },
     credentials: "include"
   });
@@ -54,7 +55,7 @@ async function initializeAuth() {
 }
 
 async function loginWithPassword(email, password) {
-  const response = await fetch("/api/auth/login", {
+  const response = await fetch(API_ENDPOINTS.authLogin, {
     method: "POST",
     credentials: "include",
     headers: { "Content-Type": "application/json" },
@@ -72,7 +73,7 @@ async function loginWithPassword(email, password) {
 }
 
 async function registerUser(input) {
-  const response = await fetch("/api/auth/register", {
+  const response = await fetch(API_ENDPOINTS.authRegister, {
     method: "POST",
     credentials: "include",
     headers: { "Content-Type": "application/json" },
@@ -105,5 +106,3 @@ function useUser() {
 }
 
 export { initializeAuth, loginWithPassword, registerUser, useAuth, useUser };
-
-

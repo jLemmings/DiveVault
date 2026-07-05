@@ -81,8 +81,7 @@ body {
   font-family: "Manrope", sans-serif;
   background:
     radial-gradient(circle at top right, var(--page-glow-primary), transparent 24rem),
-    radial-gradient(circle at 20% 0%, var(--page-glow-tertiary), transparent 18rem),
-    var(--page-gradient);
+    radial-gradient(circle at 20% 0%, var(--page-glow-tertiary), transparent 18rem), var(--page-gradient);
   color: rgb(var(--color-on-background));
 }
 
@@ -91,7 +90,11 @@ body {
 }
 
 .material-symbols-outlined {
-  font-variation-settings: "FILL" 0, "wght" 500, "GRAD" 0, "opsz" 24;
+  font-variation-settings:
+    "FILL" 0,
+    "wght" 500,
+    "GRAD" 0,
+    "opsz" 24;
   vertical-align: middle;
 }
 
@@ -676,7 +679,12 @@ body {
     radial-gradient(circle at 82% 24%, rgba(96, 142, 182, 0.08), transparent 24rem),
     linear-gradient(135deg, rgba(156, 202, 255, 0.03) 0, rgba(156, 202, 255, 0.03) 1px, transparent 1px, transparent 28px),
     linear-gradient(45deg, rgba(156, 202, 255, 0.015) 0, rgba(156, 202, 255, 0.015) 1px, transparent 1px, transparent 22px);
-  background-size: auto, auto, auto, 180px 180px, 140px 140px;
+  background-size:
+    auto,
+    auto,
+    auto,
+    180px 180px,
+    140px 140px;
   opacity: 0.72;
   pointer-events: none;
 }
@@ -743,8 +751,7 @@ body {
   background:
     radial-gradient(circle at 52% 8%, rgba(11, 48, 77, 0.18), transparent 28rem),
     radial-gradient(circle at 10% 26%, rgba(117, 179, 235, 0.1), transparent 20rem),
-    radial-gradient(circle at 88% 82%, rgba(102, 147, 191, 0.08), transparent 22rem),
-    var(--page-gradient);
+    radial-gradient(circle at 88% 82%, rgba(102, 147, 191, 0.08), transparent 22rem), var(--page-gradient);
 }
 
 .auth-stage-wave,
@@ -775,8 +782,7 @@ body {
 .auth-stage-wave-back::before {
   bottom: -1rem;
   height: 24rem;
-  background:
-    linear-gradient(180deg, rgba(30, 66, 98, 0.12), rgba(30, 66, 98, 0.3));
+  background: linear-gradient(180deg, rgba(30, 66, 98, 0.12), rgba(30, 66, 98, 0.3));
   mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1440 320' preserveAspectRatio='none'%3E%3Cpath fill='white' d='M0,192L48,181.3C96,171,192,149,288,144C384,139,480,149,576,176C672,203,768,245,864,250.7C960,256,1056,224,1152,197.3C1248,171,1344,149,1392,138.7L1440,128L1440,320L1392,320C1344,320,1248,320,1152,320C1056,320,960,320,864,320C768,320,672,320,576,320C480,320,384,320,288,320C192,320,96,320,48,320L0,320Z'/%3E%3C/svg%3E");
   mask-repeat: repeat-x;
   mask-size: 110% 100%;
@@ -789,8 +795,7 @@ body {
 .auth-stage-wave-back::after {
   bottom: 7rem;
   height: 18rem;
-  background:
-    linear-gradient(180deg, rgba(78, 130, 176, 0.08), rgba(120, 178, 227, 0.2));
+  background: linear-gradient(180deg, rgba(78, 130, 176, 0.08), rgba(120, 178, 227, 0.2));
   mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1440 320' preserveAspectRatio='none'%3E%3Cpath fill='white' d='M0,224L60,202.7C120,181,240,139,360,128C480,117,600,139,720,170.7C840,203,960,245,1080,240C1200,235,1320,181,1380,154.7L1440,128L1440,320L1380,320C1320,320,1200,320,1080,320C960,320,840,320,720,320C600,320,480,320,360,320C240,320,120,320,60,320L0,320Z'/%3E%3C/svg%3E");
   mask-repeat: repeat-x;
   mask-size: 112% 100%;
@@ -803,8 +808,7 @@ body {
 .auth-stage-wave-front::before {
   bottom: 3.5rem;
   height: 16rem;
-  background:
-    linear-gradient(180deg, rgba(108, 170, 221, 0.1), rgba(176, 222, 255, 0.24));
+  background: linear-gradient(180deg, rgba(108, 170, 221, 0.1), rgba(176, 222, 255, 0.24));
   mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1440 320' preserveAspectRatio='none'%3E%3Cpath fill='white' d='M0,256L34.3,224C68.6,192,137,128,206,122.7C274.3,117,343,171,411,186.7C480,203,549,181,617,154.7C685.7,128,754,96,823,112C891.4,128,960,192,1029,202.7C1097.1,213,1166,171,1234,165.3C1302.9,160,1371,192,1406,208L1440,224L1440,320L1405.7,320C1371.4,320,1303,320,1234,320C1165.7,320,1097,320,1029,320C960,320,891,320,823,320C754.3,320,686,320,617,320C548.6,320,480,320,411,320C342.9,320,274,320,206,320C137.1,320,69,320,34,320L0,320Z'/%3E%3C/svg%3E");
   mask-repeat: repeat-x;
   mask-size: 114% 100%;
@@ -817,8 +821,7 @@ body {
 .auth-stage-wave-front::after {
   bottom: 7rem;
   height: 8rem;
-  background:
-    linear-gradient(180deg, rgba(204, 236, 255, 0.02), rgba(235, 247, 255, 0.18));
+  background: linear-gradient(180deg, rgba(204, 236, 255, 0.02), rgba(235, 247, 255, 0.18));
   mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1440 320' preserveAspectRatio='none'%3E%3Cpath fill='white' d='M0,256L40,229.3C80,203,160,149,240,149.3C320,149,400,203,480,208C560,213,640,171,720,144C800,117,880,107,960,128C1040,149,1120,203,1200,224C1280,245,1360,235,1400,229.3L1440,224L1440,320L1400,320C1360,320,1280,320,1200,320C1120,320,1040,320,960,320C880,320,800,320,720,320C640,320,560,320,480,320C400,320,320,320,240,320C160,320,80,320,40,320L0,320Z'/%3E%3C/svg%3E");
   mask-repeat: repeat-x;
   mask-size: 108% 100%;
@@ -832,7 +835,9 @@ body {
   background:
     linear-gradient(115deg, rgba(168, 218, 255, 0.03) 0, rgba(168, 218, 255, 0.03) 1px, transparent 1px, transparent 32px),
     linear-gradient(65deg, rgba(168, 218, 255, 0.02) 0, rgba(168, 218, 255, 0.02) 1px, transparent 1px, transparent 26px);
-  background-size: 200px 200px, 160px 160px;
+  background-size:
+    200px 200px,
+    160px 160px;
   opacity: 0.16;
   mask-image: linear-gradient(180deg, transparent, rgba(0, 0, 0, 0.9) 18%, rgba(0, 0, 0, 0.9) 82%, transparent);
   animation: auth-caustics-shift 26s linear infinite;
@@ -879,9 +884,7 @@ body {
 .app-stage > .auth-stage-wave-front::before,
 .app-stage > .auth-stage-wave-front::after {
   background: rgba(176, 222, 255, 0.035);
-  filter:
-    drop-shadow(0 -1px 0 rgba(204, 236, 255, 0.44))
-    drop-shadow(0 -8px 14px rgba(120, 178, 227, 0.08));
+  filter: drop-shadow(0 -1px 0 rgba(204, 236, 255, 0.44)) drop-shadow(0 -8px 14px rgba(120, 178, 227, 0.08));
 }
 
 .auth-stage-orb {
@@ -1004,11 +1007,15 @@ body {
 
 @keyframes auth-caustics-shift {
   0% {
-    background-position: 0 0, 0 0;
+    background-position:
+      0 0,
+      0 0;
   }
 
   100% {
-    background-position: 200px 60px, -160px 80px;
+    background-position:
+      200px 60px,
+      -160px 80px;
   }
 }
 
@@ -1057,8 +1064,7 @@ body {
 .dive-theme-map {
   background:
     radial-gradient(circle at 24% 28%, rgba(156, 202, 255, 0.16), transparent 18rem),
-    radial-gradient(circle at 78% 72%, rgba(255, 183, 125, 0.12), transparent 14rem),
-    linear-gradient(180deg, #06243a 0%, #00111e 100%);
+    radial-gradient(circle at 78% 72%, rgba(255, 183, 125, 0.12), transparent 14rem), linear-gradient(180deg, #06243a 0%, #00111e 100%);
   height: 100%;
   border-radius: inherit;
 }
@@ -1269,7 +1275,9 @@ body {
   border-radius: 9999px;
   color: #9ccaff;
   transform: translateY(-50%);
-  transition: background-color 160ms ease, color 160ms ease;
+  transition:
+    background-color 160ms ease,
+    color 160ms ease;
 }
 
 .metadata-autocomplete-toggle:hover:not(:disabled) {
@@ -1311,7 +1319,9 @@ body {
   align-items: flex-start;
   gap: 0.3rem;
   text-align: left;
-  transition: background-color 160ms ease, color 160ms ease;
+  transition:
+    background-color 160ms ease,
+    color 160ms ease;
 }
 
 .metadata-autocomplete-option + .metadata-autocomplete-option,
@@ -1321,9 +1331,7 @@ body {
 
 .metadata-autocomplete-option:hover,
 .metadata-autocomplete-option.is-active {
-  background:
-    linear-gradient(90deg, rgba(156, 202, 255, 0.12), rgba(156, 202, 255, 0.04)),
-    rgba(0, 15, 29, 0.2);
+  background: linear-gradient(90deg, rgba(156, 202, 255, 0.12), rgba(156, 202, 255, 0.04)), rgba(0, 15, 29, 0.2);
 }
 
 .metadata-autocomplete-option-label {
@@ -1423,7 +1431,10 @@ body {
   gap: 0.75rem;
   padding: 0.8rem;
   text-align: left;
-  transition: background-color 160ms ease, border-color 160ms ease, color 160ms ease;
+  transition:
+    background-color 160ms ease,
+    border-color 160ms ease,
+    color 160ms ease;
   width: 100%;
 }
 
@@ -1960,9 +1971,7 @@ body {
 
 .settings-item-card-error {
   border-color: rgba(255, 180, 171, 0.42);
-  background:
-    linear-gradient(180deg, rgba(147, 0, 10, 0.16), rgba(147, 0, 10, 0.08)),
-    rgba(0, 15, 29, 0.2);
+  background: linear-gradient(180deg, rgba(147, 0, 10, 0.16), rgba(147, 0, 10, 0.08)), rgba(0, 15, 29, 0.2);
 }
 
 .settings-card > .rounded-2xl {
@@ -1997,7 +2006,12 @@ body {
   font-weight: 700;
   letter-spacing: 0.18em;
   text-transform: uppercase;
-  transition: filter 160ms ease, background-color 160ms ease, border-color 160ms ease, color 160ms ease, transform 160ms ease;
+  transition:
+    filter 160ms ease,
+    background-color 160ms ease,
+    border-color 160ms ease,
+    color 160ms ease,
+    transform 160ms ease;
   max-width: 100%;
   min-width: 0;
   text-align: center;
@@ -2204,7 +2218,10 @@ body {
   min-width: 0;
   padding: 1.35rem;
   text-align: left;
-  transition: background-color 160ms ease, border-color 160ms ease, transform 160ms ease;
+  transition:
+    background-color 160ms ease,
+    border-color 160ms ease,
+    transform 160ms ease;
 }
 
 .settings-action-card > * {

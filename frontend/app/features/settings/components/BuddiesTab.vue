@@ -35,10 +35,14 @@ export default {
       <div>
         <p class="font-label text-[10px] font-bold uppercase tracking-[0.24em] text-primary">Buddies</p>
         <h4 class="mt-2 font-headline text-3xl font-bold tracking-tight text-on-surface">Saved Dive Buddy List</h4>
-        <p class="mt-3 max-w-3xl text-sm leading-7 text-secondary">Buddy names now scan as a compact grid instead of a long vertical stack.</p>
+        <p class="mt-3 max-w-3xl text-sm leading-7 text-secondary">
+          Buddy names now scan as a compact grid instead of a long vertical stack.
+        </p>
       </div>
       <div class="settings-toolbar">
-        <UButton @click="addBuddyEntry" :disabled="isInteractionLocked" class="settings-button settings-button-secondary">Add Buddy</UButton>
+        <UButton @click="addBuddyEntry" :disabled="isInteractionLocked" class="settings-button settings-button-secondary"
+          >Add Buddy</UButton
+        >
       </div>
     </div>
 
@@ -70,16 +74,29 @@ export default {
             <h5 class="mt-2 font-headline text-xl font-bold text-on-surface">{{ buddyTitle(buddy, index) }}</h5>
           </div>
           <div class="settings-toolbar">
-            <UButton
-              v-if="!isBuddyEditing(buddy.id)"
-              @click="editBuddyItem(buddy.id)"
-              class="settings-button settings-button-secondary"
-            >
+            <UButton v-if="!isBuddyEditing(buddy.id)" @click="editBuddyItem(buddy.id)" class="settings-button settings-button-secondary">
               Edit Buddy
             </UButton>
-            <UButton v-if="isBuddyEditing(buddy.id)" @click="confirmRemoveBuddyItem(buddy.id)" class="settings-button settings-button-danger">Remove</UButton>
-            <UButton v-if="isBuddyEditing(buddy.id)" @click="cancelBuddiesEdit" :disabled="isInteractionLocked" class="settings-button settings-button-ghost">Cancel</UButton>
-            <UButton v-if="isBuddyEditing(buddy.id)" @click="saveBuddies" :disabled="isInteractionLocked" class="settings-button settings-button-primary">{{ buddiesSaving ? 'Saving Buddy' : 'Save Buddy' }}</UButton>
+            <UButton
+              v-if="isBuddyEditing(buddy.id)"
+              @click="confirmRemoveBuddyItem(buddy.id)"
+              class="settings-button settings-button-danger"
+              >Remove</UButton
+            >
+            <UButton
+              v-if="isBuddyEditing(buddy.id)"
+              @click="cancelBuddiesEdit"
+              :disabled="isInteractionLocked"
+              class="settings-button settings-button-ghost"
+              >Cancel</UButton
+            >
+            <UButton
+              v-if="isBuddyEditing(buddy.id)"
+              @click="saveBuddies"
+              :disabled="isInteractionLocked"
+              class="settings-button settings-button-primary"
+              >{{ buddiesSaving ? "Saving Buddy" : "Save Buddy" }}</UButton
+            >
           </div>
         </div>
 
@@ -93,5 +110,3 @@ export default {
     </div>
   </div>
 </template>
-
-

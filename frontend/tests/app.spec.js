@@ -89,7 +89,9 @@ test("covers dashboard, logs, dive detail, and logbook editing", async ({ page }
 
   await page.getByRole("button", { name: "Edit dive" }).click();
   await expect(page.getByText("Logbook Entry")).toBeVisible();
-  await page.locator("textarea[placeholder='Conditions, wildlife, route, incidents, visibility, buoyancy notes...']:visible").fill("Updated from Playwright coverage.");
+  await page
+    .locator("textarea[placeholder='Conditions, wildlife, route, incidents, visibility, buoyancy notes...']:visible")
+    .fill("Updated from Playwright coverage.");
   await page.getByRole("button", { name: "Save Logbook Changes" }).click();
   await expect(page.getByText("metadata updated.")).toBeVisible();
 });
@@ -131,7 +133,9 @@ test("creates a manual dive entry outside the importer workflow", async ({ page 
   await page.getByRole("button", { name: "Save Dive Site" }).click();
   await expect(page.getByText("Cathedral added to your saved dive sites.")).toBeVisible();
   await page.locator("input[placeholder='8 kg integrated + 1 kg trim']:visible").fill("6 kg belt");
-  await page.getByPlaceholder("Conditions, wildlife, route, entry, navigation, visibility...").fill("Manual shore dive logged without dive computer telemetry.");
+  await page
+    .getByPlaceholder("Conditions, wildlife, route, entry, navigation, visibility...")
+    .fill("Manual shore dive logged without dive computer telemetry.");
   await page.getByRole("button", { name: "Create Dive Log" }).click();
 
   await expect(page.getByRole("heading", { name: "Cathedral" })).toBeVisible();
@@ -352,7 +356,9 @@ test("manages equipment inventory and service schedule", async ({ page }) => {
   const savedEquipmentCard = page.locator("article").filter({ hasText: "Scubapro Reef Shop BCD" });
   await expect(savedEquipmentCard.getByText("Service Countdown")).toBeVisible();
   await expect(savedEquipmentCard.getByText(/dives left|Dive interval not set/)).toBeVisible();
-  await expect(page.locator("article").filter({ hasText: "Aqualung Blue Shop Regulator" }).getByRole("button", { name: "Mark Serviced" })).toBeHidden();
+  await expect(
+    page.locator("article").filter({ hasText: "Aqualung Blue Shop Regulator" }).getByRole("button", { name: "Mark Serviced" })
+  ).toBeHidden();
 });
 
 test("covers the public profile route", async ({ page }) => {

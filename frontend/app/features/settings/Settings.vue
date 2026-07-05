@@ -1,6 +1,7 @@
 <script>
 import { defineAsyncComponent } from "vue";
 import { useAuth, useUser } from "~/shared/composables/auth.js";
+import { createApiClient } from "~/shared/api/client.js";
 import { createSettingsCollectionOptions } from "~/shared/composables/settings-collection-options.js";
 import { createSettingsDiveSiteMapOptions } from "~/shared/composables/settings-dive-site-map.js";
 import { logbookRequirementFieldOptions, normalizeRequiredLogbookFields } from "~/shared/utils/core.js";
@@ -13,7 +14,7 @@ import DiverDetailsTab from "~/features/settings/components/DiverDetailsTab.vue"
 import GuidesTab from "~/features/settings/components/GuidesTab.vue";
 import UserManagementTab from "~/features/settings/components/UserManagementTab.vue";
 import { LOCALES } from "~/i18n/locales.js";
-import { SETTINGS_SECTIONS } from "~/settings-sections.js";
+import { SETTINGS_SECTIONS } from "~/config/settings-sections.js";
 import packageJson from "../../../package.json";
 
 import {
@@ -228,9 +229,7 @@ export default {
       return Boolean(this.authUser?.isOwner);
     },
     currentUserEmail() {
-      return this.authUser?.primaryEmailAddress?.emailAddress
-        || this.authUser?.emailAddresses?.[0]?.emailAddress
-        || "";
+      return this.authUser?.primaryEmailAddress?.emailAddress || this.authUser?.emailAddresses?.[0]?.emailAddress || "";
     },
     currentUserName() {
       const firstName = this.authUser?.firstName?.trim() || "";
@@ -254,12 +253,7 @@ export default {
         this.areLicensesEditing ? this.licenseDrafts : this.licenses,
         this.licenseFilter,
         (license) => this.licenseSortKey(license),
-        (license) => [
-          license?.certification_name,
-          license?.company,
-          license?.student_number,
-          license?.instructor_number
-        ],
+        (license) => [license?.certification_name, license?.company, license?.student_number, license?.instructor_number],
         this.editingLicenseIds
       );
     },
@@ -304,23 +298,28 @@ export default {
       );
     },
     isInteractionLocked() {
-      return this.profileLoading
-        || this.profileSaving
-        || this.publicSharingSaving
-        || this.licensesSaving
-        || this.diveSitesSaving
-        || this.buddiesSaving
-        || this.guidesSaving
-        || Boolean(this.licenseUploadingId);
+      return (
+        this.profileLoading ||
+        this.profileSaving ||
+        this.publicSharingSaving ||
+        this.licensesSaving ||
+        this.diveSitesSaving ||
+        this.buddiesSaving ||
+        this.guidesSaving ||
+        Boolean(this.licenseUploadingId)
+      );
     },
     hasUnsavedProfileChanges() {
-      return JSON.stringify({
-        name: (this.profileDraft.name || "").trim(),
-        email: (this.profileDraft.email || "").trim()
-      }) !== JSON.stringify({
-        name: (this.settingsProfile.name || "").trim(),
-        email: (this.settingsProfile.email || "").trim()
-      });
+      return (
+        JSON.stringify({
+          name: (this.profileDraft.name || "").trim(),
+          email: (this.profileDraft.email || "").trim()
+        }) !==
+        JSON.stringify({
+          name: (this.settingsProfile.name || "").trim(),
+          email: (this.settingsProfile.email || "").trim()
+        })
+      );
     },
     hasUnsavedPublicSharingChanges() {
       return Boolean(this.publicSharingDraft.public_dives_enabled) !== Boolean(this.settingsProfile.public_dives_enabled);
@@ -360,16 +359,14 @@ export default {
     activeSettingsSection() {
       return this.settingsSections.some((section) => section.id === this.activeSection)
         ? this.activeSection
-        : (this.settingsSections[0]?.id || "diver-details");
+        : this.settingsSections[0]?.id || "diver-details";
     },
     isDataManagementBusy() {
       return Boolean(this.dataManagementAction);
     },
     canConfirmImportPreview() {
       return Boolean(
-        this.importPreview
-          && Number(this.importPreview.invalid_rows || 0) === 0
-          && Number(this.importPreview.ready_rows || 0) > 0
+        this.importPreview && Number(this.importPreview.invalid_rows || 0) === 0 && Number(this.importPreview.ready_rows || 0) > 0
       );
     },
     pendingCreationType() {
@@ -509,7 +506,8 @@ export default {
       if (typeof this.setLocale === "function") {
         await this.setLocale(this.selectedLocale);
       }
-      const languageLabel = this.availableLanguages.find((language) => language.value === this.selectedLocale)?.label || this.selectedLocale;
+      const languageLabel =
+        this.availableLanguages.find((language) => language.value === this.selectedLocale)?.label || this.selectedLocale;
       this.profileError = "";
       this.profileStatus = `Language set to ${languageLabel}.`;
     },
@@ -626,17 +624,33 @@ export default {
       if (inserted <= 0 && duplicates > 0) {
         return `No new dives were added from this ${label}.`;
       }
-      return `${label} import complete. ${inserted} new dives added from ${rows} dive${rows === 1 ? '' : 's'}; ${duplicates} duplicate dive${duplicates === 1 ? '' : 's'} skipped. Next step: review the imported dives and complete their logbook fields.`;
+      return `${label} import complete. ${inserted} new dives added from ${rows} dive${rows === 1 ? "" : "s"}; ${duplicates} duplicate dive${duplicates === 1 ? "" : "s"} skipped. Next step: review the imported dives and complete their logbook fields.`;
     },
     displayValue(value, fallback = "Not provided") {
       return value ? value : fallback;
     },
     optionalLogbookFieldOptions() {
       return [
-        { key: "weather_description", label: this.t("settings.logLayout.weather", "Weather description"), detail: this.t("settings.logLayout.weather.detail", "Show sea state and weather conditions in log rows.") },
-        { key: "visibility", label: this.t("Visibility", "Visibility"), detail: this.t("settings.logLayout.visibility.detail", "Show underwater visibility notes in log rows.") },
-        { key: "wetsuit_description", label: this.t("settings.logLayout.wetsuit", "Wetsuit description"), detail: this.t("settings.logLayout.wetsuit.detail", "Show exposure protection details in log rows.") },
-        { key: "weight_description", label: this.t("settings.logLayout.weights", "Weights"), detail: this.t("settings.logLayout.weights.detail", "Show weight configuration notes in log rows.") }
+        {
+          key: "weather_description",
+          label: this.t("settings.logLayout.weather", "Weather description"),
+          detail: this.t("settings.logLayout.weather.detail", "Show sea state and weather conditions in log rows.")
+        },
+        {
+          key: "visibility",
+          label: this.t("Visibility", "Visibility"),
+          detail: this.t("settings.logLayout.visibility.detail", "Show underwater visibility notes in log rows.")
+        },
+        {
+          key: "wetsuit_description",
+          label: this.t("settings.logLayout.wetsuit", "Wetsuit description"),
+          detail: this.t("settings.logLayout.wetsuit.detail", "Show exposure protection details in log rows.")
+        },
+        {
+          key: "weight_description",
+          label: this.t("settings.logLayout.weights", "Weights"),
+          detail: this.t("settings.logLayout.weights.detail", "Show weight configuration notes in log rows.")
+        }
       ];
     },
     requiredLogbookFieldOptions() {
@@ -644,10 +658,19 @@ export default {
         site: this.t("settings.requiredLogbook.site.detail", "Require a dive site before a log entry can be completed."),
         buddy: this.t("settings.requiredLogbook.buddy.detail", "Require a named buddy before a log entry can be completed."),
         guide: this.t("settings.requiredLogbook.guide.detail", "Require a guide or instructor before a log entry can be completed."),
-        weather_description: this.t("settings.requiredLogbook.weather.detail", "Require weather notes before a log entry can be completed."),
+        weather_description: this.t(
+          "settings.requiredLogbook.weather.detail",
+          "Require weather notes before a log entry can be completed."
+        ),
         visibility: this.t("settings.requiredLogbook.visibility.detail", "Require visibility notes before a log entry can be completed."),
-        wetsuit_description: this.t("settings.requiredLogbook.wetsuit.detail", "Require exposure protection notes before a log entry can be completed."),
-        weight_description: this.t("settings.requiredLogbook.weights.detail", "Require weight configuration notes before a log entry can be completed."),
+        wetsuit_description: this.t(
+          "settings.requiredLogbook.wetsuit.detail",
+          "Require exposure protection notes before a log entry can be completed."
+        ),
+        weight_description: this.t(
+          "settings.requiredLogbook.weights.detail",
+          "Require weight configuration notes before a log entry can be completed."
+        ),
         notes: this.t("settings.requiredLogbook.notes.detail", "Require general dive notes before a log entry can be completed.")
       };
       return logbookRequirementFieldOptions.map((field) => ({
@@ -657,22 +680,22 @@ export default {
       }));
     },
     logbookFieldEnabled(fieldKey) {
-      return Array.isArray(this.settingsProfile.logbook_display_fields)
-        && this.settingsProfile.logbook_display_fields.includes(fieldKey);
+      return Array.isArray(this.settingsProfile.logbook_display_fields) && this.settingsProfile.logbook_display_fields.includes(fieldKey);
     },
     toggleLogbookDisplayField(fieldKey) {
       const active = new Set(Array.isArray(this.settingsProfile.logbook_display_fields) ? this.settingsProfile.logbook_display_fields : []);
       if (active.has(fieldKey)) active.delete(fieldKey);
       else active.add(fieldKey);
-      const ordered = this.optionalLogbookFieldOptions().map((option) => option.key).filter((key) => active.has(key));
+      const ordered = this.optionalLogbookFieldOptions()
+        .map((option) => option.key)
+        .filter((key) => active.has(key));
       this.settingsProfile = this.hydrateProfile({
         ...this.settingsProfile,
         logbook_display_fields: ordered
       });
     },
     requiredLogbookFieldEnabled(fieldKey) {
-      return Array.isArray(this.settingsProfile.required_logbook_fields)
-        && this.settingsProfile.required_logbook_fields.includes(fieldKey);
+      return Array.isArray(this.settingsProfile.required_logbook_fields) && this.settingsProfile.required_logbook_fields.includes(fieldKey);
     },
     toggleRequiredLogbookField(fieldKey) {
       const active = new Set(normalizeRequiredLogbookFields(this.settingsProfile.required_logbook_fields));
@@ -683,7 +706,9 @@ export default {
       } else {
         active.add(fieldKey);
       }
-      const ordered = this.requiredLogbookFieldOptions().map((option) => option.key).filter((key) => active.has(key));
+      const ordered = this.requiredLogbookFieldOptions()
+        .map((option) => option.key)
+        .filter((key) => active.has(key));
       this.settingsProfile = this.hydrateProfile({
         ...this.settingsProfile,
         required_logbook_fields: ordered
@@ -705,26 +730,24 @@ export default {
       return this.settingsProfile.licenses.some((license) => license.id === licenseId);
     },
     hasUnsavedLicenseChanges() {
-      return JSON.stringify(comparableLicenses(this.licenseDrafts))
-        !== JSON.stringify(comparableLicenses(this.settingsProfile.licenses));
+      return JSON.stringify(comparableLicenses(this.licenseDrafts)) !== JSON.stringify(comparableLicenses(this.settingsProfile.licenses));
     },
     hasUnsavedDiveSiteChanges() {
-      return JSON.stringify(comparableDiveSites(this.diveSiteDrafts))
-        !== JSON.stringify(comparableDiveSites(this.settingsProfile.dive_sites));
+      return (
+        JSON.stringify(comparableDiveSites(this.diveSiteDrafts)) !== JSON.stringify(comparableDiveSites(this.settingsProfile.dive_sites))
+      );
     },
     hasUnsavedBuddyChanges() {
-      return JSON.stringify(comparableBuddies(this.buddyDrafts))
-        !== JSON.stringify(comparableBuddies(this.settingsProfile.buddies));
+      return JSON.stringify(comparableBuddies(this.buddyDrafts)) !== JSON.stringify(comparableBuddies(this.settingsProfile.buddies));
     },
     hasUnsavedGuideChanges() {
-      return JSON.stringify(comparableGuides(this.guideDrafts))
-        !== JSON.stringify(comparableGuides(this.settingsProfile.guides));
+      return JSON.stringify(comparableGuides(this.guideDrafts)) !== JSON.stringify(comparableGuides(this.settingsProfile.guides));
     },
     diveSiteTitle(site, index) {
       return site.name || `Dive Site ${index + 1}`;
     },
     pagedDiveSiteTitle(site, index) {
-      return this.diveSiteTitle(site, ((this.diveSitePage - 1) * this.diveSitePageSize) + index);
+      return this.diveSiteTitle(site, (this.diveSitePage - 1) * this.diveSitePageSize + index);
     },
     diveSiteSortKey(site) {
       return site?.name || site?.location || site?.country || site?.id || "";
@@ -753,17 +776,13 @@ export default {
     guideSortKey(guide) {
       return guide?.name || guide?.id || "";
     },
-    async authenticatedFetch(resource, options = {}) {
-      const token = await this.authGetToken({ skipCache: true });
-      const headers = new Headers(options.headers || {});
-      if (token) {
-        headers.set("Authorization", `Bearer ${token}`);
-      }
-      return fetch(resource, {
-        ...options,
-        credentials: "include",
-        headers
+    apiClient() {
+      return createApiClient({
+        getToken: () => this.authGetToken({ skipCache: true })
       });
+    },
+    async authenticatedFetch(resource, options = {}) {
+      return this.apiClient().request(resource, options);
     },
     async fetchProfile() {
       this.profileLoading = true;
@@ -785,7 +804,10 @@ export default {
       }
     },
     async readErrorResponse(response, fallbackMessage) {
-      const payload = await response.clone().json().catch(() => null);
+      const payload = await response
+        .clone()
+        .json()
+        .catch(() => null);
       if (payload?.error) return payload.error;
       const bodyText = await response.text().catch(() => "");
       return bodyText || fallbackMessage || `API returned ${response.status}`;
@@ -868,9 +890,7 @@ export default {
         }
         const payload = await response.json().catch(() => ({}));
         const inviteUrl = String(payload?.invite_url || "");
-        this.latestInviteUrl = inviteUrl.startsWith("/")
-          ? `${window.location.origin}${inviteUrl}`
-          : inviteUrl;
+        this.latestInviteUrl = inviteUrl.startsWith("/") ? `${window.location.origin}${inviteUrl}` : inviteUrl;
         this.manageUsersStatus = `Invitation created for ${this.inviteDraft.email.trim()}.`;
         this.inviteDraft = {
           ...emptyInviteDraft(),
@@ -893,7 +913,7 @@ export default {
         await navigator.clipboard.writeText(this.latestInviteUrl);
         this.manageUsersStatus = "Invitation link copied.";
         this.manageUsersError = "";
-      } catch (_error) {
+      } catch {
         this.manageUsersError = "Could not copy the invitation link.";
       }
     },
@@ -908,16 +928,14 @@ export default {
         const response = await this.authenticatedFetch(`/api/users/${user.id}`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ is_active: !Boolean(user.is_active) })
+          body: JSON.stringify({ is_active: !user.is_active })
         });
         if (!response.ok) {
           throw new Error(await this.readErrorResponse(response, "Could not update the user status."));
         }
         const payload = await response.json().catch(() => ({}));
         const updatedUser = payload?.user || user;
-        this.manageUsersStatus = updatedUser.is_active
-          ? `Reactivated ${updatedUser.email}.`
-          : `Deactivated ${updatedUser.email}.`;
+        this.manageUsersStatus = updatedUser.is_active ? `Reactivated ${updatedUser.email}.` : `Deactivated ${updatedUser.email}.`;
         await this.fetchUserManagement();
       } catch (error) {
         this.manageUsersError = error?.message || "Could not update the user status.";
@@ -992,11 +1010,11 @@ export default {
       if (utf8Match?.[1]) {
         try {
           return decodeURIComponent(utf8Match[1]);
-        } catch (_error) {
+        } catch {
           return utf8Match[1];
         }
       }
-      const plainMatch = value.match(/filename=\"?([^\";]+)\"?/i);
+      const plainMatch = value.match(/filename="?([^";]+)"?/i);
       return plainMatch?.[1] || fallback;
     },
     async exportDownload(endpoint, fallbackFilename, actionLabel, successMessage) {
@@ -1008,10 +1026,7 @@ export default {
           throw new Error(await this.readErrorResponse(response, `Could not ${actionLabel.toLowerCase()}.`));
         }
         const blob = await response.blob();
-        const filename = this.filenameFromDisposition(
-          response.headers.get("Content-Disposition"),
-          fallbackFilename
-        );
+        const filename = this.filenameFromDisposition(response.headers.get("Content-Disposition"), fallbackFilename);
         this.downloadBlob(blob, filename);
         this.dataManagementStatus = successMessage;
       } catch (error) {
@@ -1021,20 +1036,10 @@ export default {
       }
     },
     exportDivePdf() {
-      return this.exportDownload(
-        "/api/exports/dives.pdf",
-        "divevault-dives.pdf",
-        "Exporting PDF",
-        "Dive log PDF downloaded."
-      );
+      return this.exportDownload("/api/exports/dives.pdf", "divevault-dives.pdf", "Exporting PDF", "Dive log PDF downloaded.");
     },
     exportDiveCsv() {
-      return this.exportDownload(
-        "/api/exports/dives.csv",
-        "divevault-dives.csv",
-        "Exporting CSV",
-        "Dive telemetry CSV downloaded."
-      );
+      return this.exportDownload("/api/exports/dives.csv", "divevault-dives.csv", "Exporting CSV", "Dive telemetry CSV downloaded.");
     },
     async handleCsvImportSelection(event) {
       const file = event?.target?.files?.[0];
@@ -1057,7 +1062,7 @@ export default {
         });
         this.importPreview = this.normalizedImportPreview(payload, "csv", file);
         const rows = Number(this.importPreview.rows || 0);
-        this.dataManagementStatus = `CSV preview ready: ${rows} row${rows === 1 ? '' : 's'} checked. Review the table before importing.`;
+        this.dataManagementStatus = `CSV preview ready: ${rows} row${rows === 1 ? "" : "s"} checked. Review the table before importing.`;
       } catch (error) {
         this.pendingImportFile = null;
         this.pendingImportKind = "";
@@ -1083,7 +1088,7 @@ export default {
         const payload = await this.uploadSubsurfaceImport(file, { dryRun: true });
         this.importPreview = this.normalizedImportPreview(payload, "subsurface", file);
         const rows = Number(this.importPreview.rows || 0);
-        this.dataManagementStatus = `Subsurface export preview ready: ${rows} dive${rows === 1 ? '' : 's'} checked. Review the table before importing.`;
+        this.dataManagementStatus = `Subsurface export preview ready: ${rows} dive${rows === 1 ? "" : "s"} checked. Review the table before importing.`;
       } catch (error) {
         this.pendingImportFile = null;
         this.pendingImportKind = "";
@@ -1134,12 +1139,7 @@ export default {
       }
     },
     exportBackup() {
-      return this.exportDownload(
-        "/api/backup/export",
-        "divevault-backup.zip",
-        "Exporting Backup",
-        "Full backup downloaded."
-      );
+      return this.exportDownload("/api/backup/export", "divevault-backup.zip", "Exporting Backup", "Full backup downloaded.");
     },
     async handleBackupImportSelection(event) {
       const file = event?.target?.files?.[0];
@@ -1261,9 +1261,7 @@ export default {
         this.settingsProfile = this.hydrateProfile(payload);
         this.notifyProfileUpdated(this.settingsProfile);
         this.resetDraftsFromProfile();
-        this.profileStatus = this.settingsProfile.public_dives_enabled
-          ? "Public dive profile enabled."
-          : "Public dive profile disabled.";
+        this.profileStatus = this.settingsProfile.public_dives_enabled ? "Public dive profile enabled." : "Public dive profile disabled.";
       } catch (error) {
         this.profileError = error?.message || "Could not update public dive sharing.";
       } finally {
@@ -1279,7 +1277,7 @@ export default {
         await navigator.clipboard.writeText(this.publicProfileUrl);
         this.profileStatus = "Public profile link copied.";
         this.profileError = "";
-      } catch (_error) {
+      } catch {
         this.profileError = "Could not copy the public profile link.";
       }
     },
@@ -1407,33 +1405,45 @@ export default {
       this.openCreateDialog("guide");
     },
     removeLicense(index) {
-      this.removeDraftEntry({
-        draftKey: "licenseDrafts",
-        editingIdsKey: "editingLicenseIds",
-        editingKey: "areLicensesEditing",
-        closeEditingWhenEmpty: true
-      }, index);
+      this.removeDraftEntry(
+        {
+          draftKey: "licenseDrafts",
+          editingIdsKey: "editingLicenseIds",
+          editingKey: "areLicensesEditing",
+          closeEditingWhenEmpty: true
+        },
+        index
+      );
     },
     removeDiveSite(index) {
-      this.removeDraftEntry({
-        draftKey: "diveSiteDrafts",
-        editingIdsKey: "editingDiveSiteIds",
-        editingKey: "areDiveSitesEditing"
-      }, index);
+      this.removeDraftEntry(
+        {
+          draftKey: "diveSiteDrafts",
+          editingIdsKey: "editingDiveSiteIds",
+          editingKey: "areDiveSitesEditing"
+        },
+        index
+      );
     },
     removeBuddy(index) {
-      this.removeDraftEntry({
-        draftKey: "buddyDrafts",
-        editingIdsKey: "editingBuddyIds",
-        editingKey: "areBuddiesEditing"
-      }, index);
+      this.removeDraftEntry(
+        {
+          draftKey: "buddyDrafts",
+          editingIdsKey: "editingBuddyIds",
+          editingKey: "areBuddiesEditing"
+        },
+        index
+      );
     },
     removeGuide(index) {
-      this.removeDraftEntry({
-        draftKey: "guideDrafts",
-        editingIdsKey: "editingGuideIds",
-        editingKey: "areGuidesEditing"
-      }, index);
+      this.removeDraftEntry(
+        {
+          draftKey: "guideDrafts",
+          editingIdsKey: "editingGuideIds",
+          editingKey: "areGuidesEditing"
+        },
+        index
+      );
     },
     openRemovalDialog(type, itemId, label, kindLabel) {
       this.pendingRemoval = {
@@ -1946,9 +1956,7 @@ export default {
     },
     toggleExpandedItem(key, id) {
       const current = Array.isArray(this[key]) ? this[key] : [];
-      this[key] = current.includes(id)
-        ? current.filter((entryId) => entryId !== id)
-        : [...current, id];
+      this[key] = current.includes(id) ? current.filter((entryId) => entryId !== id) : [...current, id];
     },
     isExpandedItem(key, id) {
       return Array.isArray(this[key]) && this[key].includes(id);
@@ -2026,93 +2034,107 @@ export default {
       return this.isExpandedItem("expandedGuideIds", guideId);
     },
     diveSiteHasCoordinates(site) {
-      return site?.latitude !== "" && site?.latitude !== null && site?.latitude !== undefined
-        && site?.longitude !== "" && site?.longitude !== null && site?.longitude !== undefined;
+      return (
+        site?.latitude !== "" &&
+        site?.latitude !== null &&
+        site?.latitude !== undefined &&
+        site?.longitude !== "" &&
+        site?.longitude !== null &&
+        site?.longitude !== undefined
+      );
     },
     formatBytes,
     formatDateTime
-  },
+  }
 };
 </script>
 
 <template>
-    <section class="dashboard-command-center text-on-surface">
-      <header class="settings-stat-strip">
-        <article v-for="stat in settingsOverviewStats" :key="stat.id" class="settings-stat-pill">
-          <span class="material-symbols-outlined settings-stat-pill-icon">{{ stat.icon }}</span>
-          <p class="settings-stat-pill-label">{{ stat.label }}</p>
-          <div v-if="profileLoading" class="settings-loading-bar settings-loading-bar-stat"></div>
-          <p v-else class="settings-stat-pill-value">{{ stat.value }}</p>
-        </article>
-      </header>
+  <section class="dashboard-command-center text-on-surface">
+    <header class="settings-stat-strip">
+      <article v-for="stat in settingsOverviewStats" :key="stat.id" class="settings-stat-pill">
+        <span class="material-symbols-outlined settings-stat-pill-icon">{{ stat.icon }}</span>
+        <p class="settings-stat-pill-label">{{ stat.label }}</p>
+        <div v-if="profileLoading" class="settings-loading-bar settings-loading-bar-stat"></div>
+        <p v-else class="settings-stat-pill-value">{{ stat.value }}</p>
+      </article>
+    </header>
 
-      <div v-if="profileStatus" class="settings-feedback border-primary/20 bg-primary/10 text-primary shadow-panel">{{ profileStatus }}</div>
-      <div v-if="profileError" class="settings-feedback border-error/20 bg-error-container/20 text-on-error-container shadow-panel">{{ profileError }}</div>
+    <div v-if="profileStatus" class="settings-feedback border-primary/20 bg-primary/10 text-primary shadow-panel">{{ profileStatus }}</div>
+    <div v-if="profileError" class="settings-feedback border-error/20 bg-error-container/20 text-on-error-container shadow-panel">
+      {{ profileError }}
+    </div>
 
-      <div class="settings-mobile-nav settings-panel flex gap-3 overflow-x-auto p-3 md:hidden">
+    <div class="settings-mobile-nav settings-panel flex gap-3 overflow-x-auto p-3 md:hidden">
+      <UButton
+        v-for="section in settingsSections"
+        :key="section.id"
+        @click="selectSettingsSection(section.id)"
+        class="min-w-[14rem] shrink-0 rounded-2xl border px-4 py-3 text-left transition-colors"
+        :class="
+          activeSettingsSection === section.id
+            ? 'border-primary/30 bg-surface-container-high text-primary'
+            : 'border-primary/10 bg-background/10 text-secondary'
+        "
+      >
+        <div class="flex items-start gap-3">
+          <span class="material-symbols-outlined mt-0.5 text-lg">{{ section.icon }}</span>
+          <div>
+            <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em]">{{ section.label }}</p>
+            <p class="mt-2 text-xs leading-5 opacity-80">{{ section.description }}</p>
+          </div>
+        </div>
+      </UButton>
+    </div>
+
+    <section class="settings-page-layout">
+      <aside class="settings-section-nav settings-panel">
         <UButton
           v-for="section in settingsSections"
-          :key="section.id"
+          :key="'desktop-settings-' + section.id"
+          type="button"
           @click="selectSettingsSection(section.id)"
-          class="min-w-[14rem] shrink-0 rounded-2xl border px-4 py-3 text-left transition-colors"
-          :class="activeSettingsSection === section.id ? 'border-primary/30 bg-surface-container-high text-primary' : 'border-primary/10 bg-background/10 text-secondary'"
+          class="settings-section-nav-item"
+          :class="activeSettingsSection === section.id ? 'is-active' : ''"
         >
-          <div class="flex items-start gap-3">
-            <span class="material-symbols-outlined mt-0.5 text-lg">{{ section.icon }}</span>
-            <div>
-              <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em]">{{ section.label }}</p>
-              <p class="mt-2 text-xs leading-5 opacity-80">{{ section.description }}</p>
-            </div>
-          </div>
+          <span class="material-symbols-outlined settings-section-nav-icon">{{ section.icon }}</span>
+          <span class="min-w-0">
+            <span class="settings-section-nav-label">{{ section.label }}</span>
+            <span class="settings-section-nav-description">{{ section.description }}</span>
+          </span>
         </UButton>
-      </div>
+      </aside>
 
-      <section class="settings-page-layout">
-        <aside class="settings-section-nav settings-panel">
-          <UButton
-            v-for="section in settingsSections"
-            :key="'desktop-settings-' + section.id"
-            type="button"
-            @click="selectSettingsSection(section.id)"
-            class="settings-section-nav-item"
-            :class="activeSettingsSection === section.id ? 'is-active' : ''"
-          >
-            <span class="material-symbols-outlined settings-section-nav-icon">{{ section.icon }}</span>
-            <span class="min-w-0">
-              <span class="settings-section-nav-label">{{ section.label }}</span>
-              <span class="settings-section-nav-description">{{ section.description }}</span>
-            </span>
-          </UButton>
-        </aside>
-
-        <section class="settings-content">
-          <div v-if="profileLoading" class="settings-panel settings-card settings-loading-state">
-            <div>
-              <p class="font-label text-[10px] font-bold uppercase tracking-[0.24em] text-primary">Loading</p>
-              <h4 class="mt-2 font-headline text-3xl font-bold tracking-tight text-on-surface">Preparing Your Settings</h4>
-              <p class="mt-3 max-w-3xl text-sm leading-7 text-secondary">Fetching licenses, dive sites, buddies, guides, and saved profile details.</p>
-            </div>
-
-            <div class="settings-loading-grid">
-              <div class="settings-loading-card">
-                <div class="settings-loading-bar settings-loading-bar-title"></div>
-                <div class="settings-loading-bar settings-loading-bar-body"></div>
-                <div class="settings-loading-bar settings-loading-bar-body settings-loading-bar-short"></div>
-              </div>
-              <div class="settings-loading-card">
-                <div class="settings-loading-bar settings-loading-bar-title"></div>
-                <div class="settings-loading-bar settings-loading-bar-body"></div>
-                <div class="settings-loading-bar settings-loading-bar-body"></div>
-              </div>
-              <div class="settings-loading-card">
-                <div class="settings-loading-bar settings-loading-bar-title"></div>
-                <div class="settings-loading-bar settings-loading-bar-body"></div>
-                <div class="settings-loading-bar settings-loading-bar-body settings-loading-bar-short"></div>
-              </div>
-            </div>
+      <section class="settings-content">
+        <div v-if="profileLoading" class="settings-panel settings-card settings-loading-state">
+          <div>
+            <p class="font-label text-[10px] font-bold uppercase tracking-[0.24em] text-primary">Loading</p>
+            <h4 class="mt-2 font-headline text-3xl font-bold tracking-tight text-on-surface">Preparing Your Settings</h4>
+            <p class="mt-3 max-w-3xl text-sm leading-7 text-secondary">
+              Fetching licenses, dive sites, buddies, guides, and saved profile details.
+            </p>
           </div>
 
-          <template v-else>
+          <div class="settings-loading-grid">
+            <div class="settings-loading-card">
+              <div class="settings-loading-bar settings-loading-bar-title"></div>
+              <div class="settings-loading-bar settings-loading-bar-body"></div>
+              <div class="settings-loading-bar settings-loading-bar-body settings-loading-bar-short"></div>
+            </div>
+            <div class="settings-loading-card">
+              <div class="settings-loading-bar settings-loading-bar-title"></div>
+              <div class="settings-loading-bar settings-loading-bar-body"></div>
+              <div class="settings-loading-bar settings-loading-bar-body"></div>
+            </div>
+            <div class="settings-loading-card">
+              <div class="settings-loading-bar settings-loading-bar-title"></div>
+              <div class="settings-loading-bar settings-loading-bar-body"></div>
+              <div class="settings-loading-bar settings-loading-bar-body settings-loading-bar-short"></div>
+            </div>
+          </div>
+        </div>
+
+        <template v-else>
           <diver-details-tab v-if="activeSettingsSection === 'diver-details'" />
           <application-settings-tab v-if="activeSettingsSection === 'application-settings'" />
           <dive-sites-tab v-if="activeSettingsSection === 'dive-sites'" />
@@ -2121,221 +2143,229 @@ export default {
           <data-management-tab v-if="activeSettingsSection === 'data-management'" />
           <user-management-tab v-if="activeSettingsSection === 'manage-users' && canManageUsers" />
           <backup-tab v-if="activeSettingsSection === 'backup'" />
-          </template>
-        </section>
+        </template>
       </section>
+    </section>
 
-      <div
-        v-if="pendingCreation"
-        @click.self="closeCreateDialog"
-        class="fixed inset-0 z-[55] flex items-center justify-center bg-background/88 px-6 py-8 backdrop-blur-sm"
-      >
-        <div class="settings-modal-card">
-          <div class="flex items-start justify-between gap-4">
-            <div>
-              <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-primary">New Entry</p>
-              <h3 class="mt-3 font-headline text-2xl font-bold tracking-tight text-on-surface">{{ pendingCreationTitle }}</h3>
-              <p class="mt-3 text-sm text-secondary">This entry stays out of the list until you save it here.</p>
-            </div>
-            <UButton
-              type="button"
-              @click="closeCreateDialog"
-              :disabled="pendingCreationSubmitting"
-              class="settings-button settings-button-ghost"
-            >
-              Close
-            </UButton>
+    <div
+      v-if="pendingCreation"
+      @click.self="closeCreateDialog"
+      class="fixed inset-0 z-[55] flex items-center justify-center bg-background/88 px-6 py-8 backdrop-blur-sm"
+    >
+      <div class="settings-modal-card">
+        <div class="flex items-start justify-between gap-4">
+          <div>
+            <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-primary">New Entry</p>
+            <h3 class="mt-3 font-headline text-2xl font-bold tracking-tight text-on-surface">{{ pendingCreationTitle }}</h3>
+            <p class="mt-3 text-sm text-secondary">This entry stays out of the list until you save it here.</p>
           </div>
+          <UButton
+            type="button"
+            @click="closeCreateDialog"
+            :disabled="pendingCreationSubmitting"
+            class="settings-button settings-button-ghost"
+          >
+            Close
+          </UButton>
+        </div>
 
-          <div v-if="pendingCreationError" class="settings-feedback mt-5 border-error/20 bg-error-container/20 text-on-error-container">
-            {{ pendingCreationError }}
+        <div v-if="pendingCreationError" class="settings-feedback mt-5 border-error/20 bg-error-container/20 text-on-error-container">
+          {{ pendingCreationError }}
+        </div>
+
+        <div v-if="pendingCreationType === 'license'" class="settings-modal-grid mt-6">
+          <label class="space-y-2">
+            <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Company</span>
+            <UInput v-model="pendingCreationDraft.company" type="text" class="settings-input" placeholder="PADI / SSI / NAUI" />
+          </label>
+          <label class="space-y-2">
+            <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Certification Name</span>
+            <UInput
+              v-model="pendingCreationDraft.certification_name"
+              type="text"
+              class="settings-input"
+              placeholder="Advanced Open Water"
+            />
+          </label>
+          <label class="space-y-2">
+            <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Student Number</span>
+            <UInput
+              v-model="pendingCreationDraft.student_number"
+              type="text"
+              class="settings-input"
+              placeholder="Student or certification number"
+            />
+          </label>
+          <label class="space-y-2">
+            <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Certification Date</span>
+            <UInput v-model="pendingCreationDraft.certification_date" type="text" class="settings-input" placeholder="YYYY-MM-DD" />
+          </label>
+          <label class="space-y-2 md:col-span-2">
+            <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Instructor Number</span>
+            <UInput v-model="pendingCreationDraft.instructor_number" type="text" class="settings-input" placeholder="Instructor number" />
+          </label>
+          <div class="settings-side-panel md:col-span-2">
+            <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-primary">PDF Upload</p>
+            <p class="mt-2 text-sm text-secondary">
+              Save the license first. You can attach or replace the PDF from the saved license card.
+            </p>
           </div>
+        </div>
 
-          <div v-if="pendingCreationType === 'license'" class="settings-modal-grid mt-6">
-            <label class="space-y-2">
-              <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Company</span>
-              <UInput v-model="pendingCreationDraft.company" type="text" class="settings-input" placeholder="PADI / SSI / NAUI" />
-            </label>
-            <label class="space-y-2">
-              <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Certification Name</span>
-              <UInput v-model="pendingCreationDraft.certification_name" type="text" class="settings-input" placeholder="Advanced Open Water" />
-            </label>
-            <label class="space-y-2">
-              <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Student Number</span>
-              <UInput v-model="pendingCreationDraft.student_number" type="text" class="settings-input" placeholder="Student or certification number" />
-            </label>
-            <label class="space-y-2">
-              <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Certification Date</span>
-              <UInput v-model="pendingCreationDraft.certification_date" type="text" class="settings-input" placeholder="YYYY-MM-DD" />
-            </label>
-            <label class="space-y-2 md:col-span-2">
-              <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Instructor Number</span>
-              <UInput v-model="pendingCreationDraft.instructor_number" type="text" class="settings-input" placeholder="Instructor number" />
-            </label>
-            <div class="settings-side-panel md:col-span-2">
-              <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-primary">PDF Upload</p>
-              <p class="mt-2 text-sm text-secondary">Save the license first. You can attach or replace the PDF from the saved license card.</p>
-            </div>
-          </div>
-
-          <div v-else-if="pendingCreationType === 'dive-site'" class="settings-modal-section mt-6">
-            <label class="space-y-2">
-              <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Site Name</span>
-              <UInput v-model="pendingCreationDraft.name" type="text" class="settings-input" placeholder="North Wall / Training Reef" />
-            </label>
-            <div class="settings-side-panel settings-modal-subsection">
-              <div class="settings-modal-section">
-                <div class="settings-modal-header">
-                  <div>
-                    <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-primary">GPS Lookup</p>
-                    <p class="settings-modal-copy mt-2 text-sm text-secondary">Search from the location text, then adjust latitude and longitude if needed.</p>
-                  </div>
-                  <UButton
-                    type="button"
-                    @click="searchPendingDiveSiteLocation"
-                    :disabled="pendingCreationLookupLoading"
-                    class="settings-button settings-button-secondary settings-modal-lookup-button"
-                  >
-                    {{ pendingCreationLookupLoading ? 'Searching GPS' : 'Search GPS From Location' }}
-                  </UButton>
+        <div v-else-if="pendingCreationType === 'dive-site'" class="settings-modal-section mt-6">
+          <label class="space-y-2">
+            <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Site Name</span>
+            <UInput v-model="pendingCreationDraft.name" type="text" class="settings-input" placeholder="North Wall / Training Reef" />
+          </label>
+          <div class="settings-side-panel settings-modal-subsection">
+            <div class="settings-modal-section">
+              <div class="settings-modal-header">
+                <div>
+                  <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-primary">GPS Lookup</p>
+                  <p class="settings-modal-copy mt-2 text-sm text-secondary">
+                    Search from the location text, then adjust latitude and longitude if needed.
+                  </p>
                 </div>
+                <UButton
+                  type="button"
+                  @click="searchPendingDiveSiteLocation"
+                  :disabled="pendingCreationLookupLoading"
+                  class="settings-button settings-button-secondary settings-modal-lookup-button"
+                >
+                  {{ pendingCreationLookupLoading ? "Searching GPS" : "Search GPS From Location" }}
+                </UButton>
+              </div>
+              <label class="space-y-2">
+                <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Location</span>
+                <UInput v-model="pendingCreationDraft.location" type="text" class="settings-input" placeholder="Blue Hole, Dahab, Egypt" />
+              </label>
+              <div class="settings-modal-site-grid">
                 <label class="space-y-2">
-                  <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Location</span>
-                  <UInput v-model="pendingCreationDraft.location" type="text" class="settings-input" placeholder="Blue Hole, Dahab, Egypt" />
+                  <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Country</span>
+                  <UInput v-model="pendingCreationDraft.country" type="text" class="settings-input" placeholder="Egypt" />
                 </label>
-                <div class="settings-modal-site-grid">
-                  <label class="space-y-2">
-                    <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Country</span>
-                    <UInput v-model="pendingCreationDraft.country" type="text" class="settings-input" placeholder="Egypt" />
-                  </label>
-                  <label class="space-y-2">
-                    <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Latitude</span>
-                    <UInput v-model="pendingCreationDraft.latitude" type="number" step="any" min="-90" max="90" class="settings-input" placeholder="25.1234" />
-                  </label>
-                  <label class="space-y-2">
-                    <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Longitude</span>
-                    <UInput v-model="pendingCreationDraft.longitude" type="number" step="any" min="-180" max="180" class="settings-input" placeholder="-80.4567" />
-                  </label>
-                </div>
+                <label class="space-y-2">
+                  <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Latitude</span>
+                  <UInput
+                    v-model="pendingCreationDraft.latitude"
+                    type="number"
+                    step="any"
+                    min="-90"
+                    max="90"
+                    class="settings-input"
+                    placeholder="25.1234"
+                  />
+                </label>
+                <label class="space-y-2">
+                  <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Longitude</span>
+                  <UInput
+                    v-model="pendingCreationDraft.longitude"
+                    type="number"
+                    step="any"
+                    min="-180"
+                    max="180"
+                    class="settings-input"
+                    placeholder="-80.4567"
+                  />
+                </label>
               </div>
             </div>
           </div>
+        </div>
 
-          <div v-else-if="pendingCreationType === 'buddy'" class="settings-modal-grid mt-6">
-            <label class="space-y-2 md:col-span-2">
-              <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Buddy Name</span>
-              <UInput v-model="pendingCreationDraft.name" type="text" class="settings-input" placeholder="Sam Carter" />
-            </label>
-          </div>
+        <div v-else-if="pendingCreationType === 'buddy'" class="settings-modal-grid mt-6">
+          <label class="space-y-2 md:col-span-2">
+            <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Buddy Name</span>
+            <UInput v-model="pendingCreationDraft.name" type="text" class="settings-input" placeholder="Sam Carter" />
+          </label>
+        </div>
 
-          <div v-else-if="pendingCreationType === 'guide'" class="settings-modal-grid mt-6">
-            <label class="space-y-2 md:col-span-2">
-              <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Guide Name</span>
-              <UInput v-model="pendingCreationDraft.name" type="text" class="settings-input" placeholder="Kai Jensen" />
-            </label>
-          </div>
+        <div v-else-if="pendingCreationType === 'guide'" class="settings-modal-grid mt-6">
+          <label class="space-y-2 md:col-span-2">
+            <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Guide Name</span>
+            <UInput v-model="pendingCreationDraft.name" type="text" class="settings-input" placeholder="Kai Jensen" />
+          </label>
+        </div>
 
-          <div class="settings-modal-actions">
-            <UButton
-              type="button"
-              @click="closeCreateDialog"
-              :disabled="pendingCreationSubmitting"
-              class="settings-button settings-button-ghost"
-            >
-              Cancel
-            </UButton>
-            <UButton
-              type="button"
-              @click="confirmCreateDialog"
-              :disabled="pendingCreationSubmitting"
-              class="settings-button settings-button-primary"
-            >
-              {{ pendingCreationSubmitting ? 'Saving...' : pendingCreationSubmitLabel }}
-            </UButton>
-          </div>
+        <div class="settings-modal-actions">
+          <UButton
+            type="button"
+            @click="closeCreateDialog"
+            :disabled="pendingCreationSubmitting"
+            class="settings-button settings-button-ghost"
+          >
+            Cancel
+          </UButton>
+          <UButton
+            type="button"
+            @click="confirmCreateDialog"
+            :disabled="pendingCreationSubmitting"
+            class="settings-button settings-button-primary"
+          >
+            {{ pendingCreationSubmitting ? "Saving..." : pendingCreationSubmitLabel }}
+          </UButton>
         </div>
       </div>
+    </div>
 
-      <div
-        v-if="activeLicenseDocument"
-        @click.self="closeLicenseDocument"
-        class="fixed inset-0 z-50 flex items-center justify-center bg-background/90 px-6 py-8 backdrop-blur-sm"
-      >
-        <div class="relative max-h-full w-full max-w-5xl overflow-auto border border-primary/15 bg-surface-container-low p-4 shadow-panel">
-          <div class="mb-4 flex items-start justify-between gap-4">
-            <div>
-              <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-primary">License PDF</p>
-              <p class="mt-1 text-sm text-secondary">{{ activeLicenseDocument.pdf?.filename || 'License PDF' }}</p>
-            </div>
-            <UButton
-              type="button"
-              @click="closeLicenseDocument"
-              class="settings-button settings-button-secondary"
-            >
-              Close
-            </UButton>
-          </div>
-          <license-pdf-preview
-            :pdf="activeLicenseDocument.pdf"
-            :authenticated-fetch="authenticatedFetch"
-            @open-preview="openLicensePreview($event, activeLicenseDocument)"
-          />
-        </div>
-      </div>
-
-      <div
-        v-if="activeLicensePreview"
-        @click.self="closeLicensePreview"
-        class="fixed inset-0 z-[55] flex items-center justify-center bg-background/90 px-6 py-8 backdrop-blur-sm"
-      >
-        <div class="relative max-h-full w-full max-w-5xl overflow-auto border border-primary/15 bg-surface-container-low p-4 shadow-panel">
-          <div class="mb-4 flex items-start justify-between gap-4">
-            <div>
-              <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-primary">License Preview</p>
-              <p class="mt-1 text-sm text-secondary">{{ activeLicensePreview.filename }} - Page {{ activeLicensePreview.pageNumber }}</p>
-            </div>
-            <UButton
-              type="button"
-              @click="closeLicensePreview"
-              class="settings-button settings-button-secondary"
-            >
-              Close
-            </UButton>
-          </div>
-          <img :src="activeLicensePreview.image" :alt="activeLicensePreview.filename" class="mx-auto max-h-[80vh] w-auto max-w-full bg-white" />
-        </div>
-      </div>
-
-      <div
-        v-if="pendingRemoval"
-        @click.self="closeRemovalDialog"
-        class="fixed inset-0 z-[60] flex items-center justify-center bg-background/88 px-6 py-8 backdrop-blur-sm"
-      >
-        <div class="settings-confirm-dialog">
+    <div
+      v-if="activeLicenseDocument"
+      @click.self="closeLicenseDocument"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-background/90 px-6 py-8 backdrop-blur-sm"
+    >
+      <div class="relative max-h-full w-full max-w-5xl overflow-auto border border-primary/15 bg-surface-container-low p-4 shadow-panel">
+        <div class="mb-4 flex items-start justify-between gap-4">
           <div>
-            <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-primary">Confirm Removal</p>
-            <h3 class="mt-3 font-headline text-2xl font-bold tracking-tight text-on-surface">Remove {{ pendingRemoval.label }}?</h3>
-            <p class="mt-3 text-sm text-secondary">This action cannot be undone.</p>
+            <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-primary">License PDF</p>
+            <p class="mt-1 text-sm text-secondary">{{ activeLicenseDocument.pdf?.filename || "License PDF" }}</p>
           </div>
-          <div class="settings-confirm-actions">
-            <UButton
-              type="button"
-              @click="closeRemovalDialog"
-              class="settings-button settings-button-ghost"
-            >
-              Cancel
-            </UButton>
-            <UButton
-              type="button"
-              @click="confirmPendingRemoval"
-              class="settings-button settings-button-danger"
-            >
-              Remove
-            </UButton>
+          <UButton type="button" @click="closeLicenseDocument" class="settings-button settings-button-secondary"> Close </UButton>
+        </div>
+        <license-pdf-preview
+          :pdf="activeLicenseDocument.pdf"
+          :authenticated-fetch="authenticatedFetch"
+          @open-preview="openLicensePreview($event, activeLicenseDocument)"
+        />
+      </div>
+    </div>
+
+    <div
+      v-if="activeLicensePreview"
+      @click.self="closeLicensePreview"
+      class="fixed inset-0 z-[55] flex items-center justify-center bg-background/90 px-6 py-8 backdrop-blur-sm"
+    >
+      <div class="relative max-h-full w-full max-w-5xl overflow-auto border border-primary/15 bg-surface-container-low p-4 shadow-panel">
+        <div class="mb-4 flex items-start justify-between gap-4">
+          <div>
+            <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-primary">License Preview</p>
+            <p class="mt-1 text-sm text-secondary">{{ activeLicensePreview.filename }} - Page {{ activeLicensePreview.pageNumber }}</p>
           </div>
+          <UButton type="button" @click="closeLicensePreview" class="settings-button settings-button-secondary"> Close </UButton>
+        </div>
+        <img
+          :src="activeLicensePreview.image"
+          :alt="activeLicensePreview.filename"
+          class="mx-auto max-h-[80vh] w-auto max-w-full bg-white"
+        />
+      </div>
+    </div>
+
+    <div
+      v-if="pendingRemoval"
+      @click.self="closeRemovalDialog"
+      class="fixed inset-0 z-[60] flex items-center justify-center bg-background/88 px-6 py-8 backdrop-blur-sm"
+    >
+      <div class="settings-confirm-dialog">
+        <div>
+          <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-primary">Confirm Removal</p>
+          <h3 class="mt-3 font-headline text-2xl font-bold tracking-tight text-on-surface">Remove {{ pendingRemoval.label }}?</h3>
+          <p class="mt-3 text-sm text-secondary">This action cannot be undone.</p>
+        </div>
+        <div class="settings-confirm-actions">
+          <UButton type="button" @click="closeRemovalDialog" class="settings-button settings-button-ghost"> Cancel </UButton>
+          <UButton type="button" @click="confirmPendingRemoval" class="settings-button settings-button-danger"> Remove </UButton>
         </div>
       </div>
-    </section>
+    </div>
+  </section>
 </template>
-
-

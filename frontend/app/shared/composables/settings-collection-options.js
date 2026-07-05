@@ -39,16 +39,7 @@ export function createSettingsCollectionOptions() {
       this[draftKey] = cloneItems(sourceItems);
       this[editingKey] = true;
     },
-    cancelCollectionEdit({
-      draftKey,
-      sourceItems,
-      editingKey,
-      editingIdsKey,
-      expandedKey,
-      snapshotKey,
-      cloneItems,
-      afterCancel
-    }) {
+    cancelCollectionEdit({ draftKey, sourceItems, editingKey, editingIdsKey, expandedKey, snapshotKey, cloneItems, afterCancel }) {
       this[draftKey] = cloneItems(sourceItems);
       this[editingIdsKey] = [];
       this[editingKey] = false;
@@ -103,10 +94,7 @@ export function createSettingsCollectionOptions() {
           headers: {
             "Content-Type": "application/json"
           },
-          body: JSON.stringify(this.profilePayloadWithCollection(
-            collectionKey,
-            this[draftKey].map(payloadMapper)
-          ))
+          body: JSON.stringify(this.profilePayloadWithCollection(collectionKey, this[draftKey].map(payloadMapper)))
         });
         const payload = await response.json().catch(() => null);
         if (!response.ok) {
@@ -135,5 +123,3 @@ export function createSettingsCollectionOptions() {
     }
   };
 }
-
-

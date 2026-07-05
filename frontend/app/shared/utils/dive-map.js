@@ -10,14 +10,16 @@ export function numericCoordinate(value) {
 }
 
 export function validCoordinates(lat, lon) {
-  return typeof lat === "number"
-    && Number.isFinite(lat)
-    && lat >= -90
-    && lat <= 90
-    && typeof lon === "number"
-    && Number.isFinite(lon)
-    && lon >= -180
-    && lon <= 180;
+  return (
+    typeof lat === "number" &&
+    Number.isFinite(lat) &&
+    lat >= -90 &&
+    lat <= 90 &&
+    typeof lon === "number" &&
+    Number.isFinite(lon) &&
+    lon >= -180 &&
+    lon <= 180
+  );
 }
 
 export function extractCoordinates(source) {
@@ -70,8 +72,6 @@ export function escapeHtml(value) {
     .replaceAll("&", "&amp;")
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;")
-    .replaceAll("\"", "&quot;")
+    .replaceAll('"', "&quot;")
     .replaceAll("'", "&#39;");
 }
-
-

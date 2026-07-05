@@ -19,5 +19,3 @@ export default defineNuxtPlugin(async (nuxtApp) => {
   await initializeAuth();
   installI18n(nuxtApp);
 });
-
-

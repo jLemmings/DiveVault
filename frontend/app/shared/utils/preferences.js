@@ -1,5 +1,5 @@
-export const LOCALE_STORAGE_KEY = "divevault.preferredLocale";
-export const THEME_STORAGE_KEY = "divevault.preferredTheme";
+import { LOCALE_STORAGE_KEY, THEME_STORAGE_KEY } from "~/config/storage.js";
+
 const SUPPORTED_THEMES = new Set(["system", "light", "dark"]);
 
 export function normalizeLocale(locale, supportedLocales) {
@@ -12,7 +12,7 @@ export function getStoredLocale(supportedLocales) {
   try {
     const storedLocale = window.localStorage.getItem(LOCALE_STORAGE_KEY) || "";
     return supportedLocales.has(storedLocale) ? storedLocale : "";
-  } catch (_error) {
+  } catch {
     return "";
   }
 }
@@ -31,7 +31,7 @@ export function getStoredThemePreference() {
   if (typeof window === "undefined") return "system";
   try {
     return normalizeThemePreference(window.localStorage.getItem(THEME_STORAGE_KEY) || "system");
-  } catch (_error) {
+  } catch {
     return "system";
   }
 }
@@ -53,5 +53,3 @@ export function applyDocumentTheme(themePreference) {
   document.documentElement.dataset.theme = resolvedTheme;
   return resolvedTheme;
 }
-
-

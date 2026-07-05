@@ -1,4 +1,4 @@
-import { SETTINGS_SECTIONS } from "../settings-sections.js";
+import { SETTINGS_SECTIONS } from "../config/settings-sections.js";
 
 export const DEFAULT_SETTINGS_SECTION = SETTINGS_SECTIONS[0]?.id || "diver-details";
 export const SETTINGS_SECTION_IDS = new Set(SETTINGS_SECTIONS.map((section) => section.id));
@@ -56,7 +56,10 @@ export function legacyHashToPath(hash) {
 
 export function routeToState(route) {
   const path = String(route?.path || "/").replace(/\/+$/, "") || "/";
-  const segments = path.split("/").filter(Boolean).map((segment) => decodeURIComponent(segment));
+  const segments = path
+    .split("/")
+    .filter(Boolean)
+    .map((segment) => decodeURIComponent(segment));
   if (segments[0] === "public") {
     return { publicRouteSlug: segments[1] || "" };
   }

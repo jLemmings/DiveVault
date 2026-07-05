@@ -75,13 +75,32 @@ export default {
         <div class="max-w-3xl">
           <p class="font-label text-[10px] font-bold uppercase tracking-[0.24em] text-primary">Diver Profile</p>
           <h4 class="mt-2 font-headline text-3xl font-bold tracking-tight text-on-surface">Diver Details</h4>
-          <p class="mt-3 text-sm leading-7 text-secondary">Keep the public-facing diver identity separate from application behavior and instance settings.</p>
+          <p class="mt-3 text-sm leading-7 text-secondary">
+            Keep the public-facing diver identity separate from application behavior and instance settings.
+          </p>
         </div>
         <div class="settings-toolbar">
-          <UButton v-if="!isProfileEditing" @click="beginProfileEdit" :disabled="isInteractionLocked" class="settings-button settings-button-secondary">Edit Diver</UButton>
-          <UButton v-if="isProfileEditing" @click="cancelProfileEdit" :disabled="isInteractionLocked" class="settings-button settings-button-ghost">Cancel</UButton>
-          <UButton v-if="isProfileEditing" @click="saveProfile" :disabled="isInteractionLocked || !hasUnsavedProfileChanges" class="settings-button settings-button-primary">
-            {{ profileSaving ? 'Saving Diver' : 'Save Diver' }}
+          <UButton
+            v-if="!isProfileEditing"
+            @click="beginProfileEdit"
+            :disabled="isInteractionLocked"
+            class="settings-button settings-button-secondary"
+            >Edit Diver</UButton
+          >
+          <UButton
+            v-if="isProfileEditing"
+            @click="cancelProfileEdit"
+            :disabled="isInteractionLocked"
+            class="settings-button settings-button-ghost"
+            >Cancel</UButton
+          >
+          <UButton
+            v-if="isProfileEditing"
+            @click="saveProfile"
+            :disabled="isInteractionLocked || !hasUnsavedProfileChanges"
+            class="settings-button settings-button-primary"
+          >
+            {{ profileSaving ? "Saving Diver" : "Save Diver" }}
           </UButton>
         </div>
       </div>
@@ -113,10 +132,14 @@ export default {
       <div>
         <p class="font-label text-[10px] font-bold uppercase tracking-[0.24em] text-primary">Diving Licenses</p>
         <h4 class="mt-2 font-headline text-3xl font-bold tracking-tight text-on-surface">Certifications And PDFs</h4>
-        <p class="mt-3 max-w-3xl text-sm leading-7 text-secondary">Certificates stay compact until opened, so the saved list is easier to scan and the attached PDFs are still one click away.</p>
+        <p class="mt-3 max-w-3xl text-sm leading-7 text-secondary">
+          Certificates stay compact until opened, so the saved list is easier to scan and the attached PDFs are still one click away.
+        </p>
       </div>
       <div class="settings-toolbar">
-        <UButton @click="addLicenseEntry" :disabled="isInteractionLocked" class="settings-button settings-button-secondary">Add License</UButton>
+        <UButton @click="addLicenseEntry" :disabled="isInteractionLocked" class="settings-button settings-button-secondary"
+          >Add License</UButton
+        >
       </div>
     </div>
 
@@ -147,17 +170,13 @@ export default {
             <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">License {{ index + 1 }}</p>
             <h5 class="mt-2 font-headline text-2xl font-bold tracking-tight text-on-surface">{{ licenseTitle(license, index) }}</h5>
             <div class="settings-chip-row mt-3">
-              <span class="settings-chip">{{ displayValue(license.company, 'Company pending') }}</span>
-              <span class="settings-chip" :class="license.pdf ? 'is-accent' : ''">{{ license.pdf ? 'PDF attached' : 'No PDF' }}</span>
+              <span class="settings-chip">{{ displayValue(license.company, "Company pending") }}</span>
+              <span class="settings-chip" :class="license.pdf ? 'is-accent' : ''">{{ license.pdf ? "PDF attached" : "No PDF" }}</span>
             </div>
           </div>
 
           <div class="settings-toolbar">
-            <UButton
-              v-if="license.pdf"
-              @click="viewLicensePdf(license)"
-              class="settings-button settings-button-secondary"
-            >
+            <UButton v-if="license.pdf" @click="viewLicensePdf(license)" class="settings-button settings-button-secondary">
               View PDF
             </UButton>
             <UButton
@@ -188,7 +207,7 @@ export default {
               :disabled="isInteractionLocked"
               class="settings-button settings-button-primary"
             >
-              {{ licensesSaving ? 'Saving License' : 'Save License' }}
+              {{ licensesSaving ? "Saving License" : "Save License" }}
             </UButton>
           </div>
         </div>
@@ -249,30 +268,37 @@ export default {
                 :disabled="isUploadingLicense(license.id)"
                 class="settings-button settings-button-secondary"
               >
-                {{ isUploadingLicense(license.id) ? 'Uploading...' : (license.pdf ? 'Replace PDF' : 'Upload PDF') }}
+                {{ isUploadingLicense(license.id) ? "Uploading..." : license.pdf ? "Replace PDF" : "Upload PDF" }}
               </UButton>
             </div>
 
             <div v-if="license.pdf" class="space-y-3">
               <div class="settings-file-meta">
                 <p class="font-semibold text-on-surface">{{ license.pdf.filename }}</p>
-                <p class="mt-1 text-sm text-secondary">{{ formatBytes(license.pdf.size_bytes) }} &middot; Uploaded {{ formatDateTime(license.pdf.uploaded_at) }}</p>
+                <p class="mt-1 text-sm text-secondary">
+                  {{ formatBytes(license.pdf.size_bytes) }} &middot; Uploaded {{ formatDateTime(license.pdf.uploaded_at) }}
+                </p>
               </div>
-              <UButton
-                type="button"
-                @click="viewLicensePdf(license)"
-                class="settings-button settings-button-secondary"
-              >
+              <UButton type="button" @click="viewLicensePdf(license)" class="settings-button settings-button-secondary">
                 Open PDF Preview
               </UButton>
             </div>
 
             <div v-else class="settings-empty-state">
               <p class="font-headline text-base font-bold">No PDF attached</p>
-              <p class="mt-2 text-sm text-secondary">{{ isLicenseEditing(license.id) ? 'Upload the certification PDF for this specific license entry.' : 'Open the license and switch to edit mode to attach a PDF.' }}</p>
+              <p class="mt-2 text-sm text-secondary">
+                {{
+                  isLicenseEditing(license.id)
+                    ? "Upload the certification PDF for this specific license entry."
+                    : "Open the license and switch to edit mode to attach a PDF."
+                }}
+              </p>
             </div>
 
-            <p v-if="isLicenseEditing(license.id) && !licenseExistsOnServer(license.id)" class="text-[10px] uppercase tracking-[0.14em] text-secondary/70">
+            <p
+              v-if="isLicenseEditing(license.id) && !licenseExistsOnServer(license.id)"
+              class="text-[10px] uppercase tracking-[0.14em] text-secondary/70"
+            >
               Save this new license before uploading its PDF.
             </p>
           </div>
@@ -283,5 +309,3 @@ export default {
     <UInput ref="licenseInput" @change="handleLicenseSelection" type="file" accept="application/pdf,.pdf" class="hidden" />
   </div>
 </template>
-
-

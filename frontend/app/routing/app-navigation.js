@@ -37,10 +37,4 @@ async function initializeLegacyHashRoute(app) {
   await app.nuxtRouter.replace(legacyPath);
 }
 
-export {
-  currentRouteState,
-  handleRouteNavigation,
-  initializeLegacyHashRoute,
-  navigateToAppRoute,
-  syncRouteMode
-};
+export { currentRouteState, handleRouteNavigation, initializeLegacyHashRoute, navigateToAppRoute, syncRouteMode };

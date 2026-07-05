@@ -283,7 +283,5 @@ export function duplicateImportWarning(payload, label) {
   if (inserted <= 0) {
     return `Warning: this ${label} appears to have already been imported. No new dives were added.`;
   }
-  return `Warning: ${duplicates} of ${rows} ${rows === 1 ? 'dive was' : 'dives were'} already imported and skipped.`;
+  return `Warning: ${duplicates} of ${rows} ${rows === 1 ? "dive was" : "dives were"} already imported and skipped.`;
 }
-
-

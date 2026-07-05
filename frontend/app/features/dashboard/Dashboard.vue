@@ -1,6 +1,36 @@
 <script>
-import { buildDiveSequenceMap, dayOfMonth, monthShort, formatDate, formatTime, diveTitle, diveSubtitle, diveDeviceLabel, formatDepth, formatDepthNumber, formatDateTime, durationShort, formatTemperature, surfaceTemperature, diveModeLabel, pressureUsedLabel, decoStatusLabel, formatBarTotal, filledIconStyle, numberOrZero, parseDate, paddedDiveIndex } from "~/shared/utils/core.js";
-import { coordinateLabel, diveCoordinates, diveSiteName, escapeHtml, markerDiameter, normalizeSiteName, savedSiteCoordinates } from "~/shared/utils/dive-map.js";
+import {
+  buildDiveSequenceMap,
+  dayOfMonth,
+  monthShort,
+  formatDate,
+  formatTime,
+  diveTitle,
+  diveSubtitle,
+  diveDeviceLabel,
+  formatDepth,
+  formatDepthNumber,
+  formatDateTime,
+  durationShort,
+  formatTemperature,
+  surfaceTemperature,
+  diveModeLabel,
+  pressureUsedLabel,
+  decoStatusLabel,
+  formatBarTotal,
+  filledIconStyle,
+  parseDate,
+  paddedDiveIndex
+} from "~/shared/utils/core.js";
+import {
+  coordinateLabel,
+  diveCoordinates,
+  diveSiteName,
+  escapeHtml,
+  markerDiameter,
+  normalizeSiteName,
+  savedSiteCoordinates
+} from "~/shared/utils/dive-map.js";
 import { loadLeaflet } from "~/shared/utils/leaflet-loader.js";
 import { diveMapPreview } from "~/shared/utils/map-preview.js";
 
@@ -12,7 +42,19 @@ function matchingSavedSite(dive, diveSites) {
 
 export default {
   name: "DashboardView",
-  props: ["displayMode", "dives", "allDives", "diveSites", "stats", "setView", "backendHealthy", "openDive", "currentUserName", "importedDiveCount", "openImportQueue"],
+  props: [
+    "displayMode",
+    "dives",
+    "allDives",
+    "diveSites",
+    "stats",
+    "setView",
+    "backendHealthy",
+    "openDive",
+    "currentUserName",
+    "importedDiveCount",
+    "openImportQueue"
+  ],
   data() {
     return {
       diveMap: null,
@@ -149,9 +191,10 @@ export default {
     diveMarkerBubble(marker) {
       const diveLabel = marker.count === 1 ? "1 dive" : `${marker.count} dives`;
       const locationLabel = marker.siteCount > 1 ? `${marker.siteCount} sites in this area` : marker.label;
-      const sitePreview = marker.siteCount > 1
-        ? `${marker.siteLabels.slice(0, 3).join(" / ")}${marker.siteCount > 3 ? ` +${marker.siteCount - 3} more` : ""}`
-        : "";
+      const sitePreview =
+        marker.siteCount > 1
+          ? `${marker.siteLabels.slice(0, 3).join(" / ")}${marker.siteCount > 3 ? ` +${marker.siteCount - 3} more` : ""}`
+          : "";
       return `
         <div class="dive-map-info-bubble">
           <p class="dive-map-info-title">${escapeHtml(locationLabel)}</p>
@@ -485,15 +528,14 @@ export default {
         if (!coordinates) return;
 
         const siteName = diveSiteName(dive);
-        const key = savedSite?.id
-          || normalizeSiteName(savedSite?.name)
-          || normalizeSiteName(siteName)
-          || `${coordinates.lat.toFixed(4)}:${coordinates.lon.toFixed(4)}`;
+        const key =
+          savedSite?.id ||
+          normalizeSiteName(savedSite?.name) ||
+          normalizeSiteName(siteName) ||
+          `${coordinates.lat.toFixed(4)}:${coordinates.lon.toFixed(4)}`;
         const existing = markers.get(key);
         const diveDate = parseDate(dive?.started_at);
-        const siteLabel = (typeof savedSite?.name === "string" && savedSite.name.trim())
-          || siteName
-          || diveTitle(dive);
+        const siteLabel = (typeof savedSite?.name === "string" && savedSite.name.trim()) || siteName || diveTitle(dive);
 
         if (existing) {
           existing.count += 1;
@@ -543,7 +585,7 @@ export default {
         .map((dive) => {
           const savedSite = matchingSavedSite(dive, this.diveSites);
           const siteName = diveSiteName(dive);
-          let reason = "No usable coordinates found";
+          let reason;
 
           if (!siteName) {
             reason = this.t("No dive site assigned", "No dive site assigned");
@@ -569,7 +611,11 @@ export default {
     },
     mapCoverageLabel() {
       if (!this.mapSourceDives.length) return this.t("No dives loaded", "No dives loaded");
-      if (!this.hasDiveMapMarkers) return this.t("No coordinates found in committed dives or saved dive sites", "No coordinates found in committed dives or saved dive sites");
+      if (!this.hasDiveMapMarkers)
+        return this.t(
+          "No coordinates found in committed dives or saved dive sites",
+          "No coordinates found in committed dives or saved dive sites"
+        );
       if (!this.unmappedDiveCount) return this.t("Geotag coverage complete", "Geotag coverage complete");
       return this.t(
         this.unmappedDiveCount === 1 ? "{count} dive is missing coordinates" : "{count} dives are missing coordinates",
@@ -578,16 +624,21 @@ export default {
       );
     },
     mapTopSites() {
-      return this.diveMapMarkers
-        .slice(0, 4)
-        .map((site) => ({
-          ...site,
-          label: site.label.replace(/[^\x20-\x7E]/g, "").trim() || site.label
-        }));
+      return this.diveMapMarkers.slice(0, 4).map((site) => ({
+        ...site,
+        label: site.label.replace(/[^\x20-\x7E]/g, "").trim() || site.label
+      }));
     },
     mapFooterNote() {
-      if (!this.hasDiveMapMarkers) return this.t("Add coordinates to saved dive sites to place committed dives accurately on the map.", "Add coordinates to saved dive sites to place committed dives accurately on the map.");
-      return this.t("Saved dive-site coordinates take priority over raw telemetry so the map reflects the curated logbook location for each dive.", "Saved dive-site coordinates take priority over raw telemetry so the map reflects the curated logbook location for each dive.");
+      if (!this.hasDiveMapMarkers)
+        return this.t(
+          "Add coordinates to saved dive sites to place committed dives accurately on the map.",
+          "Add coordinates to saved dive sites to place committed dives accurately on the map."
+        );
+      return this.t(
+        "Saved dive-site coordinates take priority over raw telemetry so the map reflects the curated logbook location for each dive.",
+        "Saved dive-site coordinates take priority over raw telemetry so the map reflects the curated logbook location for each dive."
+      );
     },
     mapTelemetryLabel() {
       if (!this.hasDiveMapMarkers) return this.t("Awaiting usable GPS telemetry", "Awaiting usable GPS telemetry");
@@ -605,167 +656,215 @@ export default {
         }
       );
     }
-  },
-}
+  }
+};
 </script>
 
 <template>
-    <section :class="['dashboard-command-center text-on-surface', isMapView ? 'dashboard-map-only' : '']">
-      <section v-if="hasImportedDives && !isMapView" class="dashboard-glass-card border-l-4 border-tertiary p-5">
-        <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-          <div>
-            <p class="dashboard-micro-label text-tertiary">Attention Required</p>
-            <h4 class="mt-2 font-headline text-2xl font-bold text-primary">{{ importedDiveLabel }}</h4>
-            <p class="mt-2 text-sm leading-6 text-on-surface-variant">Complete the dive site before these imported dives enter the logbook. Buddy and guide can stay blank.</p>
-          </div>
-          <UButton @click="openImportQueue()" class="rounded-xl bg-tertiary px-5 py-3 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-background transition-transform hover:scale-[0.98]">
-            Review Imported Dives
-          </UButton>
+  <section :class="['dashboard-command-center text-on-surface', isMapView ? 'dashboard-map-only' : '']">
+    <section v-if="hasImportedDives && !isMapView" class="dashboard-glass-card border-l-4 border-tertiary p-5">
+      <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+        <div>
+          <p class="dashboard-micro-label text-tertiary">Attention Required</p>
+          <h4 class="mt-2 font-headline text-2xl font-bold text-primary">{{ importedDiveLabel }}</h4>
+          <p class="mt-2 text-sm leading-6 text-on-surface-variant">
+            Complete the dive site before these imported dives enter the logbook. Buddy and guide can stay blank.
+          </p>
         </div>
-      </section>
-
-      <div class="dashboard-canvas">
-        <aside v-if="!isMapView" class="dashboard-side-rail">
-          <section class="dashboard-glass-card dashboard-section dashboard-recent-card flex min-h-[30rem] flex-col p-5">
-            <div class="mb-6 flex items-center justify-between">
-              <h4 class="font-headline text-xl font-bold text-primary">Recent Dives</h4>
-            </div>
-            <div class="dashboard-feed flex-1 overflow-y-auto pr-1">
-              <article
-                v-for="entry in recentDiveFeed"
-                :key="'feed-' + entry.dive.id"
-                @click="openDive(entry.dive.id)"
-                @keyup.enter="openDive(entry.dive.id)"
-                tabindex="0"
-                role="button"
-                class="dashboard-feed-item cursor-pointer"
-                :class="entry.active ? 'dashboard-feed-item-active' : ''"
-              >
-                <span class="dashboard-feed-dot"></span>
-                <p class="dashboard-micro-label mb-1" :class="entry.active ? 'text-secondary' : 'text-on-surface-variant'">{{ entry.dateLabel }}</p>
-                <h5 class="truncate text-sm font-bold text-primary">{{ entry.title }}</h5>
-                <p class="mt-1 text-sm text-on-surface-variant">{{ entry.meta }}</p>
-              </article>
-              <div v-if="!recentDiveFeed.length" class="rounded-xl border border-outline-variant/15 bg-surface-container-low/60 p-4 text-sm text-on-surface-variant">
-                No committed dives yet.
-              </div>
-            </div>
-            <UButton @click="setView('logs')" class="mt-6 flex items-center gap-2 self-start font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary hover:underline">
-              View All Logs <span class="material-symbols-outlined text-sm">arrow_forward</span>
-            </UButton>
-          </section>
-
-        </aside>
-
-        <main class="dashboard-main-stage">
-          <section v-if="!isMapView" class="dashboard-section dashboard-stat-grid grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            <article v-for="card in dashboardStatCards.slice(0, 4)" :key="'stage-stat-' + card.id" class="dashboard-glass-card dashboard-stat-tile p-4">
-              <div class="dashboard-stat-icon-wrap">
-                <span class="material-symbols-outlined dashboard-stat-icon text-secondary" :class="card.id === 'dive-count' ? 'dashboard-neon' : ''" :style="filledIconStyle">{{ card.icon }}</span>
-              </div>
-              <div class="min-w-0">
-                <p class="dashboard-stat-label">{{ card.label }}</p>
-                <p class="dashboard-stat-value">
-                  <span>{{ card.value }}</span>
-                  <span v-if="card.unit" class="dashboard-stat-unit">{{ card.unit }}</span>
-                </p>
-              </div>
-            </article>
-          </section>
-
-          <section
-            :class="isMapExpanded ? 'fixed inset-0 z-[490] flex items-center justify-center bg-background/88 px-6 py-8 backdrop-blur-sm' : (isMapView ? 'dashboard-section dashboard-map-section relative min-h-[calc(100vh-10rem)]' : 'dashboard-section dashboard-map-section relative min-h-[31rem]')"
-            @click.self="closeMapExpanded()"
-          >
-            <div :class="isMapExpanded ? 'w-full max-w-7xl' : 'h-full'">
-              <div :class="['dashboard-glass-card dashboard-map-panel relative h-full overflow-hidden']" :style="isMapExpanded ? { height: '85vh' } : null">
-                <UButton
-                  v-if="isMapExpanded"
-                  @click="closeMapExpanded()"
-                  class="absolute right-6 top-6 z-[480] rounded-full border border-outline-variant/30 bg-background/65 px-4 py-2 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-primary backdrop-blur-sm"
-                >
-                  Close
-                </UButton>
-                <UButton
-                  v-else
-                  @click="toggleMapExpanded()"
-                  class="dashboard-map-expand-button"
-                  type="button"
-                  aria-label="Expand map"
-                  title="Expand map"
-                >
-                  <span class="material-symbols-outlined text-lg">fullscreen</span>
-                </UButton>
-                <div ref="diveMapCanvas" class="dive-theme-map"></div>
-              </div>
-            </div>
-          </section>
-
-          <section v-if="mapTopSites.length" class="dashboard-section dashboard-sites-section grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-            <article v-for="site in mapTopSites" :key="'site-card-' + site.key" class="dashboard-glass-card dashboard-location-card flex items-center justify-between gap-4 p-4">
-              <div class="min-w-0">
-                <h5 class="truncate text-sm font-bold text-primary">{{ site.label }}</h5>
-                <p class="dashboard-micro-label mt-1 text-on-surface-variant">{{ coordinateLabel(site.latitude, 'N', 'S') }} / {{ coordinateLabel(site.longitude, 'E', 'W') }}</p>
-              </div>
-              <div class="font-headline text-2xl font-bold text-secondary">{{ site.count }}</div>
-            </article>
-          </section>
-        </main>
-      </div>
-
-      <div
-        v-if="showMissingCoordinateDives && missingCoordinateDives.length"
-        class="fixed inset-0 z-[500] flex items-center justify-center bg-background/88 px-6 py-8 backdrop-blur-sm"
-        @click.self="closeMissingCoordinateDives()"
-      >
-        <section class="max-h-full w-full max-w-6xl overflow-auto border border-tertiary/18 bg-surface-container-low p-6 shadow-panel md:p-8">
-          <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-            <div>
-              <p class="font-label text-[10px] font-bold uppercase tracking-[0.22em] text-tertiary">Missing Coordinates</p>
-              <h5 class="mt-2 font-headline text-3xl font-bold tracking-tight">{{ unmappedDiveCount }} {{ unmappedDiveCount === 1 ? 'Dive Needs Coordinates' : 'Dives Need Coordinates' }}</h5>
-              <p class="mt-3 max-w-3xl text-sm leading-7 text-on-surface-variant">These committed logbook dives do not currently resolve to a saved dive-site coordinate or usable embedded GPS position.</p>
-            </div>
-            <UButton @click="closeMissingCoordinateDives()" class="self-start bg-surface-container-high px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary transition-colors hover:text-primary">
-              Close
-            </UButton>
-          </div>
-
-          <div class="mt-6 grid gap-4 xl:grid-cols-2">
-            <article v-for="dive in missingCoordinateDives" :key="'missing-coordinate-' + dive.id" class="border border-outline-variant/10 bg-surface-container-high/55 p-4">
-              <div class="flex items-start justify-between gap-4">
-                <div class="min-w-0">
-                  <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Dive {{ dive.displayIndex }}</p>
-                  <h6 class="mt-2 truncate font-headline text-xl font-bold text-on-surface">{{ dive.siteName }}</h6>
-                  <p class="mt-1 text-sm text-on-surface-variant">{{ dive.title }}</p>
-                </div>
-                <UButton @click="openMissingCoordinateDive(dive.id)" class="bg-primary px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-on-primary">
-                  Open Dive
-                </UButton>
-              </div>
-
-              <div class="mt-4 grid gap-3 md:grid-cols-2">
-                <div>
-                  <p class="font-label text-[10px] font-bold uppercase tracking-[0.16em] text-secondary">Date</p>
-                  <p class="mt-1 text-sm font-semibold text-on-surface">{{ formatDate(dive.date) }} {{ formatTime(dive.date) }}</p>
-                </div>
-                <div>
-                  <p class="font-label text-[10px] font-bold uppercase tracking-[0.16em] text-secondary">Dive Computer</p>
-                  <p class="mt-1 text-sm font-semibold text-on-surface">{{ dive.device }}</p>
-                </div>
-                <div>
-                  <p class="font-label text-[10px] font-bold uppercase tracking-[0.16em] text-secondary">Depth / Duration</p>
-                  <p class="mt-1 text-sm font-semibold text-on-surface">{{ dive.depth }} / {{ dive.duration }}</p>
-                </div>
-                <div>
-                  <p class="font-label text-[10px] font-bold uppercase tracking-[0.16em] text-secondary">Issue</p>
-                  <p class="mt-1 text-sm font-semibold text-tertiary">{{ dive.reason }}</p>
-                </div>
-              </div>
-            </article>
-          </div>
-        </section>
+        <UButton
+          @click="openImportQueue()"
+          class="rounded-xl bg-tertiary px-5 py-3 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-background transition-transform hover:scale-[0.98]"
+        >
+          Review Imported Dives
+        </UButton>
       </div>
     </section>
+
+    <div class="dashboard-canvas">
+      <aside v-if="!isMapView" class="dashboard-side-rail">
+        <section class="dashboard-glass-card dashboard-section dashboard-recent-card flex min-h-[30rem] flex-col p-5">
+          <div class="mb-6 flex items-center justify-between">
+            <h4 class="font-headline text-xl font-bold text-primary">Recent Dives</h4>
+          </div>
+          <div class="dashboard-feed flex-1 overflow-y-auto pr-1">
+            <article
+              v-for="entry in recentDiveFeed"
+              :key="'feed-' + entry.dive.id"
+              @click="openDive(entry.dive.id)"
+              @keyup.enter="openDive(entry.dive.id)"
+              tabindex="0"
+              role="button"
+              class="dashboard-feed-item cursor-pointer"
+              :class="entry.active ? 'dashboard-feed-item-active' : ''"
+            >
+              <span class="dashboard-feed-dot"></span>
+              <p class="dashboard-micro-label mb-1" :class="entry.active ? 'text-secondary' : 'text-on-surface-variant'">
+                {{ entry.dateLabel }}
+              </p>
+              <h5 class="truncate text-sm font-bold text-primary">{{ entry.title }}</h5>
+              <p class="mt-1 text-sm text-on-surface-variant">{{ entry.meta }}</p>
+            </article>
+            <div
+              v-if="!recentDiveFeed.length"
+              class="rounded-xl border border-outline-variant/15 bg-surface-container-low/60 p-4 text-sm text-on-surface-variant"
+            >
+              No committed dives yet.
+            </div>
+          </div>
+          <UButton
+            @click="setView('logs')"
+            class="mt-6 flex items-center gap-2 self-start font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary hover:underline"
+          >
+            View All Logs <span class="material-symbols-outlined text-sm">arrow_forward</span>
+          </UButton>
+        </section>
+      </aside>
+
+      <main class="dashboard-main-stage">
+        <section v-if="!isMapView" class="dashboard-section dashboard-stat-grid grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <article
+            v-for="card in dashboardStatCards.slice(0, 4)"
+            :key="'stage-stat-' + card.id"
+            class="dashboard-glass-card dashboard-stat-tile p-4"
+          >
+            <div class="dashboard-stat-icon-wrap">
+              <span
+                class="material-symbols-outlined dashboard-stat-icon text-secondary"
+                :class="card.id === 'dive-count' ? 'dashboard-neon' : ''"
+                :style="filledIconStyle"
+                >{{ card.icon }}</span
+              >
+            </div>
+            <div class="min-w-0">
+              <p class="dashboard-stat-label">{{ card.label }}</p>
+              <p class="dashboard-stat-value">
+                <span>{{ card.value }}</span>
+                <span v-if="card.unit" class="dashboard-stat-unit">{{ card.unit }}</span>
+              </p>
+            </div>
+          </article>
+        </section>
+
+        <section
+          :class="
+            isMapExpanded
+              ? 'fixed inset-0 z-[490] flex items-center justify-center bg-background/88 px-6 py-8 backdrop-blur-sm'
+              : isMapView
+                ? 'dashboard-section dashboard-map-section relative min-h-[calc(100vh-10rem)]'
+                : 'dashboard-section dashboard-map-section relative min-h-[31rem]'
+          "
+          @click.self="closeMapExpanded()"
+        >
+          <div :class="isMapExpanded ? 'w-full max-w-7xl' : 'h-full'">
+            <div
+              :class="['dashboard-glass-card dashboard-map-panel relative h-full overflow-hidden']"
+              :style="isMapExpanded ? { height: '85vh' } : null"
+            >
+              <UButton
+                v-if="isMapExpanded"
+                @click="closeMapExpanded()"
+                class="absolute right-6 top-6 z-[480] rounded-full border border-outline-variant/30 bg-background/65 px-4 py-2 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-primary backdrop-blur-sm"
+              >
+                Close
+              </UButton>
+              <UButton
+                v-else
+                @click="toggleMapExpanded()"
+                class="dashboard-map-expand-button"
+                type="button"
+                aria-label="Expand map"
+                title="Expand map"
+              >
+                <span class="material-symbols-outlined text-lg">fullscreen</span>
+              </UButton>
+              <div ref="diveMapCanvas" class="dive-theme-map"></div>
+            </div>
+          </div>
+        </section>
+
+        <section v-if="mapTopSites.length" class="dashboard-section dashboard-sites-section grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <article
+            v-for="site in mapTopSites"
+            :key="'site-card-' + site.key"
+            class="dashboard-glass-card dashboard-location-card flex items-center justify-between gap-4 p-4"
+          >
+            <div class="min-w-0">
+              <h5 class="truncate text-sm font-bold text-primary">{{ site.label }}</h5>
+              <p class="dashboard-micro-label mt-1 text-on-surface-variant">
+                {{ coordinateLabel(site.latitude, "N", "S") }} / {{ coordinateLabel(site.longitude, "E", "W") }}
+              </p>
+            </div>
+            <div class="font-headline text-2xl font-bold text-secondary">{{ site.count }}</div>
+          </article>
+        </section>
+      </main>
+    </div>
+
+    <div
+      v-if="showMissingCoordinateDives && missingCoordinateDives.length"
+      class="fixed inset-0 z-[500] flex items-center justify-center bg-background/88 px-6 py-8 backdrop-blur-sm"
+      @click.self="closeMissingCoordinateDives()"
+    >
+      <section class="max-h-full w-full max-w-6xl overflow-auto border border-tertiary/18 bg-surface-container-low p-6 shadow-panel md:p-8">
+        <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <p class="font-label text-[10px] font-bold uppercase tracking-[0.22em] text-tertiary">Missing Coordinates</p>
+            <h5 class="mt-2 font-headline text-3xl font-bold tracking-tight">
+              {{ unmappedDiveCount }} {{ unmappedDiveCount === 1 ? "Dive Needs Coordinates" : "Dives Need Coordinates" }}
+            </h5>
+            <p class="mt-3 max-w-3xl text-sm leading-7 text-on-surface-variant">
+              These committed logbook dives do not currently resolve to a saved dive-site coordinate or usable embedded GPS position.
+            </p>
+          </div>
+          <UButton
+            @click="closeMissingCoordinateDives()"
+            class="self-start bg-surface-container-high px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary transition-colors hover:text-primary"
+          >
+            Close
+          </UButton>
+        </div>
+
+        <div class="mt-6 grid gap-4 xl:grid-cols-2">
+          <article
+            v-for="dive in missingCoordinateDives"
+            :key="'missing-coordinate-' + dive.id"
+            class="border border-outline-variant/10 bg-surface-container-high/55 p-4"
+          >
+            <div class="flex items-start justify-between gap-4">
+              <div class="min-w-0">
+                <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Dive {{ dive.displayIndex }}</p>
+                <h6 class="mt-2 truncate font-headline text-xl font-bold text-on-surface">{{ dive.siteName }}</h6>
+                <p class="mt-1 text-sm text-on-surface-variant">{{ dive.title }}</p>
+              </div>
+              <UButton
+                @click="openMissingCoordinateDive(dive.id)"
+                class="bg-primary px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-on-primary"
+              >
+                Open Dive
+              </UButton>
+            </div>
+
+            <div class="mt-4 grid gap-3 md:grid-cols-2">
+              <div>
+                <p class="font-label text-[10px] font-bold uppercase tracking-[0.16em] text-secondary">Date</p>
+                <p class="mt-1 text-sm font-semibold text-on-surface">{{ formatDate(dive.date) }} {{ formatTime(dive.date) }}</p>
+              </div>
+              <div>
+                <p class="font-label text-[10px] font-bold uppercase tracking-[0.16em] text-secondary">Dive Computer</p>
+                <p class="mt-1 text-sm font-semibold text-on-surface">{{ dive.device }}</p>
+              </div>
+              <div>
+                <p class="font-label text-[10px] font-bold uppercase tracking-[0.16em] text-secondary">Depth / Duration</p>
+                <p class="mt-1 text-sm font-semibold text-on-surface">{{ dive.depth }} / {{ dive.duration }}</p>
+              </div>
+              <div>
+                <p class="font-label text-[10px] font-bold uppercase tracking-[0.16em] text-secondary">Issue</p>
+                <p class="mt-1 text-sm font-semibold text-tertiary">{{ dive.reason }}</p>
+              </div>
+            </div>
+          </article>
+        </div>
+      </section>
+    </div>
+  </section>
 </template>
-
-

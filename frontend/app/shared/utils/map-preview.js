@@ -14,7 +14,7 @@ function tileProjection(lat, lon, zoom) {
   const scale = 2 ** zoom;
   const projectedX = ((lon + 180) / 360) * scale;
   const latitudeRadians = (lat * Math.PI) / 180;
-  const projectedY = ((1 - Math.log(Math.tan(latitudeRadians) + (1 / Math.cos(latitudeRadians))) / Math.PI) / 2) * scale;
+  const projectedY = ((1 - Math.log(Math.tan(latitudeRadians) + 1 / Math.cos(latitudeRadians)) / Math.PI) / 2) * scale;
   const tileX = Math.floor(projectedX);
   const tileY = Math.floor(projectedY);
   const firstTileX = tileX - 1;
@@ -33,10 +33,7 @@ function tileProjection(lat, lon, zoom) {
 function tileUrl(zoom, tileX, tileY, scale) {
   const wrappedX = ((tileX % scale) + scale) % scale;
   const clampedY = Math.max(0, Math.min(scale - 1, tileY));
-  return MAP_TILE_URL
-    .replace("{z}", String(zoom))
-    .replace("{x}", String(wrappedX))
-    .replace("{y}", String(clampedY));
+  return MAP_TILE_URL.replace("{z}", String(zoom)).replace("{x}", String(wrappedX)).replace("{y}", String(clampedY));
 }
 
 function surroundingTiles(projection, zoom) {
@@ -59,12 +56,7 @@ function surroundingTiles(projection, zoom) {
 function exportedMapUrl(lat, lon) {
   const latitudeSpan = 0.08;
   const longitudeSpan = latitudeSpan * 2.6;
-  const bbox = [
-    lon - longitudeSpan / 2,
-    lat - latitudeSpan / 2,
-    lon + longitudeSpan / 2,
-    lat + latitudeSpan / 2
-  ].join(",");
+  const bbox = [lon - longitudeSpan / 2, lat - latitudeSpan / 2, lon + longitudeSpan / 2, lat + latitudeSpan / 2].join(",");
   const params = new URLSearchParams({
     bbox,
     bboxSR: "4326",
@@ -82,7 +74,7 @@ function singleTileMarkerProjection(lat, lon, zoom) {
   const scale = 2 ** zoom;
   const projectedX = ((lon + 180) / 360) * scale;
   const latitudeRadians = (lat * Math.PI) / 180;
-  const projectedY = ((1 - Math.log(Math.tan(latitudeRadians) + (1 / Math.cos(latitudeRadians))) / Math.PI) / 2) * scale;
+  const projectedY = ((1 - Math.log(Math.tan(latitudeRadians) + 1 / Math.cos(latitudeRadians)) / Math.PI) / 2) * scale;
   const tileX = Math.floor(projectedX);
   const tileY = Math.floor(projectedY);
   return {
@@ -111,5 +103,3 @@ export function diveMapPreview(dive, diveSites, zoom = DEFAULT_MAP_PREVIEW_ZOOM)
     longitude: coordinates.lon
   };
 }
-
-

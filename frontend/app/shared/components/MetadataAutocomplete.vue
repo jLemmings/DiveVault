@@ -173,60 +173,58 @@ export default {
         this.$refs.input?.focus();
       });
     }
-  },
-}
+  }
+};
 </script>
 
 <template>
-    <div class="metadata-autocomplete" @focusout="scheduleClose">
-      <div class="metadata-autocomplete-input-shell">
-        <UInput
-          ref="input"
-          :value="modelValue"
-          :disabled="disabled"
-          :placeholder="placeholder"
-          :class="inputClass"
-          autocomplete="off"
-          @focus="openMenu"
-          @input="handleInput"
-          @keydown="handleKeydown"
-        />
-        <UButton
-          v-if="normalizedOptions.length"
-          type="button"
-          class="metadata-autocomplete-toggle"
-          :disabled="disabled"
-          @mousedown.prevent
-          @click="toggleMenu"
-        >
-          <span class="material-symbols-outlined text-[18px]">{{ showMenu ? 'keyboard_arrow_up' : 'keyboard_arrow_down' }}</span>
-        </UButton>
-      </div>
-      <transition
-        enter-active-class="transition duration-150 ease-out"
-        enter-from-class="translate-y-[-4px] opacity-0"
-        enter-to-class="translate-y-0 opacity-100"
-        leave-active-class="transition duration-100 ease-in"
-        leave-from-class="translate-y-0 opacity-100"
-        leave-to-class="translate-y-[-4px] opacity-0"
+  <div class="metadata-autocomplete" @focusout="scheduleClose">
+    <div class="metadata-autocomplete-input-shell">
+      <UInput
+        ref="input"
+        :value="modelValue"
+        :disabled="disabled"
+        :placeholder="placeholder"
+        :class="inputClass"
+        autocomplete="off"
+        @focus="openMenu"
+        @input="handleInput"
+        @keydown="handleKeydown"
+      />
+      <UButton
+        v-if="normalizedOptions.length"
+        type="button"
+        class="metadata-autocomplete-toggle"
+        :disabled="disabled"
+        @mousedown.prevent
+        @click="toggleMenu"
       >
-        <div v-if="showMenu" class="metadata-autocomplete-menu">
-          <UButton
-            v-for="(option, index) in filteredOptions"
-            :key="optionKey(option, index)"
-            type="button"
-            class="metadata-autocomplete-option"
-            :class="{ 'is-active': index === highlightedIndex }"
-            @mousedown.prevent
-            @click="selectOption(option)"
-          >
-            <span class="metadata-autocomplete-option-label">{{ option.name }}</span>
-            <span v-if="optionDetailText(option)" class="metadata-autocomplete-option-detail">{{ optionDetailText(option) }}</span>
-          </UButton>
-          <div v-if="!filteredOptions.length" class="metadata-autocomplete-empty">{{ emptyMessage }}</div>
-        </div>
-      </transition>
+        <span class="material-symbols-outlined text-[18px]">{{ showMenu ? "keyboard_arrow_up" : "keyboard_arrow_down" }}</span>
+      </UButton>
     </div>
+    <transition
+      enter-active-class="transition duration-150 ease-out"
+      enter-from-class="translate-y-[-4px] opacity-0"
+      enter-to-class="translate-y-0 opacity-100"
+      leave-active-class="transition duration-100 ease-in"
+      leave-from-class="translate-y-0 opacity-100"
+      leave-to-class="translate-y-[-4px] opacity-0"
+    >
+      <div v-if="showMenu" class="metadata-autocomplete-menu">
+        <UButton
+          v-for="(option, index) in filteredOptions"
+          :key="optionKey(option, index)"
+          type="button"
+          class="metadata-autocomplete-option"
+          :class="{ 'is-active': index === highlightedIndex }"
+          @mousedown.prevent
+          @click="selectOption(option)"
+        >
+          <span class="metadata-autocomplete-option-label">{{ option.name }}</span>
+          <span v-if="optionDetailText(option)" class="metadata-autocomplete-option-detail">{{ optionDetailText(option) }}</span>
+        </UButton>
+        <div v-if="!filteredOptions.length" class="metadata-autocomplete-empty">{{ emptyMessage }}</div>
+      </div>
+    </transition>
+  </div>
 </template>
-
-

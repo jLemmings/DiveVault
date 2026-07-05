@@ -7,5 +7,3 @@
     </NuxtLayout>
   </UApp>
 </template>
-
-

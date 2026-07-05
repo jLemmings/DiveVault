@@ -8,5 +8,3 @@ export const SETTINGS_SECTIONS = [
   { id: "manage-users", label: "Manage Users", icon: "admin_panel_settings", description: "Invites and access control" },
   { id: "backup", label: "Backup", icon: "archive", description: "Full backup import and export" }
 ];
-
-

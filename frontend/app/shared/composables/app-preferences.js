@@ -1,14 +1,13 @@
 import { i18n } from "~/i18n/index.js";
 import { SUPPORTED_LOCALE_CODES } from "~/i18n/locales.js";
+import { LOCALE_STORAGE_KEY, THEME_STORAGE_KEY } from "~/config/storage.js";
 import {
   applyDocumentTheme,
   getBrowserLocale,
   getStoredLocale,
   getStoredThemePreference,
-  LOCALE_STORAGE_KEY,
   normalizeLocale,
-  normalizeThemePreference,
-  THEME_STORAGE_KEY
+  normalizeThemePreference
 } from "~/shared/utils/preferences.js";
 
 const SUPPORTED_LOCALES = new Set(SUPPORTED_LOCALE_CODES);
@@ -33,7 +32,7 @@ async function setLocale(app, locale) {
   if (typeof window !== "undefined") {
     try {
       window.localStorage.setItem(LOCALE_STORAGE_KEY, app.i18nLocale);
-    } catch (_error) {
+    } catch {
       // Keep the active locale in memory if localStorage is unavailable.
     }
   }
@@ -46,7 +45,7 @@ function setThemePreference(app, themePreference) {
   if (typeof window !== "undefined") {
     try {
       window.localStorage.setItem(THEME_STORAGE_KEY, normalizedTheme);
-    } catch (_error) {
+    } catch {
       // Keep the active theme in memory if localStorage is unavailable.
     }
   }

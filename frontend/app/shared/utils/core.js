@@ -221,15 +221,13 @@ function logbookStatus(source) {
 function importDraftSeed(dive) {
   const logbook = logbookFields(dive);
   const tank = primaryTank(dive);
-  const tankVolume = typeof tank?.volume === "number" && Number.isFinite(tank.volume)
-    ? String(Math.round(tank.volume))
-    : "";
-  const beginPressure = typeof tank?.beginpressure_bar === "number" && Number.isFinite(tank.beginpressure_bar)
-    ? String(Math.round(tank.beginpressure_bar))
-    : "";
-  const endPressure = typeof tank?.endpressure_bar === "number" && Number.isFinite(tank.endpressure_bar)
-    ? String(Math.round(tank.endpressure_bar))
-    : "";
+  const tankVolume = typeof tank?.volume === "number" && Number.isFinite(tank.volume) ? String(Math.round(tank.volume)) : "";
+  const beginPressure =
+    typeof tank?.beginpressure_bar === "number" && Number.isFinite(tank.beginpressure_bar)
+      ? String(Math.round(tank.beginpressure_bar))
+      : "";
+  const endPressure =
+    typeof tank?.endpressure_bar === "number" && Number.isFinite(tank.endpressure_bar) ? String(Math.round(tank.endpressure_bar)) : "";
   return {
     site: typeof logbook.site === "string" ? logbook.site : "",
     buddy: typeof logbook.buddy === "string" ? logbook.buddy : "",
@@ -318,7 +316,10 @@ function isNightDive(dive) {
 
 function averageImportCompletion(dives, draftsById, requiredFields) {
   if (!dives.length) return 0;
-  const total = dives.reduce((sum, dive) => sum + importCompletionPercent(effectiveImportDraft(dive, draftsById[String(dive.id)]), requiredFields), 0);
+  const total = dives.reduce(
+    (sum, dive) => sum + importCompletionPercent(effectiveImportDraft(dive, draftsById[String(dive.id)]), requiredFields),
+    0
+  );
   return Math.round(total / dives.length);
 }
 
@@ -358,7 +359,9 @@ function sampleTimeUnit(dive) {
     .find(Boolean);
   if (sampleLevelUnit) return sampleLevelUnit;
 
-  const times = diveSamples(dive).map((sample) => sample.time_seconds).filter((value) => typeof value === "number" && Number.isFinite(value));
+  const times = diveSamples(dive)
+    .map((sample) => sample.time_seconds)
+    .filter((value) => typeof value === "number" && Number.isFinite(value));
   if (!times.length) return "seconds";
   const maxTime = Math.max(...times);
   const duration = numberOrZero(dive?.duration_seconds);
@@ -451,9 +454,8 @@ function depthMetricValue(value) {
 }
 
 function averageDepthValue(dive) {
-  const storedAverage = depthMetricValue(dive?.avg_depth_m)
-    ?? depthMetricValue(dive?.fields?.avg_depth_m)
-    ?? depthMetricValue(dive?.fields?.average_depth_m);
+  const storedAverage =
+    depthMetricValue(dive?.avg_depth_m) ?? depthMetricValue(dive?.fields?.avg_depth_m) ?? depthMetricValue(dive?.fields?.average_depth_m);
   if (storedAverage !== null) return Math.max(0, storedAverage);
 
   const series = depthSeries(dive);
@@ -481,7 +483,9 @@ function pressureRange(dive) {
   if (tank && typeof tank.beginpressure_bar === "number" && typeof tank.endpressure_bar === "number") {
     return { begin: tank.beginpressure_bar, end: tank.endpressure_bar };
   }
-  const pressures = diveSamples(dive).map((sample) => normalizedPressureValue(dive, sample)).filter((value) => typeof value === "number");
+  const pressures = diveSamples(dive)
+    .map((sample) => normalizedPressureValue(dive, sample))
+    .filter((value) => typeof value === "number");
   if (!pressures.length) return { begin: null, end: null };
   return { begin: Math.max(...pressures), end: Math.min(...pressures) };
 }
@@ -604,23 +608,21 @@ function axisTicks(maxValue, formatter, reverse = false) {
   });
 }
 
-function averageTemperature(dive) {
-  const samples = diveSamples(dive).filter((sample) => typeof sample.temperature_c === "number");
-  if (!samples.length) return surfaceTemperature(dive);
-  return samples.reduce((sum, sample) => sum + sample.temperature_c, 0) / samples.length;
-}
-
 function minimumTemperature(dive) {
   const fieldValue = dive?.fields?.temperature_minimum_c;
   if (typeof fieldValue === "number") return fieldValue;
-  const samples = diveSamples(dive).map((sample) => sample.temperature_c).filter((value) => typeof value === "number");
+  const samples = diveSamples(dive)
+    .map((sample) => sample.temperature_c)
+    .filter((value) => typeof value === "number");
   return samples.length ? Math.min(...samples) : null;
 }
 
 function maximumTemperature(dive) {
   const fieldValue = dive?.fields?.temperature_maximum_c;
   if (typeof fieldValue === "number") return fieldValue;
-  const samples = diveSamples(dive).map((sample) => sample.temperature_c).filter((value) => typeof value === "number");
+  const samples = diveSamples(dive)
+    .map((sample) => sample.temperature_c)
+    .filter((value) => typeof value === "number");
   return samples.length ? Math.max(...samples) : null;
 }
 
@@ -634,9 +636,7 @@ function formatDataSize(bytes) {
 function checkpointCards(dive) {
   const samples = diveSamples(dive).filter((sample) => {
     const time = sampleTimeSeconds(dive, sample);
-    return normalizedDepthValue(sample) !== null
-      && normalizedPressureValue(dive, sample) !== null
-      && isValidDiveSampleTime(dive, time);
+    return normalizedDepthValue(sample) !== null && normalizedPressureValue(dive, sample) !== null && isValidDiveSampleTime(dive, time);
   });
   if (!samples.length) return [];
   const labels = ["Launch", "Descent", "Cruise", "Surface"];
@@ -663,13 +663,17 @@ function sacRate(dive) {
 }
 
 function oxygenToxicityPercent(dive) {
-  const values = diveSamples(dive).map((sample) => sample.cns_fraction).filter((value) => typeof value === "number");
+  const values = diveSamples(dive)
+    .map((sample) => sample.cns_fraction)
+    .filter((value) => typeof value === "number");
   if (!values.length) return null;
   return Math.max(...values) * 100;
 }
 
 function decoStatusLabel(dive) {
-  const decoSample = diveSamples(dive).find((sample) => sample.deco && typeof sample.deco.time_seconds === "number" && sample.deco.time_seconds > 0);
+  const decoSample = diveSamples(dive).find(
+    (sample) => sample.deco && typeof sample.deco.time_seconds === "number" && sample.deco.time_seconds > 0
+  );
   return decoSample ? "Deco Active" : "No Deco";
 }
 
@@ -781,5 +785,3 @@ export {
   diveNarrative,
   shortFingerprint
 };
-
-

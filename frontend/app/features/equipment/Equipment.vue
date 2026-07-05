@@ -133,7 +133,9 @@ export default {
     visibleDrafts() {
       const query = typeof this.searchText === "string" ? this.searchText.trim().toLowerCase() : "";
       if (!query) return this.drafts;
-      return this.drafts.filter((item) => [item.name, item.category, item.brand, item.model, item.serial].join(" ").toLowerCase().includes(query));
+      return this.drafts.filter((item) =>
+        [item.name, item.category, item.brand, item.model, item.serial].join(" ").toLowerCase().includes(query)
+      );
     },
     defaultCount() {
       return this.drafts.filter((item) => item.is_default).length;
@@ -148,14 +150,17 @@ export default {
         .map((item) => {
           const dueDate = item.service_due_date || item.next_service_due || "";
           const dueTime = dueDate ? Date.parse(`${dueDate}T00:00:00`) : Number.POSITIVE_INFINITY;
-          const divesRemaining = Number.isFinite(Number(item.dives_remaining_before_service)) ? Number(item.dives_remaining_before_service) : Number.POSITIVE_INFINITY;
-          const statusRank = item.service_status === "overdue" || defaultMissingServiceData(item)
-            ? 0
-            : item.service_status === "due_soon"
-              ? 1
-              : Number.isFinite(dueTime)
-                ? 2
-                : 3;
+          const divesRemaining = Number.isFinite(Number(item.dives_remaining_before_service))
+            ? Number(item.dives_remaining_before_service)
+            : Number.POSITIVE_INFINITY;
+          const statusRank =
+            item.service_status === "overdue" || defaultMissingServiceData(item)
+              ? 0
+              : item.service_status === "due_soon"
+                ? 1
+                : Number.isFinite(dueTime)
+                  ? 2
+                  : 3;
           return {
             ...item,
             timelineDueDate: dueDate,
@@ -167,7 +172,8 @@ export default {
         .sort((left, right) => {
           if (left.timelineStatusRank !== right.timelineStatusRank) return left.timelineStatusRank - right.timelineStatusRank;
           if (left.timelineDueTime !== right.timelineDueTime) return left.timelineDueTime - right.timelineDueTime;
-          if (left.timelineDivesRemaining !== right.timelineDivesRemaining) return left.timelineDivesRemaining - right.timelineDivesRemaining;
+          if (left.timelineDivesRemaining !== right.timelineDivesRemaining)
+            return left.timelineDivesRemaining - right.timelineDivesRemaining;
           return String(left.name || left.category || "").localeCompare(String(right.name || right.category || ""));
         })
         .slice(0, 6);
@@ -218,7 +224,7 @@ export default {
       await this.save();
     },
     updateItem(id, key, value) {
-      this.drafts = this.drafts.map((item) => item.id === id ? { ...item, [key]: value } : item);
+      this.drafts = this.drafts.map((item) => (item.id === id ? { ...item, [key]: value } : item));
     },
     async save() {
       const savedEquipment = await this.saveEquipment(this.drafts.map(equipmentPayload));
@@ -231,7 +237,8 @@ export default {
     timelineMeta(item) {
       if (defaultMissingServiceData(item)) return "Service interval missing";
       const details = [];
-      if (item.timelineDueDate) details.push(item.service_status === "overdue" ? `Overdue since ${item.timelineDueDate}` : `Due ${item.timelineDueDate}`);
+      if (item.timelineDueDate)
+        details.push(item.service_status === "overdue" ? `Overdue since ${item.timelineDueDate}` : `Due ${item.timelineDueDate}`);
       if (Number.isFinite(item.timelineDivesRemaining)) details.push(`${item.timelineDivesRemaining} dives left`);
       return details.length ? details.join(" / ") : "No service schedule set";
     },
@@ -256,9 +263,10 @@ export default {
       const daysPercent = days === null ? 0 : clampPercent((Math.max(days, 0) / totalDays) * 100);
       const divesRemaining = Number(item?.dives_remaining_before_service);
       const maxDives = Number(item?.max_dives_before_service);
-      const divesPercent = Number.isFinite(divesRemaining) && Number.isFinite(maxDives) && maxDives > 0
-        ? clampPercent((Math.max(divesRemaining, 0) / maxDives) * 100)
-        : 0;
+      const divesPercent =
+        Number.isFinite(divesRemaining) && Number.isFinite(maxDives) && maxDives > 0
+          ? clampPercent((Math.max(divesRemaining, 0) / maxDives) * 100)
+          : 0;
       return {
         "--days-progress": `${daysPercent}%`,
         "--dives-progress": `${divesPercent}%`,
@@ -266,221 +274,343 @@ export default {
         "--dives-progress-value": divesPercent
       };
     }
-  },
-}
+  }
+};
 </script>
 
 <template>
-    <section class="dashboard-command-center text-on-surface">
-      <div class="flex flex-col justify-end gap-3 lg:flex-row lg:items-center">
-        <div class="flex flex-col gap-3 sm:flex-row sm:items-center">
-          <div class="relative min-w-[18rem] flex-1 sm:w-[24rem] sm:flex-none">
-            <span class="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-lg text-on-surface-variant">search</span>
-            <UInput
-              :value="searchText"
-              @input="updateSearch($event.target.value)"
-              type="text"
-              class="w-full rounded-xl border border-primary/10 bg-surface-container-high/70 py-3 pl-12 pr-4 text-sm font-label tracking-[0.12em] text-on-surface placeholder:text-on-surface-variant/50 focus:ring-1 focus:ring-primary/20"
-              placeholder="Search equipment..."
-            />
-          </div>
-          <UButton @click="addItem" class="flex items-center gap-2 rounded-xl bg-primary px-6 py-3 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-on-primary">
-            <span class="material-symbols-outlined text-sm">add</span>
-            New Entry
-          </UButton>
+  <section class="dashboard-command-center text-on-surface">
+    <div class="flex flex-col justify-end gap-3 lg:flex-row lg:items-center">
+      <div class="flex flex-col gap-3 sm:flex-row sm:items-center">
+        <div class="relative min-w-[18rem] flex-1 sm:w-[24rem] sm:flex-none">
+          <span class="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-lg text-on-surface-variant">search</span>
+          <UInput
+            :value="searchText"
+            @input="updateSearch($event.target.value)"
+            type="text"
+            class="w-full rounded-xl border border-primary/10 bg-surface-container-high/70 py-3 pl-12 pr-4 text-sm font-label tracking-[0.12em] text-on-surface placeholder:text-on-surface-variant/50 focus:ring-1 focus:ring-primary/20"
+            placeholder="Search equipment..."
+          />
         </div>
+        <UButton
+          @click="addItem"
+          class="flex items-center gap-2 rounded-xl bg-primary px-6 py-3 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-on-primary"
+        >
+          <span class="material-symbols-outlined text-sm">add</span>
+          New Entry
+        </UButton>
       </div>
+    </div>
 
-      <div v-if="statusMessage" class="settings-feedback border-primary/20 bg-primary/10 text-primary shadow-panel">{{ statusMessage }}</div>
-      <div v-if="errorMessage" class="settings-feedback border-error/20 bg-error-container/20 text-on-error-container shadow-panel">{{ errorMessage }}</div>
+    <div v-if="statusMessage" class="settings-feedback border-primary/20 bg-primary/10 text-primary shadow-panel">{{ statusMessage }}</div>
+    <div v-if="errorMessage" class="settings-feedback border-error/20 bg-error-container/20 text-on-error-container shadow-panel">
+      {{ errorMessage }}
+    </div>
 
-      <div class="settings-stat-strip">
-        <article class="settings-stat-pill">
-          <p class="settings-stat-pill-label">Items</p>
-          <p class="settings-stat-pill-value">{{ drafts.length }}</p>
-        </article>
-        <article class="settings-stat-pill">
-          <p class="settings-stat-pill-label">Defaults</p>
-          <p class="settings-stat-pill-value">{{ defaultCount }}</p>
-        </article>
-      </div>
+    <div class="settings-stat-strip">
+      <article class="settings-stat-pill">
+        <p class="settings-stat-pill-label">Items</p>
+        <p class="settings-stat-pill-value">{{ drafts.length }}</p>
+      </article>
+      <article class="settings-stat-pill">
+        <p class="settings-stat-pill-label">Defaults</p>
+        <p class="settings-stat-pill-value">{{ defaultCount }}</p>
+      </article>
+    </div>
 
-      <div class="equipment-page-layout">
-        <aside class="settings-panel settings-card equipment-service-sidebar">
-          <div class="mb-5">
-            <p class="dashboard-micro-label text-secondary">Service Timeline</p>
-            <h3 class="mt-2 font-headline text-xl font-bold text-primary">Next Equipment Due</h3>
-          </div>
-          <div v-if="serviceTimeline.length" class="equipment-service-timeline">
-            <article
-              v-for="item in serviceTimeline"
-              :key="'service-timeline-' + item.id"
-              class="equipment-service-timeline-item"
-              :class="item.service_status === 'overdue' || defaultMissingServiceData(item) ? 'is-urgent' : (item.service_status === 'due_soon' ? 'is-soon' : '')"
-            >
-              <span class="equipment-service-timeline-dot"></span>
-              <div class="min-w-0">
-                <p class="font-label text-[10px] font-bold uppercase tracking-[0.16em] text-secondary">{{ item.category || 'Equipment' }}</p>
-                <h4 class="mt-1 truncate font-headline text-base font-bold text-on-surface">{{ item.name || 'Unnamed Equipment' }}</h4>
-                <p v-if="item.service_tag" class="mt-1 font-label text-[9px] font-bold uppercase tracking-[0.14em] text-tertiary">{{ item.service_tag }}</p>
-                <p class="mt-1 text-sm text-on-surface-variant">{{ timelineMeta(item) }}</p>
-              </div>
-            </article>
-          </div>
-          <div v-else class="settings-empty-state">
-            <p class="font-headline text-base font-bold">No service timeline</p>
-            <p class="mt-2 text-sm text-secondary">Add equipment and service data to build the timeline.</p>
-          </div>
-        </aside>
-
-        <section class="min-w-0">
-          <div v-if="!drafts.length" class="settings-empty-state">
-            <p class="font-headline text-lg font-bold">No equipment registered</p>
-            <p class="mt-2 text-sm text-secondary">Add your first item, set its service interval and latest service date, then mark it as default if it should be applied to new imports.</p>
-          </div>
-
-          <div v-else class="equipment-items-grid">
-          <article v-for="item in visibleDrafts" :key="item.id" class="settings-item-card equipment-item-card" :class="defaultMissingServiceData(item) ? 'settings-item-card-error' : ''">
-          <div class="equipment-item-card-header">
+    <div class="equipment-page-layout">
+      <aside class="settings-panel settings-card equipment-service-sidebar">
+        <div class="mb-5">
+          <p class="dashboard-micro-label text-secondary">Service Timeline</p>
+          <h3 class="mt-2 font-headline text-xl font-bold text-primary">Next Equipment Due</h3>
+        </div>
+        <div v-if="serviceTimeline.length" class="equipment-service-timeline">
+          <article
+            v-for="item in serviceTimeline"
+            :key="'service-timeline-' + item.id"
+            class="equipment-service-timeline-item"
+            :class="
+              item.service_status === 'overdue' || defaultMissingServiceData(item)
+                ? 'is-urgent'
+                : item.service_status === 'due_soon'
+                  ? 'is-soon'
+                  : ''
+            "
+          >
+            <span class="equipment-service-timeline-dot"></span>
             <div class="min-w-0">
-              <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">{{ item.category || 'Uncategorized' }}</p>
-              <h4 class="mt-2 font-headline text-2xl font-bold leading-tight">{{ item.name || 'Unnamed Equipment' }}</h4>
-              <div class="settings-chip-row mt-3">
-                <span v-if="item.is_default" class="settings-chip is-accent">Default</span>
-                <span v-if="item.service_tag" class="settings-chip is-accent">{{ item.service_tag }}</span>
-                <span v-if="item.track_service === false" class="settings-chip">Not tracked</span>
-              </div>
+              <p class="font-label text-[10px] font-bold uppercase tracking-[0.16em] text-secondary">{{ item.category || "Equipment" }}</p>
+              <h4 class="mt-1 truncate font-headline text-base font-bold text-on-surface">{{ item.name || "Unnamed Equipment" }}</h4>
+              <p v-if="item.service_tag" class="mt-1 font-label text-[9px] font-bold uppercase tracking-[0.14em] text-tertiary">
+                {{ item.service_tag }}
+              </p>
+              <p class="mt-1 text-sm text-on-surface-variant">{{ timelineMeta(item) }}</p>
             </div>
-            <div class="equipment-item-actions">
-              <UButton v-if="!editing" @click="beginEditItem(item.id)" class="settings-button settings-button-secondary">Edit</UButton>
-            </div>
-          </div>
-          <div v-if="item.track_service !== false" class="equipment-service-countdown">
-            <div class="equipment-service-countdown-ring" :style="countdownDonutStyle(item)" :class="item.service_status === 'overdue' || defaultMissingServiceData(item) ? 'is-urgent' : (item.service_status === 'due_soon' ? 'is-soon' : '')">
-              <svg class="equipment-service-countdown-svg" viewBox="0 0 100 100" aria-hidden="true">
-                <circle class="equipment-service-countdown-track is-time" cx="50" cy="50" r="45" pathLength="100"></circle>
-                <circle class="equipment-service-countdown-progress is-time" cx="50" cy="50" r="45" pathLength="100"></circle>
-                <circle class="equipment-service-countdown-track is-dives" cx="50" cy="50" r="31" pathLength="100"></circle>
-                <circle class="equipment-service-countdown-progress is-dives" cx="50" cy="50" r="31" pathLength="100"></circle>
-              </svg>
-              <div class="equipment-service-countdown-center">
-                <strong>{{ item.dives_remaining_before_service !== null && item.dives_remaining_before_service !== undefined ? item.dives_remaining_before_service : '--' }}</strong>
-                <span>Dives</span>
-              </div>
-            </div>
-            <div class="equipment-service-countdown-copy">
-              <p class="font-label text-[10px] font-bold uppercase tracking-[0.16em] text-secondary">Service Countdown</p>
-              <p class="equipment-service-countdown-layer is-time"><span></span><strong>{{ serviceCountdownLabel(item) }}</strong></p>
-              <p class="equipment-service-countdown-layer is-dives"><span></span>{{ serviceCountdownDivesLabel(item) }}</p>
-              <p class="text-xs leading-5 text-on-surface-variant">{{ serviceCountdownLastServiceLabel(item) }}</p>
-            </div>
-          </div>
           </article>
-          </div>
-        </section>
-      </div>
+        </div>
+        <div v-else class="settings-empty-state">
+          <p class="font-headline text-base font-bold">No service timeline</p>
+          <p class="mt-2 text-sm text-secondary">Add equipment and service data to build the timeline.</p>
+        </div>
+      </aside>
 
-      <div v-if="editing && editingItem" class="fixed inset-0 z-[560] flex items-center justify-center bg-background/88 px-6 py-8 backdrop-blur-sm" @click.self="cancelEdit">
-        <section class="settings-modal-card equipment-edit-modal">
-          <div class="settings-modal-header">
-            <div>
-              <p class="dashboard-micro-label text-secondary">Equipment</p>
-              <h3 class="mt-2 font-headline text-2xl font-bold text-primary">{{ editingItem.name || 'New Equipment' }}</h3>
-            </div>
-            <UButton type="button" @click="cancelEdit" :disabled="saving" class="settings-button settings-button-ghost">Close</UButton>
-          </div>
+      <section class="min-w-0">
+        <div v-if="!drafts.length" class="settings-empty-state">
+          <p class="font-headline text-lg font-bold">No equipment registered</p>
+          <p class="mt-2 text-sm text-secondary">
+            Add your first item, set its service interval and latest service date, then mark it as default if it should be applied to new
+            imports.
+          </p>
+        </div>
 
-          <div class="mt-6 grid gap-4 md:grid-cols-2">
-            <label class="space-y-2">
-              <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Name</span>
-              <UInput :value="editingItem.name" @input="updateItem(editingItem.id, 'name', $event.target.value)" class="settings-input" placeholder="Equipment name" />
-            </label>
-            <label class="space-y-2">
-              <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Category</span>
-              <UInput :value="editingItem.category" @input="updateItem(editingItem.id, 'category', $event.target.value)" class="settings-input" placeholder="Regulator" />
-            </label>
-            <fieldset class="space-y-3 md:col-span-2">
-              <legend class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Icon</legend>
-              <div class="grid grid-cols-4 gap-2 md:grid-cols-6">
-                <UButton
-                  v-for="option in equipmentIconOptions"
-                  :key="'equipment-icon-' + option.icon"
-                  type="button"
-                  @click="updateItem(editingItem.id, 'icon', option.icon)"
-                  class="flex items-center gap-2 rounded-xl border px-3 py-2 text-left transition-colors"
-                  :class="editingItem.icon === option.icon ? 'border-primary bg-primary/15 text-primary' : 'border-primary/10 bg-background/20 text-on-surface-variant hover:border-primary/30 hover:text-primary'"
-                  :aria-pressed="editingItem.icon === option.icon"
-                  :title="option.label"
-                >
-                  <span class="material-symbols-outlined text-xl">{{ option.icon }}</span>
-                  <span class="truncate text-xs font-bold">{{ option.label }}</span>
-                </UButton>
+        <div v-else class="equipment-items-grid">
+          <article
+            v-for="item in visibleDrafts"
+            :key="item.id"
+            class="settings-item-card equipment-item-card"
+            :class="defaultMissingServiceData(item) ? 'settings-item-card-error' : ''"
+          >
+            <div class="equipment-item-card-header">
+              <div class="min-w-0">
+                <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">
+                  {{ item.category || "Uncategorized" }}
+                </p>
+                <h4 class="mt-2 font-headline text-2xl font-bold leading-tight">{{ item.name || "Unnamed Equipment" }}</h4>
+                <div class="settings-chip-row mt-3">
+                  <span v-if="item.is_default" class="settings-chip is-accent">Default</span>
+                  <span v-if="item.service_tag" class="settings-chip is-accent">{{ item.service_tag }}</span>
+                  <span v-if="item.track_service === false" class="settings-chip">Not tracked</span>
+                </div>
               </div>
-            </fieldset>
-            <label class="space-y-2">
-              <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Year Bought</span>
-              <UInput :value="editingItem.year_bought" @input="updateItem(editingItem.id, 'year_bought', $event.target.value)" class="settings-input" placeholder="2024" />
-            </label>
-            <label class="space-y-2">
-              <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Vendor</span>
-              <UInput :value="editingItem.vendor" @input="updateItem(editingItem.id, 'vendor', $event.target.value)" class="settings-input" placeholder="Dive Shop" />
-            </label>
-            <label class="space-y-2">
-              <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Brand</span>
-              <UInput :value="editingItem.brand" @input="updateItem(editingItem.id, 'brand', $event.target.value)" class="settings-input" placeholder="Aqualung" />
-            </label>
-            <label class="space-y-2">
-              <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Model</span>
-              <UInput :value="editingItem.model" @input="updateItem(editingItem.id, 'model', $event.target.value)" class="settings-input" placeholder="MK25" />
-            </label>
-            <label class="space-y-2">
-              <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Serial</span>
-              <UInput :value="editingItem.serial" @input="updateItem(editingItem.id, 'serial', $event.target.value)" class="settings-input" placeholder="Serial number" />
-            </label>
-            <label class="space-y-2">
-              <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Warranty</span>
-              <UInput :value="editingItem.warranty" @input="updateItem(editingItem.id, 'warranty', $event.target.value)" class="settings-input" placeholder="2 years, shop receipt, serial number..." />
-            </label>
-            <label class="space-y-2">
-              <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Max Dives Before Service</span>
-              <UInput :value="editingItem.max_dives_before_service" @input="updateItem(editingItem.id, 'max_dives_before_service', $event.target.value)" class="settings-input" placeholder="100" />
-            </label>
-            <label class="space-y-2">
-              <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Service Tag</span>
-              <UInput :value="editingItem.service_tag" @input="updateItem(editingItem.id, 'service_tag', $event.target.value)" class="settings-input" placeholder="Primary regulator, travel kit..." />
-            </label>
-            <label class="space-y-2">
-              <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Service Interval Months</span>
-              <UInput :value="editingItem.service_interval_months" @input="updateItem(editingItem.id, 'service_interval_months', $event.target.value)" type="number" min="1" class="settings-input" />
-            </label>
-            <label class="space-y-2">
-              <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Latest Service Date</span>
-              <UInput :value="editingItem.last_service_date" @input="updateItem(editingItem.id, 'last_service_date', $event.target.value)" class="settings-input" placeholder="YYYY-MM-DD" />
-            </label>
-            <label class="flex items-start gap-3 rounded-xl border border-primary/10 bg-background/20 p-4 md:col-span-2">
-              <UCheckbox :model-value="editingItem.track_service !== false" @update:model-value="updateItem(editingItem.id, 'track_service', $event)" class="mt-1" :ui="{ base: 'h-5 w-5 rounded border-primary/20 bg-surface-container-high text-primary focus:ring-primary/30' }" />
-              <span>
-                <span class="block text-sm font-semibold">Track next service</span>
-                <span class="mt-1 block text-xs leading-5 text-secondary">Show this item in the service timeline and calculate due dates or dives remaining.</span>
-              </span>
-            </label>
-            <label class="flex items-start gap-3 rounded-xl border border-primary/10 bg-background/20 p-4 md:col-span-2">
-              <UCheckbox :model-value="editingItem.is_default" @update:model-value="updateItem(editingItem.id, 'is_default', $event)" class="mt-1" :ui="{ base: 'h-5 w-5 rounded border-primary/20 bg-surface-container-high text-primary focus:ring-primary/30' }" />
-              <span>
-                <span class="block text-sm font-semibold">Use by default on each dive</span>
-                <span class="mt-1 block text-xs leading-5 text-secondary">Defaults are applied to new imported dives.</span>
-              </span>
-            </label>
-          </div>
+              <div class="equipment-item-actions">
+                <UButton v-if="!editing" @click="beginEditItem(item.id)" class="settings-button settings-button-secondary">Edit</UButton>
+              </div>
+            </div>
+            <div v-if="item.track_service !== false" class="equipment-service-countdown">
+              <div
+                class="equipment-service-countdown-ring"
+                :style="countdownDonutStyle(item)"
+                :class="
+                  item.service_status === 'overdue' || defaultMissingServiceData(item)
+                    ? 'is-urgent'
+                    : item.service_status === 'due_soon'
+                      ? 'is-soon'
+                      : ''
+                "
+              >
+                <svg class="equipment-service-countdown-svg" viewBox="0 0 100 100" aria-hidden="true">
+                  <circle class="equipment-service-countdown-track is-time" cx="50" cy="50" r="45" pathLength="100"></circle>
+                  <circle class="equipment-service-countdown-progress is-time" cx="50" cy="50" r="45" pathLength="100"></circle>
+                  <circle class="equipment-service-countdown-track is-dives" cx="50" cy="50" r="31" pathLength="100"></circle>
+                  <circle class="equipment-service-countdown-progress is-dives" cx="50" cy="50" r="31" pathLength="100"></circle>
+                </svg>
+                <div class="equipment-service-countdown-center">
+                  <strong>{{
+                    item.dives_remaining_before_service !== null && item.dives_remaining_before_service !== undefined
+                      ? item.dives_remaining_before_service
+                      : "--"
+                  }}</strong>
+                  <span>Dives</span>
+                </div>
+              </div>
+              <div class="equipment-service-countdown-copy">
+                <p class="font-label text-[10px] font-bold uppercase tracking-[0.16em] text-secondary">Service Countdown</p>
+                <p class="equipment-service-countdown-layer is-time">
+                  <span></span><strong>{{ serviceCountdownLabel(item) }}</strong>
+                </p>
+                <p class="equipment-service-countdown-layer is-dives"><span></span>{{ serviceCountdownDivesLabel(item) }}</p>
+                <p class="text-xs leading-5 text-on-surface-variant">{{ serviceCountdownLastServiceLabel(item) }}</p>
+              </div>
+            </div>
+          </article>
+        </div>
+      </section>
+    </div>
 
-          <div class="settings-modal-actions">
-            <UButton type="button" @click="removeAndSave(editingItem.id)" :disabled="saving" class="settings-button settings-button-danger">Remove</UButton>
-            <UButton type="button" @click="cancelEdit" :disabled="saving" class="settings-button settings-button-ghost">Cancel</UButton>
-            <UButton type="button" @click="save" :disabled="saving" class="settings-button settings-button-primary">{{ saving ? 'Saving' : 'Save Gear' }}</UButton>
+    <div
+      v-if="editing && editingItem"
+      class="fixed inset-0 z-[560] flex items-center justify-center bg-background/88 px-6 py-8 backdrop-blur-sm"
+      @click.self="cancelEdit"
+    >
+      <section class="settings-modal-card equipment-edit-modal">
+        <div class="settings-modal-header">
+          <div>
+            <p class="dashboard-micro-label text-secondary">Equipment</p>
+            <h3 class="mt-2 font-headline text-2xl font-bold text-primary">{{ editingItem.name || "New Equipment" }}</h3>
           </div>
-        </section>
-      </div>
-    </section>
+          <UButton type="button" @click="cancelEdit" :disabled="saving" class="settings-button settings-button-ghost">Close</UButton>
+        </div>
+
+        <div class="mt-6 grid gap-4 md:grid-cols-2">
+          <label class="space-y-2">
+            <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Name</span>
+            <UInput
+              :value="editingItem.name"
+              @input="updateItem(editingItem.id, 'name', $event.target.value)"
+              class="settings-input"
+              placeholder="Equipment name"
+            />
+          </label>
+          <label class="space-y-2">
+            <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Category</span>
+            <UInput
+              :value="editingItem.category"
+              @input="updateItem(editingItem.id, 'category', $event.target.value)"
+              class="settings-input"
+              placeholder="Regulator"
+            />
+          </label>
+          <fieldset class="space-y-3 md:col-span-2">
+            <legend class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Icon</legend>
+            <div class="grid grid-cols-4 gap-2 md:grid-cols-6">
+              <UButton
+                v-for="option in equipmentIconOptions"
+                :key="'equipment-icon-' + option.icon"
+                type="button"
+                @click="updateItem(editingItem.id, 'icon', option.icon)"
+                class="flex items-center gap-2 rounded-xl border px-3 py-2 text-left transition-colors"
+                :class="
+                  editingItem.icon === option.icon
+                    ? 'border-primary bg-primary/15 text-primary'
+                    : 'border-primary/10 bg-background/20 text-on-surface-variant hover:border-primary/30 hover:text-primary'
+                "
+                :aria-pressed="editingItem.icon === option.icon"
+                :title="option.label"
+              >
+                <span class="material-symbols-outlined text-xl">{{ option.icon }}</span>
+                <span class="truncate text-xs font-bold">{{ option.label }}</span>
+              </UButton>
+            </div>
+          </fieldset>
+          <label class="space-y-2">
+            <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Year Bought</span>
+            <UInput
+              :value="editingItem.year_bought"
+              @input="updateItem(editingItem.id, 'year_bought', $event.target.value)"
+              class="settings-input"
+              placeholder="2024"
+            />
+          </label>
+          <label class="space-y-2">
+            <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Vendor</span>
+            <UInput
+              :value="editingItem.vendor"
+              @input="updateItem(editingItem.id, 'vendor', $event.target.value)"
+              class="settings-input"
+              placeholder="Dive Shop"
+            />
+          </label>
+          <label class="space-y-2">
+            <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Brand</span>
+            <UInput
+              :value="editingItem.brand"
+              @input="updateItem(editingItem.id, 'brand', $event.target.value)"
+              class="settings-input"
+              placeholder="Aqualung"
+            />
+          </label>
+          <label class="space-y-2">
+            <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Model</span>
+            <UInput
+              :value="editingItem.model"
+              @input="updateItem(editingItem.id, 'model', $event.target.value)"
+              class="settings-input"
+              placeholder="MK25"
+            />
+          </label>
+          <label class="space-y-2">
+            <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Serial</span>
+            <UInput
+              :value="editingItem.serial"
+              @input="updateItem(editingItem.id, 'serial', $event.target.value)"
+              class="settings-input"
+              placeholder="Serial number"
+            />
+          </label>
+          <label class="space-y-2">
+            <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Warranty</span>
+            <UInput
+              :value="editingItem.warranty"
+              @input="updateItem(editingItem.id, 'warranty', $event.target.value)"
+              class="settings-input"
+              placeholder="2 years, shop receipt, serial number..."
+            />
+          </label>
+          <label class="space-y-2">
+            <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Max Dives Before Service</span>
+            <UInput
+              :value="editingItem.max_dives_before_service"
+              @input="updateItem(editingItem.id, 'max_dives_before_service', $event.target.value)"
+              class="settings-input"
+              placeholder="100"
+            />
+          </label>
+          <label class="space-y-2">
+            <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Service Tag</span>
+            <UInput
+              :value="editingItem.service_tag"
+              @input="updateItem(editingItem.id, 'service_tag', $event.target.value)"
+              class="settings-input"
+              placeholder="Primary regulator, travel kit..."
+            />
+          </label>
+          <label class="space-y-2">
+            <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Service Interval Months</span>
+            <UInput
+              :value="editingItem.service_interval_months"
+              @input="updateItem(editingItem.id, 'service_interval_months', $event.target.value)"
+              type="number"
+              min="1"
+              class="settings-input"
+            />
+          </label>
+          <label class="space-y-2">
+            <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Latest Service Date</span>
+            <UInput
+              :value="editingItem.last_service_date"
+              @input="updateItem(editingItem.id, 'last_service_date', $event.target.value)"
+              class="settings-input"
+              placeholder="YYYY-MM-DD"
+            />
+          </label>
+          <label class="flex items-start gap-3 rounded-xl border border-primary/10 bg-background/20 p-4 md:col-span-2">
+            <UCheckbox
+              :model-value="editingItem.track_service !== false"
+              @update:model-value="updateItem(editingItem.id, 'track_service', $event)"
+              class="mt-1"
+              :ui="{ base: 'h-5 w-5 rounded border-primary/20 bg-surface-container-high text-primary focus:ring-primary/30' }"
+            />
+            <span>
+              <span class="block text-sm font-semibold">Track next service</span>
+              <span class="mt-1 block text-xs leading-5 text-secondary"
+                >Show this item in the service timeline and calculate due dates or dives remaining.</span
+              >
+            </span>
+          </label>
+          <label class="flex items-start gap-3 rounded-xl border border-primary/10 bg-background/20 p-4 md:col-span-2">
+            <UCheckbox
+              :model-value="editingItem.is_default"
+              @update:model-value="updateItem(editingItem.id, 'is_default', $event)"
+              class="mt-1"
+              :ui="{ base: 'h-5 w-5 rounded border-primary/20 bg-surface-container-high text-primary focus:ring-primary/30' }"
+            />
+            <span>
+              <span class="block text-sm font-semibold">Use by default on each dive</span>
+              <span class="mt-1 block text-xs leading-5 text-secondary">Defaults are applied to new imported dives.</span>
+            </span>
+          </label>
+        </div>
+
+        <div class="settings-modal-actions">
+          <UButton type="button" @click="removeAndSave(editingItem.id)" :disabled="saving" class="settings-button settings-button-danger"
+            >Remove</UButton
+          >
+          <UButton type="button" @click="cancelEdit" :disabled="saving" class="settings-button settings-button-ghost">Cancel</UButton>
+          <UButton type="button" @click="save" :disabled="saving" class="settings-button settings-button-primary">{{
+            saving ? "Saving" : "Save Gear"
+          }}</UButton>
+        </div>
+      </section>
+    </div>
+  </section>
 </template>
-
-

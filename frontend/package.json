@@ -7,7 +7,11 @@
     "dev": "nuxt dev --host 127.0.0.1 --port 3000",
     "build": "npm run test && npm run build:app",
     "build:app": "nuxt generate",
+    "check:contracts": "node scripts/check-api-contract.mjs",
     "check:structure": "node scripts/check-structure.mjs",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "lint": "eslint app scripts tests --ext .js,.mjs,.vue",
     "preview": "nuxt preview",
     "screenshots:readme": "node scripts/capture-readme-screenshots.mjs",
     "test": "npm run build:app && playwright test",
@@ -21,11 +25,16 @@
     "pdfjs-dist": "^6.1.200"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@nuxtjs/i18n": "^10.4.0",
     "@playwright/test": "1.61.1",
     "@tailwindcss/postcss": "^4.3.2",
     "autoprefixer": "^10.5.2",
+    "eslint": "^10.6.0",
+    "eslint-plugin-vue": "^10.9.2",
+    "globals": "^17.7.0",
     "postcss": "^8.5.16",
+    "prettier": "^3.9.4",
     "tailwindcss": "^4.3.2"
   }
 }
