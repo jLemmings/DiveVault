@@ -138,6 +138,9 @@ function stopBackend() {
 }
 
 async function main() {
+  console.log("Running standalone frontend tests before the full application smoke test.");
+  await run(commandName("npm"), ["test"]);
+
   const ready = await isReady();
   if ((process.env.CI || process.env.FULL_APP_BASE_URL) && ready) {
     console.log(`Using running full application stack at ${baseURL}.`);
@@ -164,7 +167,6 @@ async function main() {
   console.log("This requires PostgreSQL at postgresql://dive:dive@127.0.0.1:5432/dive unless DATABASE_URL is set.");
 
   try {
-    await run(commandName("npm"), ["run", "build:app"]);
     startBackend();
     await waitForReady();
     await run(commandName("npx"), ["playwright", "test", "-c", "playwright.full-app.config.js"], {

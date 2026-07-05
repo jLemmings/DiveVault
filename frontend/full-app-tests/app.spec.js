@@ -4,6 +4,11 @@ const TEST_EMAIL = process.env.FULL_APP_TEST_EMAIL || `full-app-diver-${Date.now
 const TEST_PASSWORD = process.env.FULL_APP_TEST_PASSWORD || "FullAppPass123!";
 const TEST_SITE = "Full Stack Reef";
 
+async function chooseComboboxOption(page, name, optionName) {
+  await page.getByRole("combobox", { name }).first().click();
+  await page.getByRole("option", { name: optionName, exact: true }).click();
+}
+
 async function waitForDashboardOrAuthError(page) {
   const dashboard = page.getByRole("heading", { name: "Dashboard" });
   const authError = page.getByText(/Invalid email or password|Unable to sign in|Login failed|User account is inactive/i);
@@ -77,7 +82,7 @@ test("runs auth, frontend, and backend against a deployed app stack", async ({ p
   await page.locator("input[type='time']:visible").fill("10:30");
   await page.getByPlaceholder("45").fill("37");
   await page.getByPlaceholder("18.0").fill("14.2");
-  await page.getByLabel("Tank Volume").selectOption("12");
+  await chooseComboboxOption(page, "Tank Volume", "12L");
   await page.getByPlaceholder("House Reef").fill(TEST_SITE);
   await page
     .getByPlaceholder("Conditions, wildlife, route, entry, navigation, visibility...")
