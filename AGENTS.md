@@ -14,7 +14,7 @@
 - Run external schema migration: `PYTHONPATH=backend python -m migrations.migrate_postgres_schema` with `DATABASE_URL` set.
 - Frontend deps use npm and `frontend/package-lock.json`: `cd frontend && npm ci`.
 - Frontend dev server: `cd frontend && npm run dev`; backend API requests are proxied to `VITE_API_PROXY_TARGET`.
-- Frontend structure check: `cd frontend && npm run check:structure`.
+- Frontend checks: `cd frontend && npm run check:structure`, `npm run check:contracts`, `npm run lint`, and `npm run format:check`.
 - Full local Docker stack is documented as `docker compose -f examples/docker/docker-compose.yml up --build`.
 
 ## Verification
@@ -23,7 +23,7 @@
 - CI frontend test command: `cd frontend && npm test`; Playwright starts the Nuxt static preview on `127.0.0.1:4173` automatically.
 - Focused frontend test: `cd frontend && npx playwright test tests/app.spec.js -g "public profile" --project=chromium`.
 - `cd frontend && npm run build` runs Playwright first, then `nuxt generate`; use `npm run build:app` only when you intentionally want build without tests, as CI does for release assets.
-- There are no configured lint, formatter, or typecheck scripts in the current manifests.
+- Frontend lint/format scripts are configured in `frontend/package.json`; there is no configured frontend typecheck script.
 
 ## MCP Usage
 - Use the Context7 MCP when framework, library, or API behavior is uncertain, especially for Vue, Vite, Playwright, Python, PostgreSQL, Docker, or Kubernetes docs that may have changed.

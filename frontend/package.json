@@ -11,11 +11,12 @@
     "check:structure": "node scripts/check-structure.mjs",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "lint": "eslint app scripts tests --ext .js,.mjs,.vue",
+    "lint": "eslint app scripts tests full-app-tests --ext .js,.mjs,.vue",
     "preview": "nuxt preview",
     "screenshots:readme": "node scripts/capture-readme-screenshots.mjs",
     "test": "npm run build:app && playwright test",
-    "test:full-app": "playwright test -c playwright.full-app.config.js",
+    "test:full-app": "node scripts/run-full-app-test.mjs",
+    "test:full-app:deployed": "playwright test -c playwright.full-app.config.js",
     "test:ui": "playwright test --ui"
   },
   "dependencies": {

@@ -9,7 +9,7 @@ export default [
   js.configs.recommended,
   ...vue.configs["flat/recommended"],
   {
-    files: ["app/**/*.{js,vue}", "scripts/**/*.mjs", "tests/**/*.js"],
+    files: ["app/**/*.{js,vue}", "scripts/**/*.mjs", "tests/**/*.js", "full-app-tests/**/*.{js,mjs}"],
     languageOptions: {
       ecmaVersion: "latest",
       sourceType: "module",

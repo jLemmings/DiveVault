@@ -69,6 +69,25 @@ jobs:
           PYTHONPATH: ${{ github.workspace }}/backend
         run: python -m pytest -vv -ra backend/tests
 
+      - name: Check backend syntax
+        run: python -m compileall backend
+
+      - name: Run frontend lint
+        working-directory: frontend
+        run: npm run lint
+
+      - name: Check frontend formatting
+        working-directory: frontend
+        run: npm run format:check
+
+      - name: Check frontend structure
+        working-directory: frontend
+        run: npm run check:structure
+
+      - name: Check API contract coverage
+        working-directory: frontend
+        run: npm run check:contracts
+
       - name: Run frontend test suite
         working-directory: frontend
         env:
@@ -133,4 +152,3 @@ jobs:
             frontend/playwright-report
             frontend/test-results
           if-no-files-found: ignore
-

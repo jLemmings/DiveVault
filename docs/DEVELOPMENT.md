@@ -85,15 +85,23 @@ Run frontend tests from `frontend/`:
 npm test
 ```
 
-Check structural guardrails from `frontend/`:
+Check structural and API contract guardrails from `frontend/`:
 
 ```powershell
 npm run check:structure
+npm run check:contracts
 ```
 
 `npm run build` runs Playwright first and then `nuxt generate`. Use `npm run build:app` only when you intentionally want to generate the Nuxt app without running the Playwright test suite.
 
-There are no configured lint, formatter, or typecheck scripts in the current manifests.
+Frontend linting and formatting are available with:
+
+```powershell
+npm run lint
+npm run format:check
+```
+
+There is no configured frontend typecheck script.
 
 ## Readme Screenshots
 
