@@ -12,6 +12,8 @@ env:
   IMAGE_ARTIFACT_NAME: docker-image
   LOCAL_IMAGE_TAG: divevault-ci:${{ github.sha }}
   FULL_APP_BASE_URL: http://127.0.0.1:8000
+  PYTHON_VERSION: "3.14.5"
+  NODE_VERSION: "24.18.0"
 
 jobs:
   fetch-artifacts:
@@ -108,9 +110,86 @@ jobs:
           path: ${{ runner.temp }}/repo-source.tar.gz
           if-no-files-found: error
 
-  build-image:
+  quality-gate:
     runs-on: ubuntu-latest
     needs: fetch-artifacts
+
+    steps:
+      - name: Download source artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: ${{ env.SOURCE_ARTIFACT_NAME }}
+          path: ${{ runner.temp }}/artifacts
+
+      - name: Extract source artifact
+        run: |
+          set -euo pipefail
+          tar -xzf "${RUNNER_TEMP}/artifacts/repo-source.tar.gz" -C "${GITHUB_WORKSPACE}"
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install backend dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r backend/requirements-dev.txt
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Install Playwright browsers
+        working-directory: frontend
+        env:
+          PLAYWRIGHT_BROWSERS_PATH: 0
+        run: |
+          npx playwright --version
+          npx playwright install --with-deps
+
+      - name: Run backend test suite
+        env:
+          PYTHONPATH: ${{ github.workspace }}/backend
+        run: python -m pytest -vv -ra backend/tests
+
+      - name: Check backend syntax
+        run: python -m compileall backend
+
+      - name: Run frontend lint
+        working-directory: frontend
+        run: npm run lint
+
+      - name: Check frontend formatting
+        working-directory: frontend
+        run: npm run format:check
+
+      - name: Check frontend structure
+        working-directory: frontend
+        run: npm run check:structure
+
+      - name: Check API contract coverage
+        working-directory: frontend
+        run: npm run check:contracts
+
+      - name: Run frontend tests and build
+        working-directory: frontend
+        env:
+          PLAYWRIGHT_BROWSERS_PATH: 0
+        run: npm run build
+
+  build-image:
+    runs-on: ubuntu-latest
+    needs:
+      - fetch-artifacts
+      - quality-gate
 
     steps:
       - name: Download source artifact
@@ -127,7 +206,7 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@v6
         with:
-          node-version: "24.18.0"
+          node-version: ${{ env.NODE_VERSION }}
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
@@ -184,7 +263,7 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@v6
         with:
-          node-version: "24.18.0"
+          node-version: ${{ env.NODE_VERSION }}
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
@@ -366,7 +445,7 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@v6
         with:
-          node-version: "24.18.0"
+          node-version: ${{ env.NODE_VERSION }}
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 

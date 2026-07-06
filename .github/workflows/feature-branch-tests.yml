@@ -35,8 +35,62 @@ jobs:
           PYTHONPATH: ${{ github.workspace }}/backend
         run: python -m pytest -vv -ra backend/tests
 
+      - name: Check backend syntax
+        run: python -m compileall backend
+
+  frontend-checks:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Install Playwright browsers
+        working-directory: frontend
+        env:
+          PLAYWRIGHT_BROWSERS_PATH: 0
+        run: |
+          npx playwright --version
+          npx playwright install --with-deps
+
+      - name: Run frontend lint
+        working-directory: frontend
+        run: npm run lint
+
+      - name: Check frontend formatting
+        working-directory: frontend
+        run: npm run format:check
+
+      - name: Check frontend structure
+        working-directory: frontend
+        run: npm run check:structure
+
+      - name: Check API contract coverage
+        working-directory: frontend
+        run: npm run check:contracts
+
+      - name: Run frontend tests and build
+        working-directory: frontend
+        env:
+          PLAYWRIGHT_BROWSERS_PATH: 0
+        run: npm run build
+
   image-full-application-test:
     runs-on: ubuntu-latest
+    needs:
+      - backend-tests
+      - frontend-checks
 
     steps:
       - name: Checkout

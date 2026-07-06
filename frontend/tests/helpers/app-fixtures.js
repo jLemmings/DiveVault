@@ -35,9 +35,7 @@ function baseAuthStatus(overrides = {}) {
 }
 
 function authMePayload(user = baseUser(), overrides = {}) {
-  const email = user?.primaryEmailAddress?.emailAddress
-    || user?.emailAddresses?.[0]?.emailAddress
-    || "";
+  const email = user?.primaryEmailAddress?.emailAddress || user?.emailAddresses?.[0]?.emailAddress || "";
   return {
     user_id: user?.id || "user_avery",
     session_id: "session_playwright",
@@ -75,12 +73,14 @@ function buildDive(overrides = {}) {
     fields: {
       location: overrides.location || { lat: 26.508, lon: -77.089 },
       gasmixes: [{ oxygen_fraction: 0.32 }],
-      tanks: [{
-        volume: overrides.tank_volume_l ? Number(overrides.tank_volume_l) : 12,
-        workpressure_bar: 200,
-        beginpressure_bar: 200,
-        endpressure_bar: 90
-      }],
+      tanks: [
+        {
+          volume: overrides.tank_volume_l ? Number(overrides.tank_volume_l) : 12,
+          workpressure_bar: 200,
+          beginpressure_bar: 200,
+          endpressure_bar: 90
+        }
+      ],
       logbook: {
         site: overrides.site ?? "Blue Hole",
         buddy: overrides.buddy ?? "Kai",
@@ -152,12 +152,8 @@ function baseData() {
           longitude: -77.089
         }
       ],
-      buddies: [
-        { id: "buddy-1", name: "Kai" }
-      ],
-      guides: [
-        { id: "guide-1", name: "Mina" }
-      ]
+      buddies: [{ id: "buddy-1", name: "Kai" }],
+      guides: [{ id: "guide-1", name: "Mina" }]
     },
     equipment: [
       {
@@ -182,9 +178,7 @@ function baseData() {
 }
 
 function getLogbookState(dive) {
-  return dive?.fields?.logbook && typeof dive.fields.logbook === "object"
-    ? dive.fields.logbook
-    : {};
+  return dive?.fields?.logbook && typeof dive.fields.logbook === "object" ? dive.fields.logbook : {};
 }
 
 function isCommittedDive(dive) {
@@ -228,14 +222,17 @@ function updateDiveLogbook(data, diveId, payload) {
   dive.fields = {
     ...dive.fields,
     logbook: nextLogbook,
-    tanks: Array.isArray(dive.fields?.tanks) && dive.fields.tanks.length
-      ? dive.fields.tanks.map((tank, index) => (index === 0
-        ? {
-          ...tank,
-          volume: payload.tank_volume_l ? Number(payload.tank_volume_l) : tank.volume
-        }
-        : tank))
-      : dive.fields?.tanks
+    tanks:
+      Array.isArray(dive.fields?.tanks) && dive.fields.tanks.length
+        ? dive.fields.tanks.map((tank, index) =>
+            index === 0
+              ? {
+                  ...tank,
+                  volume: payload.tank_volume_l ? Number(payload.tank_volume_l) : tank.volume
+                }
+              : tank
+          )
+        : dive.fields?.tanks
   };
 
   refreshStats(data);
@@ -244,9 +241,7 @@ function updateDiveLogbook(data, diveId, payload) {
 
 function createDiveFromPayload(data, payload) {
   const nextId = data.dives.reduce((max, dive) => Math.max(max, Number(dive.id) || 0), 0) + 1;
-  const logbook = payload?.fields?.logbook && typeof payload.fields.logbook === "object"
-    ? payload.fields.logbook
-    : {};
+  const logbook = payload?.fields?.logbook && typeof payload.fields.logbook === "object" ? payload.fields.logbook : {};
   const temperature = payload?.fields?.temperature_surface_c;
   const tankVolume = payload?.fields?.tanks?.[0]?.volume;
   const dive = {
@@ -265,7 +260,7 @@ function createDiveFromPayload(data, payload) {
     fields: {
       ...(payload.fields || {}),
       location: payload?.fields?.location || { lat: 26.508, lon: -77.089 },
-      tanks: Number.isFinite(Number(tankVolume)) ? [{ volume: Number(tankVolume) }] : (payload?.fields?.tanks || []),
+      tanks: Number.isFinite(Number(tankVolume)) ? [{ volume: Number(tankVolume) }] : payload?.fields?.tanks || [],
       logbook: {
         site: logbook.site || "",
         buddy: logbook.buddy || "",
@@ -317,14 +312,15 @@ async function fulfillJson(route, payload, status = 200) {
 }
 
 async function setupTestState(page, { signedIn = true, user = baseUser() } = {}) {
-  await page.addInitScript((state) => {
-    const installStabilityStyles = () => {
-      if (document.querySelector("style[data-playwright-stability]")) return;
-      const target = document.head || document.documentElement;
-      if (!target) return;
-      const style = document.createElement("style");
-      style.dataset.playwrightStability = "true";
-      style.textContent = `
+  await page.addInitScript(
+    (state) => {
+      const installStabilityStyles = () => {
+        if (document.querySelector("style[data-playwright-stability]")) return;
+        const target = document.head || document.documentElement;
+        if (!target) return;
+        const style = document.createElement("style");
+        style.dataset.playwrightStability = "true";
+        style.textContent = `
         *,
         *::before,
         *::after {
@@ -336,36 +332,38 @@ async function setupTestState(page, { signedIn = true, user = baseUser() } = {})
           transition-duration: 1ms !important;
         }
       `;
-      target.appendChild(style);
-    };
-    installStabilityStyles();
-    document.addEventListener("DOMContentLoaded", installStabilityStyles, { once: true });
-    window.scrollTo = () => {};
-    window.HTMLElement.prototype.scrollIntoView = function scrollIntoView() {};
-    const storageKey = "divevault_auth_token";
-    if (state.signedIn && state.token) {
-      window.localStorage.setItem(storageKey, state.token);
-    } else {
-      window.localStorage.removeItem(storageKey);
-    }
-    const clipboardState = { value: "" };
-    Object.defineProperty(window.navigator, "clipboard", {
-      configurable: true,
-      value: {
-        async writeText(value) {
-          clipboardState.value = value;
-        },
-        async readText() {
-          return clipboardState.value;
-        }
+        target.appendChild(style);
+      };
+      installStabilityStyles();
+      document.addEventListener("DOMContentLoaded", installStabilityStyles, { once: true });
+      window.scrollTo = () => {};
+      window.HTMLElement.prototype.scrollIntoView = function scrollIntoView() {};
+      const storageKey = "divevault_auth_token";
+      if (state.signedIn && state.token) {
+        window.localStorage.setItem(storageKey, state.token);
+      } else {
+        window.localStorage.removeItem(storageKey);
       }
-    });
-  }, {
-    signedIn,
-    sessionId: signedIn ? "playwright-session" : null,
-    token: "playwright-token",
-    user
-  });
+      const clipboardState = { value: "" };
+      Object.defineProperty(window.navigator, "clipboard", {
+        configurable: true,
+        value: {
+          async writeText(value) {
+            clipboardState.value = value;
+          },
+          async readText() {
+            return clipboardState.value;
+          }
+        }
+      });
+    },
+    {
+      signedIn,
+      sessionId: signedIn ? "playwright-session" : null,
+      token: "playwright-token",
+      user
+    }
+  );
 }
 
 async function installAppMocks(page, options = {}) {
@@ -376,19 +374,21 @@ async function installAppMocks(page, options = {}) {
   const signedIn = options.signedIn ?? true;
   const user = options.user || baseUser();
   const authStatus = baseAuthStatus(options.authStatus);
-  const authUsers = clone(options.authUsers || [
-    {
-      id: user.id || "user_avery",
-      email: user.primaryEmailAddress?.emailAddress || user.emailAddresses?.[0]?.emailAddress || "avery@example.com",
-      first_name: user.firstName || "",
-      last_name: user.lastName || "",
-      role: user.role || "user",
-      is_active: true,
-      created_at: "2026-04-01T09:00:00Z",
-      updated_at: "2026-04-01T09:00:00Z",
-      last_login_at: "2026-04-07T10:00:00Z"
-    }
-  ]);
+  const authUsers = clone(
+    options.authUsers || [
+      {
+        id: user.id || "user_avery",
+        email: user.primaryEmailAddress?.emailAddress || user.emailAddresses?.[0]?.emailAddress || "avery@example.com",
+        first_name: user.firstName || "",
+        last_name: user.lastName || "",
+        role: user.role || "user",
+        is_active: true,
+        created_at: "2026-04-01T09:00:00Z",
+        updated_at: "2026-04-01T09:00:00Z",
+        last_login_at: "2026-04-07T10:00:00Z"
+      }
+    ]
+  );
   const session = {
     signedIn,
     token: options.token || "playwright-token",
@@ -446,20 +446,22 @@ async function installAppMocks(page, options = {}) {
         await fulfillJson(route, { error: "Email and password are required." }, 400);
         return;
       }
-      await fulfillJson(route, {
-        created: true,
-        email: payload.email,
-        first_name: payload.first_name || "",
-        last_name: payload.last_name || ""
-      }, 201);
+      await fulfillJson(
+        route,
+        {
+          created: true,
+          email: payload.email,
+          first_name: payload.first_name || "",
+          last_name: payload.last_name || ""
+        },
+        201
+      );
       return;
     }
 
     if (pathname === "/api/auth/me" && request.method() === "GET") {
       const authorization = request.headers()["authorization"] || "";
-      const token = authorization.toLowerCase().startsWith("bearer ")
-        ? authorization.split(" ", 2)[1]
-        : "";
+      const token = authorization.toLowerCase().startsWith("bearer ") ? authorization.split(" ", 2)[1] : "";
       if (!signedIn && token !== session.token) {
         await fulfillJson(route, { error: "Session expired" }, 401);
         return;
@@ -514,10 +516,14 @@ async function installAppMocks(page, options = {}) {
 
     if (pathname === "/api/auth/invitations" && request.method() === "POST") {
       const payload = request.postDataJSON ? request.postDataJSON() : JSON.parse(request.postData() || "{}");
-      await fulfillJson(route, {
-        invite_url: `http://localhost:4173/?invite_token=test-invite-token&email=${encodeURIComponent(payload?.email || "")}`,
-        token: "test-invite-token"
-      }, 201);
+      await fulfillJson(
+        route,
+        {
+          invite_url: `http://localhost:4173/?invite_token=test-invite-token&email=${encodeURIComponent(payload?.email || "")}`,
+          token: "test-invite-token"
+        },
+        201
+      );
       return;
     }
 
@@ -661,10 +667,4 @@ async function gotoAndWait(page, url = "/") {
   await expect(page.locator("#app")).toBeVisible();
 }
 
-export {
-  baseData,
-  buildDive,
-  clone,
-  gotoAndWait,
-  installAppMocks
-};
+export { baseData, buildDive, clone, gotoAndWait, installAppMocks };

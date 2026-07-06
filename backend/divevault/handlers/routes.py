@@ -92,6 +92,7 @@ def route_manifest(routes: list[Route]) -> list[dict]:
         {
             "method": route.method,
             "path": route.manifest_path,
+            "label": route.route_label,
             "sample_path": route.sample_path or route.path,
             "auth": route.policy.auth,
             "content_types": sorted(route.policy.content_types),

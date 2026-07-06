@@ -52,37 +52,41 @@ function createMockData() {
 
   for (let index = 0; index < 40; index += 1) {
     const site = allSites[index % allSites.length];
-    dives.push(buildDive({
-      id: 1000 + index,
-      site: site.name,
-      buddy: buddies[index % buddies.length],
-      guide: guides[index % guides.length],
-      status: "complete",
-      started_at: buildStartedAt(index),
-      imported_at: buildStartedAt(index),
-      duration_seconds: 2400 + (index * 120),
-      max_depth_m: 18 + ((index * 3) % 16),
-      location: { lat: site.latitude, lon: site.longitude },
-      raw_sha256: `sha-committed-${index}`
-    }));
+    dives.push(
+      buildDive({
+        id: 1000 + index,
+        site: site.name,
+        buddy: buddies[index % buddies.length],
+        guide: guides[index % guides.length],
+        status: "complete",
+        started_at: buildStartedAt(index),
+        imported_at: buildStartedAt(index),
+        duration_seconds: 2400 + index * 120,
+        max_depth_m: 18 + ((index * 3) % 16),
+        location: { lat: site.latitude, lon: site.longitude },
+        raw_sha256: `sha-committed-${index}`
+      })
+    );
   }
 
   for (let index = 0; index < 15; index += 1) {
     const site = allSites[index % allSites.length];
-    dives.push(buildDive({
-      id: 2000 + index,
-      site: "",
-      buddy: "",
-      guide: "",
-      notes: "",
-      status: "imported",
-      started_at: buildStartedAt(index + 15),
-      imported_at: buildStartedAt(index + 15),
-      duration_seconds: 2100 + (index * 45),
-      max_depth_m: 12 + ((index * 5) % 20),
-      location: { lat: site.latitude, lon: site.longitude },
-      raw_sha256: `sha-imported-${index}`
-    }));
+    dives.push(
+      buildDive({
+        id: 2000 + index,
+        site: "",
+        buddy: "",
+        guide: "",
+        notes: "",
+        status: "imported",
+        started_at: buildStartedAt(index + 15),
+        imported_at: buildStartedAt(index + 15),
+        duration_seconds: 2100 + index * 45,
+        max_depth_m: 12 + ((index * 5) % 20),
+        location: { lat: site.latitude, lon: site.longitude },
+        raw_sha256: `sha-imported-${index}`
+      })
+    );
   }
 
   data.dives = dives.sort((left, right) => right.started_at.localeCompare(left.started_at));
@@ -163,15 +167,11 @@ async function startServer() {
   const port = await getAvailablePort();
   baseUrl = `http://127.0.0.1:${port}`;
 
-  const server = spawn(
-    process.execPath,
-    ["./node_modules/vite/bin/vite.js", "--host", "127.0.0.1", "--port", String(port), "--strictPort"],
-    {
-      cwd: frontendDir,
-      stdio: ["ignore", "pipe", "pipe"],
-      windowsHide: true
-    }
-  );
+  const server = spawn("npm", ["run", "dev", "--", "--host", "127.0.0.1", "--port", String(port)], {
+    cwd: frontendDir,
+    stdio: ["ignore", "pipe", "pipe"],
+    windowsHide: true
+  });
 
   let output = "";
   server.stdout.on("data", (chunk) => {
@@ -184,7 +184,7 @@ async function startServer() {
   const started = await waitForServer(Date.now() + serverTimeoutMs);
   if (!started) {
     server.kill();
-    throw new Error(`Vite did not start at ${baseUrl} within ${serverTimeoutMs / 1000}s.\n${output}`);
+    throw new Error(`Nuxt did not start at ${baseUrl} within ${serverTimeoutMs / 1000}s.\n${output}`);
   }
 
   return server;
@@ -202,11 +202,14 @@ async function stopServer(server) {
 async function waitForDashboardMap(page) {
   await page.waitForSelector(".dive-theme-map", { state: "visible", timeout: 15000 });
   try {
-    await page.waitForFunction(() => {
-      const tiles = Array.from(document.querySelectorAll(".leaflet-tile"));
-      if (!tiles.length) return false;
-      return tiles.some((tile) => tile.classList.contains("leaflet-tile-loaded"));
-    }, { timeout: 20000 });
+    await page.waitForFunction(
+      () => {
+        const tiles = Array.from(document.querySelectorAll(".leaflet-tile"));
+        if (!tiles.length) return false;
+        return tiles.some((tile) => tile.classList.contains("leaflet-tile-loaded"));
+      },
+      { timeout: 20000 }
+    );
   } catch {
     console.warn("Map tiles did not finish loading; capturing the rendered map shell.");
   }
