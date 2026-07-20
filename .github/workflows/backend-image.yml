@@ -127,7 +127,7 @@ jobs:
           tar -xzf "${RUNNER_TEMP}/artifacts/repo-source.tar.gz" -C "${GITHUB_WORKSPACE}"
 
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v7
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
