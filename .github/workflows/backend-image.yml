@@ -132,7 +132,7 @@ jobs:
           python-version: ${{ env.PYTHON_VERSION }}
 
       - name: Set up Node
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
@@ -204,7 +204,7 @@ jobs:
           tar -xzf "${RUNNER_TEMP}/artifacts/repo-source.tar.gz" -C "${GITHUB_WORKSPACE}"
 
       - name: Set up Node
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
@@ -261,7 +261,7 @@ jobs:
           tar -xzf "${RUNNER_TEMP}/artifacts/repo-source.tar.gz" -C "${GITHUB_WORKSPACE}"
 
       - name: Set up Node
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
@@ -443,7 +443,7 @@ jobs:
           tar -xzf "${RUNNER_TEMP}/artifacts/repo-source.tar.gz" -C "${GITHUB_WORKSPACE}"
 
       - name: Set up Node
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
