@@ -26,18 +26,18 @@
     "pdfjs-dist": "^6.1.200"
   },
   "overrides": {
-    "@unhead/vue": "^3.1.8"
+    "@unhead/vue": "^3.2.2"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
-    "@nuxtjs/i18n": "^10.4.1",
+    "@nuxtjs/i18n": "^10.5.0",
     "@playwright/test": "1.61.1",
     "@tailwindcss/postcss": "^4.3.3",
     "autoprefixer": "^10.5.4",
     "eslint": "^10.7.0",
     "eslint-plugin-vue": "^10.10.0",
     "globals": "^17.7.0",
-    "postcss": "^8.5.21",
+    "postcss": "^8.5.22",
     "prettier": "^3.9.6",
     "tailwindcss": "^4.3.3"
   }
