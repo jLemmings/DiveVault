@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 const frontendRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const repoRoot = path.resolve(frontendRoot, "..");
 const appRoot = path.join(frontendRoot, "app");
+const trackedFilesManifest = path.join(repoRoot, ".divevault-tracked-files");
 
 const generatedTrackedPaths = [
   "frontend/debug.log",
@@ -47,8 +48,21 @@ function listFiles(directory) {
   });
 }
 
+function splitFileList(output) {
+  return output.split(/\r?\n/).filter(Boolean);
+}
+
 function trackedFiles() {
-  return execFileSync("git", ["ls-files"], { cwd: repoRoot, encoding: "utf8" }).split(/\r?\n/).filter(Boolean);
+  try {
+    return splitFileList(execFileSync("git", ["ls-files"], { cwd: repoRoot, encoding: "utf8" }));
+  } catch (error) {
+    if (error.status !== 128 || !existsSync(trackedFilesManifest)) {
+      throw error;
+    }
+
+    console.warn("Git metadata is unavailable; using packaged tracked-files manifest.");
+    return splitFileList(readFileSync(trackedFilesManifest, "utf8"));
+  }
 }
 
 function findLegacyReferences(files) {

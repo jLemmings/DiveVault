@@ -93,6 +93,8 @@ jobs:
       - name: Package source artifact
         run: |
           set -euo pipefail
+          git ls-files > .divevault-tracked-files
+          trap 'rm -f .divevault-tracked-files' EXIT
           tar \
             --exclude='.git' \
             --exclude='.venv' \
