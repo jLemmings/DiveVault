@@ -133,7 +133,7 @@ jobs:
         env:
           PLAYWRIGHT_BROWSERS_PATH: 0
           FULL_APP_BASE_URL: ${{ env.FULL_APP_BASE_URL }}
-        run: npm run test:full-app
+        run: npm run test:full-app:deployed
 
       - name: Stop deployed backend
         if: always()
