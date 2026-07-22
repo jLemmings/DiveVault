@@ -671,12 +671,13 @@ export default {
             Complete the dive site before these imported dives enter the logbook. Buddy and guide can stay blank.
           </p>
         </div>
-        <UButton
+        <button
+          type="button"
           @click="openImportQueue()"
           class="rounded-xl bg-tertiary px-5 py-3 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-background transition-transform hover:scale-[0.98]"
         >
           Review Imported Dives
-        </UButton>
+        </button>
       </div>
     </section>
 
@@ -711,16 +712,17 @@ export default {
               No committed dives yet.
             </div>
           </div>
-          <UButton
+          <button
+            type="button"
             @click="setView('logs')"
             class="mt-6 flex items-center gap-2 self-start font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary hover:underline"
           >
             View All Logs <span class="material-symbols-outlined text-sm">arrow_forward</span>
-          </UButton>
+          </button>
         </section>
       </aside>
 
-      <main class="dashboard-main-stage">
+      <section class="dashboard-main-stage">
         <section v-if="!isMapView" class="dashboard-section dashboard-stat-grid grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <article
             v-for="card in dashboardStatCards.slice(0, 4)"
@@ -760,23 +762,24 @@ export default {
               :class="['dashboard-glass-card dashboard-map-panel relative h-full overflow-hidden']"
               :style="isMapExpanded ? { height: '85vh' } : null"
             >
-              <UButton
+              <button
+                type="button"
                 v-if="isMapExpanded"
                 @click="closeMapExpanded()"
                 class="absolute right-6 top-6 z-[480] rounded-full border border-outline-variant/30 bg-background/65 px-4 py-2 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-primary backdrop-blur-sm"
               >
                 Close
-              </UButton>
-              <UButton
+              </button>
+              <button
                 v-else
+                type="button"
                 @click="toggleMapExpanded()"
                 class="dashboard-map-expand-button"
-                type="button"
                 aria-label="Expand map"
                 title="Expand map"
               >
                 <span class="material-symbols-outlined text-lg">fullscreen</span>
-              </UButton>
+              </button>
               <div ref="diveMapCanvas" class="dive-theme-map"></div>
             </div>
           </div>
@@ -797,7 +800,7 @@ export default {
             <div class="font-headline text-2xl font-bold text-secondary">{{ site.count }}</div>
           </article>
         </section>
-      </main>
+      </section>
     </div>
 
     <div
@@ -816,12 +819,13 @@ export default {
               These committed logbook dives do not currently resolve to a saved dive-site coordinate or usable embedded GPS position.
             </p>
           </div>
-          <UButton
+          <button
+            type="button"
             @click="closeMissingCoordinateDives()"
             class="self-start bg-surface-container-high px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary transition-colors hover:text-primary"
           >
             Close
-          </UButton>
+          </button>
         </div>
 
         <div class="mt-6 grid gap-4 xl:grid-cols-2">
@@ -836,12 +840,13 @@ export default {
                 <h6 class="mt-2 truncate font-headline text-xl font-bold text-on-surface">{{ dive.siteName }}</h6>
                 <p class="mt-1 text-sm text-on-surface-variant">{{ dive.title }}</p>
               </div>
-              <UButton
+              <button
+                type="button"
                 @click="openMissingCoordinateDive(dive.id)"
                 class="bg-primary px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-on-primary"
               >
                 Open Dive
-              </UButton>
+              </button>
             </div>
 
             <div class="mt-4 grid gap-3 md:grid-cols-2">
