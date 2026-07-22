@@ -18,8 +18,18 @@ function handleRouteNavigation(app) {
   }
 }
 
+function currentBrowserPath() {
+  if (typeof window === "undefined") {
+    return "";
+  }
+  return window.location.pathname.replace(/\/+$/, "") || "/";
+}
+
 async function navigateToAppRoute(app, path, options = {}) {
-  if (!path || app.nuxtRoute.path === path) {
+  if (!path) {
+    return;
+  }
+  if (app.nuxtRoute.path === path && currentBrowserPath() === path) {
     return;
   }
   if (app.routePathOverride && app.routePathOverride !== path) {
