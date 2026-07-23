@@ -35,6 +35,17 @@ export default defineNuxtConfig({
   ui: {
     fonts: false
   },
+  appConfig: {
+    ui: {
+      button: {
+        defaultVariants: {
+          color: "neutral",
+          variant: "ghost",
+          size: "md"
+        }
+      }
+    }
+  },
   i18n: {
     defaultLocale: DEFAULT_LOCALE,
     strategy: "no_prefix",

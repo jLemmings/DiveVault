@@ -671,7 +671,7 @@ export default {
         </header>
 
         <div class="grid grid-cols-12 gap-6">
-          <main class="col-span-12 space-y-6 xl:col-span-8">
+          <section class="col-span-12 space-y-6 xl:col-span-8">
             <section
               v-if="hasLogbookMetadata"
               class="rounded-[1.5rem] border border-primary/10 bg-surface-container-low/82 p-6 shadow-panel"
@@ -745,7 +745,7 @@ export default {
                 </div>
               </div>
             </section>
-          </main>
+          </section>
 
           <aside class="col-span-12 space-y-6 xl:col-span-4">
             <section class="rounded-[1.5rem] border border-primary/10 bg-surface-container-low/82 p-6 shadow-panel">

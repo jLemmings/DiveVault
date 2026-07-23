@@ -96,6 +96,39 @@ test("covers dashboard, logs, dive detail, and logbook editing", async ({ page }
   await expect(page.getByText("metadata updated.")).toBeVisible();
 });
 
+test("navigates between desktop sidebar sections from logs", async ({ page }) => {
+  await installAppMocks(page);
+  await gotoAndWait(page, "/logs");
+
+  await expect(page.getByRole("heading", { name: "Dive Logs", exact: true })).toBeVisible();
+
+  await page.getByRole("button", { name: "Dashboard" }).click();
+  await expect(page).toHaveURL(/\/$/);
+  await expect(page.getByRole("heading", { name: "Dashboard", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Recent Dives" })).toBeVisible();
+  const sidebarBox = await page.locator("aside").first().boundingBox();
+  const dashboardRailBox = await page.locator(".dashboard-side-rail").boundingBox();
+  expect(dashboardRailBox?.x).toBeGreaterThanOrEqual((sidebarBox?.x || 0) + (sidebarBox?.width || 0) - 1);
+
+  await page.getByRole("button", { name: "Dive Logs" }).click();
+  await expect(page).toHaveURL(/\/logs$/);
+  await expect(page.getByPlaceholder("Search dive logs...")).toBeVisible();
+  const logsBox = await page.locator(".dashboard-command-center").boundingBox();
+  expect(logsBox?.x).toBeGreaterThanOrEqual((sidebarBox?.x || 0) + (sidebarBox?.width || 0) - 1);
+
+  await page.getByRole("button", { name: "Equipment" }).click();
+  await expect(page).toHaveURL(/\/equipment$/);
+  await expect(page.getByRole("heading", { name: "Equipment", exact: true })).toBeVisible();
+  const equipmentBox = await page.locator(".dashboard-command-center").boundingBox();
+  expect(equipmentBox?.x).toBeGreaterThanOrEqual((sidebarBox?.x || 0) + (sidebarBox?.width || 0) - 1);
+
+  await page.getByRole("button", { name: "Settings" }).click();
+  await expect(page).toHaveURL(/\/settings$/);
+  await expect(page.getByRole("heading", { name: "Settings", exact: true })).toBeVisible();
+  const settingsBox = await page.locator(".dashboard-command-center").boundingBox();
+  expect(settingsBox?.x).toBeGreaterThanOrEqual((sidebarBox?.x || 0) + (sidebarBox?.width || 0) - 1);
+});
+
 test("covers the import queue and import completion flow", async ({ page }) => {
   await installAppMocks(page);
   await gotoAndWait(page, "/#imports");
