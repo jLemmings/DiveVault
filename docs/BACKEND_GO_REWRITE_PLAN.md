@@ -21,28 +21,28 @@ Current baseline:
 
 ## Phase 1: Freeze Compatibility Contract
 
-- [ ] Treat `contracts/api-routes.json` as the API route source of truth.
-- [ ] Add a Go route contract test that compares registered routes to `contracts/api-routes.json`.
-- [ ] Capture representative request and response fixtures from current Python tests.
-- [ ] Document status-code compatibility expectations for auth, validation, not found, method not allowed, unsupported media type, oversized body, and rate limits.
-- [ ] Document auth compatibility requirements for bearer tokens, session cookies, CLI sync tokens, owner/admin checks, and bootstrap registration.
-- [ ] Document database compatibility requirements for existing schema version `14` rows and JSONB payload shapes.
+- [x] Treat `contracts/api-routes.json` as the API route source of truth.
+- [x] Add a Go route contract test that compares registered routes to `contracts/api-routes.json`.
+- [x] Capture representative request and response fixtures from current Python tests.
+- [x] Document status-code compatibility expectations for auth, validation, not found, method not allowed, unsupported media type, oversized body, and rate limits.
+- [x] Document auth compatibility requirements for bearer tokens, session cookies, CLI sync tokens, owner/admin checks, and bootstrap registration.
+- [x] Document database compatibility requirements for existing schema version `14` rows and JSONB payload shapes.
 
 ## Phase 2: Add Go Backend Skeleton
 
-- [ ] Add a Go module for the backend.
-- [ ] Add `cmd/divevault/main.go`.
-- [ ] Add internal packages for config, HTTP routing, handlers, auth, store, migrations, domain, importers, exports, geocode, metrics, and static assets.
-- [ ] Load env and flags matching the current Python backend names.
-- [ ] Implement graceful startup and shutdown.
-- [ ] Implement structured request logging.
-- [ ] Implement CORS headers matching current behavior.
-- [ ] Implement security headers matching current behavior.
-- [ ] Implement request body size enforcement.
-- [ ] Implement `GET /health`.
-- [ ] Implement `GET /api/health`.
-- [ ] Implement `GET /config.js`.
-- [ ] Implement static frontend serving with SPA fallback.
+- [x] Add a Go module for the backend.
+- [x] Add `cmd/divevault/main.go`.
+- [x] Add internal packages for config, HTTP routing, handlers, auth, store, migrations, domain, importers, exports, geocode, metrics, and static assets.
+- [x] Load env and flags matching the current Python backend names.
+- [x] Implement graceful startup and shutdown.
+- [x] Implement structured request logging.
+- [x] Implement CORS headers matching current behavior.
+- [x] Implement security headers matching current behavior.
+- [x] Implement request body size enforcement.
+- [x] Implement `GET /health`.
+- [x] Implement `GET /api/health`.
+- [x] Implement `GET /config.js`.
+- [x] Implement static frontend serving with SPA fallback.
 
 ## Phase 3: Port PostgreSQL Layer And Migrations
 
@@ -174,3 +174,4 @@ Current baseline:
 ## Progress Notes
 
 - 2026-08-25: Initial rewrite tracker created from the current Python backend inventory and API contract.
+- 2026-08-25: Started Phase 1 and Phase 2 with a dependency-free Go backend skeleton in `backend-go/`, a shared API route contract test, representative Python response fixtures in `backend-go/testdata/python-response-fixtures.json`, compatibility notes in `docs/BACKEND_GO_COMPATIBILITY.md`, health/config/static serving, basic route matching, CORS/security headers, request logging, graceful shutdown, and body limit enforcement. Go is not installed in the current environment, so Go tests were written but not executed.

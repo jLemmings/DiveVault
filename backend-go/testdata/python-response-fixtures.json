@@ -1,0 +1,76 @@
+{
+  "source": "Representative compatibility fixtures captured from backend/tests/test_dive_backend_endpoints.py assertions.",
+  "fixtures": [
+    {
+      "name": "health",
+      "request": { "method": "GET", "path": "/api/health" },
+      "response": { "status": 200, "json": { "status": "ok" } }
+    },
+    {
+      "name": "startup_health_not_ready",
+      "request": { "method": "GET", "path": "/api/health" },
+      "response": {
+        "status": 503,
+        "json": {
+          "status": "starting",
+          "database": "migrating",
+          "error": "startup migrations still running"
+        }
+      }
+    },
+    {
+      "name": "config_js",
+      "request": { "method": "GET", "path": "/config.js" },
+      "response": {
+        "status": 200,
+        "body_contains": ["\"authEnabled\": true", "\"demoMode\": false"],
+        "headers": { "Cache-Control": "no-store" }
+      }
+    },
+    {
+      "name": "unknown_api_route",
+      "request": { "method": "GET", "path": "/api/missing" },
+      "response": { "status": 404, "json_shape": { "error": "string" } }
+    },
+    {
+      "name": "wrong_method",
+      "request": { "method": "POST", "path": "/api/health" },
+      "response": { "status": 405, "headers": { "Allow": "GET" } }
+    },
+    {
+      "name": "preflight",
+      "request": { "method": "OPTIONS", "path": "/api/health" },
+      "response": { "status": 204 }
+    },
+    {
+      "name": "wrong_json_content_type",
+      "request": { "method": "POST", "path": "/api/dives", "headers": { "Content-Type": "text/plain" } },
+      "response": { "status": 415, "json": { "error": "Content-Type must be application/json" } }
+    },
+    {
+      "name": "wrong_csv_content_type",
+      "request": { "method": "POST", "path": "/api/imports/csv", "headers": { "Content-Type": "application/octet-stream" } },
+      "response": { "status": 415, "json": { "error": "Content-Type must be text/csv or application/json" } }
+    },
+    {
+      "name": "wrong_subsurface_content_type",
+      "request": { "method": "POST", "path": "/api/imports/subsurface", "headers": { "Content-Type": "application/json" } },
+      "response": { "status": 415, "json": { "error": "Content-Type must be application/xml, text/xml, application/gzip, or application/zip" } }
+    },
+    {
+      "name": "wrong_backup_content_type",
+      "request": { "method": "POST", "path": "/api/backup/import", "headers": { "Content-Type": "text/plain" } },
+      "response": { "status": 415, "json": { "error": "Content-Type must be application/json or application/zip" } }
+    },
+    {
+      "name": "missing_auth",
+      "request": { "method": "GET", "path": "/api/dives" },
+      "response": { "status": 401 }
+    },
+    {
+      "name": "owner_route_without_owner",
+      "request": { "method": "GET", "path": "/api/users" },
+      "response": { "status": 403 }
+    }
+  ]
+}
