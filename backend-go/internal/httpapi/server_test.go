@@ -11,7 +11,7 @@ import (
 )
 
 func TestHealthEndpoints(t *testing.T) {
-	server := NewServer(testConfig(), slog.Default())
+	server := NewServer(testConfig(), slog.Default(), nil)
 	for _, path := range []string{"/health", "/api/health"} {
 		request := httptest.NewRequest(http.MethodGet, path, nil)
 		response := httptest.NewRecorder()
@@ -30,7 +30,7 @@ func TestHealthEndpoints(t *testing.T) {
 func TestConfigJS(t *testing.T) {
 	cfg := testConfig()
 	cfg.DemoMode = true
-	server := NewServer(cfg, slog.Default())
+	server := NewServer(cfg, slog.Default(), nil)
 	request := httptest.NewRequest(http.MethodGet, "/config.js", nil)
 	response := httptest.NewRecorder()
 
@@ -48,7 +48,7 @@ func TestConfigJS(t *testing.T) {
 }
 
 func TestUnknownAPIRouteReturnsNotFound(t *testing.T) {
-	server := NewServer(testConfig(), slog.Default())
+	server := NewServer(testConfig(), slog.Default(), nil)
 	request := httptest.NewRequest(http.MethodGet, "/api/unknown", nil)
 	response := httptest.NewRecorder()
 

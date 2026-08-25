@@ -1,21 +1,30 @@
 package httpapi
 
 import (
+	"context"
+	"crypto/rand"
+	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"mime"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
+	"github.com/jlemmings/divevault/backend-go/internal/auth"
 	"github.com/jlemmings/divevault/backend-go/internal/config"
 	"github.com/jlemmings/divevault/backend-go/internal/static"
+	"github.com/jlemmings/divevault/backend-go/internal/store"
 )
 
 type Server struct {
 	cfg    config.Config
 	logger *slog.Logger
+	db     *store.DB
 	routes []Route
+	auth   auth.Verifier
 }
 
 type Context struct {
@@ -23,13 +32,23 @@ type Context struct {
 	Request        *http.Request
 	Server         *Server
 	Route          Route
+	Claims         auth.Claims
+	PrincipalID    string
 }
 
-func NewServer(cfg config.Config, logger *slog.Logger) *Server {
+func NewServer(cfg config.Config, logger *slog.Logger, db *store.DB) *Server {
+	authVerifier := auth.Verifier{
+		Secret:            cfg.AuthJWTSecret,
+		Issuer:            cfg.AuthJWTIssuer,
+		Audience:          cfg.AuthJWTAudience,
+		SyncTokenVerifier: syncVerifier{db: db},
+	}
 	return &Server{
 		cfg:    cfg,
 		logger: logger,
+		db:     db,
 		routes: APIRoutes(),
+		auth:   authVerifier,
 	}
 }
 
@@ -76,10 +95,11 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	route, allowed := s.matchRoute(r.Method, r.URL.Path)
 	if route != nil {
 		routeLabel = route.Path
-		if !s.applyRoutePolicy(recorder, r, *route) {
+		claims, principalID, ok := s.applyRoutePolicy(recorder, r, *route)
+		if !ok {
 			return
 		}
-		route.handler(&Context{ResponseWriter: recorder, Request: r, Server: s, Route: *route})
+		route.handler(&Context{ResponseWriter: recorder, Request: r, Server: s, Route: *route, Claims: claims, PrincipalID: principalID})
 		return
 	}
 	if len(allowed) > 0 {
@@ -110,12 +130,12 @@ func (s *Server) matchRoute(method string, path string) (*Route, []string) {
 	return nil, allowed
 }
 
-func (s *Server) applyRoutePolicy(w http.ResponseWriter, r *http.Request, route Route) bool {
+func (s *Server) applyRoutePolicy(w http.ResponseWriter, r *http.Request, route Route) (auth.Claims, string, bool) {
 	maxBody := s.maxBodyBytes(route.MaxBodyAttr)
 	if maxBody > 0 {
 		if r.ContentLength > maxBody {
 			writeJSON(w, s.cfg.CORSOrigin, http.StatusRequestEntityTooLarge, map[string]string{"error": "Request body exceeds " + route.MaxBodyAttr + " byte limit"})
-			return false
+			return nil, "", false
 		}
 		r.Body = http.MaxBytesReader(w, r.Body, maxBody)
 	}
@@ -123,10 +143,51 @@ func (s *Server) applyRoutePolicy(w http.ResponseWriter, r *http.Request, route 
 		contentType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
 		if err != nil || !contains(route.ContentTypes, contentType) {
 			writeJSON(w, s.cfg.CORSOrigin, http.StatusUnsupportedMediaType, map[string]string{"error": contentTypeError(route.ContentTypes)})
-			return false
+			return nil, "", false
 		}
 	}
-	return true
+	if route.Auth == AuthNone {
+		return nil, "", true
+	}
+	claims, err := s.auth.VerifyRequest(r.Context(), r)
+	if err != nil {
+		var authErr auth.Error
+		if errors.As(err, &authErr) {
+			writeJSON(w, s.cfg.CORSOrigin, authErr.Status, map[string]string{"error": authErr.Message})
+			return nil, "", false
+		}
+		writeJSON(w, s.cfg.CORSOrigin, http.StatusUnauthorized, map[string]string{"error": err.Error()})
+		return nil, "", false
+	}
+	principalID := auth.PrincipalID(claims)
+	switch route.Auth {
+	case AuthPrincipal:
+		if principalID == "" {
+			writeJSON(w, s.cfg.CORSOrigin, http.StatusForbidden, map[string]string{"error": "Authenticated identity is missing a stable user identifier"})
+			return nil, "", false
+		}
+	case AuthOwner:
+		if principalID == "" {
+			writeJSON(w, s.cfg.CORSOrigin, http.StatusForbidden, map[string]string{"error": "Authenticated identity is missing a stable user identifier"})
+			return nil, "", false
+		}
+		settings, err := s.authSettings(r.Context())
+		if err != nil {
+			writeJSON(w, s.cfg.CORSOrigin, http.StatusServiceUnavailable, map[string]string{"error": "Database unavailable: " + err.Error()})
+			return nil, "", false
+		}
+		if principalID != settings.OwnerUserID {
+			writeJSON(w, s.cfg.CORSOrigin, http.StatusForbidden, map[string]string{"error": "Instance owner required"})
+			return nil, "", false
+		}
+	case AuthBrowserSession:
+		tokenType, _ := claims["token_type"].(string)
+		if tokenType != "session_token" {
+			writeJSON(w, s.cfg.CORSOrigin, http.StatusForbidden, map[string]string{"error": "Desktop sync approval requires an authenticated browser session"})
+			return nil, "", false
+		}
+	}
+	return claims, principalID, true
 }
 
 func (s *Server) maxBodyBytes(attr string) int64 {
@@ -176,6 +237,21 @@ func handleConfig(ctx *Context) {
 
 func handleNotImplemented(ctx *Context) {
 	writeJSON(ctx.ResponseWriter, ctx.Server.cfg.CORSOrigin, http.StatusNotImplemented, map[string]string{"error": "Not implemented in Go backend yet"})
+}
+
+func (s *Server) requireDB() (*store.DB, error) {
+	if s.db == nil {
+		return nil, errors.New("database is not configured")
+	}
+	return s.db, nil
+}
+
+func (s *Server) authSettings(ctx context.Context) (store.AuthSettings, error) {
+	db, err := s.requireDB()
+	if err != nil {
+		return store.AuthSettings{}, err
+	}
+	return db.GetAuthInstanceSettings(ctx)
 }
 
 func writeJSON(w http.ResponseWriter, corsOrigin string, status int, payload any) {
@@ -238,6 +314,42 @@ func contains(values []string, target string) bool {
 		}
 	}
 	return false
+}
+
+type syncVerifier struct {
+	db *store.DB
+}
+
+func (v syncVerifier) VerifyToken(ctx context.Context, token string) (auth.Claims, error) {
+	if v.db == nil {
+		return nil, errors.New("database is not configured")
+	}
+	claims, err := v.db.VerifyCLIAuthToken(ctx, token, time.Now().Unix())
+	if err != nil || claims == nil {
+		return nil, err
+	}
+	return auth.Claims(claims), nil
+}
+
+func readJSON(r *http.Request, dst any) error {
+	decoder := json.NewDecoder(r.Body)
+	return decoder.Decode(dst)
+}
+
+func userID() string {
+	return "user_" + randomURLToken(16)
+}
+
+func randomURLToken(bytes int) string {
+	value := make([]byte, bytes)
+	if _, err := rand.Read(value); err != nil {
+		return base64.RawURLEncoding.EncodeToString([]byte(time.Now().Format(time.RFC3339Nano)))
+	}
+	return base64.RawURLEncoding.EncodeToString(value)
+}
+
+func inviteURL(token string) string {
+	return "/?" + url.Values{"invite_token": []string{token}}.Encode()
 }
 
 type statusRecorder struct {

@@ -46,39 +46,39 @@ Current baseline:
 
 ## Phase 3: Port PostgreSQL Layer And Migrations
 
-- [ ] Use `pgx/v5` and `pgxpool`.
-- [ ] Recreate the existing schema without redesigning tables.
-- [ ] Recreate `app_schema_version` behavior.
-- [ ] Recreate all migrations through schema version `14`.
-- [ ] Add `divevault migrate` or equivalent migration command.
-- [ ] Preserve `STARTUP_MIGRATIONS=enabled` startup migration behavior.
-- [ ] Preserve `STARTUP_MIGRATIONS=disabled` exact schema version check behavior.
-- [ ] Preserve startup DB wait and retry behavior.
+- [x] Use `pgx/v5` and `pgxpool`.
+- [x] Recreate the existing schema without redesigning tables.
+- [x] Recreate `app_schema_version` behavior.
+- [~] Recreate all migrations through schema version `14`.
+- [x] Add `divevault migrate` or equivalent migration command.
+- [x] Preserve `STARTUP_MIGRATIONS=enabled` startup migration behavior.
+- [x] Preserve `STARTUP_MIGRATIONS=disabled` exact schema version check behavior.
+- [x] Preserve startup DB wait and retry behavior.
 - [ ] Add migration tests against real PostgreSQL.
 - [ ] Verify a database already at schema version `14` starts under Go without data changes.
 
 ## Phase 4: Port Auth
 
-- [ ] Implement JWT issue and verify with current issuer, audience, secret, and TTL settings.
-- [ ] Preserve Authorization header and session cookie token extraction behavior.
-- [ ] Preserve current `scrypt$...` password hash verification.
-- [ ] Implement password hashing for newly created or changed passwords.
-- [ ] Implement `GET /api/auth/status`.
-- [ ] Implement `GET /api/auth/me`.
-- [ ] Implement `GET /api/auth/settings`.
-- [ ] Implement `PUT /api/auth/settings`.
-- [ ] Implement `PUT /api/auth/password`.
-- [ ] Implement `POST /api/auth/register`.
-- [ ] Implement `POST /api/auth/login`.
-- [ ] Implement `POST /api/auth/invitations`.
-- [ ] Implement `GET /api/users`.
-- [ ] Implement `POST /api/users`.
-- [ ] Implement `PUT /api/users/{id}`.
-- [ ] Implement `DELETE /api/users/{id}`.
-- [ ] Implement `GET /api/cli-auth/request`.
-- [ ] Implement `POST /api/cli-auth/request`.
-- [ ] Implement `POST /api/cli-auth/approve`.
-- [ ] Add auth unit and endpoint tests equivalent to current Python coverage.
+- [x] Implement JWT issue and verify with current issuer, audience, secret, and TTL settings.
+- [x] Preserve Authorization header and session cookie token extraction behavior.
+- [x] Preserve current `scrypt$...` password hash verification.
+- [x] Implement password hashing for newly created or changed passwords.
+- [x] Implement `GET /api/auth/status`.
+- [x] Implement `GET /api/auth/me`.
+- [x] Implement `GET /api/auth/settings`.
+- [x] Implement `PUT /api/auth/settings`.
+- [x] Implement `PUT /api/auth/password`.
+- [x] Implement `POST /api/auth/register`.
+- [x] Implement `POST /api/auth/login`.
+- [x] Implement `POST /api/auth/invitations`.
+- [x] Implement `GET /api/users`.
+- [x] Implement `POST /api/users`.
+- [x] Implement `PUT /api/users/{id}`.
+- [x] Implement `DELETE /api/users/{id}`.
+- [x] Implement `GET /api/cli-auth/request`.
+- [x] Implement `POST /api/cli-auth/request`.
+- [x] Implement `POST /api/cli-auth/approve`.
+- [~] Add auth unit and endpoint tests equivalent to current Python coverage.
 
 ## Phase 5: Port Core Domain APIs
 
@@ -166,8 +166,8 @@ Current baseline:
 
 ## Open Decisions
 
-- [ ] Decide whether the Go module starts as `backend-go/` for parallel development or replaces `backend/` immediately.
-- [ ] Decide whether migrations live inside the backend binary as `divevault migrate` or as a separate migration binary.
+- [x] Decide whether the Go module starts as `backend-go/` for parallel development or replaces `backend/` immediately.
+- [x] Decide whether migrations live inside the backend binary as `divevault migrate` or as a separate migration binary.
 - [ ] Decide which PDF library to use if the current PDF export cannot be recreated with simple generated PDF output.
 - [ ] Decide whether to keep the current route manifest JSON manually maintained or generate it from Go route registration.
 
@@ -175,3 +175,5 @@ Current baseline:
 
 - 2026-08-25: Initial rewrite tracker created from the current Python backend inventory and API contract.
 - 2026-08-25: Started Phase 1 and Phase 2 with a dependency-free Go backend skeleton in `backend-go/`, a shared API route contract test, representative Python response fixtures in `backend-go/testdata/python-response-fixtures.json`, compatibility notes in `docs/BACKEND_GO_COMPATIBILITY.md`, health/config/static serving, basic route matching, CORS/security headers, request logging, graceful shutdown, and body limit enforcement. Go is not installed in the current environment, so Go tests were written but not executed.
+- 2026-08-25: Started Phase 3 and Phase 4. Added `pgx/v5` store wiring, DB startup wait, `divevault migrate`, schema version checks, latest schema creation, migration runner through version 14, and database-backed auth/users/invites/CLI sync endpoints. Added JWT/scrypt auth helpers and initial auth/migration tests. Remaining Phase 3 risk: real PostgreSQL migration tests are still needed, and legacy data backfills for old profile collection migrations should be checked against real pre-v14 data. Go is still not installed in the current environment, so Go tests were written but not executed.
+- 2026-08-25: Chose parallel development in `backend-go/` and an in-binary migration subcommand, `divevault migrate`.

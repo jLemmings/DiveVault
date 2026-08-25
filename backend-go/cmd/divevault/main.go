@@ -12,10 +12,19 @@ import (
 
 	"github.com/jlemmings/divevault/backend-go/internal/config"
 	"github.com/jlemmings/divevault/backend-go/internal/httpapi"
+	"github.com/jlemmings/divevault/backend-go/internal/migrations"
+	"github.com/jlemmings/divevault/backend-go/internal/store"
 )
 
 func main() {
-	cfg, err := config.Load(os.Args[1:])
+	args := os.Args[1:]
+	command := "serve"
+	if len(args) > 0 && args[0] == "migrate" {
+		command = "migrate"
+		args = args[1:]
+	}
+
+	cfg, err := config.Load(args)
 	if err != nil {
 		slog.Error("configuration failed", "error", err)
 		os.Exit(2)
@@ -24,7 +33,60 @@ func main() {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: cfg.LogLevel}))
 	slog.SetDefault(logger)
 
-	app := httpapi.NewServer(cfg, logger)
+	var db *store.DB
+	if cfg.DatabaseURL != "" {
+		if err := store.WaitForDatabase(context.Background(), cfg.DatabaseURL, store.WaitOptions{
+			Retries:               cfg.DBStartupRetries,
+			RetryDelaySeconds:     cfg.DBStartupRetryDelaySeconds,
+			ConnectTimeoutSeconds: cfg.DBConnectTimeoutSeconds,
+		}, logger); err != nil {
+			logger.Error("database is unreachable", "error", err)
+			os.Exit(1)
+		}
+		pool, err := store.OpenPool(context.Background(), cfg.DatabaseURL, cfg.DBPoolSize)
+		if err != nil {
+			logger.Error("database pool failed", "error", err)
+			os.Exit(1)
+		}
+		db = pool
+		defer db.Close()
+		if command == "serve" && cfg.StartupMigrations == "enabled" {
+			version, err := migrations.Migrate(context.Background(), db)
+			if err != nil {
+				logger.Error("database migrations failed", "error", err)
+				os.Exit(1)
+			}
+			logger.Info("database migrations completed", "schema_version", version)
+		} else if command == "serve" {
+			version, err := migrations.SchemaVersion(context.Background(), db)
+			if err != nil {
+				logger.Error("database schema version check failed", "error", err)
+				os.Exit(1)
+			}
+			if version != migrations.CurrentSchemaVersion {
+				logger.Error("database schema version mismatch", "expected", migrations.CurrentSchemaVersion, "actual", version)
+				os.Exit(1)
+			}
+		}
+	} else {
+		logger.Warn("DATABASE_URL is not configured; database-backed endpoints will return 503")
+	}
+
+	if command == "migrate" {
+		if db == nil {
+			logger.Error("DATABASE_URL is required for migrations")
+			os.Exit(2)
+		}
+		version, err := migrations.Migrate(context.Background(), db)
+		if err != nil {
+			logger.Error("database migrations failed", "error", err)
+			os.Exit(1)
+		}
+		logger.Info("database migrations completed", "schema_version", version)
+		return
+	}
+
+	app := httpapi.NewServer(cfg, logger, db)
 	server := &http.Server{
 		Addr:              cfg.Addr(),
 		Handler:           app,
