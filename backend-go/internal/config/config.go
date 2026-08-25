@@ -12,38 +12,38 @@ import (
 )
 
 type Config struct {
-	Host                            string
-	Port                            int
-	DatabaseURL                     string
-	CORSOrigin                      string
-	FrontendDir                     string
-	AuthJWTSecret                   string
-	AuthJWTIssuer                   string
-	AuthJWTAudience                 string
-	AuthTokenTTLSeconds             int
-	DemoMode                        bool
-	CLIAuthRequestTTL               int
-	CLIAuthTokenTTL                 int
-	NominatimBaseURL                string
-	NominatimUserAgent              string
-	NominatimEmail                  string
-	DBStartupRetries                int
-	DBStartupRetryDelaySeconds      float64
-	DBConnectTimeoutSeconds         int
-	DBPoolSize                      int
-	StartupMigrations               string
-	MaxJSONBodyBytes                int64
-	MaxBackupImportBytes            int64
-	MaxCSVImportBytes               int64
-	MaxSubsurfaceImportBytes        int64
-	MaxListLimit                    int
-	RateLimitWindowSeconds          int
-	RateLimitCLIRequestPerWindow    int
-	RateLimitCLIApprovePerWindow    int
+	Host                           string
+	Port                           int
+	DatabaseURL                    string
+	CORSOrigin                     string
+	FrontendDir                    string
+	AuthJWTSecret                  string
+	AuthJWTIssuer                  string
+	AuthJWTAudience                string
+	AuthTokenTTLSeconds            int
+	DemoMode                       bool
+	CLIAuthRequestTTL              int
+	CLIAuthTokenTTL                int
+	NominatimBaseURL               string
+	NominatimUserAgent             string
+	NominatimEmail                 string
+	DBStartupRetries               int
+	DBStartupRetryDelaySeconds     float64
+	DBConnectTimeoutSeconds        int
+	DBPoolSize                     int
+	StartupMigrations              string
+	MaxJSONBodyBytes               int64
+	MaxBackupImportBytes           int64
+	MaxCSVImportBytes              int64
+	MaxSubsurfaceImportBytes       int64
+	MaxListLimit                   int
+	RateLimitWindowSeconds         int
+	RateLimitCLIRequestPerWindow   int
+	RateLimitCLIApprovePerWindow   int
 	RateLimitBackupImportPerWindow int
 	RateLimitDiveUploadPerWindow   int
-	Metrics                         string
-	LogLevel                        slog.Level
+	Metrics                        string
+	LogLevel                       slog.Level
 }
 
 func Load(args []string) (Config, error) {

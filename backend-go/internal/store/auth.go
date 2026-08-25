@@ -10,26 +10,26 @@ import (
 )
 
 type AuthUser struct {
-	ID           string `json:"id"`
-	Email        string `json:"email"`
-	PasswordHash string `json:"-"`
-	FirstName    string `json:"first_name"`
-	LastName     string `json:"last_name"`
-	Role         string `json:"role"`
-	IsActive     bool   `json:"is_active"`
-	CreatedAt    string `json:"created_at"`
-	UpdatedAt    string `json:"updated_at"`
+	ID           string  `json:"id"`
+	Email        string  `json:"email"`
+	PasswordHash string  `json:"-"`
+	FirstName    string  `json:"first_name"`
+	LastName     string  `json:"last_name"`
+	Role         string  `json:"role"`
+	IsActive     bool    `json:"is_active"`
+	CreatedAt    string  `json:"created_at"`
+	UpdatedAt    string  `json:"updated_at"`
 	LastLoginAt  *string `json:"last_login_at"`
 }
 
 type AuthSettings struct {
-	Initialized               bool    `json:"initialized"`
-	PublicRegistrationEnabled bool    `json:"public_registration_enabled"`
-	OwnerUserID               string  `json:"owner_user_id"`
-	UpdatedAt                 string  `json:"updated_at"`
-	UserCount                 int     `json:"user_count"`
-	BootstrapRegistrationOpen bool    `json:"bootstrap_registration_open"`
-	PublicRegistrationOpen    bool    `json:"public_registration_open"`
+	Initialized               bool   `json:"initialized"`
+	PublicRegistrationEnabled bool   `json:"public_registration_enabled"`
+	OwnerUserID               string `json:"owner_user_id"`
+	UpdatedAt                 string `json:"updated_at"`
+	UserCount                 int    `json:"user_count"`
+	BootstrapRegistrationOpen bool   `json:"bootstrap_registration_open"`
+	PublicRegistrationOpen    bool   `json:"public_registration_open"`
 }
 
 type Invite struct {

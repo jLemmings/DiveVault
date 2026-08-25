@@ -82,34 +82,34 @@ Current baseline:
 
 ## Phase 5: Port Core Domain APIs
 
-- [ ] Implement `GET /api/device-state`.
-- [ ] Implement `PUT /api/device-state`.
-- [ ] Implement `GET /api/profile`.
-- [ ] Implement `PUT /api/profile`.
-- [ ] Implement `GET /api/profile/licenses/{id}/pdf`.
-- [ ] Implement `PUT /api/profile/licenses/{id}/pdf`.
-- [ ] Implement `GET /api/public/divers/{slug}`.
-- [ ] Implement `GET /api/equipment`.
-- [ ] Implement `PUT /api/equipment`.
-- [ ] Implement `POST /api/equipment/{id}/service`.
-- [ ] Implement `GET /api/dives`.
-- [ ] Implement `POST /api/dives`.
-- [ ] Implement `GET /api/dives/{id}`.
-- [ ] Implement `PUT /api/dives/{id}/logbook`.
-- [ ] Implement `DELETE /api/dives/{id}`.
-- [ ] Preserve JSONB field normalization for dives, profiles, equipment, logbook, samples, and import payloads.
-- [ ] Preserve pagination, sorting, duplicate-dive handling, and sample inclusion behavior.
+- [x] Implement `GET /api/device-state`.
+- [x] Implement `PUT /api/device-state`.
+- [x] Implement `GET /api/profile`.
+- [x] Implement `PUT /api/profile`.
+- [x] Implement `GET /api/profile/licenses/{id}/pdf`.
+- [x] Implement `PUT /api/profile/licenses/{id}/pdf`.
+- [x] Implement `GET /api/public/divers/{slug}`.
+- [x] Implement `GET /api/equipment`.
+- [x] Implement `PUT /api/equipment`.
+- [x] Implement `POST /api/equipment/{id}/service`.
+- [x] Implement `GET /api/dives`.
+- [x] Implement `POST /api/dives`.
+- [x] Implement `GET /api/dives/{id}`.
+- [x] Implement `PUT /api/dives/{id}/logbook`.
+- [x] Implement `DELETE /api/dives/{id}`.
+- [~] Preserve JSONB field normalization for dives, profiles, equipment, logbook, samples, and import payloads.
+- [~] Preserve pagination, sorting, duplicate-dive handling, and sample inclusion behavior.
 
 ## Phase 6: Port Importers, Exports, And Backup
 
-- [ ] Implement `POST /api/imports/csv`.
-- [ ] Preserve CSV dry-run, validation summary, duplicate marking, and payload normalization.
+- [x] Implement `POST /api/imports/csv`.
+- [~] Preserve CSV dry-run, validation summary, duplicate marking, and payload normalization.
 - [ ] Implement `POST /api/imports/subsurface`.
 - [ ] Preserve XML, gzip, zip, size-limit, sample, pressure, location, duration, and depth parsing behavior.
-- [ ] Implement `GET /api/exports/dives.csv`.
-- [ ] Implement `GET /api/exports/dives.pdf`.
-- [ ] Implement `GET /api/backup/export`.
-- [ ] Implement `POST /api/backup/import`.
+- [x] Implement `GET /api/exports/dives.csv`.
+- [~] Implement `GET /api/exports/dives.pdf`.
+- [~] Implement `GET /api/backup/export`.
+- [~] Implement `POST /api/backup/import`.
 - [ ] Verify Python backup exports import correctly into Go.
 - [ ] Verify Go backup exports import correctly into Go.
 - [ ] Verify backup archive path safety behavior.
@@ -168,7 +168,7 @@ Current baseline:
 
 - [x] Decide whether the Go module starts as `backend-go/` for parallel development or replaces `backend/` immediately.
 - [x] Decide whether migrations live inside the backend binary as `divevault migrate` or as a separate migration binary.
-- [ ] Decide which PDF library to use if the current PDF export cannot be recreated with simple generated PDF output.
+- [~] Decide which PDF library to use if the current PDF export cannot be recreated with simple generated PDF output.
 - [ ] Decide whether to keep the current route manifest JSON manually maintained or generate it from Go route registration.
 
 ## Progress Notes
@@ -178,3 +178,4 @@ Current baseline:
 - 2026-08-25: Started Phase 3 and Phase 4. Added `pgx/v5` store wiring, DB startup wait, `divevault migrate`, schema version checks, latest schema creation, migration runner through version 14, and database-backed auth/users/invites/CLI sync endpoints. Added JWT/scrypt auth helpers and initial auth/migration tests. Remaining Phase 3 risk: real PostgreSQL migration tests are still needed, and legacy data backfills for old profile collection migrations should be checked against real pre-v14 data.
 - 2026-08-25: Chose parallel development in `backend-go/` and an in-binary migration subcommand, `divevault migrate`.
 - 2026-08-25: Added GitHub Actions `actions/setup-go@v7` plus `go test ./...` coverage for `backend-go` in feature branch, backend image, and full application workflows. Installed Go locally as a workspace-local archive under ignored `.tools/` after system installers were blocked, generated `backend-go/go.sum`, and verified `go test ./...` passes locally with Go `1.25.14`.
+- 2026-08-25: Started Phase 5 and Phase 6. Added Go store and handlers for device state, dives, profile, public profile, profile license PDFs, equipment, CSV import, CSV export, placeholder PDF export, and JSON/ZIP backup export/import basics. `go test ./...` passes with workspace-local Go. Remaining parity gaps: Subsurface import is still not implemented, PDF export is a minimal placeholder, profile collection persistence is basic, backup import/export does not yet fully match the Python archive contract, and endpoint tests against PostgreSQL are still needed.
