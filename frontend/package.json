@@ -20,21 +20,21 @@
     "test:ui": "playwright test --ui"
   },
   "dependencies": {
-    "@nuxt/ui": "^4.10.0",
+    "@nuxt/ui": "^4.11.0",
     "leaflet": "^1.9.4",
-    "nuxt": "^4.5.1",
+    "nuxt": "^4.5.2",
     "pdfjs-dist": "^6.2.108"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@nuxtjs/i18n": "^10.6.0",
-    "@playwright/test": "1.62.0",
+    "@playwright/test": "1.62.1",
     "@tailwindcss/postcss": "^4.3.3",
     "autoprefixer": "^10.5.4",
-    "eslint": "^10.8.0",
+    "eslint": "^10.9.0",
     "eslint-plugin-vue": "^10.10.0",
-    "globals": "^17.8.0",
-    "postcss": "^8.5.25",
+    "globals": "^17.11.0",
+    "postcss": "^8.5.26",
     "prettier": "^3.9.6",
     "tailwindcss": "^4.3.3"
   }
