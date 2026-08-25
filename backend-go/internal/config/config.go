@@ -47,7 +47,7 @@ type Config struct {
 }
 
 func Load(args []string) (Config, error) {
-	_ = loadDotEnv(".env")
+	_ = loadDotEnv(filepath.Join(repoRoot(), ".env"))
 
 	cfg := Config{}
 	fs := flag.NewFlagSet("divevault", flag.ContinueOnError)

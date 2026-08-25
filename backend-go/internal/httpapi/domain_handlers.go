@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/jlemmings/divevault/backend-go/internal/exports"
+	"github.com/jlemmings/divevault/backend-go/internal/geocode"
 	"github.com/jlemmings/divevault/backend-go/internal/importers"
 )
 
@@ -362,6 +363,28 @@ func handleCSVImportPost(ctx *Context) {
 
 func handleSubsurfaceImportPost(ctx *Context) {
 	writeJSON(ctx.ResponseWriter, ctx.Server.cfg.CORSOrigin, http.StatusNotImplemented, map[string]string{"error": "Subsurface import is not implemented in Go backend yet"})
+}
+
+func handleGeocodeSearch(ctx *Context) {
+	client := geocode.Client{
+		BaseURL:   ctx.Server.cfg.NominatimBaseURL,
+		UserAgent: ctx.Server.cfg.NominatimUserAgent,
+		Email:     ctx.Server.cfg.NominatimEmail,
+	}
+	result, found, err := client.Search(ctx.Request.Context(), ctx.Request.URL.Query().Get("q"))
+	if err != nil {
+		if err.Error() == "Missing search query" {
+			writeJSON(ctx.ResponseWriter, ctx.Server.cfg.CORSOrigin, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			return
+		}
+		writeJSON(ctx.ResponseWriter, ctx.Server.cfg.CORSOrigin, http.StatusServiceUnavailable, map[string]string{"error": err.Error()})
+		return
+	}
+	if !found {
+		writeJSON(ctx.ResponseWriter, ctx.Server.cfg.CORSOrigin, http.StatusOK, map[string]any{"found": false, "result": nil})
+		return
+	}
+	writeJSON(ctx.ResponseWriter, ctx.Server.cfg.CORSOrigin, http.StatusOK, map[string]any{"found": true, "result": result})
 }
 
 func handleBackupExport(ctx *Context) {

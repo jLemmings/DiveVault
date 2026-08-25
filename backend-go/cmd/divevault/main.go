@@ -34,6 +34,7 @@ func main() {
 	slog.SetDefault(logger)
 
 	var db *store.DB
+	schemaVersion := 0
 	if cfg.DatabaseURL != "" {
 		if err := store.WaitForDatabase(context.Background(), cfg.DatabaseURL, store.WaitOptions{
 			Retries:               cfg.DBStartupRetries,
@@ -56,6 +57,7 @@ func main() {
 				logger.Error("database migrations failed", "error", err)
 				os.Exit(1)
 			}
+			schemaVersion = version
 			logger.Info("database migrations completed", "schema_version", version)
 		} else if command == "serve" {
 			version, err := migrations.SchemaVersion(context.Background(), db)
@@ -65,6 +67,13 @@ func main() {
 			}
 			if version != migrations.CurrentSchemaVersion {
 				logger.Error("database schema version mismatch", "expected", migrations.CurrentSchemaVersion, "actual", version)
+				os.Exit(1)
+			}
+			schemaVersion = version
+		}
+		if command == "serve" && cfg.DemoMode {
+			if err := db.EnsureDemoAdmin(context.Background()); err != nil {
+				logger.Error("demo admin bootstrap failed", "error", err)
 				os.Exit(1)
 			}
 		}
@@ -87,6 +96,7 @@ func main() {
 	}
 
 	app := httpapi.NewServer(cfg, logger, db)
+	app.SetSchemaVersion(schemaVersion)
 	server := &http.Server{
 		Addr:              cfg.Addr(),
 		Handler:           app,

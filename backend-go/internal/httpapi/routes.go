@@ -38,7 +38,7 @@ func APIRoutes() []Route {
 		route("PUT", "/api/profile/licenses/{id}/pdf", AuthPrincipal, handleProfileLicensePut).withPattern(`/api/profile/licenses/([A-Za-z0-9_-]+)/pdf`).withSample("/api/profile/licenses/license-1/pdf").withJSONBody(),
 		route("GET", "/api/backup/export", AuthPrincipal, handleBackupExport),
 		route("POST", "/api/backup/import", AuthPrincipal, handleBackupImport).withContentTypes("application/json", "application/zip").withMaxBody("MaxBackupImportBytes").withRateLimit("backup_import"),
-		route("GET", "/api/geocode/search", AuthPrincipal, handleNotImplemented),
+		route("GET", "/api/geocode/search", AuthPrincipal, handleGeocodeSearch),
 		route("POST", "/api/imports/csv", AuthPrincipal, handleCSVImportPost).withContentTypes("application/json", "text/csv").withMaxBody("MaxCSVImportBytes").withRateLimit("dive_upload"),
 		route("POST", "/api/imports/subsurface", AuthPrincipal, handleSubsurfaceImportPost).withContentTypes("application/gzip", "application/zip", "application/xml", "text/xml").withMaxBody("MaxSubsurfaceImportBytes").withRateLimit("dive_upload"),
 		route("GET", "/api/auth/status", AuthNone, handleAuthStatus),

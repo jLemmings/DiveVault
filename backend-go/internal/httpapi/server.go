@@ -10,21 +10,26 @@ import (
 	"mime"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/jlemmings/divevault/backend-go/internal/auth"
 	"github.com/jlemmings/divevault/backend-go/internal/config"
+	"github.com/jlemmings/divevault/backend-go/internal/metrics"
 	"github.com/jlemmings/divevault/backend-go/internal/static"
 	"github.com/jlemmings/divevault/backend-go/internal/store"
 )
 
 type Server struct {
-	cfg    config.Config
-	logger *slog.Logger
-	db     *store.DB
-	routes []Route
-	auth   auth.Verifier
+	cfg           config.Config
+	logger        *slog.Logger
+	db            *store.DB
+	routes        []Route
+	auth          auth.Verifier
+	metrics       *metrics.Recorder
+	limiter       *fixedWindowLimiter
+	schemaVersion int
 }
 
 type Context struct {
@@ -44,12 +49,18 @@ func NewServer(cfg config.Config, logger *slog.Logger, db *store.DB) *Server {
 		SyncTokenVerifier: syncVerifier{db: db},
 	}
 	return &Server{
-		cfg:    cfg,
-		logger: logger,
-		db:     db,
-		routes: APIRoutes(),
-		auth:   authVerifier,
+		cfg:     cfg,
+		logger:  logger,
+		db:      db,
+		routes:  APIRoutes(),
+		auth:    authVerifier,
+		metrics: metrics.NewRecorder(),
+		limiter: newFixedWindowLimiter(),
 	}
+}
+
+func (s *Server) SetSchemaVersion(version int) {
+	s.schemaVersion = version
 }
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -57,6 +68,9 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	recorder := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
 	routeLabel := r.URL.Path
 	defer func() {
+		if s.metrics != nil {
+			s.metrics.Observe(r.Method, routeLabel, recorder.status)
+		}
 		s.logger.Info("request_complete",
 			"method", r.Method,
 			"path", r.URL.Path,
@@ -68,6 +82,16 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	if r.Method == http.MethodOptions {
 		s.writePreflight(recorder)
+		return
+	}
+	if r.URL.Path == "/metrics" && r.Method == http.MethodGet {
+		routeLabel = "/metrics"
+		s.handleMetrics(recorder)
+		return
+	}
+	if r.URL.Path == "/metrics" {
+		recorder.Header().Set("Allow", http.MethodGet)
+		writeJSON(recorder, s.cfg.CORSOrigin, http.StatusMethodNotAllowed, map[string]string{"error": "Method not allowed"})
 		return
 	}
 
@@ -143,6 +167,14 @@ func (s *Server) applyRoutePolicy(w http.ResponseWriter, r *http.Request, route 
 		contentType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
 		if err != nil || !contains(route.ContentTypes, contentType) {
 			writeJSON(w, s.cfg.CORSOrigin, http.StatusUnsupportedMediaType, map[string]string{"error": contentTypeError(route.ContentTypes)})
+			return nil, "", false
+		}
+	}
+	if route.RateLimitScope != "" {
+		allowed, retryAfter := s.limiter.Allow(route.RateLimitScope+":"+clientIP(r), s.rateLimit(route.RateLimitScope), s.cfg.RateLimitWindowSeconds)
+		if !allowed {
+			w.Header().Set("Retry-After", strconv.Itoa(retryAfter))
+			writeJSON(w, s.cfg.CORSOrigin, http.StatusTooManyRequests, map[string]string{"error": "Rate limit exceeded. Please retry later."})
 			return nil, "", false
 		}
 	}
@@ -233,6 +265,17 @@ func handleConfig(ctx *Context) {
 	header.Set("Cache-Control", "no-store")
 	ctx.ResponseWriter.WriteHeader(http.StatusOK)
 	_, _ = ctx.ResponseWriter.Write([]byte(body))
+}
+
+func (s *Server) handleMetrics(w http.ResponseWriter) {
+	if s.cfg.Metrics != "enabled" {
+		writeJSON(w, s.cfg.CORSOrigin, http.StatusNotFound, map[string]string{"error": "Not found"})
+		return
+	}
+	applySecurityHeaders(w.Header())
+	w.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte(s.metrics.Render(s.db != nil, s.schemaVersion)))
 }
 
 func handleNotImplemented(ctx *Context) {
@@ -350,6 +393,35 @@ func randomURLToken(bytes int) string {
 
 func inviteURL(token string) string {
 	return "/?" + url.Values{"invite_token": []string{token}}.Encode()
+}
+
+func (s *Server) rateLimit(scope string) int {
+	switch scope {
+	case "cli_auth_request_create", "cli_auth_request_status":
+		return s.cfg.RateLimitCLIRequestPerWindow
+	case "cli_auth_approve":
+		return s.cfg.RateLimitCLIApprovePerWindow
+	case "backup_import":
+		return s.cfg.RateLimitBackupImportPerWindow
+	case "dive_upload":
+		return s.cfg.RateLimitDiveUploadPerWindow
+	default:
+		return 0
+	}
+}
+
+func clientIP(r *http.Request) string {
+	host := r.RemoteAddr
+	if forwarded := strings.TrimSpace(r.Header.Get("X-Forwarded-For")); forwarded != "" {
+		host = strings.Split(forwarded, ",")[0]
+	}
+	if host == "" {
+		return "unknown"
+	}
+	if index := strings.LastIndex(host, ":"); index > -1 {
+		return host[:index]
+	}
+	return host
 }
 
 type statusRecorder struct {

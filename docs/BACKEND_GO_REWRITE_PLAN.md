@@ -116,40 +116,40 @@ Current baseline:
 
 ## Phase 7: Port Runtime Integrations
 
-- [ ] Implement `GET /api/geocode/search`.
-- [ ] Preserve Nominatim base URL, user-agent, optional email, timeout, and error behavior.
-- [ ] Implement `/metrics`.
-- [ ] Preserve Prometheus metric names and labels expected by existing tests.
-- [ ] Implement fixed-window rate limiting with current scopes and env-controlled limits.
-- [ ] Preserve demo mode admin bootstrap behavior.
+- [x] Implement `GET /api/geocode/search`.
+- [x] Preserve Nominatim base URL, user-agent, optional email, timeout, and error behavior.
+- [x] Implement `/metrics`.
+- [~] Preserve Prometheus metric names and labels expected by existing tests.
+- [x] Implement fixed-window rate limiting with current scopes and env-controlled limits.
+- [x] Preserve demo mode admin bootstrap behavior.
 
 ## Phase 8: Replace Docker, CI, And Deployment Commands
 
-- [ ] Rewrite `backend/Dockerfile` to build a Go backend binary.
-- [ ] Keep the frontend build stage and copy built assets into the runtime image.
-- [ ] Remove Python from the final runtime image.
-- [ ] Replace Docker Compose migration command with the Go migration command.
-- [ ] Replace Kubernetes migration Job command with the Go migration command.
-- [ ] Update GitHub Actions backend setup from Python/pytest to Go tests.
-- [ ] Update full-application tests to start the Go backend.
-- [ ] Preserve image version tagging from `frontend/package.json`.
-- [ ] Update `README.md`.
-- [ ] Update `docs/DEVELOPMENT.md`.
-- [ ] Update `examples/kubernetes/README.md`.
-- [ ] Update `AGENTS.md`.
+- [x] Rewrite `backend/Dockerfile` to build a Go backend binary.
+- [x] Keep the frontend build stage and copy built assets into the runtime image.
+- [x] Remove Python from the final runtime image.
+- [x] Replace Docker Compose migration command with the Go migration command.
+- [x] Replace Kubernetes migration Job command with the Go migration command.
+- [x] Update GitHub Actions backend setup from Python/pytest to Go tests.
+- [x] Update full-application tests to start the Go backend.
+- [x] Preserve image version tagging from `frontend/package.json`.
+- [x] Update `README.md`.
+- [x] Update `docs/DEVELOPMENT.md`.
+- [x] Update `examples/kubernetes/README.md`.
+- [x] Update `AGENTS.md`.
 
 ## Phase 9: Verification Gate Before Python Deletion
 
-- [ ] Go unit tests pass.
-- [ ] Go endpoint tests pass.
-- [ ] Go route contract test passes against `contracts/api-routes.json`.
+- [x] Go unit tests pass.
+- [x] Go endpoint tests pass.
+- [x] Go route contract test passes against `contracts/api-routes.json`.
 - [ ] Go migration tests pass against PostgreSQL.
 - [ ] Frontend Playwright tests pass against mocked API fixtures.
 - [ ] Full application tests pass against the Go backend.
-- [ ] Docker image smoke test passes.
+- [!] Docker image smoke test passes.
 - [ ] Published-image smoke test passes.
-- [ ] Kubernetes example references only Go backend commands.
-- [ ] Repo search confirms no backend runtime dependency on Python remains.
+- [x] Kubernetes example references only Go backend commands.
+- [~] Repo search confirms no backend runtime dependency on Python remains.
 
 ## Phase 10: Remove Python Backend
 
@@ -179,3 +179,5 @@ Current baseline:
 - 2026-08-25: Chose parallel development in `backend-go/` and an in-binary migration subcommand, `divevault migrate`.
 - 2026-08-25: Added GitHub Actions `actions/setup-go@v7` plus `go test ./...` coverage for `backend-go` in feature branch, backend image, and full application workflows. Installed Go locally as a workspace-local archive under ignored `.tools/` after system installers were blocked, generated `backend-go/go.sum`, and verified `go test ./...` passes locally with Go `1.25.14`.
 - 2026-08-25: Started Phase 5 and Phase 6. Added Go store and handlers for device state, dives, profile, public profile, profile license PDFs, equipment, CSV import, CSV export, placeholder PDF export, and JSON/ZIP backup export/import basics. `go test ./...` passes with workspace-local Go. Remaining parity gaps: Subsurface import is still not implemented, PDF export is a minimal placeholder, profile collection persistence is basic, backup import/export does not yet fully match the Python archive contract, and endpoint tests against PostgreSQL are still needed.
+- 2026-08-25: Started Phase 7 and Phase 8. Added geocode, metrics, fixed-window rate limiting, demo admin bootstrap, a Go runtime Dockerfile, Go migration commands in Compose and Kubernetes, Go backend CI checks, and Go full-application startup. Phase 10 Python deletion has not started.
+- 2026-08-25: Ran `gofmt -w .`, `go test ./...`, and `go build ./cmd/divevault` successfully from `backend-go/` using the workspace-local Go toolchain. Docker smoke testing is blocked locally because the Docker daemon is not running in this environment.

@@ -252,6 +252,47 @@ func (db *DB) DeleteAuthUser(ctx context.Context, userID string) (bool, error) {
 	return tag.RowsAffected() > 0, err
 }
 
+func (db *DB) EnsureDemoAdmin(ctx context.Context) error {
+	const demoAdminUserID = "user_demoadmin"
+	const demoAdminUsername = "admin"
+	const demoAdminPasswordHash = "scrypt$000102030405060708090a0b0c0d0e0f$39e0e8ec42ae38fa261d39c6fbf3caaacc6647921c33a54c99770f5ba0283d90685177b5ff7cbb13a56671fd3f74ebaf442667cdaab09a4a60385cec2980c231"
+	tx, err := db.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+	now := nowISO()
+	if _, err := tx.Exec(ctx, "DELETE FROM auth_users WHERE email=$1 AND id<>$2", demoAdminUsername, demoAdminUserID); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `
+        INSERT INTO auth_users(id, email, password_hash, first_name, last_name, role, is_active, created_at, updated_at, last_login_at)
+        VALUES ($1, $2, $3, 'Demo', 'Diver', 'admin', TRUE, $4, $4, NULL)
+        ON CONFLICT (id) DO UPDATE SET
+            email=excluded.email,
+            password_hash=excluded.password_hash,
+            first_name=excluded.first_name,
+            last_name=excluded.last_name,
+            role=excluded.role,
+            is_active=TRUE,
+            updated_at=excluded.updated_at
+    `, demoAdminUserID, demoAdminUsername, demoAdminPasswordHash, now); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `
+        INSERT INTO auth_instance_settings(singleton, initialized, public_registration_enabled, owner_user_id, updated_at)
+        VALUES (TRUE, TRUE, FALSE, $1, $2)
+        ON CONFLICT (singleton) DO UPDATE SET
+            initialized=TRUE,
+            public_registration_enabled=FALSE,
+            owner_user_id=excluded.owner_user_id,
+            updated_at=excluded.updated_at
+    `, demoAdminUserID, now); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
 func (db *DB) CreateAuthInvite(ctx context.Context, invite Invite) (Invite, error) {
 	if err := db.cleanupAuthInvites(ctx, invite.CreatedAt); err != nil {
 		return Invite{}, err

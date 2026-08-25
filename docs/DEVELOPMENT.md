@@ -4,9 +4,9 @@ This document is for contributors and maintainers. The main README is intentiona
 
 ## Repository Layout
 
-- Backend: stdlib `http.server` application in `backend/divevault/app.py`.
+- Backend: Go HTTP service in `backend-go/cmd/divevault`.
 - API/runtime: serves `/api/*`, `/health`, `/config.js`, and built frontend assets from `FRONTEND_DIR`.
-- Database: PostgreSQL schema and migrations live in `backend/divevault/postgres_store.py`.
+- Database: PostgreSQL schema and migrations live in `backend-go/internal/migrations`.
 - Frontend: Nuxt-powered Vue 3 app under `frontend/`, with Nuxt UI registered as the component library.
 - Frontend entrypoint: `frontend/app/app.vue`, which wraps the app in Nuxt UI's app provider and mounts the DiveVault shell.
 - Frontend shell: `frontend/app/components/DiveVaultApp.vue`; the current route/state controller is `frontend/app/features/app/AppRouteController.vue`.
@@ -17,19 +17,16 @@ This document is for contributors and maintainers. The main README is intentiona
 - Import aliases use Nuxt app-root paths by default: `~/features/...`, `~/shared/...`, `~/routing/...`, and `~/i18n/...`. `nuxt.config.js` also defines `#features`, `#shared`, `#routing`, and `#i18n` for explicit infrastructure imports.
 - AI-assisted Nuxt UI work should read `frontend/llms.txt` first for the project-local Nuxt UI LLM context and official documentation links.
 
-When adding database migrations, update `CURRENT_SCHEMA_VERSION` in `backend/divevault/postgres_store.py`.
+When adding database migrations, update `CurrentSchemaVersion` in `backend-go/internal/migrations`.
 
 ## Local Backend
 
-Create a virtual environment, install development dependencies, copy the sample environment, and start the backend:
+Copy the sample environment and start the backend:
 
 ```powershell
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-pip install -r backend/requirements-dev.txt
 Copy-Item .env.example .env
-$env:PYTHONPATH = "backend"
-python -m divevault.app --database-url postgresql://dive:dive@localhost:5432/dive
+Set-Location backend-go
+go run ./cmd/divevault --database-url postgresql://dive:dive@localhost:5432/dive
 ```
 
 The backend expects PostgreSQL to be available unless tests are using fakes or mocks. The Docker Compose setup in `examples/docker/docker-compose.yml` is the easiest way to get a local database.
@@ -53,8 +50,8 @@ For local single-instance development, startup migrations are enabled by default
 For external migration workflows, set `DATABASE_URL` and run:
 
 ```powershell
-$env:PYTHONPATH = "backend"
-python -m migrations.migrate_postgres_schema
+Set-Location backend-go
+go run ./cmd/divevault migrate --database-url $env:DATABASE_URL
 ```
 
 For multi-instance deployments, run migrations as a separate job and set:
@@ -68,15 +65,15 @@ STARTUP_MIGRATIONS=disabled
 Run backend tests from the repository root:
 
 ```powershell
-$env:PYTHONPATH = "backend"
-python -m pytest -vv -ra backend/tests
+Set-Location backend-go
+go test ./...
 ```
 
 Focused backend example:
 
 ```powershell
-$env:PYTHONPATH = "backend"
-python -m pytest -vv -ra backend/tests/test_dive_backend_units.py -k normalize_bearer_token
+Set-Location backend-go
+go test ./internal/auth -run Test
 ```
 
 Run frontend tests from `frontend/`:
@@ -130,7 +127,7 @@ Prometheus metrics are exposed at `/metrics` when metrics are enabled.
 
 ## Docker And Releases
 
-The backend Docker image is built from `backend/Dockerfile`. It first builds frontend assets with Node `24.15.0`, then runs the backend on Python `3.14-slim`.
+The backend Docker image is built from `backend/Dockerfile`. It builds frontend assets with Node, compiles the Go backend binary, and runs without Python in the final image.
 
 CI publishes image and release version tags from `frontend/package.json`, not from a backend manifest.
 
