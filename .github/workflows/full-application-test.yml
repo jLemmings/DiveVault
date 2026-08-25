@@ -40,6 +40,12 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: backend-go/go.mod
+          cache-dependency-path: backend-go/go.sum
+
       - name: Set up Node
         uses: actions/setup-node@v7
         with:
@@ -71,6 +77,10 @@ jobs:
 
       - name: Check backend syntax
         run: python -m compileall backend
+
+      - name: Run Go backend tests
+        working-directory: backend-go
+        run: go test ./...
 
       - name: Run frontend lint
         working-directory: frontend

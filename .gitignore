@@ -17,6 +17,7 @@ frontend/.env
 frontend/.env.local
 
 # Misc
+.tools/
 *.db
 *.db-shm
 *.db-wal

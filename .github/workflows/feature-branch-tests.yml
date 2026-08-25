@@ -38,6 +38,16 @@ jobs:
       - name: Check backend syntax
         run: python -m compileall backend
 
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: backend-go/go.mod
+          cache-dependency-path: backend-go/go.sum
+
+      - name: Run Go backend tests
+        working-directory: backend-go
+        run: go test ./...
+
   frontend-checks:
     runs-on: ubuntu-latest
 
