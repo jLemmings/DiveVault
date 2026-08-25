@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -279,7 +280,12 @@ func (db *DB) SaveUserProfile(ctx context.Context, userID string, payload map[st
 	equipmentSelection := boolOrExisting(payload["equipment_selection_enabled"], existing["equipment_selection_enabled"])
 	displayJSON, _ := json.Marshal(valueOr(payload["logbook_display_fields"], existing["logbook_display_fields"]))
 	requiredJSON, _ := json.Marshal(valueOr(payload["required_logbook_fields"], existing["required_logbook_fields"]))
-	_, err := db.pool.Exec(ctx, `
+	tx, err := db.pool.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback(ctx)
+	_, err = tx.Exec(ctx, `
         INSERT INTO user_profile(user_id, name, email, public_dives_enabled, public_slug, logbook_display_fields_json, required_logbook_fields_json, equipment_selection_enabled, updated_at)
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
         ON CONFLICT (user_id) DO UPDATE SET
@@ -289,6 +295,29 @@ func (db *DB) SaveUserProfile(ctx context.Context, userID string, payload map[st
             equipment_selection_enabled=excluded.equipment_selection_enabled, updated_at=excluded.updated_at
     `, cleanText(userID), name, email, publicEnabled, publicSlug, displayJSON, requiredJSON, equipmentSelection, nowISO())
 	if err != nil {
+		return nil, err
+	}
+	if value, ok := payload["licenses"]; ok {
+		if err := replaceProfileCollection(ctx, tx, "user_profile_licenses", "license_id", userID, sliceValue(value), []string{"company", "certification_name", "student_number", "certification_date", "instructor_number"}); err != nil {
+			return nil, err
+		}
+	}
+	if value, ok := payload["dive_sites"]; ok {
+		if err := replaceProfileCollection(ctx, tx, "user_profile_dive_sites", "site_id", userID, sliceValue(value), []string{"name", "location", "country", "latitude", "longitude"}); err != nil {
+			return nil, err
+		}
+	}
+	if value, ok := payload["buddies"]; ok {
+		if err := replaceProfileCollection(ctx, tx, "user_profile_buddies", "buddy_id", userID, sliceValue(value), []string{"name"}); err != nil {
+			return nil, err
+		}
+	}
+	if value, ok := payload["guides"]; ok {
+		if err := replaceProfileCollection(ctx, tx, "user_profile_guides", "guide_id", userID, sliceValue(value), []string{"name"}); err != nil {
+			return nil, err
+		}
+	}
+	if err := tx.Commit(ctx); err != nil {
 		return nil, err
 	}
 	return db.GetUserProfile(ctx, userID)
@@ -352,6 +381,37 @@ func (db *DB) PublicProfile(ctx context.Context, slug string) (map[string]any, [
 	return profile, dives, nil
 }
 
+func replaceProfileCollection(ctx context.Context, tx pgx.Tx, table string, idColumn string, userID string, entries []any, columns []string) error {
+	if _, err := tx.Exec(ctx, "DELETE FROM "+table+" WHERE user_id=$1", cleanText(userID)); err != nil {
+		return err
+	}
+	for index, entry := range entries {
+		item := mapValue(entry)
+		id := stringValue(valueOr(item["id"], item[idColumn]))
+		if id == "" {
+			id = fmt.Sprintf("%s_%d_%d", idColumn, time.Now().UnixNano(), index)
+		}
+		names := []string{"user_id", idColumn}
+		args := []any{cleanText(userID), id}
+		placeholders := []string{"$1", "$2"}
+		for _, column := range columns {
+			names = append(names, column)
+			placeholders = append(placeholders, fmt.Sprintf("$%d", len(args)+1))
+			switch column {
+			case "latitude", "longitude":
+				args = append(args, nullableFloat64(item[column]))
+			default:
+				args = append(args, stringValue(item[column]))
+			}
+		}
+		_, err := tx.Exec(ctx, "INSERT INTO "+table+"("+stringsJoin(names, ", ")+") VALUES ("+stringsJoin(placeholders, ", ")+")", args...)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (db *DB) listCollection(ctx context.Context, table string, idColumn string, userID string) ([]any, error) {
 	rows, err := db.pool.Query(ctx, "SELECT row_to_json(t) FROM (SELECT * FROM "+table+" WHERE user_id=$1 ORDER BY "+idColumn+") t", cleanText(userID))
 	if err != nil {
@@ -369,6 +429,26 @@ func (db *DB) listCollection(ctx context.Context, table string, idColumn string,
 		items = append(items, item)
 	}
 	return items, rows.Err()
+}
+
+func (db *DB) ListDeviceStates(ctx context.Context, userID string) ([]DeviceState, error) {
+	rows, err := db.pool.Query(ctx, `
+        SELECT user_id, vendor, product, fingerprint_hex, updated_at
+        FROM device_state WHERE user_id=$1 ORDER BY vendor, product
+    `, cleanText(userID))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	states := []DeviceState{}
+	for rows.Next() {
+		var state DeviceState
+		if err := rows.Scan(&state.UserID, &state.Vendor, &state.Product, &state.FingerprintHex, &state.UpdatedAt); err != nil {
+			return nil, err
+		}
+		states = append(states, state)
+	}
+	return states, rows.Err()
 }
 
 func (db *DB) ListEquipment(ctx context.Context, userID string) ([]map[string]any, error) {
@@ -544,4 +624,15 @@ func intValue(value any) int {
 		return int(*parsed)
 	}
 	return 0
+}
+
+func stringsJoin(values []string, sep string) string {
+	out := ""
+	for index, value := range values {
+		if index > 0 {
+			out += sep
+		}
+		out += value
+	}
+	return out
 }

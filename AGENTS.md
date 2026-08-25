@@ -10,16 +10,16 @@
 
 ## Setup And Commands
 - Backend deps: Go toolchain matching `backend-go/go.mod`.
-- Run backend locally from `backend-go/` with `.env` copied from `.env.example`: `go run ./cmd/divevault --database-url postgresql://dive:dive@localhost:5432/dive`.
-- Run external schema migration from `backend-go/`: `go run ./cmd/divevault migrate` with `DATABASE_URL` set.
+- Run backend locally from the repo root with `.env` copied from `.env.example`: `go run ./backend-go/cmd/divevault --database-url postgresql://dive:dive@localhost:5432/dive`.
+- Run external schema migration from the repo root: `go run ./backend-go/cmd/divevault migrate` with `DATABASE_URL` set.
 - Frontend deps use npm and `frontend/package-lock.json`: `cd frontend && npm ci`.
 - Frontend dev server: `cd frontend && npm run dev`; backend API requests are proxied to `VITE_API_PROXY_TARGET`.
 - Frontend checks: `cd frontend && npm run check:structure`, `npm run check:contracts`, `npm run lint`, and `npm run format:check`.
 - Full local Docker stack is documented as `docker compose -f examples/docker/docker-compose.yml up --build`.
 
 ## Verification
-- CI backend test command: `cd backend-go && go test ./...`.
-- Focused backend test: `cd backend-go && go test ./internal/auth -run Test`.
+- CI backend test command: `cd backend-go && go test ./...`; from the repo root use `go test ./backend-go/...`.
+- Focused backend test from the repo root: `go test ./backend-go/internal/auth -run Test`.
 - CI frontend test command: `cd frontend && npm test`; Playwright starts the Nuxt static preview on `127.0.0.1:4173` automatically.
 - Focused frontend test: `cd frontend && npx playwright test tests/app.spec.js -g "public profile" --project=chromium`.
 - `cd frontend && npm run build` runs Playwright first, then `nuxt generate`; use `npm run build:app` only when you intentionally want build without tests, as CI does for release assets.

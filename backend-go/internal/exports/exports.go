@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"regexp"
+	"strings"
 	"time"
 
 	"github.com/jlemmings/divevault/backend-go/internal/store"
@@ -53,13 +54,48 @@ func DivesCSV(dives []store.Dive) ([]byte, error) {
 }
 
 func MinimalPDF(dives []store.Dive) []byte {
-	return []byte(fmt.Sprintf("%%PDF-1.4\n%% DiveVault Go export placeholder\n%% %d dives\n", len(dives)))
+	lines := []string{"DiveVault Dive Export", fmt.Sprintf("%d dives", len(dives))}
+	for _, dive := range dives {
+		lines = append(lines, fmt.Sprintf("#%d %s %s %s", dive.ID, dive.DiveUID, pointerString(dive.StartedAt), pointerFloat(dive.MaxDepthM)))
+		if len(lines) >= 35 {
+			break
+		}
+	}
+	content := "BT /F1 12 Tf 72 760 Td "
+	for index, line := range lines {
+		if index > 0 {
+			content += "0 -18 Td "
+		}
+		content += "(" + escapePDFText(line) + ") Tj "
+	}
+	content += "ET"
+	objects := []string{
+		"<< /Type /Catalog /Pages 2 0 R >>",
+		"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+		"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>",
+		"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+		fmt.Sprintf("<< /Length %d >>\nstream\n%s\nendstream", len(content), content),
+	}
+	var buffer bytes.Buffer
+	buffer.WriteString("%PDF-1.4\n")
+	offsets := []int{0}
+	for index, object := range objects {
+		offsets = append(offsets, buffer.Len())
+		buffer.WriteString(fmt.Sprintf("%d 0 obj\n%s\nendobj\n", index+1, object))
+	}
+	xref := buffer.Len()
+	buffer.WriteString(fmt.Sprintf("xref\n0 %d\n0000000000 65535 f \n", len(offsets)))
+	for _, offset := range offsets[1:] {
+		buffer.WriteString(fmt.Sprintf("%010d 00000 n \n", offset))
+	}
+	buffer.WriteString(fmt.Sprintf("trailer\n<< /Size %d /Root 1 0 R >>\nstartxref\n%d\n%%%%EOF\n", len(offsets), xref))
+	return buffer.Bytes()
 }
 
 func BackupArchive(payload any) ([]byte, error) {
 	var buffer bytes.Buffer
 	archive := zip.NewWriter(&buffer)
-	file, err := archive.Create("divevault-backup.json")
+	file, err := archive.Create("backup.json")
 	if err != nil {
 		return nil, err
 	}
@@ -110,4 +146,11 @@ func pointerFloat(value *float64) string {
 		return ""
 	}
 	return fmt.Sprint(*value)
+}
+
+func escapePDFText(value string) string {
+	value = regexp.MustCompile(`[^\x20-\x7e]+`).ReplaceAllString(value, " ")
+	value = strings.ReplaceAll(value, `\`, `\\`)
+	value = strings.ReplaceAll(value, `(`, `\(`)
+	return strings.ReplaceAll(value, `)`, `\)`)
 }

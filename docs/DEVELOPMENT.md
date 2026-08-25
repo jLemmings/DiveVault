@@ -25,8 +25,7 @@ Copy the sample environment and start the backend:
 
 ```powershell
 Copy-Item .env.example .env
-Set-Location backend-go
-go run ./cmd/divevault --database-url postgresql://dive:dive@localhost:5432/dive
+go run ./backend-go/cmd/divevault --database-url postgresql://dive:dive@localhost:5432/dive
 ```
 
 The backend expects PostgreSQL to be available unless tests are using fakes or mocks. The Docker Compose setup in `examples/docker/docker-compose.yml` is the easiest way to get a local database.
@@ -50,8 +49,7 @@ For local single-instance development, startup migrations are enabled by default
 For external migration workflows, set `DATABASE_URL` and run:
 
 ```powershell
-Set-Location backend-go
-go run ./cmd/divevault migrate --database-url $env:DATABASE_URL
+go run ./backend-go/cmd/divevault migrate --database-url $env:DATABASE_URL
 ```
 
 For multi-instance deployments, run migrations as a separate job and set:
@@ -65,15 +63,13 @@ STARTUP_MIGRATIONS=disabled
 Run backend tests from the repository root:
 
 ```powershell
-Set-Location backend-go
-go test ./...
+go test ./backend-go/...
 ```
 
 Focused backend example:
 
 ```powershell
-Set-Location backend-go
-go test ./internal/auth -run Test
+go test ./backend-go/internal/auth -run Test
 ```
 
 Run frontend tests from `frontend/`:

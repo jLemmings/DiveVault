@@ -14,6 +14,20 @@ env:
 jobs:
   backend-tests:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_USER: dive
+          POSTGRES_PASSWORD: dive
+          POSTGRES_DB: dive
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U dive -d dive"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
 
     steps:
       - name: Checkout
@@ -27,6 +41,8 @@ jobs:
 
       - name: Run Go backend tests
         working-directory: backend-go
+        env:
+          TEST_DATABASE_URL: postgresql://dive:dive@127.0.0.1:5432/dive
         run: go test ./...
 
   frontend-checks:
