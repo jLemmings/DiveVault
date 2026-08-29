@@ -314,6 +314,9 @@ func migrationV7(ctx context.Context, tx pgx.Tx) error {
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		return err
 	}
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil
+	}
 	if ownerUserID != nil && *ownerUserID != "" {
 		_, err = tx.Exec(ctx, `
             UPDATE auth_instance_settings
