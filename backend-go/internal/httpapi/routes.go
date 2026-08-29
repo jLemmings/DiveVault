@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"regexp"
+	"strings"
 )
 
 type AuthPolicy string
@@ -113,8 +114,44 @@ func (r Route) withRateLimit(scope string) Route {
 }
 
 func (r Route) matches(path string) bool {
+	_, ok := r.match(path)
+	return ok
+}
+
+func (r Route) match(path string) (map[string]string, bool) {
 	if r.pattern != nil {
-		return r.pattern.MatchString(path)
+		matches := r.pattern.FindStringSubmatch(path)
+		if matches == nil {
+			return nil, false
+		}
+		params := map[string]string{}
+		names := pathParamNames(r.Path)
+		for i, name := range names {
+			if i+1 < len(matches) {
+				params[name] = matches[i+1]
+			}
+		}
+		return params, true
 	}
-	return r.Path == path
+	if r.Path != path {
+		return nil, false
+	}
+	return map[string]string{}, true
+}
+
+func pathParamNames(path string) []string {
+	names := []string{}
+	for {
+		start := strings.Index(path, "{")
+		if start < 0 {
+			return names
+		}
+		path = path[start+1:]
+		end := strings.Index(path, "}")
+		if end < 0 {
+			return names
+		}
+		names = append(names, path[:end])
+		path = path[end+1:]
+	}
 }

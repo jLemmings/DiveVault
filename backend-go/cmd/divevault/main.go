@@ -97,10 +97,16 @@ func main() {
 
 	app := httpapi.NewServer(cfg, logger, db)
 	app.SetSchemaVersion(schemaVersion)
+	writeTimeout := 35 * time.Second
+	if cfg.RequestTimeoutSeconds > 0 {
+		writeTimeout = time.Duration(cfg.RequestTimeoutSeconds+5) * time.Second
+	}
 	server := &http.Server{
 		Addr:              cfg.Addr(),
 		Handler:           app,
 		ReadHeaderTimeout: 10 * time.Second,
+		WriteTimeout:      writeTimeout,
+		IdleTimeout:       120 * time.Second,
 	}
 
 	errs := make(chan error, 1)

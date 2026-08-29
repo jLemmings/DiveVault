@@ -6,8 +6,10 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"io"
 	"log/slog"
 	"mime"
+	"net"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -37,6 +39,7 @@ type Context struct {
 	Request        *http.Request
 	Server         *Server
 	Route          Route
+	Params         map[string]string
 	Claims         auth.Claims
 	PrincipalID    string
 }
@@ -65,6 +68,11 @@ func (s *Server) SetSchemaVersion(version int) {
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	started := time.Now()
+	if s.cfg.RequestTimeoutSeconds > 0 {
+		requestCtx, cancel := context.WithTimeout(r.Context(), time.Duration(s.cfg.RequestTimeoutSeconds)*time.Second)
+		defer cancel()
+		r = r.WithContext(requestCtx)
+	}
 	recorder := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
 	routeLabel := r.URL.Path
 	defer func() {
@@ -116,14 +124,14 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	route, allowed := s.matchRoute(r.Method, r.URL.Path)
+	route, allowed, params := s.matchRoute(r.Method, r.URL.Path)
 	if route != nil {
 		routeLabel = route.Path
 		claims, principalID, ok := s.applyRoutePolicy(recorder, r, *route)
 		if !ok {
 			return
 		}
-		route.handler(&Context{ResponseWriter: recorder, Request: r, Server: s, Route: *route, Claims: claims, PrincipalID: principalID})
+		route.handler(&Context{ResponseWriter: recorder, Request: r, Server: s, Route: *route, Params: params, Claims: claims, PrincipalID: principalID})
 		return
 	}
 	if len(allowed) > 0 {
@@ -139,19 +147,20 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	writeJSON(recorder, s.cfg.CORSOrigin, http.StatusNotFound, map[string]string{"error": "Not found"})
 }
 
-func (s *Server) matchRoute(method string, path string) (*Route, []string) {
+func (s *Server) matchRoute(method string, path string) (*Route, []string, map[string]string) {
 	allowed := []string{}
 	for i := range s.routes {
 		route := &s.routes[i]
-		if !route.matches(path) {
+		params, matches := route.match(path)
+		if !matches {
 			continue
 		}
 		if route.Method == method {
-			return route, nil
+			return route, nil, params
 		}
 		allowed = append(allowed, route.Method)
 	}
-	return nil, allowed
+	return nil, allowed, nil
 }
 
 func (s *Server) applyRoutePolicy(w http.ResponseWriter, r *http.Request, route Route) (auth.Claims, string, bool) {
@@ -171,7 +180,7 @@ func (s *Server) applyRoutePolicy(w http.ResponseWriter, r *http.Request, route 
 		}
 	}
 	if route.RateLimitScope != "" {
-		allowed, retryAfter := s.limiter.Allow(route.RateLimitScope+":"+clientIP(r), s.rateLimit(route.RateLimitScope), s.cfg.RateLimitWindowSeconds)
+		allowed, retryAfter := s.limiter.Allow(route.RateLimitScope+":"+s.clientIP(r), s.rateLimit(route.RateLimitScope), s.cfg.RateLimitWindowSeconds)
 		if !allowed {
 			w.Header().Set("Retry-After", strconv.Itoa(retryAfter))
 			writeJSON(w, s.cfg.CORSOrigin, http.StatusTooManyRequests, map[string]string{"error": "Rate limit exceeded. Please retry later."})
@@ -376,7 +385,25 @@ func (v syncVerifier) VerifyToken(ctx context.Context, token string) (auth.Claim
 
 func readJSON(r *http.Request, dst any) error {
 	decoder := json.NewDecoder(r.Body)
-	return decoder.Decode(dst)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(dst); err != nil {
+		return err
+	}
+	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+		return errors.New("request body must contain a single JSON value")
+	}
+	return nil
+}
+
+func badRequestMessage(err error) string {
+	if err == nil {
+		return "Invalid request"
+	}
+	message := strings.TrimSpace(err.Error())
+	if message == "" {
+		return "Invalid request"
+	}
+	return message
 }
 
 func userID() string {
@@ -410,16 +437,26 @@ func (s *Server) rateLimit(scope string) int {
 	}
 }
 
-func clientIP(r *http.Request) string {
+func (s *Server) clientIP(r *http.Request) string {
 	host := r.RemoteAddr
-	if forwarded := strings.TrimSpace(r.Header.Get("X-Forwarded-For")); forwarded != "" {
-		host = strings.Split(forwarded, ",")[0]
+	if s.cfg.TrustForwardedHeaders {
+		if realIP := strings.TrimSpace(r.Header.Get("X-Real-IP")); realIP != "" {
+			host = realIP
+		}
+	}
+	if s.cfg.TrustForwardedHeaders {
+		if forwarded := strings.TrimSpace(r.Header.Get("X-Forwarded-For")); forwarded != "" {
+			host = strings.TrimSpace(strings.Split(forwarded, ",")[0])
+		}
+	}
+	if parsed := net.ParseIP(host); parsed != nil {
+		return parsed.String()
+	}
+	if parsedHost, _, err := net.SplitHostPort(host); err == nil {
+		return parsedHost
 	}
 	if host == "" {
 		return "unknown"
-	}
-	if index := strings.LastIndex(host, ":"); index > -1 {
-		return host[:index]
 	}
 	return host
 }

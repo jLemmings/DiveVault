@@ -37,6 +37,8 @@ type Config struct {
 	MaxCSVImportBytes              int64
 	MaxSubsurfaceImportBytes       int64
 	MaxListLimit                   int
+	RequestTimeoutSeconds          int
+	TrustForwardedHeaders          bool
 	RateLimitWindowSeconds         int
 	RateLimitCLIRequestPerWindow   int
 	RateLimitCLIApprovePerWindow   int
@@ -76,6 +78,8 @@ func Load(args []string) (Config, error) {
 	fs.Int64Var(&cfg.MaxCSVImportBytes, "max-csv-import-bytes", envInt64("MAX_CSV_IMPORT_BYTES", 5*1024*1024), "Maximum CSV import bytes")
 	fs.Int64Var(&cfg.MaxSubsurfaceImportBytes, "max-subsurface-import-bytes", envInt64("MAX_SUBSURFACE_IMPORT_BYTES", 15*1024*1024), "Maximum Subsurface import bytes")
 	fs.IntVar(&cfg.MaxListLimit, "max-list-limit", envInt("MAX_LIST_LIMIT", 200), "Maximum list endpoint page size")
+	fs.IntVar(&cfg.RequestTimeoutSeconds, "request-timeout-seconds", envInt("REQUEST_TIMEOUT_SECONDS", 30), "Request context timeout seconds")
+	trustForwardedHeaders := fs.String("trust-forwarded-headers", envString("TRUST_FORWARDED_HEADERS", "false"), "Trust X-Forwarded-* headers from a reverse proxy")
 	fs.IntVar(&cfg.RateLimitWindowSeconds, "rate-limit-window-seconds", envInt("RATE_LIMIT_WINDOW_SECONDS", 60), "Rate limit window seconds")
 	fs.IntVar(&cfg.RateLimitCLIRequestPerWindow, "rate-limit-cli-request-per-window", envInt("RATE_LIMIT_CLI_REQUEST_PER_WINDOW", 30), "CLI request rate limit")
 	fs.IntVar(&cfg.RateLimitCLIApprovePerWindow, "rate-limit-cli-approve-per-window", envInt("RATE_LIMIT_CLI_APPROVE_PER_WINDOW", 15), "CLI approve rate limit")
@@ -88,6 +92,7 @@ func Load(args []string) (Config, error) {
 		return Config{}, err
 	}
 	cfg.DemoMode = parseBool(*demoMode)
+	cfg.TrustForwardedHeaders = parseBool(*trustForwardedHeaders)
 	cfg.LogLevel = parseLogLevel(*logLevel)
 	if cfg.AuthTokenTTLSeconds < 300 {
 		cfg.AuthTokenTTLSeconds = 300

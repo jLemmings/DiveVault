@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"encoding/json"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -59,6 +60,66 @@ func TestUnknownAPIRouteReturnsNotFound(t *testing.T) {
 	}
 }
 
+func TestRouteMatchExtractsPathParams(t *testing.T) {
+	server := NewServer(testConfig(), slog.Default(), nil)
+	route, _, params := server.matchRoute(http.MethodGet, "/api/dives/42")
+	if route == nil {
+		t.Fatalf("route was not matched")
+	}
+	if route.Path != "/api/dives/{id}" {
+		t.Fatalf("route path = %q", route.Path)
+	}
+	if params["id"] != "42" {
+		t.Fatalf("id param = %q", params["id"])
+	}
+}
+
+func TestReadJSONRejectsUnknownFields(t *testing.T) {
+	request := httptest.NewRequest(http.MethodPost, "/api/device-state", strings.NewReader(`{"vendor":"v","product":"p","extra":true}`))
+	var payload deviceStatePutRequest
+	err := readValidatedJSON(request, &payload)
+	if err == nil {
+		t.Fatalf("expected strict JSON decode error")
+	}
+}
+
+func TestReadJSONRejectsTrailingValues(t *testing.T) {
+	request := httptest.NewRequest(http.MethodPost, "/api/device-state", strings.NewReader(`{"vendor":"v","product":"p"} {}`))
+	var payload deviceStatePutRequest
+	err := readValidatedJSON(request, &payload)
+	if err == nil {
+		t.Fatalf("expected trailing JSON value error")
+	}
+}
+
+func TestClientIPTrustsForwardedHeadersOnlyWhenConfigured(t *testing.T) {
+	request := httptest.NewRequest(http.MethodGet, "/api/cli-auth/request", nil)
+	request.RemoteAddr = "10.0.0.5:12345"
+	request.Header.Set("X-Forwarded-For", "203.0.113.9, 10.0.0.1")
+
+	server := NewServer(testConfig(), slog.Default(), nil)
+	if got := server.clientIP(request); got != "10.0.0.5" {
+		t.Fatalf("clientIP without trusted proxy = %q", got)
+	}
+
+	cfg := testConfig()
+	cfg.TrustForwardedHeaders = true
+	server = NewServer(cfg, slog.Default(), nil)
+	if got := server.clientIP(request); got != "203.0.113.9" {
+		t.Fatalf("clientIP with trusted proxy = %q", got)
+	}
+}
+
+func TestBadRequestMessageReturnsValidationText(t *testing.T) {
+	request := httptest.NewRequest(http.MethodPost, "/api/device-state", strings.NewReader(`{"vendor":"","product":""}`))
+	var payload deviceStatePutRequest
+	err := readValidatedJSON(request, &payload)
+	body, _ := json.Marshal(map[string]string{"error": badRequestMessage(err)})
+	if !strings.Contains(string(body), "vendor and product are required") {
+		t.Fatalf("validation message not preserved: %s", body)
+	}
+}
+
 func testConfig() config.Config {
 	return config.Config{
 		Host:                     "127.0.0.1",
@@ -69,5 +130,6 @@ func testConfig() config.Config {
 		MaxBackupImportBytes:     25 * 1024 * 1024,
 		MaxCSVImportBytes:        5 * 1024 * 1024,
 		MaxSubsurfaceImportBytes: 15 * 1024 * 1024,
+		RequestTimeoutSeconds:    30,
 	}
 }

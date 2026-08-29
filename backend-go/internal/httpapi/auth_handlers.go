@@ -380,7 +380,7 @@ func handleUsersPost(ctx *Context) {
 }
 
 func handleUserPut(ctx *Context) {
-	userID := strings.TrimPrefix(ctx.Request.URL.Path, "/api/users/")
+	userID := ctx.Params["id"]
 	var payload map[string]any
 	if err := readJSON(ctx.Request, &payload); err != nil {
 		writeJSON(ctx.ResponseWriter, ctx.Server.cfg.CORSOrigin, http.StatusBadRequest, map[string]string{"error": "Invalid JSON"})
@@ -423,7 +423,7 @@ func handleUserPut(ctx *Context) {
 }
 
 func handleUserDelete(ctx *Context) {
-	userID := strings.TrimPrefix(ctx.Request.URL.Path, "/api/users/")
+	userID := ctx.Params["id"]
 	settings, err := ctx.Server.db.GetAuthInstanceSettings(ctx.Request.Context())
 	if err != nil {
 		writeJSON(ctx.ResponseWriter, ctx.Server.cfg.CORSOrigin, http.StatusServiceUnavailable, map[string]string{"error": "Database unavailable: " + err.Error()})

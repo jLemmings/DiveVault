@@ -1,7 +1,6 @@
 package httpapi
 
 import (
-	"archive/zip"
 	"bytes"
 	"encoding/base64"
 	"encoding/json"
@@ -39,17 +38,9 @@ func handleDeviceStateGet(ctx *Context) {
 }
 
 func handleDeviceStatePut(ctx *Context) {
-	var payload struct {
-		Vendor         string  `json:"vendor"`
-		Product        string  `json:"product"`
-		FingerprintHex *string `json:"fingerprint_hex"`
-	}
-	if err := readJSON(ctx.Request, &payload); err != nil {
-		writeJSON(ctx.ResponseWriter, ctx.Server.cfg.CORSOrigin, http.StatusBadRequest, map[string]string{"error": "Invalid JSON"})
-		return
-	}
-	if payload.Vendor == "" || payload.Product == "" {
-		writeJSON(ctx.ResponseWriter, ctx.Server.cfg.CORSOrigin, http.StatusBadRequest, map[string]string{"error": "vendor and product are required"})
+	var payload deviceStatePutRequest
+	if err := readValidatedJSON(ctx.Request, &payload); err != nil {
+		writeJSON(ctx.ResponseWriter, ctx.Server.cfg.CORSOrigin, http.StatusBadRequest, map[string]string{"error": badRequestMessage(err)})
 		return
 	}
 	db, err := ctx.Server.requireDB()
@@ -83,7 +74,7 @@ func handleDivesGet(ctx *Context) {
 }
 
 func handleDiveGet(ctx *Context) {
-	diveID, ok := pathID(ctx.Request.URL.Path, "/api/dives/")
+	diveID, ok := pathInt64(ctx.Params["id"])
 	if !ok {
 		writeJSON(ctx.ResponseWriter, ctx.Server.cfg.CORSOrigin, http.StatusNotFound, map[string]string{"error": "Dive not found"})
 		return
@@ -130,7 +121,7 @@ func handleDivePost(ctx *Context) {
 }
 
 func handleDiveLogbookPut(ctx *Context) {
-	diveID, ok := pathLogbookID(ctx.Request.URL.Path)
+	diveID, ok := pathInt64(ctx.Params["id"])
 	if !ok {
 		writeJSON(ctx.ResponseWriter, ctx.Server.cfg.CORSOrigin, http.StatusNotFound, map[string]string{"error": "Dive not found"})
 		return
@@ -153,7 +144,7 @@ func handleDiveLogbookPut(ctx *Context) {
 }
 
 func handleDiveDelete(ctx *Context) {
-	diveID, ok := pathID(ctx.Request.URL.Path, "/api/dives/")
+	diveID, ok := pathInt64(ctx.Params["id"])
 	if !ok {
 		writeJSON(ctx.ResponseWriter, ctx.Server.cfg.CORSOrigin, http.StatusNotFound, map[string]string{"error": "Dive not found"})
 		return
@@ -194,7 +185,7 @@ func handleProfilePut(ctx *Context) {
 }
 
 func handlePublicProfileGet(ctx *Context) {
-	slug := strings.TrimPrefix(ctx.Request.URL.Path, "/api/public/divers/")
+	slug := ctx.Params["slug"]
 	db, err := ctx.Server.requireDB()
 	if err != nil {
 		writeJSON(ctx.ResponseWriter, ctx.Server.cfg.CORSOrigin, http.StatusServiceUnavailable, map[string]string{"error": "Database unavailable: " + err.Error()})
@@ -213,7 +204,7 @@ func handlePublicProfileGet(ctx *Context) {
 }
 
 func handleProfileLicenseGet(ctx *Context) {
-	licenseID := strings.TrimSuffix(strings.TrimPrefix(ctx.Request.URL.Path, "/api/profile/licenses/"), "/pdf")
+	licenseID := ctx.Params["id"]
 	filename, contentType, data, err := ctx.Server.db.GetProfileLicensePDF(ctx.Request.Context(), ctx.PrincipalID, licenseID)
 	if err != nil {
 		writeJSON(ctx.ResponseWriter, ctx.Server.cfg.CORSOrigin, http.StatusServiceUnavailable, map[string]string{"error": "Database unavailable: " + err.Error()})
@@ -227,14 +218,10 @@ func handleProfileLicenseGet(ctx *Context) {
 }
 
 func handleProfileLicensePut(ctx *Context) {
-	licenseID := strings.TrimSuffix(strings.TrimPrefix(ctx.Request.URL.Path, "/api/profile/licenses/"), "/pdf")
-	var payload struct {
-		Filename    string `json:"filename"`
-		ContentType string `json:"content_type"`
-		DataB64     string `json:"data_b64"`
-	}
-	if err := readJSON(ctx.Request, &payload); err != nil {
-		writeJSON(ctx.ResponseWriter, ctx.Server.cfg.CORSOrigin, http.StatusBadRequest, map[string]string{"error": "Invalid JSON"})
+	licenseID := ctx.Params["id"]
+	var payload profileLicensePDFPutRequest
+	if err := readValidatedJSON(ctx.Request, &payload); err != nil {
+		writeJSON(ctx.ResponseWriter, ctx.Server.cfg.CORSOrigin, http.StatusBadRequest, map[string]string{"error": badRequestMessage(err)})
 		return
 	}
 	filename, contentType, data, err := decodePDFPayload(payload.Filename, payload.ContentType, payload.DataB64)
@@ -264,11 +251,9 @@ func handleEquipmentGet(ctx *Context) {
 }
 
 func handleEquipmentPut(ctx *Context) {
-	var payload struct {
-		Equipment []any `json:"equipment"`
-	}
-	if err := readJSON(ctx.Request, &payload); err != nil {
-		writeJSON(ctx.ResponseWriter, ctx.Server.cfg.CORSOrigin, http.StatusBadRequest, map[string]string{"error": "Invalid JSON"})
+	var payload equipmentPutRequest
+	if err := readValidatedJSON(ctx.Request, &payload); err != nil {
+		writeJSON(ctx.ResponseWriter, ctx.Server.cfg.CORSOrigin, http.StatusBadRequest, map[string]string{"error": badRequestMessage(err)})
 		return
 	}
 	equipment, err := ctx.Server.db.SaveEquipment(ctx.Request.Context(), ctx.PrincipalID, payload.Equipment)
@@ -280,7 +265,7 @@ func handleEquipmentPut(ctx *Context) {
 }
 
 func handleEquipmentServicePost(ctx *Context) {
-	equipmentID := strings.TrimSuffix(strings.TrimPrefix(ctx.Request.URL.Path, "/api/equipment/"), "/service")
+	equipmentID := ctx.Params["id"]
 	equipment, err := ctx.Server.db.MarkEquipmentServiced(ctx.Request.Context(), ctx.PrincipalID, equipmentID)
 	if err != nil {
 		writeJSON(ctx.ResponseWriter, ctx.Server.cfg.CORSOrigin, http.StatusServiceUnavailable, map[string]string{"error": "Database unavailable: " + err.Error()})
@@ -439,11 +424,31 @@ func handleGeocodeSearch(ctx *Context) {
 }
 
 func handleBackupExport(ctx *Context) {
-	db := ctx.Server.db
-	profile, _ := db.GetUserProfile(ctx.Request.Context(), ctx.PrincipalID)
-	dives, _ := db.ListAllDives(ctx.Request.Context(), ctx.PrincipalID, true, true)
-	deviceStates, _ := db.ListDeviceStates(ctx.Request.Context(), ctx.PrincipalID)
-	equipment, _ := db.ListEquipment(ctx.Request.Context(), ctx.PrincipalID)
+	db, err := ctx.Server.requireDB()
+	if err != nil {
+		writeJSON(ctx.ResponseWriter, ctx.Server.cfg.CORSOrigin, http.StatusServiceUnavailable, map[string]string{"error": "Database unavailable: " + err.Error()})
+		return
+	}
+	profile, err := db.GetUserProfile(ctx.Request.Context(), ctx.PrincipalID)
+	if err != nil {
+		writeJSON(ctx.ResponseWriter, ctx.Server.cfg.CORSOrigin, http.StatusServiceUnavailable, map[string]string{"error": "Database unavailable: " + err.Error()})
+		return
+	}
+	dives, err := db.ListAllDives(ctx.Request.Context(), ctx.PrincipalID, true, true)
+	if err != nil {
+		writeJSON(ctx.ResponseWriter, ctx.Server.cfg.CORSOrigin, http.StatusServiceUnavailable, map[string]string{"error": "Database unavailable: " + err.Error()})
+		return
+	}
+	deviceStates, err := db.ListDeviceStates(ctx.Request.Context(), ctx.PrincipalID)
+	if err != nil {
+		writeJSON(ctx.ResponseWriter, ctx.Server.cfg.CORSOrigin, http.StatusServiceUnavailable, map[string]string{"error": "Database unavailable: " + err.Error()})
+		return
+	}
+	equipment, err := db.ListEquipment(ctx.Request.Context(), ctx.PrincipalID)
+	if err != nil {
+		writeJSON(ctx.ResponseWriter, ctx.Server.cfg.CORSOrigin, http.StatusServiceUnavailable, map[string]string{"error": "Database unavailable: " + err.Error()})
+		return
+	}
 	licenseDocuments := []map[string]any{}
 	for _, license := range sliceValue(profile["licenses"]) {
 		item := mapValue(license)
@@ -467,6 +472,11 @@ func handleBackupExport(ctx *Context) {
 }
 
 func handleBackupImport(ctx *Context) {
+	db, err := ctx.Server.requireDB()
+	if err != nil {
+		writeJSON(ctx.ResponseWriter, ctx.Server.cfg.CORSOrigin, http.StatusServiceUnavailable, map[string]string{"error": "Database unavailable: " + err.Error()})
+		return
+	}
 	body, err := io.ReadAll(ctx.Request.Body)
 	if err != nil {
 		writeJSON(ctx.ResponseWriter, ctx.Server.cfg.CORSOrigin, http.StatusBadRequest, map[string]string{"error": "Invalid backup body"})
@@ -474,75 +484,10 @@ func handleBackupImport(ctx *Context) {
 	}
 	var payload map[string]any
 	if strings.Contains(ctx.Request.Header.Get("Content-Type"), "zip") {
-		reader, err := zip.NewReader(bytes.NewReader(body), int64(len(body)))
+		payload, err = readBackupZIPPayload(body, ctx.Server.cfg.MaxBackupImportBytes)
 		if err != nil {
 			writeJSON(ctx.ResponseWriter, ctx.Server.cfg.CORSOrigin, http.StatusBadRequest, map[string]string{"error": err.Error()})
 			return
-		}
-		names := map[string]bool{}
-		total := int64(0)
-		for _, file := range reader.File {
-			total += int64(file.UncompressedSize64)
-			names[file.Name] = true
-			if !safeBackupPath(file.Name) {
-				writeJSON(ctx.ResponseWriter, ctx.Server.cfg.CORSOrigin, http.StatusBadRequest, map[string]string{"error": "Backup archive contains unsafe path " + strconv.Quote(file.Name)})
-				return
-			}
-		}
-		if total > ctx.Server.cfg.MaxBackupImportBytes {
-			writeJSON(ctx.ResponseWriter, ctx.Server.cfg.CORSOrigin, http.StatusBadRequest, map[string]string{"error": "Backup archive exceeds size limit"})
-			return
-		}
-		manifestName := "backup.json"
-		if !names[manifestName] {
-			manifestName = "divevault-backup.json"
-		}
-		for _, file := range reader.File {
-			if file.Name != manifestName {
-				continue
-			}
-			rc, _ := file.Open()
-			data, _ := io.ReadAll(rc)
-			_ = rc.Close()
-			_ = json.Unmarshal(data, &payload)
-		}
-		if payload != nil {
-			documents, _ := payload["license_documents"].([]any)
-			for index, document := range documents {
-				item := mapValue(document)
-				if stringAny(item["data_b64"]) != "" {
-					continue
-				}
-				filePath := stringAny(item["file_path"])
-				if filePath == "" || !names[filePath] || !safeBackupPath(filePath) {
-					writeJSON(ctx.ResponseWriter, ctx.Server.cfg.CORSOrigin, http.StatusBadRequest, map[string]string{"error": "Backup license document " + strconv.Itoa(index+1) + " references a missing file"})
-					return
-				}
-				for _, file := range reader.File {
-					if file.Name != filePath {
-						continue
-					}
-					rc, err := file.Open()
-					if err != nil {
-						writeJSON(ctx.ResponseWriter, ctx.Server.cfg.CORSOrigin, http.StatusBadRequest, map[string]string{"error": "Backup archive contains unreadable license document"})
-						return
-					}
-					data, err := io.ReadAll(io.LimitReader(rc, ctx.Server.cfg.MaxBackupImportBytes+1))
-					_ = rc.Close()
-					if err != nil {
-						writeJSON(ctx.ResponseWriter, ctx.Server.cfg.CORSOrigin, http.StatusBadRequest, map[string]string{"error": "Backup archive contains unreadable license document"})
-						return
-					}
-					if int64(len(data)) > ctx.Server.cfg.MaxBackupImportBytes {
-						writeJSON(ctx.ResponseWriter, ctx.Server.cfg.CORSOrigin, http.StatusBadRequest, map[string]string{"error": "Backup archive exceeds size limit"})
-						return
-					}
-					item["data_b64"] = base64.StdEncoding.EncodeToString(data)
-					documents[index] = item
-					break
-				}
-			}
-			payload["license_documents"] = documents
 		}
 	} else if err := json.Unmarshal(body, &payload); err != nil {
 		writeJSON(ctx.ResponseWriter, ctx.Server.cfg.CORSOrigin, http.StatusBadRequest, map[string]string{"error": "Invalid JSON"})
@@ -556,18 +501,24 @@ func handleBackupImport(ctx *Context) {
 		writeJSON(ctx.ResponseWriter, ctx.Server.cfg.CORSOrigin, http.StatusBadRequest, map[string]string{"error": "Unsupported backup version"})
 		return
 	}
+	if err := validateBackupPayload(payload); err != nil {
+		writeJSON(ctx.ResponseWriter, ctx.Server.cfg.CORSOrigin, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
 	profile := mapValue(payload["profile"])
 	if len(profile) > 0 {
-		if _, err := ctx.Server.db.SaveUserProfile(ctx.Request.Context(), ctx.PrincipalID, profile); err != nil {
+		if _, err := db.SaveUserProfile(ctx.Request.Context(), ctx.PrincipalID, profile); err != nil {
 			writeJSON(ctx.ResponseWriter, ctx.Server.cfg.CORSOrigin, http.StatusServiceUnavailable, map[string]string{"error": "Database unavailable: " + err.Error()})
 			return
 		}
 	}
 	equipmentImported := 0
 	if equipment, ok := payload["equipment"].([]any); ok {
-		if _, err := ctx.Server.db.SaveEquipment(ctx.Request.Context(), ctx.PrincipalID, equipment); err == nil {
-			equipmentImported = len(equipment)
+		if _, err := db.SaveEquipment(ctx.Request.Context(), ctx.PrincipalID, equipment); err != nil {
+			writeJSON(ctx.ResponseWriter, ctx.Server.cfg.CORSOrigin, http.StatusServiceUnavailable, map[string]string{"error": "Database unavailable: " + err.Error()})
+			return
 		}
+		equipmentImported = len(equipment)
 	}
 	deviceStatesImported := 0
 	if states, ok := payload["device_states"].([]any); ok {
@@ -580,21 +531,31 @@ func handleBackupImport(ctx *Context) {
 				return
 			}
 			fingerprint := nullableStringAny(item["fingerprint_hex"])
-			if err := ctx.Server.db.SaveDeviceState(ctx.Request.Context(), ctx.PrincipalID, vendor, product, fingerprint); err == nil {
-				deviceStatesImported++
+			if err := db.SaveDeviceState(ctx.Request.Context(), ctx.PrincipalID, vendor, product, fingerprint); err != nil {
+				writeJSON(ctx.ResponseWriter, ctx.Server.cfg.CORSOrigin, http.StatusServiceUnavailable, map[string]string{"error": "Database unavailable: " + err.Error()})
+				return
 			}
+			deviceStatesImported++
 		}
 	}
 	inserted := 0
 	if dives, ok := payload["dives"].([]any); ok {
 		for _, dive := range dives {
-			itemBytes, _ := json.Marshal(dive)
-			var item map[string]any
-			_ = json.Unmarshal(itemBytes, &item)
-			if item["raw_data_b64"] == nil {
-				item["raw_data_b64"] = base64.StdEncoding.EncodeToString([]byte("{}"))
+			itemBytes, err := json.Marshal(dive)
+			if err != nil {
+				writeJSON(ctx.ResponseWriter, ctx.Server.cfg.CORSOrigin, http.StatusBadRequest, map[string]string{"error": "Backup dive must be a JSON object"})
+				return
 			}
-			ok, _ := ctx.Server.db.InsertDiveRecord(ctx.Request.Context(), ctx.PrincipalID, item)
+			var item map[string]any
+			if err := json.Unmarshal(itemBytes, &item); err != nil {
+				writeJSON(ctx.ResponseWriter, ctx.Server.cfg.CORSOrigin, http.StatusBadRequest, map[string]string{"error": "Backup dive must be a JSON object"})
+				return
+			}
+			ok, err := db.InsertDiveRecord(ctx.Request.Context(), ctx.PrincipalID, item)
+			if err != nil {
+				writeJSON(ctx.ResponseWriter, ctx.Server.cfg.CORSOrigin, http.StatusBadRequest, map[string]string{"error": err.Error()})
+				return
+			}
 			if ok {
 				inserted++
 			}
@@ -614,7 +575,7 @@ func handleBackupImport(ctx *Context) {
 				writeJSON(ctx.ResponseWriter, ctx.Server.cfg.CORSOrigin, http.StatusBadRequest, map[string]string{"error": err.Error()})
 				return
 			}
-			profile, err := ctx.Server.db.SaveProfileLicensePDF(ctx.Request.Context(), ctx.PrincipalID, licenseID, filename, contentType, data)
+			profile, err := db.SaveProfileLicensePDF(ctx.Request.Context(), ctx.PrincipalID, licenseID, filename, contentType, data)
 			if err != nil {
 				writeJSON(ctx.ResponseWriter, ctx.Server.cfg.CORSOrigin, http.StatusServiceUnavailable, map[string]string{"error": "Database unavailable: " + err.Error()})
 				return
@@ -694,13 +655,7 @@ func isTruthy(value string) bool {
 	}
 }
 
-func pathID(path string, prefix string) (int64, bool) {
-	parsed, err := strconv.ParseInt(strings.TrimPrefix(path, prefix), 10, 64)
-	return parsed, err == nil
-}
-
-func pathLogbookID(path string) (int64, bool) {
-	value := strings.TrimSuffix(strings.TrimPrefix(path, "/api/dives/"), "/logbook")
+func pathInt64(value string) (int64, bool) {
 	parsed, err := strconv.ParseInt(value, 10, 64)
 	return parsed, err == nil
 }
