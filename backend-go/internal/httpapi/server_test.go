@@ -60,6 +60,53 @@ func TestUnknownAPIRouteReturnsNotFound(t *testing.T) {
 	}
 }
 
+func TestMethodNotAllowedSetsAllowHeader(t *testing.T) {
+	server := NewServer(testConfig(), slog.Default(), nil)
+	request := httptest.NewRequest(http.MethodPost, "/health", nil)
+	response := httptest.NewRecorder()
+
+	server.ServeHTTP(response, request)
+
+	if response.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("status = %d", response.Code)
+	}
+	if response.Header().Get("Allow") != http.MethodGet {
+		t.Fatalf("Allow = %q", response.Header().Get("Allow"))
+	}
+}
+
+func TestUnsupportedMediaTypeReturnsRouteSpecificMessage(t *testing.T) {
+	server := NewServer(testConfig(), slog.Default(), nil)
+	request := httptest.NewRequest(http.MethodPost, "/api/imports/subsurface", strings.NewReader("{}"))
+	request.Header.Set("Content-Type", "application/json")
+	response := httptest.NewRecorder()
+
+	server.ServeHTTP(response, request)
+
+	if response.Code != http.StatusUnsupportedMediaType {
+		t.Fatalf("status = %d", response.Code)
+	}
+	if !strings.Contains(response.Body.String(), "application/xml") {
+		t.Fatalf("body = %q", response.Body.String())
+	}
+}
+
+func TestMaxBodyRejectsLargeRequestsBeforeHandler(t *testing.T) {
+	cfg := testConfig()
+	cfg.MaxCSVImportBytes = 4
+	server := NewServer(cfg, slog.Default(), nil)
+	request := httptest.NewRequest(http.MethodPost, "/api/imports/csv", strings.NewReader("too large"))
+	request.Header.Set("Content-Type", "text/csv")
+	request.ContentLength = 9
+	response := httptest.NewRecorder()
+
+	server.ServeHTTP(response, request)
+
+	if response.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("status = %d", response.Code)
+	}
+}
+
 func TestRouteMatchExtractsPathParams(t *testing.T) {
 	server := NewServer(testConfig(), slog.Default(), nil)
 	route, _, params := server.matchRoute(http.MethodGet, "/api/dives/42")

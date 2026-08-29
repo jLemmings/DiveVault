@@ -43,7 +43,7 @@ func TestFixedWindowLimiterResets(t *testing.T) {
 }
 
 func TestReadBackupZIPPayloadRejectsMissingManifest(t *testing.T) {
-	body := zipBody(t, map[string]string{"other.json": `{}`})
+	body := zipBody(t, map[string]string{"licenses/license-1/card.pdf": `%PDF-1.4`})
 	_, err := readBackupZIPPayload(body, 1024)
 	if err == nil || err.Error() != "Backup archive is missing backup.json" {
 		t.Fatalf("expected missing manifest error, got %v", err)

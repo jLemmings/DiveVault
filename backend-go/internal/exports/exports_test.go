@@ -3,6 +3,7 @@ package exports
 import (
 	"archive/zip"
 	"bytes"
+	"encoding/csv"
 	"encoding/json"
 	"strings"
 	"testing"
@@ -15,6 +16,58 @@ func TestMinimalPDFIsValidEnoughForReaders(t *testing.T) {
 	text := string(body)
 	if !strings.HasPrefix(text, "%PDF-1.4") || !strings.Contains(text, "xref") || !strings.Contains(text, "%%EOF") {
 		t.Fatalf("generated PDF is missing core structure: %q", text)
+	}
+}
+
+func TestAttachmentFilenameSanitizesUnsafeNames(t *testing.T) {
+	cases := map[string]string{
+		" divevault export.csv ": "divevault-export.csv",
+		"../backup.zip":         "backup.zip",
+		"***":                   "download",
+	}
+	for input, expected := range cases {
+		if got := AttachmentFilename(input); got != expected {
+			t.Fatalf("AttachmentFilename(%q) = %q, expected %q", input, got, expected)
+		}
+	}
+}
+
+func TestDivesCSVIncludesSampleRows(t *testing.T) {
+	startedAt := "2026-01-01T10:00:00"
+	duration := int64(2400)
+	maxDepth := 18.5
+	body, err := DivesCSV([]store.Dive{{
+		ID:              7,
+		DiveUID:         "dive-7",
+		Vendor:          "Shearwater",
+		Product:         "Perdix",
+		StartedAt:       &startedAt,
+		DurationSeconds: &duration,
+		MaxDepthM:       &maxDepth,
+		Fields:          map[string]any{"logbook": map[string]any{"site": "Blue Reef", "status": "complete"}},
+		Samples:         []any{map[string]any{"time_seconds": float64(60), "depth_m": float64(10)}},
+		SampleCount:     1,
+		ImportedAt:      "2026-01-01T11:00:00Z",
+	}})
+	if err != nil {
+		t.Fatalf("DivesCSV returned error: %v", err)
+	}
+	records, err := csv.NewReader(bytes.NewReader(body)).ReadAll()
+	if err != nil {
+		t.Fatalf("CSV parse failed: %v", err)
+	}
+	if len(records) != 2 {
+		t.Fatalf("record count = %d, expected 2", len(records))
+	}
+	if records[1][1] != "dive-7" || records[1][3] != "Blue Reef" || records[1][20] != "0" {
+		t.Fatalf("unexpected CSV row: %#v", records[1])
+	}
+}
+
+func TestMinimalPDFEscapesText(t *testing.T) {
+	text := string(MinimalPDF([]store.Dive{{ID: 1, DiveUID: `dive\(1)`}}))
+	if !strings.Contains(text, `dive\\\(1\)`) {
+		t.Fatalf("PDF text was not escaped: %q", text)
 	}
 }
 
