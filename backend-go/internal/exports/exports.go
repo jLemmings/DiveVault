@@ -3,9 +3,11 @@ package exports
 import (
 	"archive/zip"
 	"bytes"
+	"encoding/base64"
 	"encoding/csv"
 	"encoding/json"
 	"fmt"
+	"path"
 	"regexp"
 	"strings"
 	"time"
@@ -93,6 +95,55 @@ func MinimalPDF(dives []store.Dive) []byte {
 }
 
 func BackupArchive(payload any) ([]byte, error) {
+	manifest := payload
+	files := []struct {
+		name string
+		data []byte
+	}{}
+	if payloadMap, ok := payload.(map[string]any); ok {
+		nextManifest := map[string]any{}
+		for key, value := range payloadMap {
+			nextManifest[key] = value
+		}
+		licenseDocuments := []any{}
+		usedPaths := map[string]bool{}
+		for _, document := range anySlice(payloadMap["license_documents"]) {
+			item, ok := document.(map[string]any)
+			if !ok {
+				continue
+			}
+			dataB64, _ := item["data_b64"].(string)
+			if strings.TrimSpace(dataB64) == "" {
+				licenseDocuments = append(licenseDocuments, item)
+				continue
+			}
+			data, err := base64.StdEncoding.DecodeString(dataB64)
+			if err != nil {
+				licenseDocuments = append(licenseDocuments, item)
+				continue
+			}
+			licenseID := stringMapValue(item, "license_id")
+			if licenseID == "" {
+				licenseDocuments = append(licenseDocuments, item)
+				continue
+			}
+			filePath := backupArchiveLicensePath(licenseID, stringMapValue(item, "filename"), usedPaths)
+			manifestDocument := map[string]any{}
+			for key, value := range item {
+				if key != "data_b64" {
+					manifestDocument[key] = value
+				}
+			}
+			manifestDocument["file_path"] = filePath
+			licenseDocuments = append(licenseDocuments, manifestDocument)
+			files = append(files, struct {
+				name string
+				data []byte
+			}{name: filePath, data: data})
+		}
+		nextManifest["license_documents"] = licenseDocuments
+		manifest = nextManifest
+	}
 	var buffer bytes.Buffer
 	archive := zip.NewWriter(&buffer)
 	file, err := archive.Create("backup.json")
@@ -101,13 +152,79 @@ func BackupArchive(payload any) ([]byte, error) {
 	}
 	encoder := json.NewEncoder(file)
 	encoder.SetIndent("", "  ")
-	if err := encoder.Encode(payload); err != nil {
+	if err := encoder.Encode(manifest); err != nil {
 		return nil, err
+	}
+	for _, backupFile := range files {
+		file, err := archive.Create(backupFile.name)
+		if err != nil {
+			return nil, err
+		}
+		if _, err := file.Write(backupFile.data); err != nil {
+			return nil, err
+		}
 	}
 	if err := archive.Close(); err != nil {
 		return nil, err
 	}
 	return buffer.Bytes(), nil
+}
+
+func backupArchiveLicensePath(licenseID string, filename string, usedPaths map[string]bool) string {
+	safeLicenseID := regexp.MustCompile(`[^A-Za-z0-9_-]+`).ReplaceAllString(licenseID, "-")
+	safeLicenseID = strings.Trim(safeLicenseID, "-")
+	if safeLicenseID == "" {
+		safeLicenseID = "license"
+	}
+	safeFilename := sanitizePDFFilename(filename)
+	basePath := "licenses/" + safeLicenseID + "/" + safeFilename
+	nextPath := basePath
+	for suffix := 2; usedPaths[nextPath]; suffix++ {
+		extension := path.Ext(safeFilename)
+		stem := strings.TrimSuffix(safeFilename, extension)
+		if stem == "" {
+			stem = "license"
+		}
+		if extension == "" {
+			extension = ".pdf"
+		}
+		nextPath = fmt.Sprintf("licenses/%s/%s-%d%s", safeLicenseID, stem, suffix, extension)
+	}
+	usedPaths[nextPath] = true
+	return nextPath
+}
+
+func sanitizePDFFilename(filename string) string {
+	filename = strings.ReplaceAll(filename, "\\", "/")
+	filename = path.Base(strings.TrimSpace(filename))
+	filename = regexp.MustCompile(`[^A-Za-z0-9._-]+`).ReplaceAllString(filename, "-")
+	filename = strings.Trim(filename, ".-")
+	if filename == "" || filename == "/" {
+		filename = "license.pdf"
+	}
+	if !strings.HasSuffix(strings.ToLower(filename), ".pdf") {
+		filename += ".pdf"
+	}
+	return filename
+}
+
+func anySlice(value any) []any {
+	if typed, ok := value.([]any); ok {
+		return typed
+	}
+	if typed, ok := value.([]map[string]any); ok {
+		out := make([]any, 0, len(typed))
+		for _, item := range typed {
+			out = append(out, item)
+		}
+		return out
+	}
+	return []any{}
+}
+
+func stringMapValue(value map[string]any, key string) string {
+	text, _ := value[key].(string)
+	return strings.TrimSpace(text)
 }
 
 func csvRow(dive store.Dive, logbook map[string]any, sample any, sampleIndex string) []string {

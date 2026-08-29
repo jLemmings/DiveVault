@@ -506,6 +506,44 @@ func handleBackupImport(ctx *Context) {
 			_ = rc.Close()
 			_ = json.Unmarshal(data, &payload)
 		}
+		if payload != nil {
+			documents, _ := payload["license_documents"].([]any)
+			for index, document := range documents {
+				item := mapValue(document)
+				if stringAny(item["data_b64"]) != "" {
+					continue
+				}
+				filePath := stringAny(item["file_path"])
+				if filePath == "" || !names[filePath] || !safeBackupPath(filePath) {
+					writeJSON(ctx.ResponseWriter, ctx.Server.cfg.CORSOrigin, http.StatusBadRequest, map[string]string{"error": "Backup license document " + strconv.Itoa(index+1) + " references a missing file"})
+					return
+				}
+				for _, file := range reader.File {
+					if file.Name != filePath {
+						continue
+					}
+					rc, err := file.Open()
+					if err != nil {
+						writeJSON(ctx.ResponseWriter, ctx.Server.cfg.CORSOrigin, http.StatusBadRequest, map[string]string{"error": "Backup archive contains unreadable license document"})
+						return
+					}
+					data, err := io.ReadAll(io.LimitReader(rc, ctx.Server.cfg.MaxBackupImportBytes+1))
+					_ = rc.Close()
+					if err != nil {
+						writeJSON(ctx.ResponseWriter, ctx.Server.cfg.CORSOrigin, http.StatusBadRequest, map[string]string{"error": "Backup archive contains unreadable license document"})
+						return
+					}
+					if int64(len(data)) > ctx.Server.cfg.MaxBackupImportBytes {
+						writeJSON(ctx.ResponseWriter, ctx.Server.cfg.CORSOrigin, http.StatusBadRequest, map[string]string{"error": "Backup archive exceeds size limit"})
+						return
+					}
+					item["data_b64"] = base64.StdEncoding.EncodeToString(data)
+					documents[index] = item
+					break
+				}
+			}
+			payload["license_documents"] = documents
+		}
 	} else if err := json.Unmarshal(body, &payload); err != nil {
 		writeJSON(ctx.ResponseWriter, ctx.Server.cfg.CORSOrigin, http.StatusBadRequest, map[string]string{"error": "Invalid JSON"})
 		return

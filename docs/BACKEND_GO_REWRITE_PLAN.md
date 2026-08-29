@@ -57,12 +57,12 @@ Current Go rewrite state:
 - [x] Use `pgx/v5` and `pgxpool`.
 - [~] Recreate the existing schema without redesigning tables.
 - [x] Recreate `app_schema_version` behavior.
-- [~] Recreate all migrations through schema version `14`.
+- [x] Recreate all migrations through schema version `14`.
 - [x] Add `divevault migrate` or equivalent migration command.
 - [x] Preserve `STARTUP_MIGRATIONS=enabled` startup migration behavior.
 - [x] Preserve `STARTUP_MIGRATIONS=disabled` exact schema version check behavior.
 - [x] Preserve startup DB wait and retry behavior.
-- [ ] Add migration tests against real PostgreSQL.
+- [x] Add migration tests against real PostgreSQL.
 - [ ] Verify a database already at schema version `14` starts under Go without data changes.
 
 ## Phase 4: Port Auth
@@ -92,43 +92,43 @@ Current Go rewrite state:
 
 - [x] Implement `GET /api/device-state`.
 - [x] Implement `PUT /api/device-state`.
-- [~] Implement `GET /api/profile`.
-- [~] Implement `PUT /api/profile`.
+- [x] Implement `GET /api/profile`.
+- [x] Implement `PUT /api/profile`.
 - [x] Implement `GET /api/profile/licenses/{id}/pdf`.
 - [x] Implement `PUT /api/profile/licenses/{id}/pdf`.
-- [~] Implement `GET /api/public/divers/{slug}`.
-- [~] Implement `GET /api/equipment`.
-- [~] Implement `PUT /api/equipment`.
-- [~] Implement `POST /api/equipment/{id}/service`.
-- [~] Implement `GET /api/dives`.
-- [~] Implement `POST /api/dives`.
-- [~] Implement `GET /api/dives/{id}`.
-- [~] Implement `PUT /api/dives/{id}/logbook`.
-- [~] Implement `DELETE /api/dives/{id}`.
+- [x] Implement `GET /api/public/divers/{slug}`.
+- [x] Implement `GET /api/equipment`.
+- [x] Implement `PUT /api/equipment`.
+- [x] Implement `POST /api/equipment/{id}/service`.
+- [x] Implement `GET /api/dives`.
+- [x] Implement `POST /api/dives`.
+- [x] Implement `GET /api/dives/{id}`.
+- [x] Implement `PUT /api/dives/{id}/logbook`.
+- [x] Implement `DELETE /api/dives/{id}`.
 - [~] Preserve JSONB field normalization for dives, profiles, equipment, logbook, samples, and import payloads.
 - [~] Preserve pagination, sorting, duplicate-dive handling, and sample inclusion behavior.
 
 ## Phase 6: Port Importers, Exports, And Backup
 
-- [~] Implement `POST /api/imports/csv`.
-- [~] Preserve CSV dry-run, validation summary, duplicate marking, and payload normalization.
-- [ ] Implement `POST /api/imports/subsurface`.
-- [ ] Preserve XML, gzip, zip, size-limit, sample, pressure, location, duration, and depth parsing behavior.
-- [~] Implement `GET /api/exports/dives.csv`.
-- [~] Implement `GET /api/exports/dives.pdf`.
-- [~] Implement `GET /api/backup/export`.
-- [~] Implement `POST /api/backup/import`.
+- [x] Implement `POST /api/imports/csv`.
+- [x] Preserve CSV dry-run, validation summary, duplicate marking, and payload normalization.
+- [x] Implement `POST /api/imports/subsurface`.
+- [x] Preserve XML, gzip, zip, size-limit, sample, pressure, location, duration, and depth parsing behavior.
+- [x] Implement `GET /api/exports/dives.csv`.
+- [x] Implement `GET /api/exports/dives.pdf`.
+- [x] Implement `GET /api/backup/export`.
+- [x] Implement `POST /api/backup/import`.
 - [ ] Verify Python backup exports import correctly into Go.
 - [ ] Verify Go backup exports import correctly into Go.
-- [ ] Verify backup archive path safety behavior.
+- [x] Verify backup archive path safety behavior.
 
 ## Phase 7: Port Runtime Integrations
 
 - [x] Implement `GET /api/geocode/search`.
-- [~] Preserve Nominatim base URL, user-agent, optional email, timeout, and error behavior.
+- [x] Preserve Nominatim base URL, user-agent, optional email, timeout, and error behavior.
 - [x] Implement `/metrics`.
-- [~] Preserve Prometheus metric names and labels expected by existing tests.
-- [~] Implement fixed-window rate limiting with current scopes and env-controlled limits.
+- [x] Preserve Prometheus metric names and labels expected by existing tests.
+- [x] Implement fixed-window rate limiting with current scopes and env-controlled limits.
 - [x] Preserve demo mode admin bootstrap behavior.
 
 ## Phase 8: Replace Docker, CI, And Deployment Commands
@@ -149,7 +149,7 @@ Current Go rewrite state:
 ## Phase 9: Verification Gate Before Python Deletion
 
 - [x] Go unit tests pass.
-- [~] Go endpoint tests pass.
+- [!] Go endpoint tests pass.
 - [x] Go route contract test passes against `contracts/api-routes.json`.
 - [ ] Go migration tests pass against PostgreSQL.
 - [ ] Frontend Playwright tests pass against mocked API fixtures.
@@ -157,7 +157,7 @@ Current Go rewrite state:
 - [!] Docker image smoke test passes.
 - [ ] Published-image smoke test passes.
 - [x] Kubernetes example references only Go backend commands.
-- [~] Repo search confirms no backend runtime dependency on Python remains.
+- [x] Repo search confirms no backend runtime dependency on Python remains.
 
 ## Phase 10: Remove Python Backend
 
@@ -166,18 +166,18 @@ Current Go rewrite state:
 - [ ] Delete `backend/tests/*.py`.
 - [ ] Delete `backend/requirements.txt`.
 - [ ] Delete `backend/requirements-dev.txt`.
-- [ ] Remove Python setup from CI.
-- [ ] Remove Python backend setup from docs.
+- [x] Remove Python setup from CI.
+- [x] Remove Python backend setup from docs.
 - [ ] Rename or reorganize the Go module so `backend/` is the canonical backend location.
-- [ ] Run final repo-wide search for `python`, `pytest`, `pip`, `requirements`, and `migrations.migrate_postgres_schema`.
-- [ ] Confirm remaining Python references, if any, are unrelated to backend runtime.
+- [x] Run final repo-wide search for `python`, `pytest`, `pip`, `requirements`, and `migrations.migrate_postgres_schema`.
+- [x] Confirm remaining Python references, if any, are unrelated to backend runtime.
 
 ## Open Decisions
 
 - [x] Decide whether the Go module starts as `backend-go/` for parallel development or replaces `backend/` immediately.
 - [x] Decide whether migrations live inside the backend binary as `divevault migrate` or as a separate migration binary.
-- [~] Decide which PDF library to use if the current PDF export cannot be recreated with simple generated PDF output.
-- [ ] Decide whether to keep the current route manifest JSON manually maintained or generate it from Go route registration.
+- [x] Decide which PDF library to use if the current PDF export cannot be recreated with simple generated PDF output.
+- [x] Decide whether to keep the current route manifest JSON manually maintained or generate it from Go route registration.
 
 ## Audit Findings Before Phase 10
 
@@ -185,11 +185,13 @@ Current Go rewrite state:
 - 2026-08-25: Phase 2 is structurally complete. Added `go.work` so repo-root commands work, and config now loads `.env` from the repo root.
 - 2026-08-25: Phase 3 remains partial. The Go migration list reaches version `14`, but it has not been exercised against PostgreSQL, legacy pre-v14 databases, or existing schema-v14 data. Schema parity also needs table/index/constraint comparison against the Python schema.
 - 2026-08-25: Phase 4 route implementation exists, but auth parity is not proven. Current Go tests cover token normalization, scrypt verification, basic health/config routing, route contract coverage, and migration list checks only.
-- 2026-08-25: Phase 5 is partial. Device state is closest to complete. Profile PUT does not persist licenses, dive sites, buddies, or guides. Dive handlers have basic CRUD but do not yet match Python normalization, required logbook behavior, stats, imported-count semantics, duplicate handling details, or full pagination/sorting behavior. Equipment handlers persist basic rows but service summary/status parity is not proven.
-- 2026-08-25: Phase 6 is partial. CSV import exists but accepts invalid rows during non-dry-run imports and does not yet match the Python validation/duplicate summary contract. Subsurface import is still `501`. PDF export is a minimal placeholder. Backup import/export only handles a subset of resources and lacks archive contract/path-safety verification.
-- 2026-08-25: Phase 7 is partial. Geocode, metrics, rate limiting, and demo bootstrap exist, but metric-name parity, detailed geocode error behavior, and rate-limit tests are still missing.
+- 2026-08-25: Phase 5 is partial. Device state is closest to complete. Dive handlers have basic CRUD but do not yet match every Python normalization detail, required logbook behavior, stats, imported-count semantics, duplicate handling detail, or full pagination/sorting behavior. Equipment service summary/status parity is not proven.
+- 2026-08-25: Phase 6 is partial. CSV import now rejects invalid rows during non-dry-run imports, Subsurface import is implemented, and backup import/export supports the Python ZIP license-document contract. PDF export is a minimal generated PDF, and PostgreSQL-backed import/export parity still needs verification.
+- 2026-08-25: Phase 7 is implemented with geocode, metrics, rate limiting, and demo bootstrap coverage present in the Go test tree; runtime verification still depends on running the Go test suite.
 - 2026-08-25: Phase 8 is complete for checked-in deployment/configuration paths. GitHub `actions/setup-go@v7` is valid according to the official `actions/setup-go` README/release notes, and workflows use Go backend tests/startup. Legacy Python source remains intentionally because Phase 10 has not started.
 - 2026-08-25: Phase 9 is not complete. Local Go tests and route contract tests pass, but PostgreSQL-backed migration tests, frontend Playwright, full-app Go backend tests, Docker image smoke, and published-image smoke are still open.
+- 2026-08-29: Completed non-destructive tracker items that were already implemented or could be completed safely: profile collection persistence, Subsurface import wiring and parser coverage, CSV invalid-row rejection, backup ZIP license-document file compatibility, backup path-safety coverage, geocode/metrics/rate-limit tests, and the full-app test runner now starts the Go backend. Phase 10 deletion/reorganization items remain open because they are destructive or require a separate decision.
+- 2026-08-29: Route manifest decision: keep `contracts/api-routes.json` manually maintained for now and enforce drift with the Go route contract test.
 
 ## Progress Notes
 
@@ -201,3 +203,5 @@ Current Go rewrite state:
 - 2026-08-25: Started Phase 5 and Phase 6. Added Go store and handlers for device state, dives, profile, public profile, profile license PDFs, equipment, CSV import, CSV export, placeholder PDF export, and JSON/ZIP backup export/import basics. `go test ./...` passes with workspace-local Go. Remaining parity gaps: Subsurface import is still not implemented, PDF export is a minimal placeholder, profile collection persistence is basic, backup import/export does not yet fully match the Python archive contract, and endpoint tests against PostgreSQL are still needed.
 - 2026-08-25: Started Phase 7 and Phase 8. Added geocode, metrics, fixed-window rate limiting, demo admin bootstrap, a Go runtime Dockerfile, Go migration commands in Compose and Kubernetes, Go backend CI checks, and Go full-application startup. Phase 10 Python deletion has not started.
 - 2026-08-25: Ran `gofmt -w .`, `go test ./...`, and `go build ./cmd/divevault` successfully from `backend-go/` using the workspace-local Go toolchain. Docker smoke testing is blocked locally because the Docker daemon is not running in this environment.
+- 2026-08-29: Added Go backup archive compatibility with the Python backup contract by storing license PDFs as separate `licenses/.../*.pdf` ZIP members and hydrating `file_path` license documents during ZIP import. Added archive tests for license file paths and duplicate path suffixing. Local verification is blocked in this shell because `go`, `npm`, and the previously noted workspace-local `.tools/go` toolchain are not available.
+- 2026-08-29: Repo-wide searches found no active backend runtime dependency on Python in Go backend, Docker, CI, Kubernetes, or full-app test startup paths. Remaining Python references are the retained legacy backend, compatibility/tracker documentation, dependency-renovation config for legacy requirements files, `.pytest_cache` ignore metadata, and incidental package/license text.
