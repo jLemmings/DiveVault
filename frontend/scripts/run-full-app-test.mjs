@@ -152,7 +152,8 @@ async function main() {
       [
         `A full application stack is already running at ${baseURL}.`,
         "Stop it before running npm run test:full-app so the local test runner can start a deterministic demo backend.",
-        "To intentionally test the running stack instead, set FULL_APP_BASE_URL and, if registration is closed, FULL_APP_TEST_EMAIL/FULL_APP_TEST_PASSWORD."
+        "To intentionally test the running stack instead, set FULL_APP_BASE_URL and, " +
+          "if registration is closed, FULL_APP_TEST_EMAIL/FULL_APP_TEST_PASSWORD."
       ].join("\n")
     );
   }
