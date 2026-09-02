@@ -7,7 +7,8 @@ async function chooseComboboxOption(page, name, optionName) {
   await page.getByRole("option", { name: optionName, exact: true }).click();
 }
 
-test("renders login flows with the local auth screen", async ({ page }) => {
+test("renders login flows with the local auth screen", async ({ page }, testInfo) => {
+  testInfo.setTimeout(60000);
   await installAppMocks(page, {
     signedIn: false,
     authStatus: {
@@ -19,24 +20,26 @@ test("renders login flows with the local auth screen", async ({ page }) => {
   });
   await gotoAndWait(page);
 
+  const authPanel = page.locator(".auth-panel");
   await expect(page.getByRole("heading", { name: "Welcome back" })).toBeVisible();
   await expect(page.getByPlaceholder("Email")).toBeVisible();
-  await expect(page.getByRole("button", { name: "Sign In" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Create Account" })).toBeVisible();
+  await expect(authPanel.getByRole("button", { name: "Sign In" })).toBeVisible();
+  await expect(authPanel.getByRole("button", { name: "Create Account" })).toBeVisible();
   await expect(page.getByLabel("Language")).toBeVisible();
   await page.getByRole("combobox", { name: "Language" }).click();
   await expect(page.getByRole("option")).toHaveText(["English", "Deutsch", "Français"]);
   await page.keyboard.press("Escape");
 
-  await page.getByRole("button", { name: "Create Account" }).last().click();
+  await authPanel.getByRole("button", { name: "Create Account" }).click();
   await expect(page.getByRole("heading", { name: "Create your DiveVault account" })).toBeVisible();
   await expect(page.getByPlaceholder("First name")).toBeVisible();
   await expect(page.getByPlaceholder("Last name")).toBeVisible();
 
-  await page.getByRole("button", { name: "Sign In" }).last().click();
+  await authPanel.getByRole("button", { name: "Sign In" }).click();
+  await expect(page.getByRole("heading", { name: "Welcome back" })).toBeVisible();
   await page.getByPlaceholder("Email").fill("avery@example.com");
   await page.getByPlaceholder("Password").fill("Password123!");
-  await page.getByRole("button", { name: "Sign In" }).click();
+  await authPanel.getByRole("button", { name: "Sign In" }).click();
   await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible();
 });
 

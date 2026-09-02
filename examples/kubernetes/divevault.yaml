@@ -39,7 +39,7 @@ spec:
         - name: migrate
           image: ghcr.io/your-org/divevault:latest
           imagePullPolicy: IfNotPresent
-          command: ["python", "-m", "migrations.migrate_postgres_schema"]
+          command: ["/app/divevault", "migrate"]
           envFrom:
             - configMapRef:
                 name: divevault-config

@@ -27,3 +27,4 @@ kubectl rollout status deployment/divevault-backend
 ```
 
 The backend uses `STARTUP_MIGRATIONS=disabled` and expects the migration Job to have already completed.
+The migration Job and backend Deployment both run the Go backend binary from the published image.

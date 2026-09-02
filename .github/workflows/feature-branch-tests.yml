@@ -7,7 +7,6 @@ on:
   workflow_dispatch:
 
 env:
-  PYTHON_VERSION: "3.14.5"
   NODE_VERSION: "24.16.0"
   LOCAL_IMAGE_TAG: divevault-feature:${{ github.sha }}
   FULL_APP_BASE_URL: http://127.0.0.1:8000
@@ -15,28 +14,36 @@ env:
 jobs:
   backend-tests:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_USER: dive
+          POSTGRES_PASSWORD: dive
+          POSTGRES_DB: dive
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U dive -d dive"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
 
     steps:
       - name: Checkout
         uses: actions/checkout@v7
 
-      - name: Set up Python
-        uses: actions/setup-python@v7
+      - name: Set up Go
+        uses: actions/setup-go@v7
         with:
-          python-version: ${{ env.PYTHON_VERSION }}
+          go-version-file: backend-go/go.mod
+          cache-dependency-path: backend-go/go.sum
 
-      - name: Install backend dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r backend/requirements-dev.txt
-
-      - name: Run backend tests
+      - name: Run Go backend tests
+        working-directory: backend-go
         env:
-          PYTHONPATH: ${{ github.workspace }}/backend
-        run: python -m pytest -vv -ra backend/tests
-
-      - name: Check backend syntax
-        run: python -m compileall backend
+          TEST_DATABASE_URL: postgresql://dive:dive@127.0.0.1:5432/dive
+        run: go test ./...
 
   frontend-checks:
     runs-on: ubuntu-latest

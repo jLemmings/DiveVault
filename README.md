@@ -39,6 +39,8 @@ This starts PostgreSQL, runs the database migration job, and serves DiveVault at
 http://localhost:8000
 ```
 
+The published container runs the Go backend binary and includes the generated frontend assets.
+
 For production use, review `.env.example` and configure secrets, public URLs, authentication settings, database credentials, and backup storage before exposing the service.
 
 ## Kubernetes

@@ -9,7 +9,6 @@ on:
 env:
   DATABASE_URL: postgresql://dive:dive@127.0.0.1:5432/dive
   FULL_APP_BASE_URL: http://127.0.0.1:8000
-  PYTHON_VERSION: "3.14.5"
   NODE_VERSION: "24.16.0"
 
 jobs:
@@ -35,10 +34,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
-      - name: Set up Python
-        uses: actions/setup-python@v7
+      - name: Set up Go
+        uses: actions/setup-go@v7
         with:
-          python-version: ${{ env.PYTHON_VERSION }}
+          go-version-file: backend-go/go.mod
+          cache-dependency-path: backend-go/go.sum
 
       - name: Set up Node
         uses: actions/setup-node@v7
@@ -46,11 +46,6 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
           cache-dependency-path: frontend/package-lock.json
-
-      - name: Install backend dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r backend/requirements-dev.txt
 
       - name: Install frontend dependencies
         working-directory: frontend
@@ -64,13 +59,11 @@ jobs:
           npx playwright --version
           npx playwright install --with-deps
 
-      - name: Run backend test suite
+      - name: Run Go backend tests
+        working-directory: backend-go
         env:
-          PYTHONPATH: ${{ github.workspace }}/backend
-        run: python -m pytest -vv -ra backend/tests
-
-      - name: Check backend syntax
-        run: python -m compileall backend
+          TEST_DATABASE_URL: ${{ env.DATABASE_URL }}
+        run: go test ./...
 
       - name: Run frontend lint
         working-directory: frontend
@@ -99,8 +92,8 @@ jobs:
         run: npm run build:app
 
       - name: Start deployed backend with built frontend and auth
+        working-directory: backend-go
         env:
-          PYTHONPATH: ${{ github.workspace }}/backend
           AUTH_JWT_SECRET: full-application-test-secret
           AUTH_JWT_ISSUER: divevault.full-application-test
           AUTH_JWT_AUDIENCE: divevault.full-application-test
@@ -113,7 +106,7 @@ jobs:
           METRICS_ENABLED: disabled
         run: |
           set -euo pipefail
-          python -m divevault.app > "${RUNNER_TEMP}/divevault-backend.log" 2>&1 &
+          go run ./cmd/divevault > "${RUNNER_TEMP}/divevault-backend.log" 2>&1 &
           echo "$!" > "${RUNNER_TEMP}/divevault-backend.pid"
 
       - name: Wait for deployed backend

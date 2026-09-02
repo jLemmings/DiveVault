@@ -261,7 +261,7 @@ export default {
     },
     statusDetail() {
       if (this.loading) return "Waiting for API response.";
-      if (this.error) return "Check the Python server and API routes.";
+      if (this.error) return "Check the backend server and API routes.";
       return `${this.dives.length} dives loaded from /api/dives`;
     },
     stats() {

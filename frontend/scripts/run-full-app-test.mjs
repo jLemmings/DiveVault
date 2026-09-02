@@ -78,21 +78,18 @@ async function waitForReady(timeoutMs = 60000) {
   throw new Error(`Timed out waiting for ${baseURL} to serve /health and the built frontend.`);
 }
 
-function pythonCommand() {
-  if (process.env.PYTHON) return process.env.PYTHON;
+function goCommand() {
+  if (process.env.GO) return process.env.GO;
 
-  const virtualenvPython = isWindows
-    ? path.join(repoRoot, ".venv", "Scripts", "python.exe")
-    : path.join(repoRoot, ".venv", "bin", "python");
-  if (existsSync(virtualenvPython)) return virtualenvPython;
+  const workspaceGo = isWindows ? path.join(repoRoot, ".tools", "go", "bin", "go.exe") : path.join(repoRoot, ".tools", "go", "bin", "go");
+  if (existsSync(workspaceGo)) return workspaceGo;
 
-  return "python";
+  return "go";
 }
 
 function startBackend() {
   const env = {
     ...process.env,
-    PYTHONPATH: process.env.PYTHONPATH || "backend",
     DATABASE_URL: process.env.DATABASE_URL || "postgresql://dive:dive@127.0.0.1:5432/dive",
     AUTH_JWT_SECRET: process.env.AUTH_JWT_SECRET || "full-application-test-secret",
     AUTH_JWT_ISSUER: process.env.AUTH_JWT_ISSUER || "divevault.full-application-test",
@@ -107,10 +104,10 @@ function startBackend() {
     DEMO_MODE: process.env.DEMO_MODE || "true"
   };
 
-  const python = pythonCommand();
-  console.log(`Starting backend with ${python}.`);
+  const go = goCommand();
+  console.log(`Starting Go backend with ${go}.`);
 
-  backendProcess = spawn(python, ["-m", "divevault.app"], {
+  backendProcess = spawn(go, ["run", "./backend-go/cmd/divevault"], {
     cwd: repoRoot,
     env,
     shell: false,
@@ -153,7 +150,8 @@ async function main() {
       [
         `A full application stack is already running at ${baseURL}.`,
         "Stop it before running npm run test:full-app so the local test runner can start a deterministic demo backend.",
-        "To intentionally test the running stack instead, set FULL_APP_BASE_URL and, if registration is closed, FULL_APP_TEST_EMAIL/FULL_APP_TEST_PASSWORD."
+        "To intentionally test the running stack instead, set FULL_APP_BASE_URL and, " +
+          "if registration is closed, FULL_APP_TEST_EMAIL/FULL_APP_TEST_PASSWORD."
       ].join("\n")
     );
   }

@@ -22,7 +22,7 @@ services:
         condition: service_healthy
     environment:
       DATABASE_URL: postgresql://dive:dive@postgres:5432/dive
-    command: ["python", "-m", "migrations.migrate_postgres_schema"]
+    command: ["/app/divevault", "migrate"]
     restart: "no"
 
   backend:
@@ -37,7 +37,7 @@ services:
       HOST: 0.0.0.0
       PORT: 8000
       CORS_ORIGIN: http://localhost:5173
-      FRONTEND_DIR: frontend/dist
+      FRONTEND_DIR: /app/frontend/dist
       MAX_JSON_BODY_BYTES: 1048576
       MAX_BACKUP_IMPORT_BYTES: 26214400
       MAX_LIST_LIMIT: 200

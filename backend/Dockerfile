@@ -8,20 +8,29 @@ RUN npm ci
 COPY frontend ./
 RUN npm run build:app
 
-FROM python:3.14-slim
+FROM golang:1.24-bookworm AS backend-build
 
-ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1
+WORKDIR /src/backend-go
 
-WORKDIR /app/backend
+COPY backend-go/go.mod backend-go/go.sum ./
+RUN go mod download
 
-COPY backend/requirements.txt ./requirements.txt
-RUN pip install --no-cache-dir -r requirements.txt
+COPY backend-go ./
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o /out/divevault ./cmd/divevault
 
-COPY backend/divevault ./divevault
-COPY backend/migrations ./migrations
+FROM debian:13-slim
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+COPY --from=backend-build /out/divevault /app/divevault
 COPY --from=frontend-build /frontend/dist /app/frontend/dist
+
+ENV FRONTEND_DIR=/app/frontend/dist
 
 EXPOSE 8000
 
-CMD ["python", "-m", "divevault.app"]
+CMD ["/app/divevault"]
