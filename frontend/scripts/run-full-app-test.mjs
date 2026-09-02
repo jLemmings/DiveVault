@@ -81,9 +81,7 @@ async function waitForReady(timeoutMs = 60000) {
 function goCommand() {
   if (process.env.GO) return process.env.GO;
 
-  const workspaceGo = isWindows
-    ? path.join(repoRoot, ".tools", "go", "bin", "go.exe")
-    : path.join(repoRoot, ".tools", "go", "bin", "go");
+  const workspaceGo = isWindows ? path.join(repoRoot, ".tools", "go", "bin", "go.exe") : path.join(repoRoot, ".tools", "go", "bin", "go");
   if (existsSync(workspaceGo)) return workspaceGo;
 
   return "go";
