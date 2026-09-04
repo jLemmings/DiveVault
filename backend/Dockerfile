@@ -1,4 +1,4 @@
-FROM node:24.19.0-slim AS frontend-build
+FROM node:24.20.0-slim AS frontend-build
 
 WORKDIR /frontend
 
@@ -8,7 +8,7 @@ RUN npm ci
 COPY frontend ./
 RUN npm run build:app
 
-FROM golang:1.24-bookworm AS backend-build
+FROM golang:1.27-bookworm AS backend-build
 
 WORKDIR /src/backend-go
 
