@@ -23,7 +23,7 @@ When adding database migrations, update `CurrentSchemaVersion` in `backend-go/in
 
 Install Docker and the VS Code Dev Containers extension, then open the repository
 and run **Dev Containers: Reopen in Container**. The container includes Node 24
-and Go 1.24; initial setup runs `npm ci` and downloads the Go modules.
+and Go 1.27.1; initial setup runs `npm ci` and downloads the Go modules.
 
 Run **Tasks: Run Task → dev: start all** to start the frontend and backend in
 separate terminals within the same development container. Open
