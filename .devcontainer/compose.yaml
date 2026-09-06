@@ -1,0 +1,38 @@
+services:
+  dev:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: sleep infinity
+    init: true
+    volumes:
+      - ..:/workspaces/dive:cached
+      - frontend-node-modules:/workspaces/dive/frontend/node_modules
+    environment:
+      DATABASE_URL: postgresql://dive:dive@postgres:5432/dive
+      STARTUP_MIGRATIONS: enabled
+      HOST: 0.0.0.0
+      PORT: "8000"
+      CORS_ORIGIN: http://localhost:3000
+      VITE_API_PROXY_TARGET: http://127.0.0.1:8000
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  postgres:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_DB: dive
+      POSTGRES_USER: dive
+      POSTGRES_PASSWORD: dive
+    volumes:
+      - postgres-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  frontend-node-modules:
+  postgres-data:
