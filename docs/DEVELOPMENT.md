@@ -19,6 +19,29 @@ This document is for contributors and maintainers. The main README is intentiona
 
 When adding database migrations, update `CurrentSchemaVersion` in `backend-go/internal/migrations`.
 
+## Dev Container
+
+Install Docker and the VS Code Dev Containers extension, then open the repository
+and run **Dev Containers: Reopen in Container**. The container includes Node 24
+and Go 1.24; initial setup runs `npm ci` and downloads the Go modules.
+
+Run **Tasks: Run Task → dev: start all** to start the frontend and backend in
+separate terminals within the same development container. Open
+<http://localhost:3000> for the app; the API is forwarded on port 8000.
+Nuxt proxies API requests to the backend inside the container.
+Stop either server with Ctrl+C in its terminal, or use **Tasks: Terminate Task**.
+Restart the backend task after changing Go code; Nuxt reloads frontend changes.
+
+PostgreSQL runs in a companion container with a persistent named volume. The
+development container supplies `DATABASE_URL` and enables startup migrations;
+no `.env` file is required. Existing `.env` files can supply other settings, but
+the container's environment takes precedence. Dependencies in `node_modules`
+use a separate Linux volume so they do not conflict with host installations.
+Closing the devcontainer stops both containers and retains database data.
+
+The usual checks below can run in the container terminal. Before running
+Playwright tests for the first time, run `cd frontend && npx playwright install --with-deps`.
+
 ## Local Backend
 
 Copy the sample environment and start the backend:

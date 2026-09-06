@@ -1,0 +1,19 @@
+{
+  "name": "DiveVault development",
+  "dockerComposeFile": "compose.yaml",
+  "service": "dev",
+  "workspaceFolder": "/workspaces/dive",
+  "remoteUser": "node",
+  "shutdownAction": "stopCompose",
+  "forwardPorts": [3000, 8000],
+  "portsAttributes": {
+    "3000": { "label": "Nuxt frontend", "onAutoForward": "notify" },
+    "8000": { "label": "Go API", "onAutoForward": "silent" }
+  },
+  "postCreateCommand": "sudo chown -R node:node frontend/node_modules && npm --prefix frontend ci && cd backend-go && go mod download",
+  "customizations": {
+    "vscode": {
+      "extensions": ["golang.Go", "Vue.volar", "dbaeumer.vscode-eslint", "esbenp.prettier-vscode"]
+    }
+  }
+}
