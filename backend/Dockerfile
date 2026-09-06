@@ -8,7 +8,7 @@ RUN npm ci
 COPY frontend ./
 RUN npm run build:app
 
-FROM golang:1.24-bookworm AS backend-build
+FROM golang:1.27.1-bookworm AS backend-build
 
 WORKDIR /src/backend-go
 
