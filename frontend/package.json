@@ -20,7 +20,7 @@
     "test:ui": "playwright test --ui"
   },
   "dependencies": {
-    "@nuxt/ui": "^4.11.0",
+    "@nuxt/ui": "^4.11.1",
     "leaflet": "^1.9.4",
     "nuxt": "^4.5.2",
     "pdfjs-dist": "^6.3.289"
