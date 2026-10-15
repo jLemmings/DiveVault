@@ -1,4 +1,4 @@
-FROM golang:1.27.1-bookworm AS go
+FROM golang:1.27.2-bookworm AS go
 
 FROM mcr.microsoft.com/devcontainers/javascript-node:5-24-bookworm
 
