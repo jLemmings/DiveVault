@@ -62,7 +62,7 @@ export default {
         }
 
         const bytes = new Uint8Array(await response.arrayBuffer());
-        const pdfDocument = await getDocument({ data: bytes }).promise;
+        const pdfDocument = await getDocument({ data: bytes, isEvalSupported: false }).promise;
         const pages = [];
 
         for (let pageNumber = 1; pageNumber <= pdfDocument.numPages; pageNumber += 1) {

@@ -107,7 +107,7 @@ function startBackend() {
   const go = goCommand();
   console.log(`Starting Go backend with ${go}.`);
 
-  backendProcess = spawn(go, ["run", "./backend-go/cmd/divevault"], {
+  backendProcess = spawn(go, ["run", "./backend/cmd/divevault"], {
     cwd: repoRoot,
     env,
     shell: false,

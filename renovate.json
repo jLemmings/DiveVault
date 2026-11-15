@@ -1,7 +1,8 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": [
-    "config:recommended"
+    "config:recommended",
+    "helpers:pinGitHubActionDigests"
   ],
   "timezone": "Europe/Zurich",
   "labels": [
@@ -28,13 +29,15 @@
     },
     {
       "matchManagers": [
-        "pip_requirements"
+        "gomod"
       ],
       "matchFileNames": [
-        "backend/requirements.txt",
-        "backend/requirements-dev.txt"
+        "backend/go.mod"
       ],
-      "groupName": "python requirements"
+      "groupName": "go modules",
+      "postUpdateOptions": [
+        "gomodTidy"
+      ]
     },
     {
       "matchManagers": [

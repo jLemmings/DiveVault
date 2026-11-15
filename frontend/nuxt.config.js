@@ -13,18 +13,22 @@ export default defineNuxtConfig({
     rootId: "app",
     head: {
       title: "DiveVault",
-      meta: [{ name: "viewport", content: "width=device-width, initial-scale=1" }],
-      link: [
-        { rel: "preconnect", href: "https://fonts.googleapis.com" },
-        { rel: "preconnect", href: "https://fonts.gstatic.com", crossorigin: "" },
-        {
-          rel: "stylesheet",
-          href: "https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&family=Space+Grotesk:wght@500;600;700&display=swap"
-        }
+      meta: [
+        { name: "viewport", content: "width=device-width, initial-scale=1" },
+        { name: "referrer", content: "strict-origin-when-cross-origin" }
       ]
     }
   },
-  css: ["~/assets/styles.css"],
+  // Fonts are bundled and self-hosted: no third-party requests (privacy) and
+  // compatible with the backend's strict Content-Security-Policy.
+  css: [
+    "@fontsource-variable/manrope",
+    "@fontsource/space-grotesk/500.css",
+    "@fontsource/space-grotesk/600.css",
+    "@fontsource/space-grotesk/700.css",
+    "material-symbols/outlined.css",
+    "~/assets/styles.css"
+  ],
   alias: {
     "#features": path.resolve(__dirname, "app/features"),
     "#i18n": path.resolve(__dirname, "app/i18n"),
@@ -34,6 +38,61 @@ export default defineNuxtConfig({
   modules: ["@nuxt/ui", "@nuxtjs/i18n"],
   ui: {
     fonts: false
+  },
+  // Bundle the icons Nuxt UI uses instead of fetching them from the public
+  // Iconify API at runtime (privacy, offline use and a strict CSP).
+  icon: {
+    provider: "none",
+    fallbackToApi: false,
+    clientBundle: {
+      scan: true,
+      icons: [
+        "lucide:arrow-down",
+        "lucide:arrow-left",
+        "lucide:arrow-right",
+        "lucide:arrow-up",
+        "lucide:arrow-up-right",
+        "lucide:check",
+        "lucide:chevron-down",
+        "lucide:chevron-left",
+        "lucide:chevron-right",
+        "lucide:chevron-up",
+        "lucide:chevrons-left",
+        "lucide:chevrons-right",
+        "lucide:circle-alert",
+        "lucide:circle-check",
+        "lucide:circle-x",
+        "lucide:copy",
+        "lucide:copy-check",
+        "lucide:ellipsis",
+        "lucide:eye",
+        "lucide:eye-off",
+        "lucide:file",
+        "lucide:folder",
+        "lucide:folder-open",
+        "lucide:grip-vertical",
+        "lucide:hash",
+        "lucide:info",
+        "lucide:lightbulb",
+        "lucide:loader-circle",
+        "lucide:menu",
+        "lucide:minus",
+        "lucide:monitor",
+        "lucide:moon",
+        "lucide:panel-left-close",
+        "lucide:panel-left-open",
+        "lucide:plus",
+        "lucide:rotate-ccw",
+        "lucide:search",
+        "lucide:square",
+        "lucide:star",
+        "lucide:sun",
+        "lucide:terminal",
+        "lucide:triangle-alert",
+        "lucide:upload",
+        "lucide:x"
+      ]
+    }
   },
   appConfig: {
     ui: {

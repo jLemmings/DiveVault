@@ -28,7 +28,7 @@ function applySession(token, mePayload) {
 async function loadUserFromToken(token) {
   const response = await fetch(API_ENDPOINTS.authMe, {
     headers: { Authorization: `Bearer ${token}` },
-    credentials: "include"
+    credentials: "omit"
   });
   if (!response.ok) {
     throw new Error("Session expired");
@@ -57,7 +57,7 @@ async function initializeAuth() {
 async function loginWithPassword(email, password) {
   const response = await fetch(API_ENDPOINTS.authLogin, {
     method: "POST",
-    credentials: "include",
+    credentials: "omit",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email, password })
   });
@@ -75,7 +75,7 @@ async function loginWithPassword(email, password) {
 async function registerUser(input) {
   const response = await fetch(API_ENDPOINTS.authRegister, {
     method: "POST",
-    credentials: "include",
+    credentials: "omit",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input)
   });
@@ -84,6 +84,14 @@ async function registerUser(input) {
     throw new Error(payload?.error || "Unable to register account");
   }
   return payload;
+}
+
+// Replaces the stored session token, e.g. after a password change revoked
+// all previously issued sessions.
+function replaceSessionToken(token) {
+  if (!token) return;
+  window.localStorage.setItem(TOKEN_STORAGE_KEY, token);
+  state.token = token;
 }
 
 function useAuth() {
@@ -105,4 +113,4 @@ function useUser() {
   };
 }
 
-export { initializeAuth, loginWithPassword, registerUser, useAuth, useUser };
+export { initializeAuth, loginWithPassword, registerUser, replaceSessionToken, useAuth, useUser };

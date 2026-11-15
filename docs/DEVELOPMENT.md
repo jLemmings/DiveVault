@@ -4,12 +4,13 @@ This document is for contributors and maintainers. The main README is intentiona
 
 ## Repository Layout
 
-- Backend: Go HTTP service in `backend-go/cmd/divevault`.
+- Backend: Go HTTP service in `backend/cmd/divevault`.
 - API/runtime: serves `/api/*`, `/health`, `/config.js`, and built frontend assets from `FRONTEND_DIR`.
-- Database: PostgreSQL schema and migrations live in `backend-go/internal/migrations`.
+- Database: PostgreSQL schema and migrations live in `backend/internal/migrations`.
 - Frontend: Nuxt-powered Vue 3 app under `frontend/`, with Nuxt UI registered as the component library.
 - Frontend entrypoint: `frontend/app/app.vue`, which wraps the app in Nuxt UI's app provider and mounts the DiveVault shell.
 - Frontend shell: `frontend/app/components/DiveVaultApp.vue`; the current route/state controller is `frontend/app/features/app/AppRouteController.vue`.
+- Large Options API components keep cohesive method groups in factory modules that are spread into `methods` (for example `features/app/methods/*.js` and `features/settings/methods/*.js`, following `shared/composables/settings-collection-options.js`).
 - Frontend route records and path-to-state mapping live together in `frontend/app/routing/routes.js`.
 - Feature views live under `frontend/app/features/`; reusable cross-feature code lives under `frontend/app/shared/{components,composables,utils}`.
 - Frontend env: loaded from the repository root by Nuxt configuration in `frontend/nuxt.config.js`.
@@ -17,7 +18,7 @@ This document is for contributors and maintainers. The main README is intentiona
 - Import aliases use Nuxt app-root paths by default: `~/features/...`, `~/shared/...`, `~/routing/...`, and `~/i18n/...`. `nuxt.config.js` also defines `#features`, `#shared`, `#routing`, and `#i18n` for explicit infrastructure imports.
 - AI-assisted Nuxt UI work should read `frontend/llms.txt` first for the project-local Nuxt UI LLM context and official documentation links.
 
-When adding database migrations, update `CurrentSchemaVersion` in `backend-go/internal/migrations`.
+When adding database migrations, update `CurrentSchemaVersion` in `backend/internal/migrations`.
 
 ## Dev Container
 
@@ -48,7 +49,7 @@ Copy the sample environment and start the backend:
 
 ```powershell
 Copy-Item .env.example .env
-go run ./backend-go/cmd/divevault --database-url postgresql://dive:dive@localhost:5432/dive
+go run ./backend/cmd/divevault --database-url postgresql://dive:dive@localhost:5432/dive
 ```
 
 The backend expects PostgreSQL to be available unless tests are using fakes or mocks. The Docker Compose setup in `examples/docker/docker-compose.yml` is the easiest way to get a local database.
@@ -72,7 +73,7 @@ For local single-instance development, startup migrations are enabled by default
 For external migration workflows, set `DATABASE_URL` and run:
 
 ```powershell
-go run ./backend-go/cmd/divevault migrate --database-url $env:DATABASE_URL
+go run ./backend/cmd/divevault migrate --database-url $env:DATABASE_URL
 ```
 
 For multi-instance deployments, run migrations as a separate job and set:
@@ -86,13 +87,13 @@ STARTUP_MIGRATIONS=disabled
 Run backend tests from the repository root:
 
 ```powershell
-go test ./backend-go/...
+go test ./backend/...
 ```
 
 Focused backend example:
 
 ```powershell
-go test ./backend-go/internal/auth -run Test
+go test ./backend/internal/auth -run Test
 ```
 
 Run frontend tests from `frontend/`:
@@ -135,18 +136,57 @@ The backend loads `.env` from the repository root on import/startup. Important s
 Common runtime settings include:
 
 - `DATABASE_URL`
-- `AUTH_JWT_SECRET`
+- `AUTH_JWT_SECRET` — required to be a unique random value of at least 32 characters whenever `HOST` is not a loopback address; the backend refuses to start otherwise. Generate one with `openssl rand -base64 48`.
 - `AUTH_JWT_ISSUER`
 - `AUTH_JWT_AUDIENCE`
 - `STARTUP_MIGRATIONS`
 - `FRONTEND_DIR`
 - `VITE_API_PROXY_TARGET`
+- `TRUST_FORWARDED_HEADERS` / `TRUSTED_PROXY_HOPS` — only enable behind a reverse proxy. The client address is taken from the `X-Forwarded-For` entry appended by the outermost trusted proxy, so client-supplied entries cannot bypass rate limits.
+- `RATE_LIMIT_LOGIN_PER_WINDOW`, `RATE_LIMIT_REGISTER_PER_WINDOW`, `RATE_LIMIT_PUBLIC_PER_WINDOW` (per client IP) and `RATE_LIMIT_GEOCODE_PER_WINDOW` (per user). Limits are kept in memory per backend instance.
+- `NOMINATIM_MIN_INTERVAL_MS` — minimum spacing between upstream geocoding requests (default 1000 ms, matching the public Nominatim usage policy).
+- `CLI_AUTH_REQUIRE_POLL_TOKEN` — see Desktop Sync Login below.
+- `LOG_FORMAT` — `text` (default) or `json`. Static asset and health requests are logged at debug level.
 
-Prometheus metrics are exposed at `/metrics` when metrics are enabled.
+Prometheus metrics are exposed at `/metrics` when metrics are enabled. Route labels are bounded: unmatched paths are reported as `unmatched`.
+
+## Security Model
+
+- Browser sessions are HS256 JWTs sent in the `Authorization` header only; cookies are not accepted for authentication.
+- Every authenticated request re-checks the user in the database: deleted or deactivated users are rejected immediately, and role/email come from the database rather than token claims.
+- `auth_users.token_version` is embedded in session tokens. Changing a password, email, role or activation state bumps it, which revokes all existing sessions and desktop sync tokens for that user. A password change returns a fresh token for the current browser.
+- Desktop sync tokens and invite tokens are stored as SHA-256 digests.
+- Internal errors are logged server-side; clients receive a generic `Service temporarily unavailable` message.
+- API responses carry `Content-Security-Policy: default-src 'none'`. Generated HTML pages get a strict policy that allows the hashes of Nuxt's inline bootstrap scripts, self-hosted fonts and the map tile origin. HSTS is sent when the request arrived over TLS (directly or via a trusted proxy).
+- The public profile endpoint only returns the diver name, sharing settings and published dives without user ids, raw import data or device fingerprints.
+
+## Resetting A Password
+
+There is no self-service password reset. An operator with database access can set a new password with the backend binary:
+
+```bash
+# Generate a random password and print it once
+go run ./backend/cmd/divevault reset-password --email you@example.com
+
+# Or choose the password (read from stdin, so it stays out of shell history)
+go run ./backend/cmd/divevault reset-password --email you@example.com --password-stdin
+```
+
+In the container image use `/app/divevault reset-password ...`, for example `docker compose -f examples/docker/docker-compose.yml exec backend /app/divevault reset-password --email you@example.com`. `DATABASE_URL` comes from the environment or `.env` (override with `--database-url`). The reset revokes all existing sessions and desktop sync tokens; add `--activate` to also reactivate a deactivated account.
+
+## Desktop Sync Login
+
+1. The desktop client calls `POST /api/cli-auth/request`. The response contains `code` (shown to the user and used in the browser approval URL `/settings/cli-auth/:code`) and `poll_token` (a secret that must stay inside the desktop client).
+2. The user approves the request in the browser.
+3. The desktop client polls `GET /api/cli-auth/request?code=...` and sends the poll token in the `X-Poll-Token` header. The sync token is returned exactly once; later polls report the status without the token.
+
+Callers without the poll token only see the request status, never the token or the approver's email. Older desktop clients that do not send a poll token can be supported temporarily with `CLI_AUTH_REQUIRE_POLL_TOKEN=false`; they still receive the token only once.
 
 ## Docker And Releases
 
-The backend Docker image is built from `backend/Dockerfile`. It builds frontend assets with Node, compiles the Go backend binary, and runs without Python in the final image.
+The Docker image is built from the repository-root `Dockerfile`. It builds frontend assets with Node, compiles a static Go binary (multi-arch via `TARGETARCH`), and runs it on a distroless image as a non-root user. `/app/divevault healthcheck` is used as the container health check.
+
+CI additionally runs `govulncheck`, `npm audit --omit=dev --audit-level=high`, and a Trivy scan of the built image.
 
 CI publishes image and release version tags from `frontend/package.json`, not from a backend manifest.
 

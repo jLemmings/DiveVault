@@ -30,8 +30,11 @@ The app is built around a simple flow:
 The fastest way to run DiveVault is with Docker Compose:
 
 ```powershell
+$env:AUTH_JWT_SECRET = [Convert]::ToBase64String((1..48 | ForEach-Object { Get-Random -Maximum 256 }))
 docker compose -f examples/docker/docker-compose.yml up
 ```
+
+`AUTH_JWT_SECRET` is required (at least 32 random characters); on Linux/macOS use `export AUTH_JWT_SECRET="$(openssl rand -base64 48)"`.
 
 This starts PostgreSQL, runs the database migration job, and serves DiveVault at:
 

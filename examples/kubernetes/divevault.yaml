@@ -6,7 +6,16 @@ data:
   HOST: "0.0.0.0"
   PORT: "8000"
   LOG_LEVEL: "INFO"
+  LOG_FORMAT: "json"
   STARTUP_MIGRATIONS: "disabled"
+  # Set to "true" when an ingress controller terminates TLS in front of the
+  # pods; TRUSTED_PROXY_HOPS is the number of proxies appending X-Forwarded-For.
+  TRUST_FORWARDED_HEADERS: "true"
+  TRUSTED_PROXY_HOPS: "1"
+  # Rate limits are enforced per pod (in memory). With 3 replicas the
+  # effective cluster-wide limit is roughly 3x these values.
+  RATE_LIMIT_LOGIN_PER_WINDOW: "10"
+  RATE_LIMIT_REGISTER_PER_WINDOW: "5"
   DEMO_MODE: "false"
   RATE_LIMIT_WINDOW_SECONDS: "60"
   RATE_LIMIT_CLI_REQUEST_PER_WINDOW: "30"
@@ -21,7 +30,9 @@ metadata:
 type: Opaque
 stringData:
   DATABASE_URL: "postgresql://dive:dive@postgres:5432/dive"
-  AUTH_JWT_SECRET: "replace-me"
+  # Required: at least 32 random characters, e.g. `openssl rand -base64 48`.
+  # The backend refuses to start with a placeholder or short secret.
+  AUTH_JWT_SECRET: "replace-me-with-a-random-secret"
   AUTH_JWT_ISSUER: "divevault.local"
   AUTH_JWT_AUDIENCE: "divevault.app"
   AUTH_TOKEN_TTL_SECONDS: "43200"
@@ -35,11 +46,21 @@ spec:
   template:
     spec:
       restartPolicy: OnFailure
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: migrate
-          image: ghcr.io/your-org/divevault:latest
+          # Pin a released version (or digest) instead of a moving tag.
+          image: ghcr.io/your-org/divevault:0.4.0
           imagePullPolicy: IfNotPresent
           command: ["/app/divevault", "migrate"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
           envFrom:
             - configMapRef:
                 name: divevault-config
@@ -67,10 +88,20 @@ spec:
         app: divevault-backend
     spec:
       terminationGracePeriodSeconds: 30
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: backend
-          image: ghcr.io/your-org/divevault:latest
+          image: ghcr.io/your-org/divevault:0.4.0
           imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
           ports:
             - name: http
               containerPort: 8000
@@ -96,9 +127,11 @@ spec:
             timeoutSeconds: 2
             failureThreshold: 3
           lifecycle:
+            # The image is distroless (no shell); the sleep action needs
+            # Kubernetes 1.30+.
             preStop:
-              exec:
-                command: ["/bin/sh", "-c", "sleep 10"]
+              sleep:
+                seconds: 10
           resources:
             requests:
               cpu: 100m

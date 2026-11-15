@@ -78,7 +78,7 @@
 }
 
 body {
-  font-family: "Manrope", sans-serif;
+  font-family: "Manrope Variable", "Manrope", sans-serif;
   background:
     radial-gradient(circle at top right, var(--page-glow-primary), transparent 24rem),
     radial-gradient(circle at 20% 0%, var(--page-glow-tertiary), transparent 18rem), var(--page-gradient);
@@ -112,7 +112,7 @@ body {
 }
 
 .data-table-view :where(p, span, div).font-label {
-  font-family: "Manrope", sans-serif;
+  font-family: "Manrope Variable", "Manrope", sans-serif;
   font-size: 0.75rem;
   font-weight: 700;
   letter-spacing: 0.025em;
@@ -378,7 +378,7 @@ body {
 
 .dashboard-stat-label {
   color: rgb(var(--color-on-surface-variant));
-  font-family: "Manrope", sans-serif;
+  font-family: "Manrope Variable", "Manrope", sans-serif;
   font-size: 0.66rem;
   font-weight: 800;
   letter-spacing: 0.14em;
@@ -403,7 +403,7 @@ body {
 
 .dashboard-stat-unit {
   color: rgb(var(--color-secondary));
-  font-family: "Manrope", sans-serif;
+  font-family: "Manrope Variable", "Manrope", sans-serif;
   font-size: 0.62rem;
   font-weight: 800;
   letter-spacing: 0.08em;
@@ -534,7 +534,7 @@ body {
   border-radius: 999px;
   background: rgb(var(--color-surface-container) / 0.76);
   backdrop-filter: blur(14px);
-  font-family: "Manrope", sans-serif;
+  font-family: "Manrope Variable", "Manrope", sans-serif;
   font-size: 0.625rem;
   font-weight: 800;
   letter-spacing: 0.14em;
@@ -543,7 +543,7 @@ body {
 }
 
 .dashboard-micro-label {
-  font-family: "Manrope", sans-serif;
+  font-family: "Manrope Variable", "Manrope", sans-serif;
   font-size: 0.625rem;
   font-weight: 800;
   letter-spacing: 0.16em;
@@ -1456,7 +1456,7 @@ body {
 
 .settings-section-nav-label {
   display: block;
-  font-family: "Manrope", sans-serif;
+  font-family: "Manrope Variable", "Manrope", sans-serif;
   font-size: 0.64rem;
   font-weight: 800;
   letter-spacing: 0.16em;
@@ -1492,7 +1492,7 @@ body {
 
 .settings-stat-pill-label {
   color: rgb(var(--color-on-surface-variant));
-  font-family: "Manrope", sans-serif;
+  font-family: "Manrope Variable", "Manrope", sans-serif;
   font-size: 0.58rem;
   font-weight: 800;
   letter-spacing: 0.13em;
@@ -1662,7 +1662,7 @@ body {
 }
 
 .equipment-service-countdown-center span {
-  font-family: "Manrope", sans-serif;
+  font-family: "Manrope Variable", "Manrope", sans-serif;
   font-size: 0.5rem;
   font-weight: 800;
   letter-spacing: 0.12em;
@@ -2001,7 +2001,7 @@ body {
   min-height: 2.75rem;
   border-radius: 0.75rem;
   padding: 0.75rem 1rem;
-  font-family: "Manrope", sans-serif;
+  font-family: "Manrope Variable", "Manrope", sans-serif;
   font-size: 0.625rem;
   font-weight: 700;
   letter-spacing: 0.18em;

@@ -10,9 +10,15 @@ __pycache__
 *.sqlite
 *.sqlite3
 tools
-backend/tests
 frontend/node_modules
 frontend/dist
 .env
 frontend/.env
 frontend/.env.local
+backend/**/*_test.go
+examples
+docs
+frontend/.nuxt
+frontend/.output
+frontend/test-results
+frontend/playwright-report

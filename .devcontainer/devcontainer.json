@@ -10,7 +10,7 @@
     "3000": { "label": "Nuxt frontend", "onAutoForward": "notify" },
     "8000": { "label": "Go API", "onAutoForward": "silent" }
   },
-  "postCreateCommand": "sudo chown -R node:node frontend/node_modules && npm --prefix frontend ci && cd backend-go && go mod download",
+  "postCreateCommand": "sudo chown -R node:node frontend/node_modules && npm --prefix frontend ci && cd backend && go mod download",
   "customizations": {
     "vscode": {
       "extensions": ["golang.Go", "Vue.volar", "dbaeumer.vscode-eslint", "esbenp.prettier-vscode"]
