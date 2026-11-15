@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 env:
-  NODE_VERSION: "24.16.0"
+  NODE_VERSION: "24.22.3"
   LOCAL_IMAGE_TAG: divevault-feature:${{ github.sha }}
   FULL_APP_BASE_URL: http://127.0.0.1:8000
 
