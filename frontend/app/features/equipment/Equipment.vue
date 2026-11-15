@@ -246,7 +246,7 @@ export default {
       const days = daysUntilService(item);
       if (days === null) return "No date";
       if (days < 0) return `${Math.abs(days)} Days Overdue`;
-      if (days === 0) return "Due Today";
+      if (days === 0) return "Due today";
       return `${days} Days`;
     },
     serviceCountdownDivesLabel(item) {
@@ -288,21 +288,23 @@ export default {
             :value="searchText"
             @input="updateSearch($event.target.value)"
             type="text"
-            class="w-full rounded-xl border border-primary/10 bg-surface-container-high/70 py-3 pl-12 pr-4 text-sm font-label tracking-[0.12em] text-on-surface placeholder:text-on-surface-variant/50 focus:ring-1 focus:ring-primary/20"
+            class="w-full rounded-xl border border-outline-variant/60 bg-surface-container-high/70 py-3 pl-12 pr-4 text-sm font-label text-on-surface placeholder:text-on-surface-variant/50 focus:ring-1 focus:ring-primary/20"
             placeholder="Search equipment..."
           />
         </div>
         <UButton
           @click="addItem"
-          class="flex items-center gap-2 rounded-xl bg-primary px-6 py-3 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-on-primary"
+          class="flex items-center gap-2 rounded-xl bg-primary px-6 py-3 font-label text-sm font-semibold text-on-primary"
         >
           <span class="material-symbols-outlined text-sm">add</span>
-          New Entry
+          New entry
         </UButton>
       </div>
     </div>
 
-    <div v-if="statusMessage" class="settings-feedback border-primary/20 bg-primary/10 text-primary shadow-panel">{{ statusMessage }}</div>
+    <div v-if="statusMessage" class="settings-feedback border-outline-variant/60 bg-primary/10 text-primary shadow-panel">
+      {{ statusMessage }}
+    </div>
     <div v-if="errorMessage" class="settings-feedback border-error/20 bg-error-container/20 text-on-error-container shadow-panel">
       {{ errorMessage }}
     </div>
@@ -321,8 +323,8 @@ export default {
     <div class="equipment-page-layout">
       <aside class="settings-panel settings-card equipment-service-sidebar">
         <div class="mb-5">
-          <p class="dashboard-micro-label text-secondary">Service Timeline</p>
-          <h3 class="mt-2 font-headline text-xl font-bold text-primary">Next Equipment Due</h3>
+          <p class="dashboard-micro-label text-secondary">Service timeline</p>
+          <h3 class="mt-2 font-headline text-xl font-bold text-primary">Due for service</h3>
         </div>
         <div v-if="serviceTimeline.length" class="equipment-service-timeline">
           <article
@@ -339,9 +341,9 @@ export default {
           >
             <span class="equipment-service-timeline-dot"></span>
             <div class="min-w-0">
-              <p class="font-label text-[10px] font-bold uppercase tracking-[0.16em] text-secondary">{{ item.category || "Equipment" }}</p>
-              <h4 class="mt-1 truncate font-headline text-base font-bold text-on-surface">{{ item.name || "Unnamed Equipment" }}</h4>
-              <p v-if="item.service_tag" class="mt-1 font-label text-[9px] font-bold uppercase tracking-[0.14em] text-tertiary">
+              <p class="font-label text-xs font-medium text-secondary">{{ item.category || "Equipment" }}</p>
+              <h4 class="mt-1 truncate font-headline text-base font-bold text-on-surface">{{ item.name || "Unnamed equipment" }}</h4>
+              <p v-if="item.service_tag" class="mt-1 font-label text-xs font-medium text-tertiary">
                 {{ item.service_tag }}
               </p>
               <p class="mt-1 text-sm text-on-surface-variant">{{ timelineMeta(item) }}</p>
@@ -372,10 +374,10 @@ export default {
           >
             <div class="equipment-item-card-header">
               <div class="min-w-0">
-                <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">
+                <p class="font-label text-xs font-medium text-secondary">
                   {{ item.category || "Uncategorized" }}
                 </p>
-                <h4 class="mt-2 font-headline text-2xl font-bold leading-tight">{{ item.name || "Unnamed Equipment" }}</h4>
+                <h4 class="mt-2 font-headline text-2xl font-bold leading-tight">{{ item.name || "Unnamed equipment" }}</h4>
                 <div class="settings-chip-row mt-3">
                   <span v-if="item.is_default" class="settings-chip is-accent">Default</span>
                   <span v-if="item.service_tag" class="settings-chip is-accent">{{ item.service_tag }}</span>
@@ -414,7 +416,7 @@ export default {
                 </div>
               </div>
               <div class="equipment-service-countdown-copy">
-                <p class="font-label text-[10px] font-bold uppercase tracking-[0.16em] text-secondary">Service Countdown</p>
+                <p class="font-label text-xs font-medium text-secondary">Next service</p>
                 <p class="equipment-service-countdown-layer is-time">
                   <span></span><strong>{{ serviceCountdownLabel(item) }}</strong>
                 </p>
@@ -429,21 +431,21 @@ export default {
 
     <div
       v-if="editing && editingItem"
-      class="fixed inset-0 z-[560] flex items-center justify-center bg-background/88 px-6 py-8 backdrop-blur-sm"
+      class="fixed inset-0 z-[560] flex items-center justify-center bg-background/88 px-6 py-8"
       @click.self="cancelEdit"
     >
       <section class="settings-modal-card equipment-edit-modal">
         <div class="settings-modal-header">
           <div>
             <p class="dashboard-micro-label text-secondary">Equipment</p>
-            <h3 class="mt-2 font-headline text-2xl font-bold text-primary">{{ editingItem.name || "New Equipment" }}</h3>
+            <h3 class="mt-2 font-headline text-2xl font-bold text-primary">{{ editingItem.name || "New equipment" }}</h3>
           </div>
           <UButton type="button" @click="cancelEdit" :disabled="saving" class="settings-button settings-button-ghost">Close</UButton>
         </div>
 
         <div class="mt-6 grid gap-4 md:grid-cols-2">
           <label class="space-y-2">
-            <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Name</span>
+            <span class="font-label text-xs font-medium text-secondary">Name</span>
             <UInput
               :value="editingItem.name"
               @input="updateItem(editingItem.id, 'name', $event.target.value)"
@@ -452,7 +454,7 @@ export default {
             />
           </label>
           <label class="space-y-2">
-            <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Category</span>
+            <span class="font-label text-xs font-medium text-secondary">Category</span>
             <UInput
               :value="editingItem.category"
               @input="updateItem(editingItem.id, 'category', $event.target.value)"
@@ -461,7 +463,7 @@ export default {
             />
           </label>
           <fieldset class="space-y-3 md:col-span-2">
-            <legend class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Icon</legend>
+            <legend class="font-label text-xs font-medium text-secondary">Icon</legend>
             <div class="grid grid-cols-4 gap-2 md:grid-cols-6">
               <UButton
                 v-for="option in equipmentIconOptions"
@@ -472,7 +474,7 @@ export default {
                 :class="
                   editingItem.icon === option.icon
                     ? 'border-primary bg-primary/15 text-primary'
-                    : 'border-primary/10 bg-background/20 text-on-surface-variant hover:border-primary/30 hover:text-primary'
+                    : 'border-outline-variant/60 bg-background/20 text-on-surface-variant hover:border-outline-variant hover:text-primary'
                 "
                 :aria-pressed="editingItem.icon === option.icon"
                 :title="option.label"
@@ -483,7 +485,7 @@ export default {
             </div>
           </fieldset>
           <label class="space-y-2">
-            <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Year Bought</span>
+            <span class="font-label text-xs font-medium text-secondary">Year bought</span>
             <UInput
               :value="editingItem.year_bought"
               @input="updateItem(editingItem.id, 'year_bought', $event.target.value)"
@@ -492,16 +494,16 @@ export default {
             />
           </label>
           <label class="space-y-2">
-            <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Vendor</span>
+            <span class="font-label text-xs font-medium text-secondary">Vendor</span>
             <UInput
               :value="editingItem.vendor"
               @input="updateItem(editingItem.id, 'vendor', $event.target.value)"
               class="settings-input"
-              placeholder="Dive Shop"
+              placeholder="Dive shop"
             />
           </label>
           <label class="space-y-2">
-            <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Brand</span>
+            <span class="font-label text-xs font-medium text-secondary">Brand</span>
             <UInput
               :value="editingItem.brand"
               @input="updateItem(editingItem.id, 'brand', $event.target.value)"
@@ -510,7 +512,7 @@ export default {
             />
           </label>
           <label class="space-y-2">
-            <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Model</span>
+            <span class="font-label text-xs font-medium text-secondary">Model</span>
             <UInput
               :value="editingItem.model"
               @input="updateItem(editingItem.id, 'model', $event.target.value)"
@@ -519,7 +521,7 @@ export default {
             />
           </label>
           <label class="space-y-2">
-            <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Serial</span>
+            <span class="font-label text-xs font-medium text-secondary">Serial</span>
             <UInput
               :value="editingItem.serial"
               @input="updateItem(editingItem.id, 'serial', $event.target.value)"
@@ -528,7 +530,7 @@ export default {
             />
           </label>
           <label class="space-y-2">
-            <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Warranty</span>
+            <span class="font-label text-xs font-medium text-secondary">Warranty</span>
             <UInput
               :value="editingItem.warranty"
               @input="updateItem(editingItem.id, 'warranty', $event.target.value)"
@@ -537,7 +539,7 @@ export default {
             />
           </label>
           <label class="space-y-2">
-            <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Max Dives Before Service</span>
+            <span class="font-label text-xs font-medium text-secondary">Max dives before service</span>
             <UInput
               :value="editingItem.max_dives_before_service"
               @input="updateItem(editingItem.id, 'max_dives_before_service', $event.target.value)"
@@ -546,7 +548,7 @@ export default {
             />
           </label>
           <label class="space-y-2">
-            <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Service Tag</span>
+            <span class="font-label text-xs font-medium text-secondary">Service tag</span>
             <UInput
               :value="editingItem.service_tag"
               @input="updateItem(editingItem.id, 'service_tag', $event.target.value)"
@@ -555,7 +557,7 @@ export default {
             />
           </label>
           <label class="space-y-2">
-            <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Service Interval Months</span>
+            <span class="font-label text-xs font-medium text-secondary">Service interval months</span>
             <UInput
               :value="editingItem.service_interval_months"
               @input="updateItem(editingItem.id, 'service_interval_months', $event.target.value)"
@@ -565,7 +567,7 @@ export default {
             />
           </label>
           <label class="space-y-2">
-            <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Latest Service Date</span>
+            <span class="font-label text-xs font-medium text-secondary">Latest service date</span>
             <UInput
               :value="editingItem.last_service_date"
               @input="updateItem(editingItem.id, 'last_service_date', $event.target.value)"
@@ -573,7 +575,7 @@ export default {
               placeholder="YYYY-MM-DD"
             />
           </label>
-          <label class="flex items-start gap-3 rounded-xl border border-primary/10 bg-background/20 p-4 md:col-span-2">
+          <label class="flex items-start gap-3 rounded-xl border border-outline-variant/60 bg-background/20 p-4 md:col-span-2">
             <UCheckbox
               :model-value="editingItem.track_service !== false"
               @update:model-value="updateItem(editingItem.id, 'track_service', $event)"
@@ -587,7 +589,7 @@ export default {
               >
             </span>
           </label>
-          <label class="flex items-start gap-3 rounded-xl border border-primary/10 bg-background/20 p-4 md:col-span-2">
+          <label class="flex items-start gap-3 rounded-xl border border-outline-variant/60 bg-background/20 p-4 md:col-span-2">
             <UCheckbox
               :model-value="editingItem.is_default"
               @update:model-value="updateItem(editingItem.id, 'is_default', $event)"
@@ -607,7 +609,7 @@ export default {
           >
           <UButton type="button" @click="cancelEdit" :disabled="saving" class="settings-button settings-button-ghost">Cancel</UButton>
           <UButton type="button" @click="save" :disabled="saving" class="settings-button settings-button-primary">{{
-            saving ? "Saving" : "Save Gear"
+            saving ? "Saving" : "Save gear"
           }}</UButton>
         </div>
       </section>

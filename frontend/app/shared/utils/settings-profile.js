@@ -3,7 +3,7 @@ import { normalizeRequiredLogbookFields } from "./core.js";
 export const MAX_LICENSE_BYTES = 10 * 1024 * 1024;
 export const PDF_PREVIEW_SCALE = 1.35;
 export const THEME_OPTIONS = [
-  { value: "system", label: "System Default", icon: "desktop_windows" },
+  { value: "system", label: "System default", icon: "desktop_windows" },
   { value: "light", label: "Light", icon: "light_mode" },
   { value: "dark", label: "Dark", icon: "dark_mode" }
 ];

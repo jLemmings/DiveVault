@@ -278,7 +278,7 @@ export function createImportMethods() {
         (entry) => !isImportComplete(effectiveImportDraft(entry, this.importDrafts[String(entry.id)]))
       );
       if (!pendingDives.length) {
-        this.importError = "There are no imported dives waiting for metadata updates.";
+        this.importError = "There are no imported dives to review.";
         this.importStatusMessage = "";
         return false;
       }

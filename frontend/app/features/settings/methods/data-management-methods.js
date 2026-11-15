@@ -94,7 +94,7 @@ export function createDataManagementMethods() {
       return this.exportDownload("/api/exports/dives.pdf", "divevault-dives.pdf", "Exporting PDF", "Dive log PDF downloaded.");
     },
     exportDiveCsv() {
-      return this.exportDownload("/api/exports/dives.csv", "divevault-dives.csv", "Exporting CSV", "Dive telemetry CSV downloaded.");
+      return this.exportDownload("/api/exports/dives.csv", "divevault-dives.csv", "Exporting CSV", "Dive CSV downloaded.");
     },
     async handleCsvImportSelection(event) {
       const file = event?.target?.files?.[0];
@@ -194,14 +194,14 @@ export function createDataManagementMethods() {
       }
     },
     exportBackup() {
-      return this.exportDownload("/api/backup/export", "divevault-backup.zip", "Exporting Backup", "Full backup downloaded.");
+      return this.exportDownload("/api/backup/export", "divevault-backup.zip", "Exporting backup", "Full backup downloaded.");
     },
     async handleBackupImportSelection(event) {
       const file = event?.target?.files?.[0];
       event.target.value = "";
       if (!file) return;
 
-      this.dataManagementAction = "Importing Backup";
+      this.dataManagementAction = "Importing backup";
       this.resetDataManagementFeedback();
       try {
         const response = await this.authenticatedFetch("/api/backup/import", {

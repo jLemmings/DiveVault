@@ -70,14 +70,12 @@ export default {
 
 <template>
   <div class="settings-panel settings-card">
-    <div class="mb-8 rounded-2xl border border-primary/15 bg-surface-container-low p-6">
+    <div class="mb-8 rounded-xl border border-outline-variant/60 bg-surface-container-low p-6">
       <div class="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
         <div class="max-w-3xl">
-          <p class="font-label text-[10px] font-bold uppercase tracking-[0.24em] text-primary">Diver Profile</p>
-          <h4 class="mt-2 font-headline text-3xl font-bold tracking-tight text-on-surface">Diver Details</h4>
-          <p class="mt-3 text-sm leading-7 text-secondary">
-            Keep the public-facing diver identity separate from application behavior and instance settings.
-          </p>
+          <p class="font-label text-xs font-medium text-primary">Diver profile</p>
+          <h4 class="mt-2 font-headline text-3xl font-bold tracking-tight text-on-surface">Diver details</h4>
+          <p class="mt-3 text-sm leading-7 text-secondary">Your name, certifications and public profile.</p>
         </div>
         <div class="settings-toolbar">
           <UButton
@@ -85,7 +83,7 @@ export default {
             @click="beginProfileEdit"
             :disabled="isInteractionLocked"
             class="settings-button settings-button-secondary"
-            >Edit Diver</UButton
+            >Edit diver</UButton
           >
           <UButton
             v-if="isProfileEditing"
@@ -100,29 +98,29 @@ export default {
             :disabled="isInteractionLocked || !hasUnsavedProfileChanges"
             class="settings-button settings-button-primary"
           >
-            {{ profileSaving ? "Saving Diver" : "Save Diver" }}
+            {{ profileSaving ? "Saving diver" : "Save diver" }}
           </UButton>
         </div>
       </div>
 
       <div v-if="isProfileEditing" class="settings-form-grid mt-6">
         <label class="space-y-2">
-          <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Name</span>
+          <span class="font-label text-xs font-medium text-secondary">Name</span>
           <UInput v-model="profileDraft.name" type="text" class="settings-input" placeholder="Alex Diver" />
         </label>
         <label class="space-y-2">
-          <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Email</span>
+          <span class="font-label text-xs font-medium text-secondary">Email</span>
           <UInput v-model="profileDraft.email" type="email" class="settings-input" placeholder="diver@example.com" />
         </label>
       </div>
 
       <div v-else class="settings-detail-grid mt-6">
         <div class="settings-info-card">
-          <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Name</p>
+          <p class="font-label text-xs font-medium text-secondary">Name</p>
           <p class="mt-2 text-base font-semibold text-on-surface">{{ displayValue(settingsProfile.name || currentUserName) }}</p>
         </div>
         <div class="settings-info-card">
-          <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Email</p>
+          <p class="font-label text-xs font-medium text-secondary">Email</p>
           <p class="mt-2 text-base font-semibold text-on-surface">{{ displayValue(settingsProfile.email || currentUserEmail) }}</p>
         </div>
       </div>
@@ -130,15 +128,13 @@ export default {
 
     <div class="settings-card-header">
       <div>
-        <p class="font-label text-[10px] font-bold uppercase tracking-[0.24em] text-primary">Diving Licenses</p>
-        <h4 class="mt-2 font-headline text-3xl font-bold tracking-tight text-on-surface">Certifications And PDFs</h4>
-        <p class="mt-3 max-w-3xl text-sm leading-7 text-secondary">
-          Certificates stay compact until opened, so the saved list is easier to scan and the attached PDFs are still one click away.
-        </p>
+        <p class="font-label text-xs font-medium text-primary">Diving licenses</p>
+        <h4 class="mt-2 font-headline text-3xl font-bold tracking-tight text-on-surface">Certifications and PDFs</h4>
+        <p class="mt-3 max-w-3xl text-sm leading-7 text-secondary">Your certification cards, with the PDF attached.</p>
       </div>
       <div class="settings-toolbar">
         <UButton @click="addLicenseEntry" :disabled="isInteractionLocked" class="settings-button settings-button-secondary"
-          >Add License</UButton
+          >Add license</UButton
         >
       </div>
     </div>
@@ -167,7 +163,7 @@ export default {
       <article v-for="(license, index) in visibleLicenses" :key="license.id" class="settings-item-card">
         <div class="settings-item-header">
           <div class="min-w-0">
-            <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">License {{ index + 1 }}</p>
+            <p class="font-label text-xs font-medium text-secondary">License {{ index + 1 }}</p>
             <h5 class="mt-2 font-headline text-2xl font-bold tracking-tight text-on-surface">{{ licenseTitle(license, index) }}</h5>
             <div class="settings-chip-row mt-3">
               <span class="settings-chip">{{ displayValue(license.company, "Company pending") }}</span>
@@ -184,7 +180,7 @@ export default {
               @click="editLicenseItem(license.id)"
               class="settings-button settings-button-secondary"
             >
-              Edit License
+              Edit license
             </UButton>
             <UButton
               v-if="isLicenseEditing(license.id)"
@@ -207,7 +203,7 @@ export default {
               :disabled="isInteractionLocked"
               class="settings-button settings-button-primary"
             >
-              {{ licensesSaving ? "Saving License" : "Save License" }}
+              {{ licensesSaving ? "Saving license" : "Save license" }}
             </UButton>
           </div>
         </div>
@@ -215,53 +211,53 @@ export default {
         <div v-if="isLicenseEditing(license.id) || isLicenseExpanded(license.id)" class="grid gap-5 xl:grid-cols-[minmax(0,1fr)_320px]">
           <div v-if="isLicenseEditing(license.id)" class="settings-form-grid">
             <label class="space-y-2">
-              <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Company</span>
+              <span class="font-label text-xs font-medium text-secondary">Company</span>
               <UInput v-model="license.company" type="text" class="settings-input" placeholder="PADI / SSI / NAUI" />
             </label>
             <label class="space-y-2">
-              <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Certification Name</span>
+              <span class="font-label text-xs font-medium text-secondary">Certification name</span>
               <UInput v-model="license.certification_name" type="text" class="settings-input" placeholder="Advanced Open Water" />
             </label>
             <label class="space-y-2">
-              <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Student Number</span>
+              <span class="font-label text-xs font-medium text-secondary">Student number</span>
               <UInput v-model="license.student_number" type="text" class="settings-input" placeholder="Student or certification number" />
             </label>
             <label class="space-y-2">
-              <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Certification Date</span>
+              <span class="font-label text-xs font-medium text-secondary">Certification date</span>
               <UInput v-model="license.certification_date" type="text" class="settings-input" placeholder="YYYY-MM-DD" />
             </label>
             <label class="space-y-2 md:col-span-2">
-              <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Instructor Number</span>
+              <span class="font-label text-xs font-medium text-secondary">Instructor number</span>
               <UInput v-model="license.instructor_number" type="text" class="settings-input" placeholder="Instructor number" />
             </label>
           </div>
 
           <div v-else class="settings-detail-grid">
             <div class="settings-info-card">
-              <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Company</p>
+              <p class="font-label text-xs font-medium text-secondary">Company</p>
               <p class="mt-2 text-base font-semibold text-on-surface">{{ displayValue(license.company) }}</p>
             </div>
             <div class="settings-info-card">
-              <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Certification</p>
+              <p class="font-label text-xs font-medium text-secondary">Certification</p>
               <p class="mt-2 text-base font-semibold text-on-surface">{{ displayValue(license.certification_name) }}</p>
             </div>
             <div class="settings-info-card">
-              <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Student Number</p>
+              <p class="font-label text-xs font-medium text-secondary">Student number</p>
               <p class="mt-2 text-base font-semibold text-on-surface">{{ displayValue(license.student_number) }}</p>
             </div>
             <div class="settings-info-card">
-              <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Certification Date</p>
+              <p class="font-label text-xs font-medium text-secondary">Certification date</p>
               <p class="mt-2 text-base font-semibold text-on-surface">{{ displayValue(license.certification_date) }}</p>
             </div>
             <div class="settings-info-card md:col-span-2">
-              <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Instructor Number</p>
+              <p class="font-label text-xs font-medium text-secondary">Instructor number</p>
               <p class="mt-2 text-base font-semibold text-on-surface">{{ displayValue(license.instructor_number) }}</p>
             </div>
           </div>
 
           <div class="settings-side-panel">
             <div class="flex items-center justify-between gap-3">
-              <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-primary">License PDF</p>
+              <p class="font-label text-xs font-medium text-primary">License PDF</p>
               <UButton
                 v-if="isLicenseEditing(license.id)"
                 @click="triggerLicensePicker(license.id)"
@@ -280,7 +276,7 @@ export default {
                 </p>
               </div>
               <UButton type="button" @click="viewLicensePdf(license)" class="settings-button settings-button-secondary">
-                Open PDF Preview
+                Open PDF preview
               </UButton>
             </div>
 
@@ -295,10 +291,7 @@ export default {
               </p>
             </div>
 
-            <p
-              v-if="isLicenseEditing(license.id) && !licenseExistsOnServer(license.id)"
-              class="text-[10px] uppercase tracking-[0.14em] text-secondary/70"
-            >
+            <p v-if="isLicenseEditing(license.id) && !licenseExistsOnServer(license.id)" class="text-xs text-secondary/70">
               Save this new license before uploading its PDF.
             </p>
           </div>

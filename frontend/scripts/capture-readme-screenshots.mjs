@@ -260,12 +260,12 @@ async function main() {
     await captureRoute(browser, {
       name: "logs",
       route: "#logs",
-      waitFor: (page) => page.getByRole("heading", { name: "Dive Logs", exact: true }).waitFor()
+      waitFor: (page) => page.getByRole("heading", { name: "Dive logs", exact: true }).waitFor()
     });
     await captureRoute(browser, {
       name: "imports",
       route: "#imports",
-      waitFor: (page) => page.getByRole("heading", { name: "Imported Dives" }).waitFor()
+      waitFor: (page) => page.getByRole("heading", { name: "Imported dives" }).waitFor()
     });
     await captureRoute(browser, {
       name: "equipment",

@@ -33,15 +33,13 @@ export default {
   <div class="settings-panel settings-card">
     <div class="settings-card-header">
       <div>
-        <p class="font-label text-[10px] font-bold uppercase tracking-[0.24em] text-primary">Dive Guide</p>
-        <h4 class="mt-2 font-headline text-3xl font-bold tracking-tight text-on-surface">Saved Guide List</h4>
-        <p class="mt-3 max-w-3xl text-sm leading-7 text-secondary">
-          Guides and instructors now use the same denser layout as buddies, which makes longer lists much easier to browse.
-        </p>
+        <p class="font-label text-xs font-medium text-primary">Dive guide</p>
+        <h4 class="mt-2 font-headline text-3xl font-bold tracking-tight text-on-surface">Saved guide list</h4>
+        <p class="mt-3 max-w-3xl text-sm leading-7 text-secondary">Guides and instructors you can pick in your logs.</p>
       </div>
       <div class="settings-toolbar">
         <UButton @click="addGuideEntry" :disabled="isInteractionLocked" class="settings-button settings-button-secondary"
-          >Add Guide</UButton
+          >Add guide</UButton
         >
       </div>
     </div>
@@ -72,12 +70,12 @@ export default {
       <article v-for="(guide, index) in visibleGuides" :key="guide.id" class="settings-compact-card">
         <div class="flex items-start justify-between gap-3">
           <div>
-            <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Guide {{ index + 1 }}</p>
+            <p class="font-label text-xs font-medium text-secondary">Guide {{ index + 1 }}</p>
             <h5 class="mt-2 font-headline text-xl font-bold text-on-surface">{{ guideTitle(guide, index) }}</h5>
           </div>
           <div class="settings-toolbar">
             <UButton v-if="!isGuideEditing(guide.id)" @click="editGuideItem(guide.id)" class="settings-button settings-button-secondary">
-              Edit Guide
+              Edit guide
             </UButton>
             <UButton
               v-if="isGuideEditing(guide.id)"
@@ -97,14 +95,14 @@ export default {
               @click="saveGuides"
               :disabled="isInteractionLocked"
               class="settings-button settings-button-primary"
-              >{{ guidesSaving ? "Saving Guide" : "Save Guide" }}</UButton
+              >{{ guidesSaving ? "Saving guide" : "Save guide" }}</UButton
             >
           </div>
         </div>
 
         <div v-if="isGuideEditing(guide.id)" class="mt-5 space-y-3">
           <label class="space-y-2">
-            <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Guide Name</span>
+            <span class="font-label text-xs font-medium text-secondary">Guide name</span>
             <UInput v-model="guide.name" type="text" class="settings-input" placeholder="Kai Jensen" />
           </label>
         </div>

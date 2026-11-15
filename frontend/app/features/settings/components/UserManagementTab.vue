@@ -38,15 +38,17 @@ export default {
   <div class="settings-panel settings-card">
     <div class="settings-card-header">
       <div>
-        <p class="font-label text-[10px] font-bold uppercase tracking-[0.24em] text-primary">Manage Users</p>
-        <h4 class="mt-2 font-headline text-3xl font-bold tracking-tight text-on-surface">Invites And Access Control</h4>
+        <p class="font-label text-xs font-medium text-primary">Manage users</p>
+        <h4 class="mt-2 font-headline text-3xl font-bold tracking-tight text-on-surface">Invites and access control</h4>
         <p class="mt-3 max-w-3xl text-sm leading-7 text-secondary">
           Invite new divers, review who can sign in, and control whether self-registration is open on this instance.
         </p>
       </div>
     </div>
 
-    <div v-if="manageUsersStatus" class="settings-feedback border-primary/20 bg-primary/10 text-primary">{{ manageUsersStatus }}</div>
+    <div v-if="manageUsersStatus" class="settings-feedback border-outline-variant/60 bg-primary/10 text-primary">
+      {{ manageUsersStatus }}
+    </div>
     <div v-if="manageUsersError" class="settings-feedback border-error/20 bg-error-container/20 text-on-error-container">
       {{ manageUsersError }}
     </div>
@@ -57,7 +59,7 @@ export default {
           <div>
             <div class="flex items-center gap-3">
               <span class="material-symbols-outlined text-primary">how_to_reg</span>
-              <p class="font-headline text-xl font-bold text-on-surface">Public Registration</p>
+              <p class="font-headline text-xl font-bold text-on-surface">Public registration</p>
             </div>
             <p class="mt-3 text-sm leading-6 text-secondary">
               Keep sign-up closed and use invitations only, or open self-registration for this DiveVault instance.
@@ -67,7 +69,7 @@ export default {
             {{ authSettings.public_registration_enabled ? "Open" : "Invite only" }}
           </span>
         </div>
-        <label class="mt-5 flex items-start gap-4 rounded-2xl border border-primary/10 bg-background/20 px-4 py-4">
+        <label class="mt-5 flex items-start gap-4 rounded-xl border border-outline-variant/60 bg-background/20 px-4 py-4">
           <UCheckbox
             v-model="authSettings.public_registration_enabled"
             class="mt-1"
@@ -85,7 +87,7 @@ export default {
           :disabled="manageUsersSaving || manageUsersLoading"
           class="settings-button settings-button-primary mt-5"
         >
-          {{ manageUsersSaving ? "Saving Access Policy" : "Save Access Policy" }}
+          {{ manageUsersSaving ? "Saving access policy" : "Save access policy" }}
         </UButton>
       </div>
 
@@ -94,7 +96,7 @@ export default {
           <div>
             <div class="flex items-center gap-3">
               <span class="material-symbols-outlined text-primary">person_add</span>
-              <p class="font-headline text-xl font-bold text-on-surface">Invite User</p>
+              <p class="font-headline text-xl font-bold text-on-surface">Invite user</p>
             </div>
             <p class="mt-3 text-sm leading-6 text-secondary">
               Create a one-time sign-up link for a second diver or admin on this instance.
@@ -104,19 +106,19 @@ export default {
         </div>
         <div class="mt-5 grid gap-4 md:grid-cols-2">
           <label class="space-y-2 md:col-span-2">
-            <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Email</span>
+            <span class="font-label text-xs font-medium text-secondary">Email</span>
             <UInput v-model.trim="inviteDraft.email" type="email" class="settings-input" placeholder="second-user@example.com" />
           </label>
           <label class="space-y-2">
-            <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">First Name</span>
+            <span class="font-label text-xs font-medium text-secondary">First name</span>
             <UInput v-model.trim="inviteDraft.first_name" type="text" class="settings-input" placeholder="First name" />
           </label>
           <label class="space-y-2">
-            <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Last Name</span>
+            <span class="font-label text-xs font-medium text-secondary">Last name</span>
             <UInput v-model.trim="inviteDraft.last_name" type="text" class="settings-input" placeholder="Last name" />
           </label>
           <label class="space-y-2">
-            <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Role</span>
+            <span class="font-label text-xs font-medium text-secondary">Role</span>
             <USelect
               v-model="inviteDraft.role"
               :items="[
@@ -127,7 +129,7 @@ export default {
             />
           </label>
           <label class="space-y-2">
-            <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Expires In Days</span>
+            <span class="font-label text-xs font-medium text-secondary">Expires in days</span>
             <UInput v-model.number="inviteDraft.expires_in_days" type="number" min="1" max="30" class="settings-input" />
           </label>
         </div>
@@ -137,14 +139,14 @@ export default {
             :disabled="inviteSubmitting || manageUsersLoading"
             class="settings-button settings-button-primary"
           >
-            {{ inviteSubmitting ? "Creating Invite" : "Create Invite" }}
+            {{ inviteSubmitting ? "Creating invite" : "Create invite" }}
           </UButton>
           <UButton v-if="latestInviteUrl" @click="copyLatestInviteUrl" class="settings-button settings-button-secondary"
-            >Copy Invite Link</UButton
+            >Copy invite link</UButton
           >
         </div>
-        <div v-if="latestInviteUrl" class="mt-5 rounded-2xl border border-primary/10 bg-background/20 px-4 py-4">
-          <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Latest Invite Link</p>
+        <div v-if="latestInviteUrl" class="mt-5 rounded-xl border border-outline-variant/60 bg-background/20 px-4 py-4">
+          <p class="font-label text-xs font-medium text-secondary">Latest invite link</p>
           <p class="mt-2 break-all text-sm font-semibold text-primary">{{ latestInviteUrl }}</p>
         </div>
       </div>
@@ -153,7 +155,7 @@ export default {
     <div class="mt-6 space-y-4">
       <div class="flex items-center justify-between gap-4">
         <div>
-          <p class="font-label text-[10px] font-bold uppercase tracking-[0.24em] text-primary">Current Users</p>
+          <p class="font-label text-xs font-medium text-primary">Current users</p>
           <p class="mt-2 text-sm text-secondary">
             The owner account stays protected. Other users can be promoted, disabled, or removed here.
           </p>
@@ -169,7 +171,7 @@ export default {
 
       <div v-if="manageUsersLoading && authUsers.length === 0" class="settings-empty-state">
         <p class="font-headline text-lg font-bold">Loading users</p>
-        <p class="mt-2 text-sm text-secondary">Reading the current instance access list.</p>
+        <p class="mt-2 text-sm text-secondary">Loading users...</p>
       </div>
 
       <div v-else-if="authUsers.length === 0" class="settings-empty-state">
@@ -181,7 +183,7 @@ export default {
         <article v-for="user in authUsers" :key="user.id" class="settings-item-card">
           <div class="settings-item-header">
             <div class="min-w-0">
-              <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">
+              <p class="font-label text-xs font-medium text-secondary">
                 {{ user.id === ownerUserId ? "Owner" : "User" }}
               </p>
               <h5 class="mt-2 font-headline text-2xl font-bold tracking-tight text-on-surface">{{ user.email }}</h5>
@@ -194,7 +196,7 @@ export default {
 
             <div v-if="user.id !== ownerUserId" class="settings-toolbar">
               <UButton @click="toggleManagedUserRole(user)" :disabled="manageUsersSaving" class="settings-button settings-button-secondary">
-                {{ user.role === "admin" ? "Make User" : "Make Admin" }}
+                {{ user.role === "admin" ? "Make user" : "Make admin" }}
               </UButton>
               <UButton
                 @click="toggleManagedUserActive(user)"
@@ -211,21 +213,21 @@ export default {
 
           <div class="settings-detail-grid">
             <div class="settings-info-card">
-              <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Name</p>
+              <p class="font-label text-xs font-medium text-secondary">Name</p>
               <p class="mt-2 text-base font-semibold text-on-surface">
                 {{ displayValue([user.first_name, user.last_name].filter(Boolean).join(" ")) }}
               </p>
             </div>
             <div class="settings-info-card">
-              <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Last Login</p>
+              <p class="font-label text-xs font-medium text-secondary">Last login</p>
               <p class="mt-2 text-base font-semibold text-on-surface">{{ formatDateTime(user.last_login_at) }}</p>
             </div>
             <div class="settings-info-card">
-              <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Created</p>
+              <p class="font-label text-xs font-medium text-secondary">Created</p>
               <p class="mt-2 text-base font-semibold text-on-surface">{{ formatDateTime(user.created_at) }}</p>
             </div>
             <div class="settings-info-card">
-              <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Updated</p>
+              <p class="font-label text-xs font-medium text-secondary">Updated</p>
               <p class="mt-2 text-base font-semibold text-on-surface">{{ formatDateTime(user.updated_at) }}</p>
             </div>
           </div>

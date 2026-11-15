@@ -327,7 +327,7 @@ export default {
     settingsOverviewStats() {
       const stats = [
         { id: "licenses", label: "Licenses", value: this.licenses.length, icon: "workspace_premium" },
-        { id: "sites", label: "Dive Sites", value: this.diveSites.length, icon: "pin_drop" },
+        { id: "sites", label: "Dive sites", value: this.diveSites.length, icon: "pin_drop" },
         { id: "buddies", label: "Buddies", value: this.buddies.length, icon: "groups" },
         { id: "guides", label: "Guides", value: this.guides.length, icon: "support_agent" }
       ];
@@ -346,7 +346,7 @@ export default {
       return THEME_OPTIONS;
     },
     selectedThemeLabel() {
-      const label = this.availableThemeOptions.find((theme) => theme.value === this.selectedThemePreference)?.label || "System Default";
+      const label = this.availableThemeOptions.find((theme) => theme.value === this.selectedThemePreference)?.label || "System default";
       return this.t(label, label);
     },
     settingsSections() {
@@ -373,19 +373,19 @@ export default {
     },
     pendingCreationTitle() {
       const titleByType = {
-        license: "Add License",
-        "dive-site": "Add Dive Site",
-        buddy: "Add Buddy",
-        guide: "Add Guide"
+        license: "Add license",
+        "dive-site": "Add dive site",
+        buddy: "Add buddy",
+        guide: "Add guide"
       };
-      return titleByType[this.pendingCreationType] || "Add Item";
+      return titleByType[this.pendingCreationType] || "Add item";
     },
     pendingCreationSubmitLabel() {
       const labelByType = {
-        license: "Save License",
-        "dive-site": "Save Dive Site",
-        buddy: "Save Buddy",
-        guide: "Save Guide"
+        license: "Save license",
+        "dive-site": "Save dive site",
+        buddy: "Save buddy",
+        guide: "Save guide"
       };
       return labelByType[this.pendingCreationType] || "Save";
     },
@@ -886,7 +886,9 @@ export default {
       </article>
     </header>
 
-    <div v-if="profileStatus" class="settings-feedback border-primary/20 bg-primary/10 text-primary shadow-panel">{{ profileStatus }}</div>
+    <div v-if="profileStatus" class="settings-feedback border-outline-variant/60 bg-primary/10 text-primary shadow-panel">
+      {{ profileStatus }}
+    </div>
     <div v-if="profileError" class="settings-feedback border-error/20 bg-error-container/20 text-on-error-container shadow-panel">
       {{ profileError }}
     </div>
@@ -896,17 +898,17 @@ export default {
         v-for="section in settingsSections"
         :key="section.id"
         @click="selectSettingsSection(section.id)"
-        class="min-w-[14rem] shrink-0 rounded-2xl border px-4 py-3 text-left transition-colors"
+        class="min-w-[14rem] shrink-0 rounded-xl border px-4 py-3 text-left transition-colors"
         :class="
           activeSettingsSection === section.id
             ? 'border-primary/30 bg-surface-container-high text-primary'
-            : 'border-primary/10 bg-background/10 text-secondary'
+            : 'border-outline-variant/60 bg-background/10 text-secondary'
         "
       >
         <div class="flex items-start gap-3">
           <span class="material-symbols-outlined mt-0.5 text-lg">{{ section.icon }}</span>
           <div>
-            <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em]">{{ section.label }}</p>
+            <p class="font-label text-xs font-medium">{{ section.label }}</p>
             <p class="mt-2 text-xs leading-5 opacity-80">{{ section.description }}</p>
           </div>
         </div>
@@ -934,11 +936,9 @@ export default {
       <section class="settings-content">
         <div v-if="profileLoading" class="settings-panel settings-card settings-loading-state">
           <div>
-            <p class="font-label text-[10px] font-bold uppercase tracking-[0.24em] text-primary">Loading</p>
-            <h4 class="mt-2 font-headline text-3xl font-bold tracking-tight text-on-surface">Preparing Your Settings</h4>
-            <p class="mt-3 max-w-3xl text-sm leading-7 text-secondary">
-              Fetching licenses, dive sites, buddies, guides, and saved profile details.
-            </p>
+            <p class="font-label text-xs font-medium text-primary">Loading</p>
+            <h4 class="mt-2 font-headline text-3xl font-bold tracking-tight text-on-surface">Loading settings</h4>
+            <p class="mt-3 max-w-3xl text-sm leading-7 text-secondary">Loading your profile...</p>
           </div>
 
           <div class="settings-loading-grid">
@@ -976,12 +976,12 @@ export default {
     <div
       v-if="pendingCreation"
       @click.self="closeCreateDialog"
-      class="fixed inset-0 z-[55] flex items-center justify-center bg-background/88 px-6 py-8 backdrop-blur-sm"
+      class="fixed inset-0 z-[55] flex items-center justify-center bg-background/88 px-6 py-8"
     >
       <div class="settings-modal-card">
         <div class="flex items-start justify-between gap-4">
           <div>
-            <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-primary">New Entry</p>
+            <p class="font-label text-xs font-medium text-primary">New entry</p>
             <h3 class="mt-3 font-headline text-2xl font-bold tracking-tight text-on-surface">{{ pendingCreationTitle }}</h3>
             <p class="mt-3 text-sm text-secondary">This entry stays out of the list until you save it here.</p>
           </div>
@@ -1001,11 +1001,11 @@ export default {
 
         <div v-if="pendingCreationType === 'license'" class="settings-modal-grid mt-6">
           <label class="space-y-2">
-            <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Company</span>
+            <span class="font-label text-xs font-medium text-secondary">Company</span>
             <UInput v-model="pendingCreationDraft.company" type="text" class="settings-input" placeholder="PADI / SSI / NAUI" />
           </label>
           <label class="space-y-2">
-            <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Certification Name</span>
+            <span class="font-label text-xs font-medium text-secondary">Certification name</span>
             <UInput
               v-model="pendingCreationDraft.certification_name"
               type="text"
@@ -1014,7 +1014,7 @@ export default {
             />
           </label>
           <label class="space-y-2">
-            <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Student Number</span>
+            <span class="font-label text-xs font-medium text-secondary">Student number</span>
             <UInput
               v-model="pendingCreationDraft.student_number"
               type="text"
@@ -1023,15 +1023,15 @@ export default {
             />
           </label>
           <label class="space-y-2">
-            <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Certification Date</span>
+            <span class="font-label text-xs font-medium text-secondary">Certification date</span>
             <UInput v-model="pendingCreationDraft.certification_date" type="text" class="settings-input" placeholder="YYYY-MM-DD" />
           </label>
           <label class="space-y-2 md:col-span-2">
-            <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Instructor Number</span>
+            <span class="font-label text-xs font-medium text-secondary">Instructor number</span>
             <UInput v-model="pendingCreationDraft.instructor_number" type="text" class="settings-input" placeholder="Instructor number" />
           </label>
           <div class="settings-side-panel md:col-span-2">
-            <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-primary">PDF Upload</p>
+            <p class="font-label text-xs font-medium text-primary">PDF upload</p>
             <p class="mt-2 text-sm text-secondary">
               Save the license first. You can attach or replace the PDF from the saved license card.
             </p>
@@ -1040,14 +1040,14 @@ export default {
 
         <div v-else-if="pendingCreationType === 'dive-site'" class="settings-modal-section mt-6">
           <label class="space-y-2">
-            <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Site Name</span>
+            <span class="font-label text-xs font-medium text-secondary">Site name</span>
             <UInput v-model="pendingCreationDraft.name" type="text" class="settings-input" placeholder="North Wall / Training Reef" />
           </label>
           <div class="settings-side-panel settings-modal-subsection">
             <div class="settings-modal-section">
               <div class="settings-modal-header">
                 <div>
-                  <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-primary">GPS Lookup</p>
+                  <p class="font-label text-xs font-medium text-primary">GPS lookup</p>
                   <p class="settings-modal-copy mt-2 text-sm text-secondary">
                     Search from the location text, then adjust latitude and longitude if needed.
                   </p>
@@ -1058,20 +1058,20 @@ export default {
                   :disabled="pendingCreationLookupLoading"
                   class="settings-button settings-button-secondary settings-modal-lookup-button"
                 >
-                  {{ pendingCreationLookupLoading ? "Searching GPS" : "Search GPS From Location" }}
+                  {{ pendingCreationLookupLoading ? "Searching GPS" : "Search GPS from location" }}
                 </UButton>
               </div>
               <label class="space-y-2">
-                <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Location</span>
+                <span class="font-label text-xs font-medium text-secondary">Location</span>
                 <UInput v-model="pendingCreationDraft.location" type="text" class="settings-input" placeholder="Blue Hole, Dahab, Egypt" />
               </label>
               <div class="settings-modal-site-grid">
                 <label class="space-y-2">
-                  <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Country</span>
+                  <span class="font-label text-xs font-medium text-secondary">Country</span>
                   <UInput v-model="pendingCreationDraft.country" type="text" class="settings-input" placeholder="Egypt" />
                 </label>
                 <label class="space-y-2">
-                  <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Latitude</span>
+                  <span class="font-label text-xs font-medium text-secondary">Latitude</span>
                   <UInput
                     v-model="pendingCreationDraft.latitude"
                     type="number"
@@ -1083,7 +1083,7 @@ export default {
                   />
                 </label>
                 <label class="space-y-2">
-                  <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Longitude</span>
+                  <span class="font-label text-xs font-medium text-secondary">Longitude</span>
                   <UInput
                     v-model="pendingCreationDraft.longitude"
                     type="number"
@@ -1101,14 +1101,14 @@ export default {
 
         <div v-else-if="pendingCreationType === 'buddy'" class="settings-modal-grid mt-6">
           <label class="space-y-2 md:col-span-2">
-            <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Buddy Name</span>
+            <span class="font-label text-xs font-medium text-secondary">Buddy name</span>
             <UInput v-model="pendingCreationDraft.name" type="text" class="settings-input" placeholder="Sam Carter" />
           </label>
         </div>
 
         <div v-else-if="pendingCreationType === 'guide'" class="settings-modal-grid mt-6">
           <label class="space-y-2 md:col-span-2">
-            <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Guide Name</span>
+            <span class="font-label text-xs font-medium text-secondary">Guide name</span>
             <UInput v-model="pendingCreationDraft.name" type="text" class="settings-input" placeholder="Kai Jensen" />
           </label>
         </div>
@@ -1137,12 +1137,14 @@ export default {
     <div
       v-if="activeLicenseDocument"
       @click.self="closeLicenseDocument"
-      class="fixed inset-0 z-50 flex items-center justify-center bg-background/90 px-6 py-8 backdrop-blur-sm"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-background/90 px-6 py-8"
     >
-      <div class="relative max-h-full w-full max-w-5xl overflow-auto border border-primary/15 bg-surface-container-low p-4 shadow-panel">
+      <div
+        class="relative max-h-full w-full max-w-5xl overflow-auto border border-outline-variant/60 bg-surface-container-low p-4 shadow-panel"
+      >
         <div class="mb-4 flex items-start justify-between gap-4">
           <div>
-            <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-primary">License PDF</p>
+            <p class="font-label text-xs font-medium text-primary">License PDF</p>
             <p class="mt-1 text-sm text-secondary">{{ activeLicenseDocument.pdf?.filename || "License PDF" }}</p>
           </div>
           <UButton type="button" @click="closeLicenseDocument" class="settings-button settings-button-secondary"> Close </UButton>
@@ -1158,12 +1160,14 @@ export default {
     <div
       v-if="activeLicensePreview"
       @click.self="closeLicensePreview"
-      class="fixed inset-0 z-[55] flex items-center justify-center bg-background/90 px-6 py-8 backdrop-blur-sm"
+      class="fixed inset-0 z-[55] flex items-center justify-center bg-background/90 px-6 py-8"
     >
-      <div class="relative max-h-full w-full max-w-5xl overflow-auto border border-primary/15 bg-surface-container-low p-4 shadow-panel">
+      <div
+        class="relative max-h-full w-full max-w-5xl overflow-auto border border-outline-variant/60 bg-surface-container-low p-4 shadow-panel"
+      >
         <div class="mb-4 flex items-start justify-between gap-4">
           <div>
-            <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-primary">License Preview</p>
+            <p class="font-label text-xs font-medium text-primary">License preview</p>
             <p class="mt-1 text-sm text-secondary">{{ activeLicensePreview.filename }} - Page {{ activeLicensePreview.pageNumber }}</p>
           </div>
           <UButton type="button" @click="closeLicensePreview" class="settings-button settings-button-secondary"> Close </UButton>
@@ -1179,11 +1183,11 @@ export default {
     <div
       v-if="pendingRemoval"
       @click.self="closeRemovalDialog"
-      class="fixed inset-0 z-[60] flex items-center justify-center bg-background/88 px-6 py-8 backdrop-blur-sm"
+      class="fixed inset-0 z-[60] flex items-center justify-center bg-background/88 px-6 py-8"
     >
       <div class="settings-confirm-dialog">
         <div>
-          <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-primary">Confirm Removal</p>
+          <p class="font-label text-xs font-medium text-primary">Confirm removal</p>
           <h3 class="mt-3 font-headline text-2xl font-bold tracking-tight text-on-surface">Remove {{ pendingRemoval.label }}?</h3>
           <p class="mt-3 text-sm text-secondary">This action cannot be undone.</p>
         </div>

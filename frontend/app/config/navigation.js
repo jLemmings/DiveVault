@@ -5,26 +5,26 @@ export const NAV_ITEMS = [
     mobileLabel: "Dashboard",
     icon: "dashboard",
     mobileIcon: "dashboard",
-    eyebrow: "Dive Overview",
+    eyebrow: "Dive overview",
     title: "Logbook"
   },
   {
     id: "logs",
-    label: "Dive Logs",
+    label: "Dive logs",
     mobileLabel: "Logs",
     icon: "waves",
     mobileIcon: "sailing",
-    eyebrow: "Dive Logs",
-    title: "Dive Log Database"
+    eyebrow: "Dive logs",
+    title: "Dive log database"
   },
-  { id: "map", label: "Map", mobileLabel: "Map", icon: "map", mobileIcon: "map", eyebrow: "Dive Map", title: "Map" },
+  { id: "map", label: "Map", mobileLabel: "Map", icon: "map", mobileIcon: "map", eyebrow: "Dive map", title: "Map" },
   {
     id: "equipment",
     label: "Equipment",
     mobileLabel: "Gear",
     icon: "scuba_diving",
     mobileIcon: "scuba_diving",
-    eyebrow: "Gear Locker",
+    eyebrow: "Gear locker",
     title: "Equipment"
   },
   {
@@ -33,7 +33,7 @@ export const NAV_ITEMS = [
     mobileLabel: "Settings",
     icon: "settings",
     mobileIcon: "settings",
-    eyebrow: "System Configuration",
-    title: "System Config"
+    eyebrow: "System configuration",
+    title: "System config"
   }
 ];

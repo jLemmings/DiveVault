@@ -130,10 +130,10 @@ export default {
     mobileSortOptions() {
       return [
         { key: "date", label: "Date" },
-        { key: "id", label: "Dive Number" },
-        { key: "depth", label: "Max Depth" },
+        { key: "id", label: "Dive number" },
+        { key: "depth", label: "Max depth" },
         { key: "duration", label: "Duration" },
-        { key: "barUsed", label: "Bar Used" }
+        { key: "barUsed", label: "Bar used" }
       ];
     },
     activeSortLabel() {
@@ -272,7 +272,7 @@ export default {
       return site || "Site pending";
     },
     diveComputerLabel(dive) {
-      if (diveDeviceLabel(dive) === "Manual Entry") return "Manual Entry";
+      if (diveDeviceLabel(dive) === "Manual entry") return "Manual entry";
       const product = typeof dive?.product === "string" ? dive.product.trim() : "";
       return product || "Unknown computer";
     },
@@ -312,13 +312,13 @@ export default {
               :value="searchText"
               @input="setSearchText($event.target.value)"
               type="text"
-              class="w-full rounded-lg border border-primary/10 bg-surface-container-high/70 py-2.5 pl-10 pr-4 text-sm font-label tracking-[0.12em] text-on-surface placeholder:text-on-surface-variant/50 focus:ring-1 focus:ring-primary/20"
-              placeholder="Search Logs..."
+              class="w-full rounded-lg border border-outline-variant/60 bg-surface-container-high/70 py-2.5 pl-10 pr-4 text-sm font-label text-on-surface placeholder:text-on-surface-variant/50 focus:ring-1 focus:ring-primary/20"
+              placeholder="Search logs..."
             />
           </div>
           <UButton
             @click="toggleMobileControls"
-            class="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-lg border border-primary/10 bg-surface-container-high/70 active:scale-95"
+            class="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-lg border border-outline-variant/60 bg-surface-container-high/70 active:scale-95"
             :class="mobileControlsOpen ? 'text-primary' : 'text-on-surface-variant'"
           >
             <span class="material-symbols-outlined">{{ mobileControlsOpen ? "close" : "filter_list" }}</span>
@@ -326,22 +326,19 @@ export default {
         </div>
 
         <div class="mt-3 grid grid-cols-2 gap-2">
-          <UButton
-            @click="openManualDive()"
-            class="rounded-lg bg-primary px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-on-primary"
-          >
-            New Entry
+          <UButton @click="openManualDive()" class="rounded-lg bg-primary px-4 py-3 font-label text-sm font-semibold text-on-primary">
+            New entry
           </UButton>
           <UButton
             @click="openImportQueue()"
-            class="rounded-lg bg-surface-container-high px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-primary"
+            class="rounded-lg bg-surface-container-high px-4 py-3 font-label text-sm font-semibold text-primary"
           >
-            Imported Queue
+            Imports
           </UButton>
         </div>
         <div class="mt-3 grid gap-2">
-          <label class="rounded-lg border border-primary/10 bg-surface-container-high/70 px-3 py-2">
-            <span class="block font-label text-[9px] font-bold uppercase tracking-[0.14em] text-on-surface-variant">Location</span>
+          <label class="rounded-lg border border-outline-variant/60 bg-surface-container-high/70 px-3 py-2">
+            <span class="block font-label text-xs font-medium text-on-surface-variant">Location</span>
             <div class="mt-2 max-h-36 space-y-1 overflow-y-auto">
               <label
                 v-for="site in siteFilterOptions"
@@ -360,15 +357,15 @@ export default {
               v-if="siteFilters.length"
               type="button"
               @click="clearNamedFilter('siteFilters')"
-              class="mt-2 text-[10px] font-bold uppercase tracking-[0.14em] text-primary"
+              class="mt-2 text-sm font-semibold text-primary"
               >Clear locations</UButton
             >
-            <span v-else class="mt-1 block text-[10px] text-on-surface-variant">All locations</span>
+            <span v-else class="mt-1 block text-xs text-on-surface-variant">All locations</span>
           </label>
         </div>
         <div class="mt-2 grid grid-cols-2 gap-2">
-          <label class="rounded-lg border border-primary/10 bg-surface-container-high/70 px-3 py-2">
-            <span class="block font-label text-[9px] font-bold uppercase tracking-[0.14em] text-on-surface-variant">Buddy</span>
+          <label class="rounded-lg border border-outline-variant/60 bg-surface-container-high/70 px-3 py-2">
+            <span class="block font-label text-xs font-medium text-on-surface-variant">Buddy</span>
             <div class="mt-2 max-h-36 space-y-1 overflow-y-auto">
               <label
                 v-for="buddy in buddyFilterOptions"
@@ -387,13 +384,13 @@ export default {
               v-if="buddyFilters.length"
               type="button"
               @click="clearNamedFilter('buddyFilters')"
-              class="mt-2 text-[10px] font-bold uppercase tracking-[0.14em] text-primary"
+              class="mt-2 text-sm font-semibold text-primary"
               >Clear buddies</UButton
             >
-            <span v-else class="mt-1 block text-[10px] text-on-surface-variant">All buddies</span>
+            <span v-else class="mt-1 block text-xs text-on-surface-variant">All buddies</span>
           </label>
-          <label class="rounded-lg border border-primary/10 bg-surface-container-high/70 px-3 py-2">
-            <span class="block font-label text-[9px] font-bold uppercase tracking-[0.14em] text-on-surface-variant">Guide</span>
+          <label class="rounded-lg border border-outline-variant/60 bg-surface-container-high/70 px-3 py-2">
+            <span class="block font-label text-xs font-medium text-on-surface-variant">Guide</span>
             <div class="mt-2 max-h-36 space-y-1 overflow-y-auto">
               <label
                 v-for="guide in guideFilterOptions"
@@ -412,10 +409,10 @@ export default {
               v-if="guideFilters.length"
               type="button"
               @click="clearNamedFilter('guideFilters')"
-              class="mt-2 text-[10px] font-bold uppercase tracking-[0.14em] text-primary"
+              class="mt-2 text-sm font-semibold text-primary"
               >Clear guides</UButton
             >
-            <span v-else class="mt-1 block text-[10px] text-on-surface-variant">All guides</span>
+            <span v-else class="mt-1 block text-xs text-on-surface-variant">All guides</span>
           </label>
         </div>
       </div>
@@ -423,7 +420,7 @@ export default {
       <div v-if="mobileControlsOpen" class="space-y-4 rounded-xl bg-surface-container-low px-4 py-4 shadow-panel">
         <div class="flex items-center justify-between gap-3">
           <div>
-            <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-on-surface-variant">Order By</p>
+            <p class="font-label text-xs font-medium text-on-surface-variant">Order by</p>
             <p class="mt-1 text-sm font-semibold text-on-surface">
               {{ activeSortLabel }} · {{ sortDirection === "asc" ? "Ascending" : "Descending" }}
             </p>
@@ -431,7 +428,7 @@ export default {
           <UButton
             type="button"
             @click="toggleSort(sortKey)"
-            class="inline-flex items-center gap-2 rounded-lg bg-surface-container-high px-3 py-2 font-label text-[10px] font-bold uppercase tracking-[0.16em] text-primary"
+            class="inline-flex items-center gap-2 rounded-lg bg-surface-container-high px-3 py-2 font-label text-sm font-semibold text-primary"
           >
             <span class="material-symbols-outlined text-sm">{{ sortDirection === "asc" ? "north" : "south" }}</span>
             {{ sortDirection === "asc" ? "Asc" : "Desc" }}
@@ -467,7 +464,7 @@ export default {
               <div class="flex items-start justify-between gap-3">
                 <div class="min-w-0">
                   <h3 class="truncate font-headline text-lg font-bold tracking-tight">{{ diveSiteLabel(dive) }}</h3>
-                  <p class="font-label text-[10px] font-bold uppercase tracking-[0.16em] text-on-surface-variant">
+                  <p class="font-label text-xs font-medium text-on-surface-variant">
                     {{ formatDate(dive.started_at) }} | {{ formatTime(dive.started_at) }}
                   </p>
                   <p class="mt-1 truncate text-sm text-secondary">{{ diveDeviceLabel(dive) }} / {{ diveComputerLabel(dive) }}</p>
@@ -476,15 +473,15 @@ export default {
               </div>
               <div class="mt-4 grid grid-cols-3 gap-4">
                 <div class="flex flex-col">
-                  <span class="font-label text-[9px] font-bold uppercase tracking-[0.14em] text-on-surface-variant/60">Max Depth</span>
+                  <span class="font-label text-xs font-medium text-on-surface-variant/60">Max depth</span>
                   <span class="font-headline text-sm font-semibold text-primary">{{ formatDepth(dive.max_depth_m) }}</span>
                 </div>
                 <div class="flex flex-col">
-                  <span class="font-label text-[9px] font-bold uppercase tracking-[0.14em] text-on-surface-variant/60">Duration</span>
+                  <span class="font-label text-xs font-medium text-on-surface-variant/60">Duration</span>
                   <span class="font-headline text-sm font-semibold">{{ formatDurationShort(dive.duration_seconds) }}</span>
                 </div>
                 <div v-if="hasAirConsumption(dive)" class="flex flex-col">
-                  <span class="font-label text-[9px] font-bold uppercase tracking-[0.14em] text-on-surface-variant/60">Bar Used</span>
+                  <span class="font-label text-xs font-medium text-on-surface-variant/60">Bar used</span>
                   <span class="font-headline text-sm font-semibold">{{ pressureUsedTableLabel(dive) }}</span>
                 </div>
                 <div
@@ -492,9 +489,7 @@ export default {
                   :key="'mobile-metric-meta-' + dive.id + '-' + item.key"
                   class="flex min-w-0 flex-col"
                 >
-                  <span
-                    class="inline-flex items-center gap-1 font-label text-[9px] font-bold uppercase tracking-[0.14em] text-on-surface-variant/60"
-                  >
+                  <span class="inline-flex items-center gap-1 font-label text-xs font-medium text-on-surface-variant/60">
                     <span class="material-symbols-outlined text-[13px] leading-none">{{ item.icon }}</span>
                     {{ item.label }}
                   </span>
@@ -508,7 +503,7 @@ export default {
 
       <div class="rounded-xl bg-surface-container-low px-4 py-3">
         <label class="flex items-center justify-between gap-4">
-          <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-on-surface-variant">Dives Per Page</span>
+          <span class="font-label text-xs font-medium text-on-surface-variant">Dives per page</span>
           <USelect
             v-model.number="pageSize"
             :items="pageSizeOptions"
@@ -519,8 +514,8 @@ export default {
 
       <div class="flex items-center justify-between rounded-xl bg-surface-container-low px-4 py-3">
         <div>
-          <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-on-surface-variant">{{ paginationLabel }}</p>
-          <p class="mt-1 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-primary">Page {{ pageCountLabel }}</p>
+          <p class="font-label text-xs font-medium text-on-surface-variant">{{ paginationLabel }}</p>
+          <p class="mt-1 font-label text-xs font-medium text-primary">Page {{ pageCountLabel }}</p>
         </div>
         <div class="flex items-center gap-2">
           <UButton
@@ -531,10 +526,9 @@ export default {
           >
             <span class="material-symbols-outlined">chevron_left</span>
           </UButton>
-          <span
-            class="rounded-lg border border-primary/20 bg-primary/10 px-3 py-2 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-primary"
-            >{{ currentPage }}</span
-          >
+          <span class="rounded-lg border border-outline-variant/60 bg-primary/10 px-3 py-2 font-label text-xs font-medium text-primary">{{
+            currentPage
+          }}</span>
           <UButton
             type="button"
             @click="nextPage"
@@ -548,7 +542,7 @@ export default {
     </section>
 
     <section class="hidden space-y-8 md:block">
-      <div v-if="statusMessage" class="border border-primary/20 bg-primary/10 px-5 py-4 text-sm text-primary shadow-panel">
+      <div v-if="statusMessage" class="border border-outline-variant/60 bg-primary/10 px-5 py-4 text-sm text-primary shadow-panel">
         {{ statusMessage }}
       </div>
       <div v-if="errorMessage" class="border border-error/20 bg-error-container/20 px-5 py-4 text-sm text-on-error-container shadow-panel">
@@ -563,16 +557,16 @@ export default {
               :value="searchText"
               @input="setSearchText($event.target.value)"
               type="text"
-              class="w-full rounded-xl border border-primary/10 bg-surface-container-high/70 py-3 pl-12 pr-4 text-sm font-label tracking-[0.12em] text-on-surface placeholder:text-on-surface-variant/50 focus:ring-1 focus:ring-primary/20"
+              class="w-full rounded-xl border border-outline-variant/60 bg-surface-container-high/70 py-3 pl-12 pr-4 text-sm font-label text-on-surface placeholder:text-on-surface-variant/50 focus:ring-1 focus:ring-primary/20"
               placeholder="Search dive logs..."
             />
           </div>
           <UButton
             @click="openManualDive()"
-            class="flex items-center gap-2 rounded-xl bg-primary px-6 py-3 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-on-primary"
+            class="flex items-center gap-2 rounded-xl bg-primary px-6 py-3 font-label text-sm font-semibold text-on-primary"
           >
             <span class="material-symbols-outlined text-sm">add</span>
-            New Entry
+            New entry
           </UButton>
         </div>
       </div>
@@ -606,14 +600,14 @@ export default {
             >
               <span class="material-symbols-outlined text-base">location_on</span>
               Locations
-              <span class="font-label text-[10px] font-bold uppercase tracking-[0.14em] text-secondary">{{
+              <span class="font-label text-xs font-medium text-secondary">{{
                 siteFilters.length ? siteFilters.length + " selected" : "All"
               }}</span>
               <span class="material-symbols-outlined text-sm">{{ siteFilterOpen ? "expand_less" : "expand_more" }}</span>
             </UButton>
             <div
               v-if="siteFilterOpen"
-              class="absolute left-0 z-20 mt-2 w-72 rounded-xl border border-primary/15 bg-surface-container-low p-3 shadow-panel"
+              class="absolute left-0 z-20 mt-2 w-72 rounded-xl border border-outline-variant/60 bg-surface-container-low p-3 shadow-panel"
             >
               <div class="max-h-64 space-y-2 overflow-y-auto">
                 <label
@@ -633,7 +627,7 @@ export default {
                 v-if="siteFilters.length"
                 type="button"
                 @click="clearNamedFilter('siteFilters')"
-                class="mt-3 text-[10px] font-bold uppercase tracking-[0.14em] text-primary"
+                class="mt-3 text-sm font-semibold text-primary"
                 >Clear locations</UButton
               >
             </div>
@@ -650,14 +644,14 @@ export default {
             >
               <span class="material-symbols-outlined text-base">diversity_3</span>
               Buddy
-              <span class="font-label text-[10px] font-bold uppercase tracking-[0.14em] text-secondary">{{
+              <span class="font-label text-xs font-medium text-secondary">{{
                 buddyFilters.length ? buddyFilters.length + " selected" : "All"
               }}</span>
               <span class="material-symbols-outlined text-sm">{{ buddyFilterOpen ? "expand_less" : "expand_more" }}</span>
             </UButton>
             <div
               v-if="buddyFilterOpen"
-              class="absolute left-0 z-20 mt-2 w-64 rounded-xl border border-primary/15 bg-surface-container-low p-3 shadow-panel"
+              class="absolute left-0 z-20 mt-2 w-64 rounded-xl border border-outline-variant/60 bg-surface-container-low p-3 shadow-panel"
             >
               <div class="max-h-64 space-y-2 overflow-y-auto">
                 <label
@@ -677,7 +671,7 @@ export default {
                 v-if="buddyFilters.length"
                 type="button"
                 @click="clearNamedFilter('buddyFilters')"
-                class="mt-3 text-[10px] font-bold uppercase tracking-[0.14em] text-primary"
+                class="mt-3 text-sm font-semibold text-primary"
                 >Clear buddies</UButton
               >
             </div>
@@ -694,14 +688,14 @@ export default {
             >
               <span class="material-symbols-outlined text-base">badge</span>
               Guide
-              <span class="font-label text-[10px] font-bold uppercase tracking-[0.14em] text-secondary">{{
+              <span class="font-label text-xs font-medium text-secondary">{{
                 guideFilters.length ? guideFilters.length + " selected" : "All"
               }}</span>
               <span class="material-symbols-outlined text-sm">{{ guideFilterOpen ? "expand_less" : "expand_more" }}</span>
             </UButton>
             <div
               v-if="guideFilterOpen"
-              class="absolute left-0 z-20 mt-2 w-64 rounded-xl border border-primary/15 bg-surface-container-low p-3 shadow-panel"
+              class="absolute left-0 z-20 mt-2 w-64 rounded-xl border border-outline-variant/60 bg-surface-container-low p-3 shadow-panel"
             >
               <div class="max-h-64 space-y-2 overflow-y-auto">
                 <label
@@ -721,13 +715,13 @@ export default {
                 v-if="guideFilters.length"
                 type="button"
                 @click="clearNamedFilter('guideFilters')"
-                class="mt-3 text-[10px] font-bold uppercase tracking-[0.14em] text-primary"
+                class="mt-3 text-sm font-semibold text-primary"
                 >Clear guides</UButton
               >
             </div>
           </div>
         </div>
-        <p class="font-label text-sm font-bold tracking-[0.08em] text-on-surface-variant">Displaying {{ paginationLabel }}</p>
+        <p class="font-label text-sm font-bold text-on-surface-variant">Displaying {{ paginationLabel }}</p>
       </div>
 
       <div v-if="pagedDives.length" class="grid gap-6 xl:grid-cols-3">
@@ -743,11 +737,11 @@ export default {
           <div class="flex items-start justify-between gap-4">
             <div class="min-w-0">
               <h3 class="truncate text-lg font-extrabold text-primary">{{ diveSiteLabel(dive) }}</h3>
-              <p class="mt-1 font-label text-[11px] font-bold tracking-[0.14em] text-on-surface-variant">
+              <p class="mt-1 font-label text-xs font-bold text-on-surface-variant">
                 {{ formatDate(dive.started_at) }} &bull; {{ formatTime(dive.started_at) }}
               </p>
             </div>
-            <p class="font-label text-[11px] font-bold tracking-[0.14em] text-on-surface">{{ displayDiveIndex(dive) }}</p>
+            <p class="font-label text-xs font-bold text-on-surface">{{ displayDiveIndex(dive) }}</p>
           </div>
 
           <div class="mt-5 flex-1 border-t border-outline-variant/18 py-5">
@@ -802,14 +796,12 @@ export default {
                 v-for="item in lowerLogbookMeta(dive)"
                 :key="'desktop-card-meta-' + dive.id + '-' + item.key"
                 :title="item.label + ': ' + item.value"
-                class="inline-flex max-w-[12rem] items-center gap-1 rounded bg-surface-container-high px-2 py-1 font-label text-[9px] font-bold uppercase tracking-[0.12em] text-secondary"
+                class="inline-flex max-w-[12rem] items-center gap-1 rounded bg-surface-container-high px-2 py-1 font-label text-xs font-medium text-secondary"
               >
                 <span class="material-symbols-outlined text-[13px] leading-none">{{ item.icon }}</span>
                 <span class="truncate">{{ item.value }}</span>
               </span>
-              <span
-                v-if="dive.max_depth_m > 40"
-                class="rounded bg-tertiary/14 px-2 py-1 font-label text-[9px] font-bold uppercase tracking-[0.12em] text-tertiary"
+              <span v-if="dive.max_depth_m > 40" class="rounded bg-tertiary/14 px-2 py-1 font-label text-xs font-medium text-tertiary"
                 >Deep</span
               >
             </div>
@@ -820,11 +812,8 @@ export default {
       <div v-else class="log-empty-card px-8 py-16 text-center">
         <p class="font-headline text-2xl font-bold">No dives match the current filters</p>
         <p class="mt-2 text-on-surface-variant">Change the search or complete imported dives before they enter the logbook.</p>
-        <UButton
-          @click="openImportQueue()"
-          class="mt-5 bg-primary px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-on-primary"
-        >
-          Open Imported Queue
+        <UButton @click="openImportQueue()" class="mt-5 bg-primary px-4 py-3 font-label text-sm font-semibold text-on-primary">
+          Open imports
         </UButton>
       </div>
 
@@ -837,9 +826,9 @@ export default {
           ><span class="material-symbols-outlined">chevron_right</span></UButton
         >
         <label
-          class="ml-0 flex items-center gap-3 rounded-lg border border-primary/12 bg-surface-container-high/55 px-4 py-2 text-sm font-bold text-on-surface md:ml-6"
+          class="ml-0 flex items-center gap-3 rounded-lg border border-outline-variant/60 bg-surface-container-high/55 px-4 py-2 text-sm font-bold text-on-surface md:ml-6"
         >
-          <span>Dives Per Page</span>
+          <span>Dives per page</span>
           <USelect
             v-model.number="pageSize"
             :items="pageSizeOptions"

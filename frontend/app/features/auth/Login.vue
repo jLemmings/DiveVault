@@ -65,7 +65,7 @@ export default {
       return this.authView === AUTH_VIEW_REGISTER ? "Create your DiveVault account" : "Welcome back";
     },
     authEyebrow() {
-      return this.authView === AUTH_VIEW_REGISTER ? "Secure Account Setup" : "DiveVault Access";
+      return this.authView === AUTH_VIEW_REGISTER ? "Secure account setup" : "DiveVault access";
     },
     authSummary() {
       if (this.isInviteRegistration) {
@@ -78,12 +78,12 @@ export default {
     },
     submitLabel() {
       if (this.loading) {
-        return this.authView === AUTH_VIEW_REGISTER ? "Creating Account" : "Signing In";
+        return this.authView === AUTH_VIEW_REGISTER ? "Creating account" : "Signing in";
       }
-      return this.authView === AUTH_VIEW_REGISTER ? "Create Account" : "Sign In";
+      return this.authView === AUTH_VIEW_REGISTER ? "Create account" : "Sign in";
     },
     alternateActionLabel() {
-      return this.authView === AUTH_VIEW_REGISTER ? "Sign In" : "Create Account";
+      return this.authView === AUTH_VIEW_REGISTER ? "Sign in" : "Create account";
     },
     alternateActionCopy() {
       return this.authView === AUTH_VIEW_REGISTER ? "Already provisioned?" : "Need an account?";
@@ -168,13 +168,9 @@ export default {
 
 <template>
   <div class="abyssal-auth-shell auth-stage relative min-h-screen overflow-hidden bg-surface text-on-surface">
-    <div class="auth-stage-orb auth-stage-orb-left"></div>
-    <div class="auth-stage-orb auth-stage-orb-right"></div>
-    <div class="auth-stage-orb auth-stage-orb-bottom"></div>
     <div class="auth-stage-wave auth-stage-wave-back"></div>
     <div class="auth-stage-wave auth-stage-wave-front"></div>
     <div class="auth-stage-caustics"></div>
-
     <div class="absolute right-4 top-4 z-20 sm:right-6 sm:top-6">
       <label class="sr-only" for="login-language">Language</label>
       <USelect
@@ -183,7 +179,7 @@ export default {
         :items="availableLanguages"
         @update:model-value="handleLocaleChange"
         aria-label="Language"
-        class="rounded-xl border border-primary/14 bg-surface-container-high/55 px-3 py-2 text-xs font-semibold text-secondary outline-none transition-colors hover:border-primary/30 hover:text-white focus:border-primary/50"
+        class="rounded-xl border border-outline-variant/60 bg-surface-container-high/55 px-3 py-2 text-xs font-semibold text-secondary outline-none transition-colors hover:border-outline-variant hover:text-on-surface focus:border-primary"
       />
     </div>
 
@@ -198,13 +194,10 @@ export default {
         </div>
 
         <section
-          class="auth-panel auth-panel-centered relative overflow-hidden rounded-[1.75rem] border border-primary/14 px-4 py-5 sm:rounded-[2rem] sm:px-8 sm:py-8 lg:px-10 lg:py-10"
+          class="auth-panel auth-panel-centered relative overflow-hidden rounded-xl border border-outline-variant/60 px-4 py-5 sm:rounded-xl sm:px-8 sm:py-8 lg:px-10 lg:py-10"
         >
-          <div class="technical-grid absolute inset-0"></div>
-          <div class="auth-panel-sheen"></div>
-
           <div class="relative">
-            <h2 class="font-headline text-[2rem] font-bold tracking-tight text-white sm:text-[2.6rem] sm:leading-[1.02]">
+            <h2 class="font-headline text-[2rem] font-bold tracking-tight text-on-surface sm:text-[2.6rem] sm:leading-[1.02]">
               {{ authHeading }}
             </h2>
             <p class="mt-3 max-w-[30rem] text-sm leading-6 text-secondary sm:mt-4 sm:leading-7">{{ authSummary }}</p>
@@ -212,12 +205,12 @@ export default {
 
           <div
             v-if="demoMode"
-            class="relative mt-5 rounded-2xl border border-primary/20 bg-primary/10 px-4 py-4 text-sm text-on-surface sm:mt-6"
+            class="relative mt-5 rounded-xl border border-outline-variant/60 bg-primary/10 px-4 py-4 text-sm text-on-surface sm:mt-6"
           >
             <div class="flex items-start gap-3">
               <span class="material-symbols-outlined mt-0.5 text-[20px] text-primary">info</span>
               <div class="min-w-0">
-                <p class="font-label text-[0.65rem] font-bold uppercase tracking-[0.18em] text-primary">Demo Mode</p>
+                <p class="font-label text-xs font-medium text-primary">Demo mode</p>
                 <p class="mt-1 leading-6 text-secondary">
                   This public instance resets on a schedule. Sign in with username
                   <span class="font-semibold text-on-surface">admin</span> and password
@@ -229,33 +222,33 @@ export default {
 
           <div
             v-if="message"
-            class="relative mt-5 rounded-2xl border border-primary/16 bg-primary/10 px-4 py-3 text-sm text-primary sm:mt-6"
+            class="relative mt-5 rounded-xl border border-outline-variant/60 bg-primary/10 px-4 py-3 text-sm text-primary sm:mt-6"
           >
             {{ message }}
           </div>
-          <div v-if="error" class="relative mt-4 rounded-2xl border border-error/25 bg-error-container/20 px-4 py-3 text-sm text-error">
+          <div v-if="error" class="relative mt-4 rounded-xl border border-error/25 bg-error-container/20 px-4 py-3 text-sm text-error">
             {{ error }}
           </div>
 
           <div class="relative mt-6 space-y-4 sm:mt-8 sm:space-y-5">
             <label class="block space-y-2">
-              <span class="font-label text-[0.65rem] font-bold uppercase tracking-[0.18em] text-secondary">Email</span>
+              <span class="font-label text-xs font-medium text-secondary">Email</span>
               <UInput
                 v-model.trim="email"
                 type="email"
                 autocomplete="email"
                 placeholder="Email"
-                class="auth-input w-full rounded-2xl border border-primary/12 px-4 py-3 text-sm text-on-surface outline-none transition-all placeholder:text-secondary/45 sm:py-3.5"
+                class="auth-input w-full rounded-xl border border-outline-variant/60 px-4 py-3 text-sm text-on-surface outline-none transition-all placeholder:text-secondary/45 sm:py-3.5"
               />
             </label>
 
             <div class="space-y-2">
               <div class="flex items-center justify-between gap-3">
-                <span class="font-label text-[0.65rem] font-bold uppercase tracking-[0.18em] text-secondary">Password</span>
+                <span class="font-label text-xs font-medium text-secondary">Password</span>
                 <UButton
                   @click="showPassword = !showPassword"
                   type="button"
-                  class="text-[0.65rem] font-semibold uppercase tracking-[0.16em] text-primary transition-colors hover:text-white"
+                  class="text-sm font-semibold text-primary transition-colors hover:text-on-surface"
                 >
                   {{ showPassword ? "Hide" : "Show" }}
                 </UButton>
@@ -265,30 +258,30 @@ export default {
                 :type="showPassword ? 'text' : 'password'"
                 autocomplete="current-password"
                 placeholder="Password"
-                class="auth-input w-full rounded-2xl border border-primary/12 px-4 py-3 text-sm text-on-surface outline-none transition-all placeholder:text-secondary/45 sm:py-3.5"
+                class="auth-input w-full rounded-xl border border-outline-variant/60 px-4 py-3 text-sm text-on-surface outline-none transition-all placeholder:text-secondary/45 sm:py-3.5"
               />
             </div>
 
             <template v-if="authView === 'register'">
               <div class="grid gap-5 sm:grid-cols-2">
                 <label class="block space-y-2">
-                  <span class="font-label text-[0.65rem] font-bold uppercase tracking-[0.18em] text-secondary">First Name</span>
+                  <span class="font-label text-xs font-medium text-secondary">First name</span>
                   <UInput
                     v-model.trim="firstName"
                     type="text"
                     autocomplete="given-name"
                     placeholder="First name"
-                    class="auth-input w-full rounded-2xl border border-primary/12 px-4 py-3 text-sm text-on-surface outline-none transition-all placeholder:text-secondary/45 sm:py-3.5"
+                    class="auth-input w-full rounded-xl border border-outline-variant/60 px-4 py-3 text-sm text-on-surface outline-none transition-all placeholder:text-secondary/45 sm:py-3.5"
                   />
                 </label>
                 <label class="block space-y-2">
-                  <span class="font-label text-[0.65rem] font-bold uppercase tracking-[0.18em] text-secondary">Last Name</span>
+                  <span class="font-label text-xs font-medium text-secondary">Last name</span>
                   <UInput
                     v-model.trim="lastName"
                     type="text"
                     autocomplete="family-name"
                     placeholder="Last name"
-                    class="auth-input w-full rounded-2xl border border-primary/12 px-4 py-3 text-sm text-on-surface outline-none transition-all placeholder:text-secondary/45 sm:py-3.5"
+                    class="auth-input w-full rounded-xl border border-outline-variant/60 px-4 py-3 text-sm text-on-surface outline-none transition-all placeholder:text-secondary/45 sm:py-3.5"
                   />
                 </label>
               </div>
@@ -300,7 +293,7 @@ export default {
               v-if="authView === 'signin'"
               @click="submitSignIn"
               :disabled="loading"
-              class="auth-button-glow auth-primary-button inline-flex min-h-12 flex-1 items-center justify-center rounded-2xl px-5 py-3 font-label text-[0.68rem] font-bold uppercase tracking-[0.18em] text-on-primary transition-all hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-70 sm:min-h-13 sm:py-3.5 sm:text-[0.7rem] sm:tracking-[0.2em]"
+              class="auth-primary-button inline-flex min-h-12 flex-1 items-center justify-center rounded-xl px-5 py-3 font-label text-sm font-semibold text-on-primary transition-all hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-70 sm:min-h-13 sm:py-3.5 sm:text-[0.7rem] sm:"
             >
               {{ submitLabel }}
             </UButton>
@@ -308,7 +301,7 @@ export default {
               v-if="authView === 'register'"
               @click="submitRegister"
               :disabled="loading"
-              class="auth-button-glow auth-primary-button inline-flex min-h-12 flex-1 items-center justify-center rounded-2xl px-5 py-3 font-label text-[0.68rem] font-bold uppercase tracking-[0.18em] text-on-primary transition-all hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-70 sm:min-h-13 sm:py-3.5 sm:text-[0.7rem] sm:tracking-[0.2em]"
+              class="auth-primary-button inline-flex min-h-12 flex-1 items-center justify-center rounded-xl px-5 py-3 font-label text-sm font-semibold text-on-primary transition-all hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-70 sm:min-h-13 sm:py-3.5 sm:text-[0.7rem] sm:"
             >
               {{ submitLabel }}
             </UButton>
@@ -317,7 +310,7 @@ export default {
               :key="'auth-toggle-' + authView"
               @click="authView = authView === 'signin' ? 'register' : 'signin'"
               type="button"
-              class="inline-flex min-h-12 items-center justify-center rounded-2xl border border-primary/14 bg-surface-container-high/40 px-5 py-3 font-label text-[0.68rem] font-bold uppercase tracking-[0.16em] text-primary transition-colors hover:bg-surface-container-high/70 hover:text-white sm:min-h-13 sm:py-3.5 sm:text-[0.7rem] sm:tracking-[0.18em]"
+              class="inline-flex min-h-12 items-center justify-center rounded-xl border border-outline-variant/60 bg-surface-container-high/40 px-5 py-3 font-label text-sm font-semibold text-primary transition-colors hover:bg-surface-container-high/70 hover:text-on-surface sm:min-h-13 sm:py-3.5 sm:text-[0.7rem] sm:"
             >
               {{ alternateActionLabel }}
             </UButton>
@@ -325,7 +318,7 @@ export default {
 
           <div v-if="showAlternateAccountPrompt" class="relative mt-4 flex flex-wrap items-center gap-2 text-xs text-secondary sm:mt-5">
             <span>{{ alternateActionCopy }}</span>
-            <span v-if="canRegister" class="font-semibold uppercase tracking-[0.14em] text-primary/80">
+            <span v-if="canRegister" class="font-semibold text-primary/80">
               {{ alternateActionLabel }}
             </span>
           </div>
