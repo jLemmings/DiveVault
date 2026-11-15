@@ -42,4 +42,5 @@
 - The Docker image is built from the repo-root `Dockerfile`; it builds frontend assets with Node, compiles a static Go binary, and runs on a distroless non-root image (no shell).
 - `AUTH_JWT_SECRET` must be at least 32 random characters when `HOST` is not loopback; the backend exits on startup otherwise.
 - Postgres-backed integration tests (`backend/internal/migrations/*integration_test.go`) run when `TEST_DATABASE_URL` is set; CI sets it.
-- CI publishes image/release version tags from `frontend/package.json` `version`, not from a backend manifest.
+- Releases are cut by release-please (`.github/workflows/release.yml`, `release-please-config.json`): merging its release PR tags `vX.Y.Z`, and `backend-image.yml` then publishes the image. Do not hand-edit versions in `version.txt`, `frontend/package.json` or the `x-release-please-version` lines in `examples/`. PR titles must be Conventional Commits because squash-merge titles feed the changelog.
+- Pushes to `master` publish only `:edge` and `:sha-<short>` images; version tags and `:latest` are only published for release tags.
