@@ -37,7 +37,7 @@ export default {
       },
       fontFamily: {
         headline: ["Space Grotesk", "sans-serif"],
-        body: ["Manrope", "sans-serif"],
+        body: ["Manrope Variable", "Manrope", "sans-serif"],
         label: ["Space Grotesk", "sans-serif"]
       },
       boxShadow: {

@@ -1,25 +1,26 @@
 # Agent Notes
 
 ## Repo Shape
-- Backend is a Go HTTP service in `backend-go/cmd/divevault`; it serves `/api/*`, `/health`, `/config.js`, and built frontend assets from `FRONTEND_DIR`.
-- PostgreSQL schema and migrations live in `backend-go/internal/migrations`; bump `CurrentSchemaVersion` when adding schema migrations.
+- Backend is a Go HTTP service in `backend/cmd/divevault`; it serves `/api/*`, `/health`, `/config.js`, and built frontend assets from `FRONTEND_DIR`.
+- PostgreSQL schema and migrations live in `backend/internal/migrations`; bump `CurrentSchemaVersion` when adding schema migrations.
 - Frontend is a Nuxt 4 app under `frontend/`; entrypoint is `frontend/app/app.vue`, the thin app shell is `frontend/app/components/DiveVaultApp.vue`, and the current route/state controller is `frontend/app/features/app/AppRouteController.vue`.
 - Frontend feature views live under `frontend/app/features/`; reusable cross-feature code lives under `frontend/app/shared/{components,composables,utils}`.
 - Frontend route records and route-to-state mapping live together in `frontend/app/routing/routes.js`.
 - Frontend env is loaded from the repo root via `nuxt.config.js` (`vite.envDir: repoRoot`); `VITE_API_PROXY_TARGET` controls the dev proxy target and defaults to `http://127.0.0.1:8000`.
 
 ## Setup And Commands
-- Backend deps: Go toolchain matching `backend-go/go.mod`.
-- Run backend locally from the repo root with `.env` copied from `.env.example`: `go run ./backend-go/cmd/divevault --database-url postgresql://dive:dive@localhost:5432/dive`.
-- Run external schema migration from the repo root: `go run ./backend-go/cmd/divevault migrate` with `DATABASE_URL` set.
+- Backend deps: Go toolchain matching `backend/go.mod`.
+- Run backend locally from the repo root with `.env` copied from `.env.example`: `go run ./backend/cmd/divevault --database-url postgresql://dive:dive@localhost:5432/dive`.
+- Run external schema migration from the repo root: `go run ./backend/cmd/divevault migrate` with `DATABASE_URL` set.
+- Reset a forgotten local password: `go run ./backend/cmd/divevault reset-password --email <email>` (prints a generated password; `--password-stdin` to choose one).
 - Frontend deps use npm and `frontend/package-lock.json`: `cd frontend && npm ci`.
 - Frontend dev server: `cd frontend && npm run dev`; backend API requests are proxied to `VITE_API_PROXY_TARGET`.
 - Frontend checks: `cd frontend && npm run check:structure`, `npm run check:contracts`, `npm run lint`, and `npm run format:check`.
 - Full local Docker stack is documented as `docker compose -f examples/docker/docker-compose.yml up --build`.
 
 ## Verification
-- CI backend test command: `cd backend-go && go test ./...`; from the repo root use `go test ./backend-go/...`.
-- Focused backend test from the repo root: `go test ./backend-go/internal/auth -run Test`.
+- CI backend test command: `cd backend && go test ./...`; from the repo root use `go test ./backend/...`.
+- Focused backend test from the repo root: `go test ./backend/internal/auth -run Test`.
 - CI frontend test command: `cd frontend && npm test`; Playwright starts the Nuxt static preview on `127.0.0.1:4173` automatically.
 - Focused frontend test: `cd frontend && npx playwright test tests/app.spec.js -g "public profile" --project=chromium`.
 - `cd frontend && npm run build` runs Playwright first, then `nuxt generate`; use `npm run build:app` only when you intentionally want build without tests, as CI does for release assets.
@@ -38,5 +39,7 @@
 ## Runtime And Deploy Notes
 - The backend loads `.env` from the repo root on import/startup; important keys are shown in `.env.example`.
 - `STARTUP_MIGRATIONS=enabled` is the default for single-instance/local backend startup. Set `STARTUP_MIGRATIONS=disabled` when migrations run externally, such as the Kubernetes Job in `examples/kubernetes/divevault.yaml`.
-- The backend Docker image is built from `backend/Dockerfile`; it builds frontend assets with Node, compiles the Go backend, and runs without Python in the final image.
+- The Docker image is built from the repo-root `Dockerfile`; it builds frontend assets with Node, compiles a static Go binary, and runs on a distroless non-root image (no shell).
+- `AUTH_JWT_SECRET` must be at least 32 random characters when `HOST` is not loopback; the backend exits on startup otherwise.
+- Postgres-backed integration tests (`backend/internal/migrations/*integration_test.go`) run when `TEST_DATABASE_URL` is set; CI sets it.
 - CI publishes image/release version tags from `frontend/package.json` `version`, not from a backend manifest.

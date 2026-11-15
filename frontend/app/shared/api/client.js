@@ -56,7 +56,7 @@ export function createApiClient({ getToken = null, timeoutMs = DEFAULT_REQUEST_T
     try {
       return await fetch(resource, {
         ...options,
-        credentials: "include",
+        credentials: "omit",
         headers,
         signal: controller.signal
       });

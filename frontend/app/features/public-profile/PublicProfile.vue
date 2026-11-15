@@ -156,7 +156,7 @@ export default {
       this.error = "";
       try {
         const response = await fetch(publicDiverUrl(this.slug), {
-          credentials: "include"
+          credentials: "omit"
         });
         const payload = await response.json().catch(() => null);
         if (!response.ok) {

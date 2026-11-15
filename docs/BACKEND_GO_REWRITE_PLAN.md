@@ -21,10 +21,10 @@ Legacy Python baseline:
 
 Current Go rewrite state:
 
-- Go backend module: `backend-go`
+- Go backend module: `backend` (developed as `backend-go/` until 2026-11-15)
 - Repo-root Go workspace: `go.work`
-- Go backend entrypoint: `backend-go/cmd/divevault`
-- Go migration command from repo root: `go run ./backend-go/cmd/divevault migrate`
+- Go backend entrypoint: `backend/cmd/divevault`
+- Go migration command from repo root: `go run ./backend/cmd/divevault migrate`
 - Current backend image runtime: Go binary in a Debian slim image, with no Python runtime
 
 ## Phase 1: Freeze Compatibility Contract
@@ -161,14 +161,14 @@ Current Go rewrite state:
 
 ## Phase 10: Remove Python Backend
 
-- [ ] Delete `backend/divevault/**/*.py`.
-- [ ] Delete `backend/migrations/*.py`.
-- [ ] Delete `backend/tests/*.py`.
-- [ ] Delete `backend/requirements.txt`.
-- [ ] Delete `backend/requirements-dev.txt`.
+- [x] Delete `backend/divevault/**/*.py`.
+- [x] Delete `backend/migrations/*.py`.
+- [x] Delete `backend/tests/*.py`.
+- [x] Delete `backend/requirements.txt`.
+- [x] Delete `backend/requirements-dev.txt`.
 - [x] Remove Python setup from CI.
 - [x] Remove Python backend setup from docs.
-- [ ] Rename or reorganize the Go module so `backend/` is the canonical backend location.
+- [x] Rename or reorganize the Go module so `backend/` is the canonical backend location. (`backend-go/` was renamed to `backend/` after the Python sources were removed; the Dockerfile lives at the repository root.)
 - [x] Run final repo-wide search for `python`, `pytest`, `pip`, `requirements`, and `migrations.migrate_postgres_schema`.
 - [x] Confirm remaining Python references, if any, are unrelated to backend runtime.
 
@@ -205,3 +205,5 @@ Current Go rewrite state:
 - 2026-08-25: Ran `gofmt -w .`, `go test ./...`, and `go build ./cmd/divevault` successfully from `backend-go/` using the workspace-local Go toolchain. Docker smoke testing is blocked locally because the Docker daemon is not running in this environment.
 - 2026-08-29: Added Go backup archive compatibility with the Python backup contract by storing license PDFs as separate `licenses/.../*.pdf` ZIP members and hydrating `file_path` license documents during ZIP import. Added archive tests for license file paths and duplicate path suffixing. Local verification is blocked in this shell because `go`, `npm`, and the previously noted workspace-local `.tools/go` toolchain are not available.
 - 2026-08-29: Repo-wide searches found no active backend runtime dependency on Python in Go backend, Docker, CI, Kubernetes, or full-app test startup paths. Remaining Python references are the retained legacy backend, compatibility/tracker documentation, dependency-renovation config for legacy requirements files, `.pytest_cache` ignore metadata, and incidental package/license text.
+- 2026-11-15: Phase 10 completed. Removed the Python backend sources, tests, migration scripts and requirements; moved the Dockerfile to the repository root. Schema v15 hardens auth storage (hashed sync/invite tokens, token versioning) and adds cascading foreign keys to `auth_users`.
+- 2026-11-15: Renamed `backend-go/` to `backend/` and the Go module path to `github.com/jlemmings/divevault/backend`.

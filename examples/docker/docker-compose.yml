@@ -4,39 +4,41 @@ services:
     environment:
       POSTGRES_DB: dive
       POSTGRES_USER: dive
-      POSTGRES_PASSWORD: dive
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-dive}
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
       interval: 10s
       timeout: 5s
       retries: 5
-    ports:
-      - "5432:5432"
+    # Not published on the host; only the backend reaches PostgreSQL over
+    # the compose network. Uncomment for local debugging on loopback only.
+    # ports:
+    #   - "127.0.0.1:5432:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
 
   migrate:
-    image: ghcr.io/jlemmings/divevault:latest
+    image: ghcr.io/jlemmings/divevault:${DIVEVAULT_VERSION:-0.4.0}
     depends_on:
       postgres:
         condition: service_healthy
     environment:
-      DATABASE_URL: postgresql://dive:dive@postgres:5432/dive
+      DATABASE_URL: postgresql://dive:${POSTGRES_PASSWORD:-dive}@postgres:5432/dive
     command: ["/app/divevault", "migrate"]
     restart: "no"
 
   backend:
-    image: ghcr.io/jlemmings/divevault:latest
+    image: ghcr.io/jlemmings/divevault:${DIVEVAULT_VERSION:-0.4.0}
     depends_on:
       postgres:
         condition: service_healthy
       migrate:
         condition: service_completed_successfully
     environment:
-      DATABASE_URL: postgresql://dive:dive@postgres:5432/dive
+      DATABASE_URL: postgresql://dive:${POSTGRES_PASSWORD:-dive}@postgres:5432/dive
       HOST: 0.0.0.0
       PORT: 8000
-      CORS_ORIGIN: http://localhost:5173
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:8000}
       FRONTEND_DIR: /app/frontend/dist
       MAX_JSON_BODY_BYTES: 1048576
       MAX_BACKUP_IMPORT_BYTES: 26214400
@@ -46,11 +48,13 @@ services:
       RATE_LIMIT_CLI_APPROVE_PER_WINDOW: 15
       RATE_LIMIT_BACKUP_IMPORT_PER_WINDOW: 10
       RATE_LIMIT_DIVE_UPLOAD_PER_WINDOW: 120
-      AUTH_JWT_SECRET: ${AUTH_JWT_SECRET:-dev-only-change-me}
+      # Required. Generate with: openssl rand -base64 48
+      AUTH_JWT_SECRET: ${AUTH_JWT_SECRET:?Set AUTH_JWT_SECRET to at least 32 random characters}
       AUTH_JWT_ISSUER: ${AUTH_JWT_ISSUER:-divevault.local}
       AUTH_JWT_AUDIENCE: ${AUTH_JWT_AUDIENCE:-divevault.app}
       AUTH_TOKEN_TTL_SECONDS: ${AUTH_TOKEN_TTL_SECONDS:-43200}
       LOG_LEVEL: INFO
+      LOG_FORMAT: json
     ports:
       - "8000:8000"
 

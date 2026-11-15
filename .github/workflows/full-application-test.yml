@@ -6,6 +6,9 @@ on:
       - master
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 env:
   DATABASE_URL: postgresql://dive:dive@127.0.0.1:5432/dive
   FULL_APP_BASE_URL: http://127.0.0.1:8000
@@ -37,8 +40,8 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v7
         with:
-          go-version-file: backend-go/go.mod
-          cache-dependency-path: backend-go/go.sum
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
 
       - name: Set up Node
         uses: actions/setup-node@v7
@@ -60,10 +63,18 @@ jobs:
           npx playwright install --with-deps
 
       - name: Run Go backend tests
-        working-directory: backend-go
+        working-directory: backend
         env:
           TEST_DATABASE_URL: ${{ env.DATABASE_URL }}
         run: go test ./...
+
+      - name: Scan Go dependencies for known vulnerabilities
+        working-directory: backend
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
+
+      - name: Audit production npm dependencies
+        working-directory: frontend
+        run: npm audit --omit=dev --audit-level=high
 
       - name: Run frontend lint
         working-directory: frontend
@@ -92,9 +103,9 @@ jobs:
         run: npm run build:app
 
       - name: Start deployed backend with built frontend and auth
-        working-directory: backend-go
+        working-directory: backend
         env:
-          AUTH_JWT_SECRET: full-application-test-secret
+          AUTH_JWT_SECRET: full-application-test-secret-0123456789abcdef
           AUTH_JWT_ISSUER: divevault.full-application-test
           AUTH_JWT_AUDIENCE: divevault.full-application-test
           STARTUP_MIGRATIONS: enabled

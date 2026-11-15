@@ -4,7 +4,7 @@
     {
       "label": "dev: backend",
       "type": "shell",
-      "command": "go run ./backend-go/cmd/divevault",
+      "command": "go run ./backend/cmd/divevault",
       "options": { "cwd": "${workspaceFolder}" },
       "problemMatcher": [],
       "presentation": { "panel": "dedicated", "group": "dev" }
