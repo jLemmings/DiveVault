@@ -18,7 +18,7 @@ services:
       - postgres-data:/var/lib/postgresql/data
 
   migrate:
-    image: ghcr.io/jlemmings/divevault:${DIVEVAULT_VERSION:-0.4.0} # x-release-please-version
+    image: ghcr.io/jlemmings/divevault:${DIVEVAULT_VERSION:-0.5.0} # x-release-please-version
     depends_on:
       postgres:
         condition: service_healthy
@@ -28,7 +28,7 @@ services:
     restart: "no"
 
   backend:
-    image: ghcr.io/jlemmings/divevault:${DIVEVAULT_VERSION:-0.4.0} # x-release-please-version
+    image: ghcr.io/jlemmings/divevault:${DIVEVAULT_VERSION:-0.5.0} # x-release-please-version
     depends_on:
       postgres:
         condition: service_healthy
