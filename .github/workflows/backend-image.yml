@@ -15,7 +15,7 @@ env:
   IMAGE_ARTIFACT_NAME: docker-image
   LOCAL_IMAGE_TAG: divevault-ci:${{ github.sha }}
   FULL_APP_BASE_URL: http://127.0.0.1:8000
-  NODE_VERSION: "24.18.0"
+  NODE_VERSION: "24.22.3"
 
 jobs:
   fetch-artifacts:

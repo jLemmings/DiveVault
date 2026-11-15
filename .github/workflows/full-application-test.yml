@@ -12,7 +12,7 @@ permissions:
 env:
   DATABASE_URL: postgresql://dive:dive@127.0.0.1:5432/dive
   FULL_APP_BASE_URL: http://127.0.0.1:8000
-  NODE_VERSION: "24.16.0"
+  NODE_VERSION: "24.22.3"
 
 jobs:
   full-application-test:
