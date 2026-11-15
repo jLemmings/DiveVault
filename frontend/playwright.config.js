@@ -13,7 +13,10 @@ export default defineConfig({
     viewport: { width: 1440, height: 1100 }
   },
   webServer: {
-    command: "node scripts/serve-dist.mjs 4173 15000",
+    // Playwright stops the server when the run ends. The idle timeout only
+    // cleans up orphaned servers, so it must outlast tests that talk only to
+    // mocked API routes (CI WebKit runs can take well over 15 seconds).
+    command: "node scripts/serve-dist.mjs 4173 600000",
     port: 4173,
     reuseExistingServer: !process.env.CI,
     gracefulShutdown: { signal: "SIGTERM", timeout: 5000 },
