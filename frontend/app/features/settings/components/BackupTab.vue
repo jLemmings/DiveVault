@@ -27,15 +27,15 @@ export default {
   <div class="settings-panel settings-card">
     <div class="settings-card-header">
       <div>
-        <p class="font-label text-[10px] font-bold uppercase tracking-[0.24em] text-primary">Backup</p>
-        <h4 class="mt-2 font-headline text-3xl font-bold tracking-tight text-on-surface">Backup And Restore</h4>
-        <p class="mt-3 max-w-3xl text-sm leading-7 text-secondary">
-          Backup tasks are separated from everyday exports so destructive restore actions feel more deliberate and easier to understand.
-        </p>
+        <p class="font-label text-xs font-medium text-primary">Backup</p>
+        <h4 class="mt-2 font-headline text-3xl font-bold tracking-tight text-on-surface">Backup and restore</h4>
+        <p class="mt-3 max-w-3xl text-sm leading-7 text-secondary">Download a full backup of your data, or restore from one.</p>
       </div>
     </div>
 
-    <div v-if="dataManagementStatus" class="settings-feedback border-primary/20 bg-primary/10 text-primary">{{ dataManagementStatus }}</div>
+    <div v-if="dataManagementStatus" class="settings-feedback border-outline-variant/60 bg-primary/10 text-primary">
+      {{ dataManagementStatus }}
+    </div>
     <div v-if="dataManagementError" class="settings-feedback border-error/20 bg-error-container/20 text-on-error-container">
       {{ dataManagementError }}
     </div>
@@ -46,7 +46,7 @@ export default {
           <div class="flex items-center gap-3">
             <span class="material-symbols-outlined text-primary">archive</span>
             <p class="font-headline text-xl font-bold text-on-surface">
-              {{ dataManagementAction === "Exporting Backup" ? "Building Full Backup" : "Download Full Backup" }}
+              {{ dataManagementAction === "Exporting backup" ? "Building full backup" : "Download full backup" }}
             </p>
           </div>
           <p class="mt-3 text-sm leading-6 text-secondary">
@@ -61,7 +61,7 @@ export default {
           <div class="flex items-center gap-3">
             <span class="material-symbols-outlined text-primary">upload_file</span>
             <p class="font-headline text-xl font-bold text-on-surface">
-              {{ dataManagementAction === "Importing Backup" ? "Importing Backup" : "Import From Backup" }}
+              {{ dataManagementAction === "Importing backup" ? "Importing backup" : "Import from backup" }}
             </p>
           </div>
           <p class="mt-3 text-sm leading-6 text-secondary">

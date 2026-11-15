@@ -434,8 +434,8 @@ export default {
     importedDiveLabel() {
       const count = Number(this.importedDiveCount || 0);
       return this.t(
-        count === 1 ? "{count} imported dive awaiting completion" : "{count} imported dives awaiting completion",
-        count === 1 ? "{count} imported dive awaiting completion" : "{count} imported dives awaiting completion",
+        count === 1 ? "{count} imported dive to finish" : "{count} imported dives to finish",
+        count === 1 ? "{count} imported dive to finish" : "{count} imported dives to finish",
         { count }
       );
     },
@@ -460,7 +460,7 @@ export default {
         {
           id: "dive-count",
           icon: "database",
-          label: "Dive Count",
+          label: "Dive count",
           value: String(this.stats?.totalDives || 0),
           unit: "Dives",
           detail: `${this.yearlyDiveCount} this year`
@@ -468,7 +468,7 @@ export default {
         {
           id: "bottom-time",
           icon: "timer",
-          label: "Bottom Time",
+          label: "Bottom time",
           value: this.totalBottomTimeLabel.replace("h ", "h\n"),
           unit: "",
           detail: this.averageBottomTimeLabel
@@ -476,7 +476,7 @@ export default {
         {
           id: "max-depth",
           icon: "straighten",
-          label: "Max Depth",
+          label: "Max depth",
           value: `${this.formatDepthNumber(this.stats?.maxDepth)} m`,
           unit: "",
           detail: "Deepest logged dive"
@@ -484,7 +484,7 @@ export default {
         {
           id: "gas-used",
           icon: "water_drop",
-          label: "Air Consumption",
+          label: "Air consumption",
           value: `${this.formatBarTotal(this.stats?.totalBarConsumed)} bar`,
           unit: "",
           detail: "Recorded consumption"
@@ -492,7 +492,7 @@ export default {
         {
           id: "mapped-sites",
           icon: "explore",
-          label: "Mapped Sites",
+          label: "Mapped sites",
           value: String(this.mappedSiteCount),
           unit: "Sites",
           detail: `${this.mappedDiveCount} mapped dives`
@@ -500,7 +500,7 @@ export default {
         {
           id: "import-queue",
           icon: this.hasImportedDives ? "warning" : "task_alt",
-          label: "Import Queue",
+          label: "Import queue",
           value: String(Number(this.importedDiveCount || 0)),
           unit: "Pending",
           detail: this.hasImportedDives ? "Needs review" : "Clear"
@@ -616,7 +616,7 @@ export default {
           "No coordinates found in committed dives or saved dive sites",
           "No coordinates found in committed dives or saved dive sites"
         );
-      if (!this.unmappedDiveCount) return this.t("Geotag coverage complete", "Geotag coverage complete");
+      if (!this.unmappedDiveCount) return this.t("All dives have coordinates", "All dives have coordinates");
       return this.t(
         this.unmappedDiveCount === 1 ? "{count} dive is missing coordinates" : "{count} dives are missing coordinates",
         this.unmappedDiveCount === 1 ? "{count} dive is missing coordinates" : "{count} dives are missing coordinates",
@@ -636,12 +636,12 @@ export default {
           "Add coordinates to saved dive sites to place committed dives accurately on the map."
         );
       return this.t(
-        "Saved dive-site coordinates take priority over raw telemetry so the map reflects the curated logbook location for each dive.",
-        "Saved dive-site coordinates take priority over raw telemetry so the map reflects the curated logbook location for each dive."
+        "Coordinates from your saved dive sites take priority over GPS data from the dive computer.",
+        "Coordinates from your saved dive sites take priority over GPS data from the dive computer."
       );
     },
     mapTelemetryLabel() {
-      if (!this.hasDiveMapMarkers) return this.t("Awaiting usable GPS telemetry", "Awaiting usable GPS telemetry");
+      if (!this.hasDiveMapMarkers) return this.t("No GPS data yet", "No GPS data yet");
       return this.t(
         this.mappedDiveCount === 1
           ? "{diveCount} dive plotted across {siteCount} {siteLabel}"
@@ -665,18 +665,16 @@ export default {
     <section v-if="hasImportedDives && !isMapView" class="dashboard-glass-card border-l-4 border-tertiary p-5">
       <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div>
-          <p class="dashboard-micro-label text-tertiary">Attention Required</p>
+          <p class="dashboard-micro-label text-tertiary">Needs attention</p>
           <h4 class="mt-2 font-headline text-2xl font-bold text-primary">{{ importedDiveLabel }}</h4>
-          <p class="mt-2 text-sm leading-6 text-on-surface-variant">
-            Complete the dive site before these imported dives enter the logbook. Buddy and guide can stay blank.
-          </p>
+          <p class="mt-2 text-sm leading-6 text-on-surface-variant">Add the missing details to move them into your logbook.</p>
         </div>
         <button
           type="button"
           @click="openImportQueue()"
-          class="rounded-xl bg-tertiary px-5 py-3 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-background transition-transform hover:scale-[0.98]"
+          class="rounded-xl bg-tertiary px-5 py-3 font-label text-sm font-semibold text-background transition-transform hover:scale-[0.98]"
         >
-          Review Imported Dives
+          Review imports
         </button>
       </div>
     </section>
@@ -685,7 +683,7 @@ export default {
       <aside v-if="!isMapView" class="dashboard-side-rail">
         <section class="dashboard-glass-card dashboard-section dashboard-recent-card flex min-h-[30rem] flex-col p-5">
           <div class="mb-6 flex items-center justify-between">
-            <h4 class="font-headline text-xl font-bold text-primary">Recent Dives</h4>
+            <h4 class="font-headline text-xl font-bold text-primary">Recent dives</h4>
           </div>
           <div class="dashboard-feed flex-1 overflow-y-auto pr-1">
             <article
@@ -715,9 +713,9 @@ export default {
           <button
             type="button"
             @click="setView('logs')"
-            class="mt-6 flex items-center gap-2 self-start font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary hover:underline"
+            class="mt-6 flex items-center gap-2 self-start font-label text-sm font-semibold text-secondary hover:underline"
           >
-            View All Logs <span class="material-symbols-outlined text-sm">arrow_forward</span>
+            View all logs <span class="material-symbols-outlined text-sm">arrow_forward</span>
           </button>
         </section>
       </aside>
@@ -730,12 +728,7 @@ export default {
             class="dashboard-glass-card dashboard-stat-tile p-4"
           >
             <div class="dashboard-stat-icon-wrap">
-              <span
-                class="material-symbols-outlined dashboard-stat-icon text-secondary"
-                :class="card.id === 'dive-count' ? 'dashboard-neon' : ''"
-                :style="filledIconStyle"
-                >{{ card.icon }}</span
-              >
+              <span class="material-symbols-outlined dashboard-stat-icon text-secondary" :style="filledIconStyle">{{ card.icon }}</span>
             </div>
             <div class="min-w-0">
               <p class="dashboard-stat-label">{{ card.label }}</p>
@@ -750,7 +743,7 @@ export default {
         <section
           :class="
             isMapExpanded
-              ? 'fixed inset-0 z-[490] flex items-center justify-center bg-background/88 px-6 py-8 backdrop-blur-sm'
+              ? 'fixed inset-0 z-[490] flex items-center justify-center bg-background/88 px-6 py-8'
               : isMapView
                 ? 'dashboard-section dashboard-map-section relative min-h-[calc(100vh-10rem)]'
                 : 'dashboard-section dashboard-map-section relative min-h-[31rem]'
@@ -766,7 +759,7 @@ export default {
                 type="button"
                 v-if="isMapExpanded"
                 @click="closeMapExpanded()"
-                class="absolute right-6 top-6 z-[480] rounded-full border border-outline-variant/30 bg-background/65 px-4 py-2 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-primary backdrop-blur-sm"
+                class="absolute right-6 top-6 z-[480] rounded-full border border-outline-variant/30 bg-background/65 px-4 py-2 font-label text-sm font-semibold text-primary"
               >
                 Close
               </button>
@@ -805,24 +798,24 @@ export default {
 
     <div
       v-if="showMissingCoordinateDives && missingCoordinateDives.length"
-      class="fixed inset-0 z-[500] flex items-center justify-center bg-background/88 px-6 py-8 backdrop-blur-sm"
+      class="fixed inset-0 z-[500] flex items-center justify-center bg-background/88 px-6 py-8"
       @click.self="closeMissingCoordinateDives()"
     >
       <section class="max-h-full w-full max-w-6xl overflow-auto border border-tertiary/18 bg-surface-container-low p-6 shadow-panel md:p-8">
         <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div>
-            <p class="font-label text-[10px] font-bold uppercase tracking-[0.22em] text-tertiary">Missing Coordinates</p>
+            <p class="font-label text-xs font-medium text-tertiary">Missing coordinates</p>
             <h5 class="mt-2 font-headline text-3xl font-bold tracking-tight">
-              {{ unmappedDiveCount }} {{ unmappedDiveCount === 1 ? "Dive Needs Coordinates" : "Dives Need Coordinates" }}
+              {{ unmappedDiveCount }} {{ unmappedDiveCount === 1 ? "Dive needs coordinates" : "Dives need coordinates" }}
             </h5>
             <p class="mt-3 max-w-3xl text-sm leading-7 text-on-surface-variant">
-              These committed logbook dives do not currently resolve to a saved dive-site coordinate or usable embedded GPS position.
+              These dives have no coordinates from a saved dive site or from the dive computer.
             </p>
           </div>
           <button
             type="button"
             @click="closeMissingCoordinateDives()"
-            class="self-start bg-surface-container-high px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary transition-colors hover:text-primary"
+            class="self-start bg-surface-container-high px-4 py-3 font-label text-sm font-semibold text-secondary transition-colors hover:text-primary"
           >
             Close
           </button>
@@ -836,34 +829,34 @@ export default {
           >
             <div class="flex items-start justify-between gap-4">
               <div class="min-w-0">
-                <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Dive {{ dive.displayIndex }}</p>
+                <p class="font-label text-xs font-medium text-secondary">Dive {{ dive.displayIndex }}</p>
                 <h6 class="mt-2 truncate font-headline text-xl font-bold text-on-surface">{{ dive.siteName }}</h6>
                 <p class="mt-1 text-sm text-on-surface-variant">{{ dive.title }}</p>
               </div>
               <button
                 type="button"
                 @click="openMissingCoordinateDive(dive.id)"
-                class="bg-primary px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.18em] text-on-primary"
+                class="bg-primary px-4 py-3 font-label text-sm font-semibold text-on-primary"
               >
-                Open Dive
+                Open dive
               </button>
             </div>
 
             <div class="mt-4 grid gap-3 md:grid-cols-2">
               <div>
-                <p class="font-label text-[10px] font-bold uppercase tracking-[0.16em] text-secondary">Date</p>
+                <p class="font-label text-xs font-medium text-secondary">Date</p>
                 <p class="mt-1 text-sm font-semibold text-on-surface">{{ formatDate(dive.date) }} {{ formatTime(dive.date) }}</p>
               </div>
               <div>
-                <p class="font-label text-[10px] font-bold uppercase tracking-[0.16em] text-secondary">Dive Computer</p>
+                <p class="font-label text-xs font-medium text-secondary">Dive computer</p>
                 <p class="mt-1 text-sm font-semibold text-on-surface">{{ dive.device }}</p>
               </div>
               <div>
-                <p class="font-label text-[10px] font-bold uppercase tracking-[0.16em] text-secondary">Depth / Duration</p>
+                <p class="font-label text-xs font-medium text-secondary">Depth / duration</p>
                 <p class="mt-1 text-sm font-semibold text-on-surface">{{ dive.depth }} / {{ dive.duration }}</p>
               </div>
               <div>
-                <p class="font-label text-[10px] font-bold uppercase tracking-[0.16em] text-secondary">Issue</p>
+                <p class="font-label text-xs font-medium text-secondary">Issue</p>
                 <p class="mt-1 text-sm font-semibold text-tertiary">{{ dive.reason }}</p>
               </div>
             </div>

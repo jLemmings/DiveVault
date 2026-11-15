@@ -32,14 +32,14 @@ test("runs auth, frontend, and backend against a deployed app stack", async ({ p
   const statusPayload = await statusResponse.json();
   const hasExplicitCredentials = Boolean(process.env.FULL_APP_TEST_EMAIL && process.env.FULL_APP_TEST_PASSWORD);
   if (statusPayload.public_registration_open && !hasExplicitCredentials) {
-    await page.getByRole("button", { name: "Create Account" }).click();
+    await page.getByRole("button", { name: "Create account" }).click();
     await expect(page.getByRole("heading", { name: "Create your DiveVault account" })).toBeVisible();
 
     await page.getByPlaceholder("Email").fill(TEST_EMAIL);
     await page.getByPlaceholder("Password").fill(TEST_PASSWORD);
     await page.getByPlaceholder("First name").fill("Full");
     await page.getByPlaceholder("Last name").fill("Stack");
-    await page.getByRole("button", { name: "Create Account" }).click();
+    await page.getByRole("button", { name: "Create account" }).click();
     await expect(page.getByText("Account created. Sign in with your new credentials.")).toBeVisible();
     expectedCreatedAccount = {
       email: TEST_EMAIL,
@@ -56,7 +56,7 @@ test("runs auth, frontend, and backend against a deployed app stack", async ({ p
 
   await page.getByPlaceholder("Email").fill(TEST_EMAIL);
   await page.getByPlaceholder("Password").fill(TEST_PASSWORD);
-  await page.getByRole("button", { name: "Sign In" }).click();
+  await page.getByRole("button", { name: "Sign in" }).click();
   await waitForDashboardOrAuthError(page);
 
   const token = await page.evaluate(() => window.localStorage.getItem("divevault_auth_token"));
@@ -74,23 +74,23 @@ test("runs auth, frontend, and backend against a deployed app stack", async ({ p
   }
 
   await page.goto("/logs");
-  await expect(page.getByRole("heading", { name: "Dive Logs", exact: true })).toBeVisible({ timeout: 30000 });
-  await page.getByRole("button", { name: "New Entry" }).click();
-  await expect(page.getByRole("heading", { name: "Manual Dive Entry" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Dive logs", exact: true })).toBeVisible({ timeout: 30000 });
+  await page.getByRole("button", { name: "New entry" }).click();
+  await expect(page.getByRole("heading", { name: "Manual dive entry" })).toBeVisible();
 
   await page.locator("input[type='date']:visible").fill("2026-06-02");
   await page.locator("input[type='time']:visible").fill("10:30");
   await page.getByPlaceholder("45").fill("37");
   await page.getByPlaceholder("18.0").fill("14.2");
-  await chooseComboboxOption(page, "Tank Volume", "12L");
+  await chooseComboboxOption(page, "Tank volume", "12L");
   await page.getByPlaceholder("House Reef").fill(TEST_SITE);
   await page
     .getByPlaceholder("Conditions, wildlife, route, entry, navigation, visibility...")
     .fill("Created by the full application CI pipeline.");
-  await page.getByRole("button", { name: "Create Dive Log" }).click();
+  await page.getByRole("button", { name: "Create dive log" }).click();
 
   await expect(page.getByRole("heading", { name: TEST_SITE })).toBeVisible({ timeout: 30000 });
-  await expect(page.getByRole("button", { name: "Back To Logs" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Back to logs" })).toBeVisible();
 
   const divesResponse = await request.get("/api/dives?limit=25&include_samples=1", {
     headers: { Authorization: `Bearer ${token}` }

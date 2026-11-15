@@ -36,9 +36,9 @@ export default {
         "on-error-container": "rgb(var(--color-on-error-container) / <alpha-value>)"
       },
       fontFamily: {
-        headline: ["Space Grotesk", "sans-serif"],
+        headline: ["Manrope Variable", "Manrope", "sans-serif"],
         body: ["Manrope Variable", "Manrope", "sans-serif"],
-        label: ["Space Grotesk", "sans-serif"]
+        label: ["Manrope Variable", "Manrope", "sans-serif"]
       },
       boxShadow: {
         panel: "var(--shadow-panel)"

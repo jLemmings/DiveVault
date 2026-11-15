@@ -193,28 +193,28 @@ export default {
     },
     activeSection() {
       if (this.activeView === "edit" && this.selectedEditDive) {
-        return { eyebrow: "Dive Archive", title: "Logbook Editor" };
+        return { eyebrow: "Dive archive", title: "Logbook editor" };
       }
       if (this.activeView === "create") {
-        return { eyebrow: "Dive Archive", title: "Manual Dive Entry" };
+        return { eyebrow: "Dive archive", title: "Manual dive entry" };
       }
       if (this.activeView === "imports" && this.selectedImportDive) {
-        return { eyebrow: "Synchronization Module", title: "Imported Dive Editor" };
+        return { eyebrow: "Imports", title: "Imported dive editor" };
       }
       if (this.activeView === "imports") {
-        return { eyebrow: "Synchronization Module", title: "Imported Dives" };
+        return { eyebrow: "Imports", title: "Imported dives" };
       }
       if (this.activeView === "logs" && this.selectedDive) {
-        return { eyebrow: "Dive Archive", title: "Dive Detail" };
+        return { eyebrow: "Dive archive", title: "Dive detail" };
       }
       return this.navItems.find((item) => item.id === this.activeView) || this.navItems[0];
     },
     activeMenuTitle() {
       if (this.activeView === "edit" || this.activeView === "create" || this.activeView === "imports") {
-        return this.navItems.find((item) => item.id === "logs")?.label || "Dive Logs";
+        return this.navItems.find((item) => item.id === "logs")?.label || "Dive logs";
       }
       if (this.activeView === "logs") {
-        return this.navItems.find((item) => item.id === "logs")?.label || "Dive Logs";
+        return this.navItems.find((item) => item.id === "logs")?.label || "Dive logs";
       }
       return this.navItems.find((item) => item.id === this.activeView)?.label || "Dashboard";
     },
@@ -240,13 +240,13 @@ export default {
         : null;
     },
     backendStatusLabel() {
-      if (this.loading) return "Syncing telemetry";
+      if (this.loading) return "Syncing";
       if (this.error) return "Backend unreachable";
       return this.backendHealthy ? "Backend online" : "Backend idle";
     },
     statusDetail() {
-      if (this.loading) return "Waiting for API response.";
-      if (this.error) return "Check the backend server and API routes.";
+      if (this.loading) return "Waiting for the server...";
+      if (this.error) return "Check that the DiveVault server is running, then try again.";
       return `${this.dives.length} dives loaded from /api/dives`;
     },
     stats() {
@@ -561,7 +561,7 @@ export default {
   <public-profile-view v-if="isPublicRoute" :slug="publicRouteSlug"></public-profile-view>
   <div v-else-if="!authLoaded" class="flex min-h-screen items-center justify-center bg-background px-6 text-on-background">
     <section class="bg-surface-container-low p-10 shadow-panel">
-      <p class="font-headline text-2xl font-bold">Loading secure access...</p>
+      <p class="font-headline text-2xl font-bold">Loading...</p>
     </section>
   </div>
   <login-view v-else-if="!isAuthenticated" :current-locale="i18nLocale" :set-locale="setLocale"></login-view>
@@ -569,9 +569,9 @@ export default {
     <div class="app-stage-wave auth-stage-wave auth-stage-wave-back"></div>
     <div class="app-stage-wave auth-stage-wave auth-stage-wave-front"></div>
     <div class="app-stage-caustics auth-stage-caustics"></div>
-    <aside class="fixed inset-y-0 left-0 z-40 hidden w-64 flex-col bg-background shadow-[40px_0_40px_-20px_rgba(0,15,29,0.4)] md:flex">
+    <aside class="fixed inset-y-0 left-0 z-40 hidden w-64 flex-col border-r border-outline-variant/60 bg-background md:flex">
       <div class="flex justify-center px-4 pb-2 pt-5">
-        <div class="flex h-32 w-full items-center justify-center rounded-3xl shadow-panel">
+        <div class="flex h-32 w-full items-center justify-center">
           <img src="/logo-headline.png" alt="DiveVault" class="max-h-full w-full object-contain p-2" />
         </div>
       </div>
@@ -595,11 +595,9 @@ export default {
               :style="(activeView === item.id || (activeView === 'create' && item.id === 'logs')) && !item.disabled ? filledIconStyle : ''"
               >{{ item.icon }}</span
             >
-            <span class="hidden items-center gap-2 font-label text-[11px] font-bold md:flex">
+            <span class="hidden items-center gap-2 font-label text-xs font-bold md:flex">
               <span>{{ item.label }}</span>
-              <span v-if="item.badge" class="rounded bg-tertiary px-2 py-0.5 text-[9px] font-black tracking-[0.18em] text-background">{{
-                item.badge
-              }}</span>
+              <span v-if="item.badge" class="rounded bg-tertiary px-2 py-0.5 text-xs font-semibold text-background">{{ item.badge }}</span>
             </span>
           </button>
         </div>
@@ -608,66 +606,66 @@ export default {
         <button
           type="button"
           @click="openManualDiveCreator()"
-          class="hidden w-full items-center justify-center gap-2 bg-primary px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-on-primary transition-all hover:brightness-110 md:flex"
+          class="hidden w-full items-center justify-center gap-2 bg-primary px-4 py-3 font-label text-sm font-semibold text-on-primary transition-all hover:brightness-110 md:flex"
         >
           <span class="material-symbols-outlined text-sm">add</span>
-          Log New Dive
+          Log new dive
         </button>
       </div>
     </aside>
     <header
-      class="fixed left-0 right-0 top-0 z-30 h-16 border-b border-primary/10 bg-surface-container-high/95 backdrop-blur-xl md:left-64 md:bg-background/80"
+      class="fixed left-0 right-0 top-0 z-30 h-16 border-b border-outline-variant/60 bg-surface-container-high/95 md:left-64 md:bg-background/80"
     >
       <div class="relative flex h-full items-center justify-between px-6 md:hidden">
         <div class="flex items-center gap-3">
-          <div class="flex h-14 w-14 items-center justify-center rounded-2xl shadow-panel">
+          <div class="flex h-14 w-14 items-center justify-center rounded-xl shadow-panel">
             <img src="/logo.png" alt="DiveVault" class="max-h-full max-w-full object-contain p-1" />
           </div>
-          <h2 class="font-headline text-lg font-bold uppercase tracking-[0.14em] text-primary">{{ activeMenuTitle }}</h2>
+          <h2 class="font-headline text-lg font-semibold text-primary">{{ activeMenuTitle }}</h2>
         </div>
         <div class="relative">
           <UButton
             @click="toggleMobileAccountMenu"
-            class="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-primary/15 bg-surface-container-high text-[11px] font-bold uppercase tracking-[0.12em] text-primary"
+            class="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-outline-variant/60 bg-surface-container-high text-sm font-semibold text-primary"
           >
             {{ currentUserInitials }}
           </UButton>
           <div
             v-if="mobileAccountMenuOpen"
-            class="absolute right-0 top-[calc(100%+0.75rem)] z-40 w-56 rounded-2xl border border-primary/10 bg-surface-container-low p-3 shadow-panel"
+            class="absolute right-0 top-[calc(100%+0.75rem)] z-40 w-56 rounded-xl border border-outline-variant/60 bg-surface-container-low p-3 shadow-panel"
           >
-            <div class="border-b border-primary/10 pb-3">
+            <div class="border-b border-outline-variant/60 pb-3">
               <p class="truncate text-sm font-semibold text-on-surface">{{ currentUserName }}</p>
               <p class="mt-1 truncate text-xs text-secondary">{{ currentUserEmail }}</p>
             </div>
             <div class="mt-3 flex flex-col gap-2">
               <UButton
                 @click="openMobileSettings()"
-                class="inline-flex items-center justify-center rounded-xl bg-surface-container-high px-3 py-2 font-label text-[10px] font-bold uppercase tracking-[0.16em] text-primary transition-colors hover:bg-surface-container-highest"
+                class="inline-flex items-center justify-center rounded-xl bg-surface-container-high px-3 py-2 font-label text-sm font-semibold text-primary transition-colors hover:bg-surface-container-highest"
               >
-                Open Settings
+                Open settings
               </UButton>
               <UButton
                 @click="openPasswordDialog"
-                class="inline-flex items-center justify-center rounded-xl bg-surface-container-high px-3 py-2 font-label text-[10px] font-bold uppercase tracking-[0.16em] text-primary transition-colors hover:bg-surface-container-highest"
+                class="inline-flex items-center justify-center rounded-xl bg-surface-container-high px-3 py-2 font-label text-sm font-semibold text-primary transition-colors hover:bg-surface-container-highest"
               >
-                Change Password
+                Change password
               </UButton>
               <UButton
                 @click="signOutUser"
-                class="inline-flex items-center justify-center rounded-xl border border-primary/15 px-3 py-2 font-label text-[10px] font-bold uppercase tracking-[0.16em] text-primary transition-colors hover:bg-surface-container-high"
+                class="inline-flex items-center justify-center rounded-xl border border-outline-variant/60 px-3 py-2 font-label text-sm font-semibold text-primary transition-colors hover:bg-surface-container-high"
               >
-                Sign Out
+                Sign out
               </UButton>
             </div>
           </div>
         </div>
       </div>
       <div class="hidden h-full items-center justify-between px-8 md:flex">
-        <h2 class="font-headline text-2xl font-bold tracking-[0.08em] text-primary">{{ activeMenuTitle }}</h2>
-        <div class="relative flex items-center gap-4 border-l border-primary/10 pl-5 text-on-surface">
+        <h2 class="font-headline text-2xl font-bold text-primary">{{ activeMenuTitle }}</h2>
+        <div class="relative flex items-center gap-4 border-l border-outline-variant/60 pl-5 text-on-surface">
           <div class="min-w-0 text-right">
-            <p class="font-label text-[9px] font-bold uppercase tracking-[0.18em] text-secondary/70">Diver</p>
+            <p class="font-label text-xs font-medium text-secondary/70">Diver</p>
             <p class="max-w-[11rem] truncate text-sm font-semibold leading-5 text-on-surface">{{ currentUserName }}</p>
           </div>
           <UButton
@@ -675,7 +673,7 @@ export default {
             type="button"
             aria-label="Account menu"
             :aria-expanded="desktopAccountMenuOpen ? 'true' : 'false'"
-            class="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-primary/15 bg-background/50 text-[11px] font-bold uppercase tracking-[0.12em] text-primary shadow-[inset_0_1px_0_rgba(205,229,255,0.08)] transition-colors hover:border-primary/35 hover:bg-primary/12"
+            class="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-outline-variant/60 bg-background/50 text-sm font-semibold text-primary transition-colors hover:border-outline-variant hover:bg-primary/12"
           >
             {{ currentUserInitials }}
             <span
@@ -690,24 +688,24 @@ export default {
           </UButton>
           <div
             v-if="desktopAccountMenuOpen"
-            class="absolute right-0 top-[calc(100%+0.75rem)] z-40 w-56 rounded-2xl border border-primary/10 bg-surface-container-low p-3 shadow-panel"
+            class="absolute right-0 top-[calc(100%+0.75rem)] z-40 w-56 rounded-xl border border-outline-variant/60 bg-surface-container-low p-3 shadow-panel"
           >
-            <div class="border-b border-primary/10 pb-3">
+            <div class="border-b border-outline-variant/60 pb-3">
               <p class="truncate text-sm font-semibold text-on-surface">{{ currentUserName }}</p>
               <p class="mt-1 truncate text-xs text-secondary">{{ currentUserEmail }}</p>
             </div>
             <div class="mt-3 flex flex-col gap-2">
               <UButton
                 @click="openPasswordDialog"
-                class="inline-flex items-center justify-center rounded-xl bg-surface-container-high px-3 py-2 font-label text-[10px] font-bold uppercase tracking-[0.16em] text-primary transition-colors hover:bg-surface-container-highest"
+                class="inline-flex items-center justify-center rounded-xl bg-surface-container-high px-3 py-2 font-label text-sm font-semibold text-primary transition-colors hover:bg-surface-container-highest"
               >
-                Change Password
+                Change password
               </UButton>
               <UButton
                 @click="signOutUser"
-                class="inline-flex items-center justify-center rounded-xl border border-primary/15 px-3 py-2 font-label text-[10px] font-bold uppercase tracking-[0.16em] text-primary transition-colors hover:bg-surface-container-high"
+                class="inline-flex items-center justify-center rounded-xl border border-outline-variant/60 px-3 py-2 font-label text-sm font-semibold text-primary transition-colors hover:bg-surface-container-high"
               >
-                Sign Out
+                Sign out
               </UButton>
             </div>
           </div>
@@ -720,26 +718,26 @@ export default {
         :class="activeView === 'map' ? 'w-full max-w-none px-0 md:max-w-[96rem] md:px-8' : 'max-w-md px-4 md:max-w-[96rem] md:px-8'"
       >
         <section v-if="loading" class="space-y-6">
-          <div class="border border-primary/10 bg-surface-container-low p-6 shadow-panel animate-pulse">
-            <p class="font-label text-[10px] font-bold uppercase tracking-[0.22em] text-primary">
+          <div class="border border-outline-variant/60 bg-surface-container-low p-6 shadow-panel animate-pulse">
+            <p class="font-label text-xs font-medium text-primary">
               {{
                 loadingViewKey === "dashboard"
-                  ? "Loading Dashboard"
+                  ? "Loading dashboard"
                   : loadingViewKey === "map"
-                    ? "Loading Dive Map"
+                    ? "Loading dive map"
                     : loadingViewKey === "logs"
-                      ? "Loading Dive Log"
+                      ? "Loading dive log"
                       : loadingViewKey === "detail"
-                        ? "Loading Dive Detail"
+                        ? "Loading dive detail"
                         : loadingViewKey === "imports"
-                          ? "Loading Imports"
+                          ? "Loading imports"
                           : loadingViewKey === "edit"
-                            ? "Loading Dive Editor"
+                            ? "Loading dive editor"
                             : loadingViewKey === "create"
-                              ? "Loading Manual Entry"
+                              ? "Loading manual entry"
                               : loadingViewKey === "equipment"
-                                ? "Loading Equipment"
-                                : "Loading Settings"
+                                ? "Loading equipment"
+                                : "Loading settings"
               }}
             </p>
             <div class="mt-4 h-9 w-56 bg-surface-container-high"></div>
@@ -752,23 +750,23 @@ export default {
                 <div
                   v-for="index in 4"
                   :key="'dashboard-stat-' + index"
-                  class="h-36 rounded-2xl bg-surface-container-low shadow-panel"
+                  class="h-36 rounded-xl bg-surface-container-low shadow-panel"
                 ></div>
               </div>
               <div class="grid gap-6 xl:grid-cols-[minmax(0,1fr)_22rem]">
                 <div class="space-y-6">
-                  <div class="h-[28rem] rounded-[1.5rem] bg-surface-container-low shadow-panel"></div>
+                  <div class="h-[28rem] rounded-xl bg-surface-container-low shadow-panel"></div>
                   <div class="grid gap-4 md:grid-cols-3">
                     <div
                       v-for="index in 3"
                       :key="'dashboard-recent-' + index"
-                      class="h-28 rounded-2xl bg-surface-container-low shadow-panel"
+                      class="h-28 rounded-xl bg-surface-container-low shadow-panel"
                     ></div>
                   </div>
                 </div>
                 <div class="space-y-4">
-                  <div class="h-44 rounded-[1.5rem] bg-surface-container-low shadow-panel"></div>
-                  <div class="h-44 rounded-[1.5rem] bg-surface-container-low shadow-panel"></div>
+                  <div class="h-44 rounded-xl bg-surface-container-low shadow-panel"></div>
+                  <div class="h-44 rounded-xl bg-surface-container-low shadow-panel"></div>
                 </div>
               </div>
             </div>
@@ -777,7 +775,7 @@ export default {
           <div v-else-if="loadingViewKey === 'map'" class="dashboard-command-center dashboard-map-only animate-pulse">
             <section class="dashboard-section dashboard-map-section relative min-h-[calc(100vh-10rem)]">
               <div
-                class="dashboard-glass-card dashboard-map-panel relative h-full min-h-[calc(100vh-10rem)] overflow-hidden rounded-[1.5rem] bg-surface-container-low shadow-panel"
+                class="dashboard-glass-card dashboard-map-panel relative h-full min-h-[calc(100vh-10rem)] overflow-hidden rounded-xl bg-surface-container-low shadow-panel"
               >
                 <div class="absolute left-6 top-6 z-10 space-y-3">
                   <div class="h-4 w-40 rounded bg-surface-container-high"></div>
@@ -785,7 +783,6 @@ export default {
                   <div class="h-4 w-96 max-w-full rounded bg-surface-container-high"></div>
                 </div>
                 <div class="absolute inset-0 bg-surface-container-high/60"></div>
-                <div class="absolute inset-0 technical-grid opacity-[0.12]"></div>
                 <div class="absolute bottom-8 left-8 flex gap-3">
                   <div v-for="index in 4" :key="'map-site-chip-' + index" class="h-14 w-44 rounded-xl bg-surface-container-low"></div>
                 </div>
@@ -798,7 +795,7 @@ export default {
               <div class="h-12 w-[24rem] rounded-xl bg-surface-container-low shadow-panel"></div>
             </div>
             <div class="settings-stat-strip">
-              <div v-for="index in 2" :key="'equipment-stat-' + index" class="h-20 rounded-2xl bg-surface-container-low shadow-panel"></div>
+              <div v-for="index in 2" :key="'equipment-stat-' + index" class="h-20 rounded-xl bg-surface-container-low shadow-panel"></div>
             </div>
             <div class="equipment-page-layout">
               <aside class="settings-panel settings-card equipment-service-sidebar h-[34rem] bg-surface-container-low shadow-panel"></aside>
@@ -807,7 +804,7 @@ export default {
                   <div
                     v-for="index in 6"
                     :key="'equipment-card-' + index"
-                    class="h-64 rounded-2xl bg-surface-container-low shadow-panel"
+                    class="h-64 rounded-xl bg-surface-container-low shadow-panel"
                   ></div>
                 </div>
               </section>
@@ -817,20 +814,20 @@ export default {
           <div v-else-if="loadingViewKey === 'logs'" class="space-y-6 animate-pulse">
             <div class="dashboard-command-center space-y-6">
               <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-                <div v-for="index in 4" :key="'logs-stat-' + index" class="h-32 rounded-2xl bg-surface-container-low shadow-panel"></div>
+                <div v-for="index in 4" :key="'logs-stat-' + index" class="h-32 rounded-xl bg-surface-container-low shadow-panel"></div>
               </div>
               <div class="grid grid-cols-1 gap-6 lg:grid-cols-[1.35fr_0.65fr]">
-                <div class="h-24 rounded-2xl bg-surface-container-low shadow-panel"></div>
-                <div class="h-24 rounded-2xl bg-surface-container-low shadow-panel"></div>
+                <div class="h-24 rounded-xl bg-surface-container-low shadow-panel"></div>
+                <div class="h-24 rounded-xl bg-surface-container-low shadow-panel"></div>
               </div>
               <div class="space-y-4">
-                <div v-for="index in 5" :key="'logs-card-' + index" class="h-36 rounded-2xl bg-surface-container-low shadow-panel"></div>
+                <div v-for="index in 5" :key="'logs-card-' + index" class="h-36 rounded-xl bg-surface-container-low shadow-panel"></div>
               </div>
             </div>
           </div>
 
           <div v-else-if="loadingViewKey === 'detail'" class="space-y-6 animate-pulse">
-            <div class="relative h-[19rem] overflow-hidden rounded-[2rem] bg-surface-container-low shadow-panel">
+            <div class="relative h-[19rem] overflow-hidden rounded-xl bg-surface-container-low shadow-panel">
               <div class="absolute left-8 top-8 h-11 w-36 rounded-xl bg-surface-container-high"></div>
               <div class="absolute bottom-8 left-8 right-8 space-y-5">
                 <div class="h-5 w-80 rounded bg-surface-container-high"></div>
@@ -845,7 +842,7 @@ export default {
             </div>
             <div class="grid grid-cols-12 gap-6">
               <div class="col-span-12 space-y-6 xl:col-span-8">
-                <div class="rounded-[1.5rem] bg-surface-container-low p-6 shadow-panel">
+                <div class="rounded-xl bg-surface-container-low p-6 shadow-panel">
                   <div class="mb-6 flex items-center justify-between">
                     <div class="h-6 w-52 rounded bg-surface-container-high"></div>
                     <div class="h-7 w-24 rounded-full bg-surface-container-high"></div>
@@ -854,10 +851,10 @@ export default {
                     <div v-for="index in 6" :key="'detail-logbook-' + index" class="h-24 rounded-xl bg-surface-container-high"></div>
                   </div>
                 </div>
-                <div class="h-[20rem] rounded-[1.5rem] bg-surface-container-low shadow-panel"></div>
+                <div class="h-[20rem] rounded-xl bg-surface-container-low shadow-panel"></div>
               </div>
               <div class="col-span-12 xl:col-span-4">
-                <div class="rounded-[1.5rem] bg-surface-container-low p-6 shadow-panel">
+                <div class="rounded-xl bg-surface-container-low p-6 shadow-panel">
                   <div class="mb-5 h-5 w-56 rounded bg-surface-container-high"></div>
                   <div class="divide-y divide-primary/10">
                     <div v-for="index in 4" :key="'detail-telemetry-' + index" class="space-y-3 py-5 first:pt-0 last:pb-0">
@@ -883,14 +880,14 @@ export default {
           </div>
 
           <div v-else-if="loadingViewKey === 'imports'" class="space-y-6 animate-pulse">
-            <div class="h-36 rounded-[1.5rem] bg-surface-container-low shadow-panel"></div>
+            <div class="h-36 rounded-xl bg-surface-container-low shadow-panel"></div>
             <div class="grid gap-6 xl:grid-cols-[minmax(0,1.65fr)_minmax(260px,0.82fr)]">
               <div class="space-y-4">
-                <div v-for="index in 5" :key="'imports-row-' + index" class="h-28 rounded-2xl bg-surface-container-low shadow-panel"></div>
+                <div v-for="index in 5" :key="'imports-row-' + index" class="h-28 rounded-xl bg-surface-container-low shadow-panel"></div>
               </div>
               <div class="space-y-4">
-                <div class="h-48 rounded-[1.5rem] bg-surface-container-low shadow-panel"></div>
-                <div class="h-48 rounded-[1.5rem] bg-surface-container-low shadow-panel"></div>
+                <div class="h-48 rounded-xl bg-surface-container-low shadow-panel"></div>
+                <div class="h-48 rounded-xl bg-surface-container-low shadow-panel"></div>
               </div>
             </div>
           </div>
@@ -898,31 +895,31 @@ export default {
           <div v-else-if="loadingViewKey === 'edit'" class="space-y-6 animate-pulse">
             <div class="grid gap-6 xl:grid-cols-[minmax(0,1.35fr)_22rem]">
               <div class="space-y-6">
-                <div class="h-48 rounded-[1.5rem] bg-surface-container-low shadow-panel"></div>
-                <div class="rounded-[1.5rem] bg-surface-container-low p-6 shadow-panel">
+                <div class="h-48 rounded-xl bg-surface-container-low shadow-panel"></div>
+                <div class="rounded-xl bg-surface-container-low p-6 shadow-panel">
                   <div class="grid gap-4 md:grid-cols-2">
                     <div v-for="index in 10" :key="'edit-field-' + index" class="h-16 rounded-xl bg-surface-container-high"></div>
                   </div>
                 </div>
               </div>
               <div class="space-y-4">
-                <div class="h-64 rounded-[1.5rem] bg-surface-container-low shadow-panel"></div>
-                <div class="h-40 rounded-[1.5rem] bg-surface-container-low shadow-panel"></div>
+                <div class="h-64 rounded-xl bg-surface-container-low shadow-panel"></div>
+                <div class="h-40 rounded-xl bg-surface-container-low shadow-panel"></div>
               </div>
             </div>
           </div>
 
           <div v-else-if="loadingViewKey === 'create'" class="space-y-6 animate-pulse">
-            <div class="h-40 rounded-[1.5rem] bg-surface-container-low shadow-panel"></div>
+            <div class="h-40 rounded-xl bg-surface-container-low shadow-panel"></div>
             <div class="grid gap-6 xl:grid-cols-[minmax(0,1.35fr)_22rem]">
-              <div class="rounded-[1.5rem] bg-surface-container-low p-6 shadow-panel">
+              <div class="rounded-xl bg-surface-container-low p-6 shadow-panel">
                 <div class="grid gap-4 md:grid-cols-2">
                   <div v-for="index in 12" :key="'create-field-' + index" class="h-16 rounded-xl bg-surface-container-high"></div>
                 </div>
               </div>
               <div class="space-y-4">
-                <div class="h-56 rounded-[1.5rem] bg-surface-container-low shadow-panel"></div>
-                <div class="h-56 rounded-[1.5rem] bg-surface-container-low shadow-panel"></div>
+                <div class="h-56 rounded-xl bg-surface-container-low shadow-panel"></div>
+                <div class="h-56 rounded-xl bg-surface-container-low shadow-panel"></div>
               </div>
             </div>
           </div>
@@ -934,25 +931,21 @@ export default {
               </div>
             </aside>
             <section class="min-w-0 space-y-6">
-              <div class="h-40 rounded-[1.5rem] bg-surface-container-low shadow-panel"></div>
+              <div class="h-40 rounded-xl bg-surface-container-low shadow-panel"></div>
               <div class="grid gap-6 md:grid-cols-2">
                 <div
                   v-for="index in 4"
                   :key="'settings-panel-' + index"
-                  class="h-56 rounded-[1.5rem] bg-surface-container-low shadow-panel"
+                  class="h-56 rounded-xl bg-surface-container-low shadow-panel"
                 ></div>
               </div>
             </section>
           </div>
         </section>
         <section v-else-if="error" class="bg-error-container/25 p-10 shadow-panel">
-          <p class="font-headline text-2xl font-bold text-on-error-container">Frontend could not load dive data</p>
+          <p class="font-headline text-2xl font-bold text-on-error-container">Couldn't load your dives</p>
           <p class="mt-2 text-sm text-on-error-container">{{ error }}</p>
-          <UButton
-            @click="fetchDives"
-            class="mt-5 bg-primary px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-on-primary"
-            >Retry</UButton
-          >
+          <UButton @click="fetchDives" class="mt-5 bg-primary px-4 py-3 font-label text-sm font-semibold text-on-primary">Retry</UButton>
         </section>
         <div v-else-if="activeView === 'dashboard'">
           <dashboard-view
@@ -1123,7 +1116,7 @@ export default {
       </div>
     </section>
     <nav
-      class="fixed bottom-0 left-0 right-0 z-40 flex items-center justify-around border-t border-primary/10 bg-surface-container-low/80 px-4 pb-6 pt-3 backdrop-blur-xl md:hidden"
+      class="fixed bottom-0 left-0 right-0 z-40 flex items-center justify-around border-t border-outline-variant/60 bg-surface-container-low/80 px-4 pb-6 pt-3 md:hidden"
     >
       <UButton
         v-for="item in mobileNavItems"
@@ -1151,25 +1144,25 @@ export default {
           "
           >{{ item.mobileIcon || item.icon }}</span
         >
-        <span class="font-label text-[10px] font-bold">{{ item.mobileLabel }}</span>
+        <span class="font-label text-xs font-bold">{{ item.mobileLabel }}</span>
       </UButton>
     </nav>
     <div
       v-if="passwordDialogOpen"
       @click.self="closePasswordDialog"
-      class="fixed inset-0 z-[60] flex items-center justify-center bg-background/88 px-6 py-8 backdrop-blur-sm"
+      class="fixed inset-0 z-[60] flex items-center justify-center bg-background/88 px-6 py-8"
     >
-      <div class="w-full max-w-md rounded-3xl border border-primary/10 bg-surface-container-low p-6 shadow-panel">
+      <div class="w-full max-w-md rounded-xl border border-outline-variant/60 bg-surface-container-low p-6 shadow-panel">
         <div class="flex items-start justify-between gap-4">
           <div>
-            <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-primary">Account Security</p>
-            <h3 class="mt-3 font-headline text-2xl font-bold tracking-tight text-on-surface">Change Password</h3>
+            <p class="font-label text-xs font-medium text-primary">Account security</p>
+            <h3 class="mt-3 font-headline text-2xl font-bold tracking-tight text-on-surface">Change password</h3>
             <p class="mt-3 text-sm leading-6 text-secondary">Update the password for your current DiveVault account.</p>
           </div>
           <UButton
             @click="closePasswordDialog"
             :disabled="passwordSubmitting"
-            class="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-primary/10 text-secondary transition-colors hover:bg-surface-container-high"
+            class="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-outline-variant/60 text-secondary transition-colors hover:bg-surface-container-high"
           >
             <span class="material-symbols-outlined text-lg">close</span>
           </UButton>
@@ -1180,27 +1173,27 @@ export default {
 
         <div class="mt-5 space-y-4">
           <label class="space-y-2">
-            <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Current Password</span>
+            <span class="font-label text-xs font-medium text-secondary">Current password</span>
             <UInput
               v-model="passwordForm.currentPassword"
               type="password"
-              class="w-full rounded-2xl border border-primary/15 bg-background/20 px-4 py-3 text-sm text-on-surface outline-none transition-colors focus:border-primary/40"
+              class="w-full rounded-xl border border-outline-variant/60 bg-background/20 px-4 py-3 text-sm text-on-surface outline-none transition-colors focus:border-primary"
             />
           </label>
           <label class="space-y-2">
-            <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">New Password</span>
+            <span class="font-label text-xs font-medium text-secondary">New password</span>
             <UInput
               v-model="passwordForm.newPassword"
               type="password"
-              class="w-full rounded-2xl border border-primary/15 bg-background/20 px-4 py-3 text-sm text-on-surface outline-none transition-colors focus:border-primary/40"
+              class="w-full rounded-xl border border-outline-variant/60 bg-background/20 px-4 py-3 text-sm text-on-surface outline-none transition-colors focus:border-primary"
             />
           </label>
           <label class="space-y-2">
-            <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Confirm New Password</span>
+            <span class="font-label text-xs font-medium text-secondary">Confirm new password</span>
             <UInput
               v-model="passwordForm.confirmPassword"
               type="password"
-              class="w-full rounded-2xl border border-primary/15 bg-background/20 px-4 py-3 text-sm text-on-surface outline-none transition-colors focus:border-primary/40"
+              class="w-full rounded-xl border border-outline-variant/60 bg-background/20 px-4 py-3 text-sm text-on-surface outline-none transition-colors focus:border-primary"
             />
           </label>
         </div>
@@ -1209,14 +1202,14 @@ export default {
           <UButton
             @click="submitPasswordChange"
             :disabled="passwordSubmitting"
-            class="inline-flex items-center justify-center rounded-xl bg-primary px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.16em] text-on-primary transition-all hover:brightness-110"
+            class="inline-flex items-center justify-center rounded-xl bg-primary px-4 py-3 font-label text-sm font-semibold text-on-primary transition-all hover:brightness-110"
           >
-            {{ passwordSubmitting ? "Updating Password" : "Update Password" }}
+            {{ passwordSubmitting ? "Updating password" : "Update password" }}
           </UButton>
           <UButton
             @click="closePasswordDialog"
             :disabled="passwordSubmitting"
-            class="inline-flex items-center justify-center rounded-xl border border-primary/15 px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.16em] text-primary transition-colors hover:bg-surface-container-high"
+            class="inline-flex items-center justify-center rounded-xl border border-outline-variant/60 px-4 py-3 font-label text-sm font-semibold text-primary transition-colors hover:bg-surface-container-high"
           >
             Cancel
           </UButton>

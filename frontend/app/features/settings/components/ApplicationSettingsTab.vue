@@ -42,35 +42,35 @@ export default {
 
 <template>
   <div class="settings-panel settings-card">
-    <div class="mb-8 rounded-2xl border border-primary/15 bg-surface-container-low p-6">
+    <div class="mb-8 rounded-xl border border-outline-variant/60 bg-surface-container-low p-6">
       <div class="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
         <div class="max-w-3xl">
-          <p class="font-label text-[10px] font-bold uppercase tracking-[0.24em] text-primary">Current Build</p>
-          <h4 class="mt-2 font-headline text-3xl font-bold tracking-tight text-on-surface">Application Version</h4>
+          <p class="font-label text-xs font-medium text-primary">Current build</p>
+          <h4 class="mt-2 font-headline text-3xl font-bold tracking-tight text-on-surface">Application version</h4>
           <p class="mt-3 text-sm leading-7 text-secondary">This version comes from the frontend package used for the current build.</p>
         </div>
         <div class="settings-chip is-accent">v{{ appVersion }}</div>
       </div>
     </div>
 
-    <div class="mb-8 rounded-2xl border border-primary/15 bg-surface-container-low p-6">
+    <div class="mb-8 rounded-xl border border-outline-variant/60 bg-surface-container-low p-6">
       <div class="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
         <div class="max-w-3xl">
-          <p class="font-label text-[10px] font-bold uppercase tracking-[0.24em] text-primary">Interface Language</p>
-          <h4 class="mt-2 font-headline text-3xl font-bold tracking-tight text-on-surface">Preferred Language</h4>
+          <p class="font-label text-xs font-medium text-primary">Interface language</p>
+          <h4 class="mt-2 font-headline text-3xl font-bold tracking-tight text-on-surface">Preferred language</h4>
           <p class="mt-3 text-sm leading-7 text-secondary">
             Choose which translation bundle the app should use for supported interface text. Available options are loaded from
             <code>en.json</code>, <code>de.json</code>, and <code>fr.json</code>.
           </p>
         </div>
         <div class="settings-chip is-accent">
-          {{ (availableLanguages.find((language) => language.value === selectedLocale)?.label || selectedLocale).toUpperCase() }}
+          {{ availableLanguages.find((language) => language.value === selectedLocale)?.label || selectedLocale }}
         </div>
       </div>
 
       <div class="mt-6 grid gap-4 xl:grid-cols-[minmax(0,24rem)] xl:items-start">
         <label class="space-y-2">
-          <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Language</span>
+          <span class="font-label text-xs font-medium text-secondary">Language</span>
           <USelect
             v-model="selectedLocale"
             :items="availableLanguages"
@@ -81,17 +81,17 @@ export default {
       </div>
     </div>
 
-    <div class="mb-8 rounded-2xl border border-primary/15 bg-surface-container-low p-6">
+    <div class="mb-8 rounded-xl border border-outline-variant/60 bg-surface-container-low p-6">
       <div class="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
         <div class="max-w-3xl">
-          <p class="font-label text-[10px] font-bold uppercase tracking-[0.24em] text-primary">Interface Theme</p>
+          <p class="font-label text-xs font-medium text-primary">Interface theme</p>
           <h4 class="mt-2 font-headline text-3xl font-bold tracking-tight text-on-surface">Appearance</h4>
           <p class="mt-3 text-sm leading-7 text-secondary">
             Use the system theme by default, or keep DiveVault fixed in light or dark mode on this device.
           </p>
         </div>
         <div class="settings-chip is-accent">
-          {{ resolvedTheme.toUpperCase() }}
+          {{ resolvedTheme.charAt(0).toUpperCase() + resolvedTheme.slice(1) }}
         </div>
       </div>
 
@@ -104,16 +104,16 @@ export default {
             selectedThemePreference = theme.value;
             changeThemePreference();
           "
-          class="flex items-center gap-3 rounded-2xl border px-4 py-4 text-left transition-colors"
+          class="flex items-center gap-3 rounded-xl border px-4 py-4 text-left transition-colors"
           :class="
             selectedThemePreference === theme.value
               ? 'border-primary/35 bg-primary/10 text-primary'
-              : 'border-primary/10 bg-background/20 text-secondary hover:border-primary/25 hover:text-primary'
+              : 'border-outline-variant/60 bg-background/20 text-secondary hover:border-outline-variant hover:text-primary'
           "
         >
           <span class="material-symbols-outlined text-xl">{{ theme.icon }}</span>
           <span>
-            <span class="block font-label text-[10px] font-bold uppercase tracking-[0.18em]">{{ t(theme.label, theme.label) }}</span>
+            <span class="block font-label text-xs font-medium">{{ t(theme.label, theme.label) }}</span>
             <span v-if="theme.value === 'system'" class="mt-1 block text-xs opacity-80"
               >{{ t("Currently", "Currently") }} {{ t(resolvedTheme === "light" ? "Light" : "Dark", resolvedTheme) }}</span
             >
@@ -122,11 +122,11 @@ export default {
       </div>
     </div>
 
-    <div class="mb-8 rounded-2xl border border-primary/15 bg-surface-container-low p-6">
+    <div class="mb-8 rounded-xl border border-outline-variant/60 bg-surface-container-low p-6">
       <div class="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
         <div class="max-w-3xl">
-          <p class="font-label text-[10px] font-bold uppercase tracking-[0.24em] text-primary">Public Dive Profile</p>
-          <h4 class="mt-2 font-headline text-3xl font-bold tracking-tight text-on-surface">Share Completed Dives And Dive Map</h4>
+          <p class="font-label text-xs font-medium text-primary">Public dive profile</p>
+          <h4 class="mt-2 font-headline text-3xl font-bold tracking-tight text-on-surface">Share completed dives and dive map</h4>
           <p class="mt-3 text-sm leading-7 text-secondary">
             When enabled, the public page only exposes completed dive entries and their map positions. Licenses, saved buddies, guides, and
             the rest of your private settings stay hidden.
@@ -138,14 +138,14 @@ export default {
       </div>
 
       <div class="mt-6 flex flex-col gap-6 xl:flex-row xl:items-end xl:justify-between">
-        <label class="flex items-start gap-4 rounded-2xl border border-primary/10 bg-background/20 px-4 py-4">
+        <label class="flex items-start gap-4 rounded-xl border border-outline-variant/60 bg-background/20 px-4 py-4">
           <UCheckbox
             v-model="publicSharingDraft.public_dives_enabled"
             class="mt-1"
             :ui="{ base: 'h-5 w-5 rounded border-primary/20 bg-surface-container-high text-primary focus:ring-primary/30' }"
           />
           <div>
-            <p class="text-sm font-semibold text-on-surface">Make My Completed Dives Public</p>
+            <p class="text-sm font-semibold text-on-surface">Make my completed dives public</p>
             <p class="mt-1 text-sm leading-6 text-secondary">Imported drafts stay private until they are completed in the logbook.</p>
           </div>
         </label>
@@ -159,22 +159,22 @@ export default {
             "
             class="settings-button settings-button-primary"
           >
-            {{ publicSharingSaving ? "Saving Share Settings" : "Save Sharing" }}
+            {{ publicSharingSaving ? "Saving share settings" : "Save sharing" }}
           </UButton>
           <UButton
             v-if="settingsProfile.public_dives_enabled && publicProfileUrl"
             @click="copyPublicProfileUrl"
             class="settings-button settings-button-secondary"
-            >Copy Public Link</UButton
+            >Copy public link</UButton
           >
         </div>
       </div>
 
       <div
         v-if="settingsProfile.public_dives_enabled && publicProfileUrl"
-        class="mt-5 rounded-2xl border border-primary/10 bg-background/20 px-4 py-4"
+        class="mt-5 rounded-xl border border-outline-variant/60 bg-background/20 px-4 py-4"
       >
-        <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Public URL</p>
+        <p class="font-label text-xs font-medium text-secondary">Public URL</p>
         <a
           :href="publicProfileUrl"
           target="_blank"
@@ -185,14 +185,14 @@ export default {
       </div>
     </div>
 
-    <div class="mb-8 rounded-2xl border border-primary/15 bg-surface-container-low p-6">
+    <div class="mb-8 rounded-xl border border-outline-variant/60 bg-surface-container-low p-6">
       <div class="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
         <div class="max-w-3xl">
-          <p class="font-label text-[10px] font-bold uppercase tracking-[0.24em] text-primary">
-            {{ t("settings.logLayout.title", "Dive Log Layout") }}
+          <p class="font-label text-xs font-medium text-primary">
+            {{ t("settings.logLayout.title", "Dive log layout") }}
           </p>
           <h4 class="mt-2 font-headline text-3xl font-bold tracking-tight text-on-surface">
-            {{ t("settings.logLayout.heading", "Optional Metadata In Log Rows") }}
+            {{ t("settings.logLayout.heading", "Optional metadata in log rows") }}
           </h4>
           <p class="mt-3 text-sm leading-7 text-secondary">
             {{
@@ -210,7 +210,7 @@ export default {
         <label
           v-for="option in optionalLogbookFieldOptions()"
           :key="'logbook-field-' + option.key"
-          class="flex items-start gap-4 rounded-2xl border border-primary/10 bg-background/20 px-4 py-4"
+          class="flex items-start gap-4 rounded-xl border border-outline-variant/60 bg-background/20 px-4 py-4"
         >
           <UCheckbox
             :model-value="logbookFieldEnabled(option.key)"
@@ -225,7 +225,7 @@ export default {
         </label>
       </div>
 
-      <label class="mt-5 flex items-start gap-4 rounded-2xl border border-primary/10 bg-background/20 px-4 py-4">
+      <label class="mt-5 flex items-start gap-4 rounded-xl border border-outline-variant/60 bg-background/20 px-4 py-4">
         <UCheckbox
           :model-value="settingsProfile.equipment_selection_enabled"
           @update:model-value="toggleEquipmentSelectionEnabled()"
@@ -245,11 +245,11 @@ export default {
         </div>
       </label>
 
-      <div class="mt-8 border-t border-primary/10 pt-6">
+      <div class="mt-8 border-t border-outline-variant/60 pt-6">
         <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           <div>
             <h5 class="font-headline text-2xl font-bold tracking-tight text-on-surface">
-              {{ t("settings.requiredLogbook.heading", "Mandatory Logbook Fields") }}
+              {{ t("settings.requiredLogbook.heading", "Mandatory logbook fields") }}
             </h5>
             <p class="mt-2 max-w-3xl text-sm leading-7 text-secondary">
               {{
@@ -267,7 +267,7 @@ export default {
           <label
             v-for="option in requiredLogbookFieldOptions()"
             :key="'required-logbook-field-' + option.key"
-            class="flex items-start gap-4 rounded-2xl border border-primary/10 bg-background/20 px-4 py-4"
+            class="flex items-start gap-4 rounded-xl border border-outline-variant/60 bg-background/20 px-4 py-4"
           >
             <UCheckbox
               :model-value="requiredLogbookFieldEnabled(option.key)"
@@ -288,7 +288,7 @@ export default {
 
       <div class="mt-5 flex justify-end">
         <UButton @click="saveProfile" :disabled="profileSaving" class="settings-button settings-button-primary">
-          {{ profileSaving ? t("Saving Profile", "Saving Profile") : t("settings.logLayout.save", "Save Log Layout") }}
+          {{ profileSaving ? t("Saving profile", "Saving profile") : t("settings.logLayout.save", "Save log layout") }}
         </UButton>
       </div>
     </div>

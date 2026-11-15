@@ -50,16 +50,13 @@ export default {
   <div class="settings-panel settings-card">
     <div class="settings-card-header">
       <div>
-        <p class="font-label text-[10px] font-bold uppercase tracking-[0.24em] text-primary">Dive Sites</p>
-        <h4 class="mt-2 font-headline text-3xl font-bold tracking-tight text-on-surface">Reusable Site Directory</h4>
-        <p class="mt-3 max-w-3xl text-sm leading-7 text-secondary">
-          Locations are summarized first, with GPS detail tucked underneath so the list feels more like a directory and less like a long
-          form dump.
-        </p>
+        <p class="font-label text-xs font-medium text-primary">Dive sites</p>
+        <h4 class="mt-2 font-headline text-3xl font-bold tracking-tight text-on-surface">Saved dive sites</h4>
+        <p class="mt-3 max-w-3xl text-sm leading-7 text-secondary">Sites you can pick in your logs and plot on the map.</p>
       </div>
       <div class="settings-toolbar">
         <UButton @click="addDiveSiteEntry" :disabled="isInteractionLocked" class="settings-button settings-button-secondary"
-          >Add Dive Site</UButton
+          >Add dive site</UButton
         >
       </div>
     </div>
@@ -83,15 +80,15 @@ export default {
 
     <div v-else-if="visibleDiveSites.length === 0" class="settings-empty-state">
       <p class="font-headline text-lg font-bold">No matching dive sites</p>
-      <p class="mt-2 text-sm text-secondary">Adjust the filter to see the rest of your saved site directory.</p>
+      <p class="mt-2 text-sm text-secondary">Adjust the filter to see more dive sites.</p>
     </div>
 
     <div v-else class="space-y-4">
       <div class="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-        <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">{{ diveSitePaginationLabel }}</p>
+        <p class="font-label text-xs font-medium text-secondary">{{ diveSitePaginationLabel }}</p>
         <div class="flex flex-col gap-3 sm:flex-row sm:items-center">
           <label class="flex items-center gap-3">
-            <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Dive Sites Per Page</span>
+            <span class="font-label text-xs font-medium text-secondary">Dive sites per page</span>
             <USelect v-model.number="diveSitePageSize" :items="diveSitePageSizeOptions" class="settings-input min-w-[5.5rem] py-2" />
           </label>
           <div class="flex items-center gap-2">
@@ -142,7 +139,7 @@ export default {
               @click="editDiveSiteItem(site.id)"
               class="settings-button settings-button-secondary"
             >
-              Edit Site
+              Edit site
             </UButton>
             <UButton
               v-if="isDiveSiteEditing(site.id)"
@@ -165,7 +162,7 @@ export default {
               :disabled="isInteractionLocked"
               class="settings-button settings-button-primary"
             >
-              {{ diveSitesSaving ? "Saving Dive Site" : "Save Dive Site" }}
+              {{ diveSitesSaving ? "Saving dive site" : "Save dive site" }}
             </UButton>
           </div>
         </div>
@@ -173,14 +170,14 @@ export default {
         <div v-if="isDiveSiteEditing(site.id) || isDiveSiteExpanded(site.id)" class="space-y-5">
           <div v-if="isDiveSiteEditing(site.id)" class="space-y-5">
             <label class="space-y-2">
-              <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Site Name</span>
+              <span class="font-label text-xs font-medium text-secondary">Site name</span>
               <UInput v-model="site.name" type="text" class="settings-input" placeholder="North Wall / Training Reef" />
             </label>
             <div class="settings-side-panel mt-3">
               <div class="flex flex-col gap-4">
                 <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                   <div>
-                    <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-primary">GPS Lookup</p>
+                    <p class="font-label text-xs font-medium text-primary">GPS lookup</p>
                     <p class="mt-2 text-sm text-secondary">
                       Search from the location text, or open the map here and drag the marker to set the exact coordinate.
                     </p>
@@ -190,25 +187,25 @@ export default {
                     :disabled="isLookingUpDiveSite(site.id)"
                     class="settings-button settings-button-secondary"
                   >
-                    {{ isLookingUpDiveSite(site.id) ? "Searching GPS" : "Search GPS From Location" }}
+                    {{ isLookingUpDiveSite(site.id) ? "Searching GPS" : "Search GPS from location" }}
                   </UButton>
                   <UButton @click="toggleDiveSiteMap(site.id)" class="settings-button settings-button-secondary">
-                    {{ diveSiteMapOpen(site.id) ? "Close Map" : "Map" }}
+                    {{ diveSiteMapOpen(site.id) ? "Close map" : "Map" }}
                   </UButton>
                 </div>
                 <div class="settings-form-grid settings-form-grid-wide">
                   <label class="space-y-2 md:col-span-2">
-                    <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Location</span>
+                    <span class="font-label text-xs font-medium text-secondary">Location</span>
                     <UInput v-model="site.location" type="text" class="settings-input" placeholder="Blue Hole, Dahab, Egypt" />
                   </label>
                   <label class="space-y-2">
-                    <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Country</span>
+                    <span class="font-label text-xs font-medium text-secondary">Country</span>
                     <UInput v-model="site.country" type="text" class="settings-input" placeholder="Egypt" />
                   </label>
                 </div>
                 <div class="settings-form-grid settings-form-grid-wide">
                   <label class="space-y-2">
-                    <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Latitude</span>
+                    <span class="font-label text-xs font-medium text-secondary">Latitude</span>
                     <UInput
                       v-model="site.latitude"
                       @input="syncDiveSiteMapFromFields(site.id)"
@@ -221,7 +218,7 @@ export default {
                     />
                   </label>
                   <label class="space-y-2">
-                    <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Longitude</span>
+                    <span class="font-label text-xs font-medium text-secondary">Longitude</span>
                     <UInput
                       v-model="site.longitude"
                       @input="syncDiveSiteMapFromFields(site.id)"
@@ -237,7 +234,7 @@ export default {
                 <div v-if="diveSiteMapOpen(site.id)" class="space-y-3">
                   <div
                     :ref="(element) => setDiveSiteMapRef(site.id, element)"
-                    class="dive-theme-map h-80 min-h-80 overflow-hidden rounded-2xl border border-primary/10"
+                    class="dive-theme-map h-80 min-h-80 overflow-hidden rounded-xl border border-outline-variant/60"
                   ></div>
                   <p class="text-xs leading-5 text-secondary">
                     Drag the marker or click the map to set the exact GPS coordinate. Save the dive site to keep the new location.
@@ -249,31 +246,31 @@ export default {
 
           <div v-else class="settings-detail-grid">
             <div class="settings-info-card">
-              <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Site Name</p>
+              <p class="font-label text-xs font-medium text-secondary">Site name</p>
               <p class="mt-2 text-base font-semibold text-on-surface">{{ displayValue(site.name) }}</p>
             </div>
             <div class="settings-info-card">
-              <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Country</p>
+              <p class="font-label text-xs font-medium text-secondary">Country</p>
               <p class="mt-2 text-base font-semibold text-on-surface">{{ displayValue(site.country, "Not set") }}</p>
             </div>
             <div class="settings-info-card md:col-span-2">
-              <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Location</p>
+              <p class="font-label text-xs font-medium text-secondary">Location</p>
               <p class="mt-2 text-base font-semibold text-on-surface">{{ displayValue(site.location, "Not set") }}</p>
             </div>
             <div class="settings-info-card">
-              <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Latitude</p>
+              <p class="font-label text-xs font-medium text-secondary">Latitude</p>
               <p class="mt-2 text-base font-semibold text-on-surface">{{ displayValue(site.latitude, "Not set") }}</p>
             </div>
             <div class="settings-info-card">
-              <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Longitude</p>
+              <p class="font-label text-xs font-medium text-secondary">Longitude</p>
               <p class="mt-2 text-base font-semibold text-on-surface">{{ displayValue(site.longitude, "Not set") }}</p>
             </div>
           </div>
         </div>
       </article>
 
-      <div class="flex flex-col gap-4 border-t border-primary/10 pt-4 md:flex-row md:items-center md:justify-between">
-        <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">{{ diveSitePaginationLabel }}</p>
+      <div class="flex flex-col gap-4 border-t border-outline-variant/60 pt-4 md:flex-row md:items-center md:justify-between">
+        <p class="font-label text-xs font-medium text-secondary">{{ diveSitePaginationLabel }}</p>
         <div class="flex items-center gap-2">
           <UButton
             @click="previousDiveSitePage"

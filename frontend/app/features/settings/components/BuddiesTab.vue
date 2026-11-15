@@ -33,15 +33,13 @@ export default {
   <div class="settings-panel settings-card">
     <div class="settings-card-header">
       <div>
-        <p class="font-label text-[10px] font-bold uppercase tracking-[0.24em] text-primary">Buddies</p>
-        <h4 class="mt-2 font-headline text-3xl font-bold tracking-tight text-on-surface">Saved Dive Buddy List</h4>
-        <p class="mt-3 max-w-3xl text-sm leading-7 text-secondary">
-          Buddy names now scan as a compact grid instead of a long vertical stack.
-        </p>
+        <p class="font-label text-xs font-medium text-primary">Buddies</p>
+        <h4 class="mt-2 font-headline text-3xl font-bold tracking-tight text-on-surface">Saved dive buddy list</h4>
+        <p class="mt-3 max-w-3xl text-sm leading-7 text-secondary">People you dive with, ready to pick in your logs.</p>
       </div>
       <div class="settings-toolbar">
         <UButton @click="addBuddyEntry" :disabled="isInteractionLocked" class="settings-button settings-button-secondary"
-          >Add Buddy</UButton
+          >Add buddy</UButton
         >
       </div>
     </div>
@@ -70,12 +68,12 @@ export default {
       <article v-for="(buddy, index) in visibleBuddies" :key="buddy.id" class="settings-compact-card">
         <div class="flex items-start justify-between gap-3">
           <div>
-            <p class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Buddy {{ index + 1 }}</p>
+            <p class="font-label text-xs font-medium text-secondary">Buddy {{ index + 1 }}</p>
             <h5 class="mt-2 font-headline text-xl font-bold text-on-surface">{{ buddyTitle(buddy, index) }}</h5>
           </div>
           <div class="settings-toolbar">
             <UButton v-if="!isBuddyEditing(buddy.id)" @click="editBuddyItem(buddy.id)" class="settings-button settings-button-secondary">
-              Edit Buddy
+              Edit buddy
             </UButton>
             <UButton
               v-if="isBuddyEditing(buddy.id)"
@@ -95,14 +93,14 @@ export default {
               @click="saveBuddies"
               :disabled="isInteractionLocked"
               class="settings-button settings-button-primary"
-              >{{ buddiesSaving ? "Saving Buddy" : "Save Buddy" }}</UButton
+              >{{ buddiesSaving ? "Saving buddy" : "Save buddy" }}</UButton
             >
           </div>
         </div>
 
         <div v-if="isBuddyEditing(buddy.id)" class="mt-5 space-y-3">
           <label class="space-y-2">
-            <span class="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-secondary">Buddy Name</span>
+            <span class="font-label text-xs font-medium text-secondary">Buddy name</span>
             <UInput v-model="buddy.name" type="text" class="settings-input" placeholder="Sam Carter" />
           </label>
         </div>

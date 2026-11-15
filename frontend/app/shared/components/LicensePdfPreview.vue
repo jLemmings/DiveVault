@@ -96,7 +96,7 @@ export default {
 
 <template>
   <div>
-    <div v-if="loading" class="rounded border border-primary/10 bg-surface-container-lowest px-4 py-4 text-sm text-secondary">
+    <div v-if="loading" class="rounded border border-outline-variant/60 bg-surface-container-lowest px-4 py-4 text-sm text-secondary">
       Rendering PDF preview...
     </div>
     <div v-else-if="error" class="rounded border border-error/20 bg-error-container/20 px-4 py-4 text-sm text-on-error-container">
@@ -108,7 +108,7 @@ export default {
         :key="page.pageNumber"
         type="button"
         @click="$emit('open-preview', page)"
-        class="block w-full overflow-hidden border border-primary/10 bg-white transition-transform hover:scale-[1.01]"
+        class="block w-full overflow-hidden border border-outline-variant/60 bg-white transition-transform hover:scale-[1.01]"
       >
         <img :src="page.image" :alt="`License PDF page ${page.pageNumber}`" class="w-full cursor-zoom-in" />
       </UButton>

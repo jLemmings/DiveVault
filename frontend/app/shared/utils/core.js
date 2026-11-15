@@ -47,10 +47,10 @@ function formatBarTotal(value) {
 }
 
 function diveModeLabel(dive) {
-  if (isManualDive(dive)) return "Manual Entry";
+  if (isManualDive(dive)) return "Manual entry";
   const code = dive?.fields?.dive_mode_code;
   const labels = {
-    0: "Open Circuit",
+    0: "Open circuit",
     1: "Freedive",
     2: "Gauge",
     3: "CCR",
@@ -64,13 +64,13 @@ function isManualDive(dive) {
 }
 
 function diveDeviceLabel(dive) {
-  if (isManualDive(dive)) return "Manual Entry";
+  if (isManualDive(dive)) return "Manual entry";
   return `${dive?.vendor || "Unknown"} ${dive?.product || ""}`.trim();
 }
 
 function diveTitle(dive) {
-  if (!dive) return "Untitled Dive";
-  if (isManualDive(dive)) return "Manual Entry";
+  if (!dive) return "Untitled dive";
+  if (isManualDive(dive)) return "Manual entry";
   return `${dive.vendor} ${dive.product} Dive`;
 }
 
@@ -154,14 +154,14 @@ function monthShort(value) {
 
 const defaultRequiredLogbookFields = ["site"];
 const logbookRequirementFieldOptions = [
-  { key: "site", label: "Dive Site", missingLabel: "Missing Dive Site", icon: "location_off" },
-  { key: "buddy", label: "Buddy", missingLabel: "Missing Buddy", icon: "person_off" },
-  { key: "guide", label: "Guide", missingLabel: "Missing Guide", icon: "badge" },
-  { key: "weather_description", label: "Weather", missingLabel: "Missing Weather", icon: "thunderstorm" },
-  { key: "visibility", label: "Visibility", missingLabel: "Missing Visibility", icon: "visibility_off" },
-  { key: "wetsuit_description", label: "Wetsuit", missingLabel: "Missing Wetsuit", icon: "checkroom" },
-  { key: "weight_description", label: "Weights", missingLabel: "Missing Weights", icon: "fitness_center" },
-  { key: "notes", label: "Notes", missingLabel: "Missing Notes", icon: "notes" }
+  { key: "site", label: "Dive site", missingLabel: "Missing dive site", icon: "location_off" },
+  { key: "buddy", label: "Buddy", missingLabel: "Missing buddy", icon: "person_off" },
+  { key: "guide", label: "Guide", missingLabel: "Missing guide", icon: "badge" },
+  { key: "weather_description", label: "Weather", missingLabel: "Missing weather", icon: "thunderstorm" },
+  { key: "visibility", label: "Visibility", missingLabel: "Missing visibility", icon: "visibility_off" },
+  { key: "wetsuit_description", label: "Wetsuit", missingLabel: "Missing wetsuit", icon: "checkroom" },
+  { key: "weight_description", label: "Weights", missingLabel: "Missing weights", icon: "fitness_center" },
+  { key: "notes", label: "Notes", missingLabel: "Missing notes", icon: "notes" }
 ];
 
 function compactDateStamp(value) {
@@ -674,7 +674,7 @@ function decoStatusLabel(dive) {
   const decoSample = diveSamples(dive).find(
     (sample) => sample.deco && typeof sample.deco.time_seconds === "number" && sample.deco.time_seconds > 0
   );
-  return decoSample ? "Deco Active" : "No Deco";
+  return decoSample ? "Deco active" : "No deco";
 }
 
 function detailEquipmentTags(dive) {
@@ -707,7 +707,7 @@ function diveNarrative(dive) {
     `Primary breathing mix was ${gas}. ${tank}. Pressure profile shows ${pressureRangeLabel(dive)} with ${pressureUsedLabel(dive)}.`
   );
   paragraphs.push(
-    `${typeof tempMin === "number" && typeof tempMax === "number" ? `Recorded water temperatures ranged from ${formatTemperature(tempMin)} to ${formatTemperature(tempMax)}.` : "Temperature telemetry was limited for this dive."} ${decoStatusLabel(dive)}. Raw import size ${formatDataSize(dive.raw_data_size)} on ${formatDateTime(dive.imported_at)}.`
+    `${typeof tempMin === "number" && typeof tempMax === "number" ? `Recorded water temperatures ranged from ${formatTemperature(tempMin)} to ${formatTemperature(tempMax)}.` : "Little temperature data was recorded for this dive."} ${decoStatusLabel(dive)}. Raw import size ${formatDataSize(dive.raw_data_size)} on ${formatDateTime(dive.imported_at)}.`
   );
   return paragraphs;
 }

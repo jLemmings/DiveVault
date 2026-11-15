@@ -21,14 +21,7 @@ export default defineNuxtConfig({
   },
   // Fonts are bundled and self-hosted: no third-party requests (privacy) and
   // compatible with the backend's strict Content-Security-Policy.
-  css: [
-    "@fontsource-variable/manrope",
-    "@fontsource/space-grotesk/500.css",
-    "@fontsource/space-grotesk/600.css",
-    "@fontsource/space-grotesk/700.css",
-    "material-symbols/outlined.css",
-    "~/assets/styles.css"
-  ],
+  css: ["@fontsource-variable/manrope", "material-symbols/outlined.css", "~/assets/styles.css"],
   alias: {
     "#features": path.resolve(__dirname, "app/features"),
     "#i18n": path.resolve(__dirname, "app/i18n"),

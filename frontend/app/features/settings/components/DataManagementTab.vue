@@ -51,15 +51,13 @@ export default {
   <div class="settings-panel settings-card">
     <div class="settings-card-header">
       <div>
-        <p class="font-label text-[10px] font-bold uppercase tracking-[0.24em] text-primary">Data Management</p>
-        <h4 class="mt-2 font-headline text-3xl font-bold tracking-tight text-on-surface">Exports And Desktop Sync</h4>
-        <p class="mt-3 max-w-3xl text-sm leading-7 text-secondary">
-          The actions below are organized as clear task cards instead of one long button list.
-        </p>
+        <p class="font-label text-xs font-medium text-primary">Data management</p>
+        <h4 class="mt-2 font-headline text-3xl font-bold tracking-tight text-on-surface">Exports and desktop sync</h4>
+        <p class="mt-3 max-w-3xl text-sm leading-7 text-secondary">Export your dives and connect the desktop sync app.</p>
       </div>
     </div>
 
-    <div v-if="dataManagementStatus" class="settings-feedback border-primary/20 bg-primary/10 text-primary">
+    <div v-if="dataManagementStatus" class="settings-feedback border-outline-variant/60 bg-primary/10 text-primary">
       <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <span>{{ dataManagementStatus }}</span>
         <UButton
@@ -68,7 +66,7 @@ export default {
           @click="reviewImportQueue"
           class="settings-button settings-button-primary shrink-0"
         >
-          Review Imported Dives
+          Review imports
         </UButton>
       </div>
     </div>
@@ -88,7 +86,7 @@ export default {
           <div class="flex items-center gap-3">
             <span class="material-symbols-outlined text-primary">picture_as_pdf</span>
             <p class="font-headline text-xl font-bold text-on-surface">
-              {{ dataManagementAction === "Exporting PDF" ? "Exporting Dive PDF" : "Export Logs (PDF)" }}
+              {{ dataManagementAction === "Exporting PDF" ? "Exporting dive PDF" : "Export logs (PDF)" }}
             </p>
           </div>
           <p class="mt-3 text-sm leading-6 text-secondary">
@@ -103,12 +101,10 @@ export default {
           <div class="flex items-center gap-3">
             <span class="material-symbols-outlined text-primary">table_chart</span>
             <p class="font-headline text-xl font-bold text-on-surface">
-              {{ dataManagementAction === "Exporting CSV" ? "Exporting Telemetry CSV" : "Raw Telemetry (CSV)" }}
+              {{ dataManagementAction === "Exporting CSV" ? "Exporting CSV" : "Dive data (CSV)" }}
             </p>
           </div>
-          <p class="mt-3 text-sm leading-6 text-secondary">
-            Download the raw dive telemetry for spreadsheet analysis or external processing.
-          </p>
+          <p class="mt-3 text-sm leading-6 text-secondary">Download every dive with its samples as CSV, for spreadsheets or other tools.</p>
         </div>
         <span class="material-symbols-outlined text-secondary/60">north_east</span>
       </UButton>
@@ -118,7 +114,7 @@ export default {
           <div class="flex items-center gap-3">
             <span class="material-symbols-outlined text-primary">upload_file</span>
             <p class="font-headline text-xl font-bold text-on-surface">
-              {{ dataManagementAction === "Importing CSV" ? "Importing Dive CSV" : "Import Dives (CSV)" }}
+              {{ dataManagementAction === "Importing CSV" ? "Importing dive CSV" : "Import dives (CSV)" }}
             </p>
           </div>
           <p class="mt-3 text-sm leading-6 text-secondary">
@@ -135,10 +131,10 @@ export default {
             <p class="font-headline text-xl font-bold text-on-surface">
               {{
                 dataManagementAction === "Previewing Subsurface"
-                  ? "Reading Subsurface Export"
+                  ? "Reading Subsurface export"
                   : dataManagementAction === "Importing Subsurface"
-                    ? "Importing Subsurface Export"
-                    : "Import Subsurface Export"
+                    ? "Importing Subsurface export"
+                    : "Import Subsurface export"
               }}
             </p>
           </div>
@@ -161,7 +157,7 @@ export default {
     <div v-if="importPreview" class="settings-side-panel mt-6">
       <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div>
-          <p class="font-label text-[10px] font-bold uppercase tracking-[0.24em] text-primary">Import Preview</p>
+          <p class="font-label text-xs font-medium text-primary">Import preview</p>
           <h5 class="mt-2 font-headline text-2xl font-bold tracking-tight text-on-surface">{{ importPreview.label }} review</h5>
           <p class="mt-3 text-sm leading-7 text-secondary">
             {{ importPreview.fileName || "Selected file" }} has {{ importPreview.rows }} row{{
@@ -185,7 +181,7 @@ export default {
             :disabled="isDataManagementBusy || isInteractionLocked || !canConfirmImportPreview"
             class="settings-button settings-button-primary"
           >
-            Confirm Import
+            Confirm import
           </UButton>
           <UButton
             type="button"
@@ -197,16 +193,16 @@ export default {
           </UButton>
         </div>
       </div>
-      <div class="mt-5 overflow-x-auto rounded-2xl border border-primary/10">
+      <div class="mt-5 overflow-x-auto rounded-xl border border-outline-variant/60">
         <table class="min-w-full divide-y divide-primary/10 text-left text-sm">
           <thead class="bg-surface-container-high/60 text-secondary">
             <tr>
-              <th class="px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.18em]">Row</th>
-              <th class="px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.18em]">Status</th>
-              <th class="px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.18em]">Started</th>
-              <th class="px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.18em]">Site</th>
-              <th class="px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.18em]">Profile</th>
-              <th class="px-4 py-3 font-label text-[10px] font-bold uppercase tracking-[0.18em]">Validation</th>
+              <th class="px-4 py-3 font-label text-xs font-medium">Row</th>
+              <th class="px-4 py-3 font-label text-xs font-medium">Status</th>
+              <th class="px-4 py-3 font-label text-xs font-medium">Started</th>
+              <th class="px-4 py-3 font-label text-xs font-medium">Site</th>
+              <th class="px-4 py-3 font-label text-xs font-medium">Profile</th>
+              <th class="px-4 py-3 font-label text-xs font-medium">Validation</th>
             </tr>
           </thead>
           <tbody class="divide-y divide-primary/10">
@@ -218,7 +214,7 @@ export default {
               <td class="whitespace-nowrap px-4 py-3 text-secondary">{{ row.row_number || row.source_id || "-" }}</td>
               <td class="whitespace-nowrap px-4 py-3">
                 <span
-                  class="inline-flex rounded-full border px-3 py-1 font-label text-[10px] font-bold uppercase tracking-[0.14em]"
+                  class="inline-flex rounded-full border px-3 py-1 font-label text-xs font-medium"
                   :class="importPreviewStatusClass(row)"
                 >
                   {{ importPreviewStatusLabel(row) }}
@@ -243,7 +239,7 @@ export default {
     <div class="settings-side-panel mt-6">
       <div class="flex items-start justify-between gap-4">
         <div>
-          <p class="font-label text-[10px] font-bold uppercase tracking-[0.24em] text-primary">Desktop Sync Login</p>
+          <p class="font-label text-xs font-medium text-primary">Desktop sync login</p>
           <p class="mt-3 max-w-3xl text-sm leading-7 text-secondary" v-if="!hasCliAuthCode">
             Launch the Windows Dive Sync app and click Sign In. It will open this page with a one-time approval request so you can authorize
             the desktop sync session from your browser.
@@ -264,7 +260,7 @@ export default {
       >
         <span class="flex items-center gap-3">
           <span class="material-symbols-outlined text-sm">verified_user</span>
-          <span>{{ desktopSyncApproving ? "Approving Desktop Sync" : "Approve Desktop Sync" }}</span>
+          <span>{{ desktopSyncApproving ? "Approving desktop sync" : "Approve desktop sync" }}</span>
         </span>
         <span class="material-symbols-outlined text-sm">login</span>
       </UButton>
