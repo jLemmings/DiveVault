@@ -188,7 +188,37 @@ The Docker image is built from the repository-root `Dockerfile`. It builds front
 
 CI additionally runs `govulncheck`, `npm audit --omit=dev --audit-level=high`, and a Trivy scan of the built image.
 
-CI publishes image and release version tags from `frontend/package.json`, not from a backend manifest.
+### Release process
+
+Releases are driven by [release-please](https://github.com/googleapis/release-please) and Conventional Commits:
+
+1. PRs are squash-merged, and the PR title becomes the commit message. The `PR Title` workflow enforces Conventional Commit titles (`feat: …`, `fix: …`, `deps: …`, `chore: …`). Use `feat!:` or a `BREAKING CHANGE:` footer for breaking changes.
+2. On every push to `master`, the `Release` workflow keeps a release PR open (`chore(master): release X.Y.Z`). That PR bumps `version.txt`, `frontend/package.json` and the image tags in `examples/`, and updates `CHANGELOG.md`. Only `feat`, `fix`, `perf`, `revert` and `deps` commits produce a release; the other types are hidden from the changelog.
+3. Merging the release PR creates the `vX.Y.Z` tag and a draft GitHub release, then calls the `Backend Image` workflow for that tag.
+4. `Backend Image` builds `linux/amd64` and `linux/arm64` once and pushes the result untagged by digest. It Trivy-scans that digest, runs the full application test against it (amd64) plus an arm64 smoke test, and then tags the tested digest. It signs the image with cosign, adds image, signature and migration notes to the release, and publishes the release.
+
+To force a specific version, put a `Release-As: 1.2.3` footer in a commit message on `master`. To rebuild an existing release image, run `Backend Image` manually with `release_tag: vX.Y.Z`.
+
+Image tags on `ghcr.io/jlemmings/divevault`:
+
+| Tag | Updated by | Moves? |
+| --- | --- | --- |
+| `X.Y.Z`, `vX.Y.Z` | release | never |
+| `X.Y`, `X` (from 1.0) | release | to the newest patch/minor |
+| `latest` | non-prerelease release | to the newest release |
+| `edge`, `sha-<short>` | every push to `master` | `edge` moves; `sha-*` never |
+
+Pin `X.Y.Z` or a digest in deployments. Releases until `v0.4.0` were published as `vX.Y.Z` only, and `v0.4.0` itself was overwritten by later `master` builds until the move to this process.
+
+Verify an image signature:
+
+```bash
+cosign verify ghcr.io/jlemmings/divevault:<version> \
+  --certificate-identity-regexp '^https://github.com/jLemmings/DiveVault/' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com
+```
+
+PR checks (Go tests, govulncheck, npm audit, lint, Playwright, full application test) run in `full-application-test.yml`, and the image workflow does not repeat them. Make them required status checks in branch protection for `master`.
 
 ## Architecture Notes
 

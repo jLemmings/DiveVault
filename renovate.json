@@ -45,6 +45,24 @@
         "docker-compose"
       ],
       "groupName": "docker base images"
+    },
+    {
+      "description": "Runtime dependency updates appear in the changelog and trigger a patch release; dev tooling and CI updates stay as hidden chore commits.",
+      "matchDepTypes": [
+        "dependencies",
+        "require"
+      ],
+      "semanticCommitType": "deps",
+      "semanticCommitScope": null
+    },
+    {
+      "description": "The base image ships in every release, so its updates are runtime dependencies too.",
+      "matchManagers": [
+        "dockerfile"
+      ],
+      "semanticCommitType": "deps",
+      "semanticCommitScope": null
     }
-  ]
+  ],
+  "semanticCommits": "enabled"
 }

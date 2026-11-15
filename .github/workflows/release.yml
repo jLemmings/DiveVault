@@ -1,0 +1,53 @@
+name: Release
+
+# release-please keeps a "chore(master): release X.Y.Z" PR open with the next
+# version and changelog, derived from conventional commit messages on master.
+# Merging that PR tags the release (as a draft GitHub release); the image
+# workflow then builds, tests, publishes and signs the image and publishes
+# the release.
+
+on:
+  push:
+    branches:
+      - master
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-please
+  cancel-in-progress: false
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+
+    steps:
+      - name: Run release-please
+        id: release
+        uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+        with:
+          # PRs opened with GITHUB_TOKEN do not trigger pull_request workflows,
+          # so the release PR gets no checks. Set RELEASE_PLEASE_TOKEN (a
+          # fine-grained PAT or GitHub App token with contents + pull-requests
+          # write) if branch protection requires checks on every PR.
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN || secrets.GITHUB_TOKEN }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+  image:
+    needs: release-please
+    if: needs.release-please.outputs.release_created == 'true'
+    permissions:
+      contents: write
+      packages: write
+      id-token: write
+    uses: ./.github/workflows/backend-image.yml
+    with:
+      release_tag: ${{ needs.release-please.outputs.tag_name }}

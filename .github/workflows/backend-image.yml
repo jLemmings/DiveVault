@@ -1,295 +1,179 @@
 name: Backend Image
 
+# Builds the image once, pushes it untagged by digest, scans and tests that
+# exact digest, and only then attaches tags to it.
+#
+# - push to master:        publishes :edge and :sha-<short>
+# - called by release.yml: publishes :X.Y.Z, :vX.Y.Z, :X.Y (:X from 1.0), :latest,
+#                          then publishes the draft GitHub release
+# - workflow_dispatch:     rebuilds/republishes an existing release tag, or master as edge
+#
+# Pull request checks (tests, lint, audits) run in full-application-test.yml and
+# are enforced by branch protection, so they are not repeated here.
+
 on:
   push:
     branches:
       - master
+  workflow_call:
+    inputs:
+      release_tag:
+        description: Release tag to build and publish, e.g. v0.5.0
+        required: true
+        type: string
   workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Existing release tag to (re)publish, e.g. v0.5.0. Leave empty to publish master as edge.
+        required: false
+        type: string
 
 permissions:
   contents: read
 
+concurrency:
+  group: backend-image-${{ inputs.release_tag || github.ref }}
+  cancel-in-progress: ${{ !inputs.release_tag }}
+
 env:
   REGISTRY: ghcr.io
-  SOURCE_ARTIFACT_NAME: repo-source
-  IMAGE_ARTIFACT_NAME: docker-image
-  LOCAL_IMAGE_TAG: divevault-ci:${{ github.sha }}
+  RELEASE_TAG: ${{ inputs.release_tag }}
   FULL_APP_BASE_URL: http://127.0.0.1:8000
   NODE_VERSION: "24.22.3"
 
 jobs:
-  fetch-artifacts:
+  build:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      packages: write
     outputs:
-      base_version: ${{ steps.version.outputs.base_version }}
-      publish_version_tags: ${{ steps.version.outputs.publish_version_tags }}
-      version_tag: ${{ steps.version.outputs.version_tag }}
-      image_repository: ${{ steps.version.outputs.image_repository }}
-      tags: ${{ steps.version.outputs.tags }}
+      image: ${{ steps.image.outputs.name }}
+      digest: ${{ steps.build.outputs.digest }}
+      source_ref: ${{ steps.ref.outputs.ref }}
+      tags: ${{ steps.meta.outputs.tags }}
+      publish: ${{ steps.ref.outputs.publish }}
+
+    steps:
+      - name: Resolve source ref
+        id: ref
+        run: |
+          set -euo pipefail
+          if [[ -n "${RELEASE_TAG}" ]]; then
+            if [[ ! "${RELEASE_TAG}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+              echo "Release tag '${RELEASE_TAG}' must look like v1.2.3 or v1.2.3-rc.1." >&2
+              exit 1
+            fi
+            echo "ref=refs/tags/${RELEASE_TAG}" >> "${GITHUB_OUTPUT}"
+            echo "publish=true" >> "${GITHUB_OUTPUT}"
+          else
+            echo "ref=${GITHUB_SHA}" >> "${GITHUB_OUTPUT}"
+            if [[ "${GITHUB_REF}" == "refs/heads/master" ]]; then
+              echo "publish=true" >> "${GITHUB_OUTPUT}"
+            else
+              echo "publish=false" >> "${GITHUB_OUTPUT}"
+            fi
+          fi
+
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ steps.ref.outputs.ref }}
+
+      - name: Check release tag matches version files
+        if: env.RELEASE_TAG != ''
+        run: |
+          set -euo pipefail
+          expected="${RELEASE_TAG#v}"
+          for actual in "$(tr -d '[:space:]' < version.txt)" "$(node -p 'require("./frontend/package.json").version')"; do
+            if [[ "${actual}" != "${expected}" ]]; then
+              echo "Version files say '${actual}' but the release tag is '${RELEASE_TAG}'." >&2
+              exit 1
+            fi
+          done
+
+      - name: Resolve image name
+        id: image
+        env:
+          IMAGE: ${{ format('{0}/{1}/{2}', env.REGISTRY, github.repository_owner, github.event.repository.name) }}
+        run: echo "name=${IMAGE,,}" >> "${GITHUB_OUTPUT}"
+
+      - name: Compute image tags and labels
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ steps.image.outputs.name }}
+          flavor: latest=false
+          tags: |
+            type=semver,pattern={{version}},value=${{ env.RELEASE_TAG }},enable=${{ env.RELEASE_TAG != '' }}
+            type=semver,pattern=v{{version}},value=${{ env.RELEASE_TAG }},enable=${{ env.RELEASE_TAG != '' }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ env.RELEASE_TAG }},enable=${{ env.RELEASE_TAG != '' }}
+            type=semver,pattern={{major}},value=${{ env.RELEASE_TAG }},enable=${{ env.RELEASE_TAG != '' && !startsWith(env.RELEASE_TAG, 'v0.') }}
+            type=raw,value=latest,enable=${{ env.RELEASE_TAG != '' && !contains(env.RELEASE_TAG, '-') }}
+            type=raw,value=edge,enable=${{ env.RELEASE_TAG == '' }}
+            type=sha,format=short,prefix=sha-,enable=${{ env.RELEASE_TAG == '' }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # The final stage only copies files (no RUN), and both build stages run on
+      # $BUILDPLATFORM with Go cross-compiling via TARGETARCH, so no QEMU is needed.
+      - name: Build and push image by digest
+        id: build
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: Dockerfile
+          platforms: linux/amd64,linux/arm64
+          pull: true
+          labels: ${{ steps.meta.outputs.labels }}
+          annotations: ${{ steps.meta.outputs.annotations }}
+          provenance: mode=max
+          sbom: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          outputs: type=image,name=${{ steps.image.outputs.name }},push-by-digest=true,name-canonical=true,push=true
+
+  scan:
+    runs-on: ubuntu-latest
+    needs: build
+    permissions:
+      contents: read
+      packages: read
+
+    steps:
+      - name: Scan image for vulnerabilities
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        env:
+          TRIVY_USERNAME: ${{ github.actor }}
+          TRIVY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          image-ref: ${{ needs.build.outputs.image }}@${{ needs.build.outputs.digest }}
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: "1"
+
+  test-image:
+    runs-on: ubuntu-latest
+    needs: build
+    permissions:
+      contents: read
+      packages: read
+    env:
+      IMAGE_REF: ${{ needs.build.outputs.image }}@${{ needs.build.outputs.digest }}
 
     steps:
       - name: Checkout
         uses: actions/checkout@v7
         with:
-          fetch-depth: 0
-
-      - name: Set up Node
-        uses: actions/setup-node@v7
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-
-      - name: Resolve release version and tags
-        id: version
-        env:
-          IMAGE_REPOSITORY: ${{ format('{0}/{1}/{2}', env.REGISTRY, github.repository_owner, github.event.repository.name) }}
-        run: |
-          set -euo pipefail
-
-          PACKAGE_FILE="frontend/package.json"
-          if [[ ! -f "${PACKAGE_FILE}" ]]; then
-            echo "Missing ${PACKAGE_FILE} file." >&2
-            exit 1
-          fi
-
-          BASE_VERSION="$(node -p 'require("./frontend/package.json").version.trim()')"
-          if [[ -z "${BASE_VERSION}" ]]; then
-            echo "${PACKAGE_FILE} must contain a version." >&2
-            exit 1
-          fi
-
-          if [[ ! "${BASE_VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
-            echo "Invalid version '${BASE_VERSION}' in ${PACKAGE_FILE}. Use semver such as 0.1.0 or 0.2.0-beta1." >&2
-            exit 1
-          fi
-
-          IMAGE_REPOSITORY="$(echo "${IMAGE_REPOSITORY}" | tr '[:upper:]' '[:lower:]')"
-          RELEASE_TAG="v${BASE_VERSION}"
-          VERSION_TAG="v${BASE_VERSION}-${GITHUB_SHA::7}"
-          PUBLISH_VERSION_TAGS="false"
-          IMAGE_TAGS=(
-            "${IMAGE_REPOSITORY}:${VERSION_TAG}"
-          )
-
-          if [[ "${GITHUB_REF}" == "refs/heads/master" ]]; then
-            PUBLISH_VERSION_TAGS="true"
-          fi
-
-          if [[ "${PUBLISH_VERSION_TAGS}" == "true" ]]; then
-            VERSION_TAG="${RELEASE_TAG}"
-            IMAGE_TAGS=(
-              "${IMAGE_REPOSITORY}:${VERSION_TAG}"
-              "${IMAGE_REPOSITORY}:stable"
-              "${IMAGE_REPOSITORY}:latest"
-            )
-          fi
-
-          {
-            echo "base_version=${BASE_VERSION}"
-            echo "publish_version_tags=${PUBLISH_VERSION_TAGS}"
-            echo "version_tag=${VERSION_TAG}"
-            echo "image_repository=${IMAGE_REPOSITORY}"
-            echo "tags<<EOF"
-            printf '%s\n' "${IMAGE_TAGS[@]}"
-            echo "EOF"
-          } >> "${GITHUB_OUTPUT}"
-
-      - name: Package source artifact
-        run: |
-          set -euo pipefail
-          git ls-files > .divevault-tracked-files
-          trap 'rm -f .divevault-tracked-files' EXIT
-          tar \
-            --exclude='.git' \
-            --exclude='.venv' \
-            --exclude='.pytest_cache' \
-            --exclude='frontend/node_modules' \
-            --exclude='frontend/dist' \
-            --exclude='frontend/playwright-report' \
-            --exclude='frontend/test-results' \
-            -czf "${RUNNER_TEMP}/repo-source.tar.gz" .
-
-      - name: Upload source artifact
-        uses: actions/upload-artifact@v7
-        with:
-          name: ${{ env.SOURCE_ARTIFACT_NAME }}
-          path: ${{ runner.temp }}/repo-source.tar.gz
-          if-no-files-found: error
-
-  quality-gate:
-    runs-on: ubuntu-latest
-    needs: fetch-artifacts
-    services:
-      postgres:
-        image: postgres:18-alpine
-        env:
-          POSTGRES_USER: dive
-          POSTGRES_PASSWORD: dive
-          POSTGRES_DB: dive
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U dive -d dive"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 10
-
-    steps:
-      - name: Download source artifact
-        uses: actions/download-artifact@v8
-        with:
-          name: ${{ env.SOURCE_ARTIFACT_NAME }}
-          path: ${{ runner.temp }}/artifacts
-
-      - name: Extract source artifact
-        run: |
-          set -euo pipefail
-          tar -xzf "${RUNNER_TEMP}/artifacts/repo-source.tar.gz" -C "${GITHUB_WORKSPACE}"
-
-      - name: Set up Node
-        uses: actions/setup-node@v7
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
-
-      - name: Set up Go
-        uses: actions/setup-go@v7
-        with:
-          go-version-file: backend/go.mod
-          cache-dependency-path: backend/go.sum
-
-      - name: Install frontend dependencies
-        working-directory: frontend
-        run: npm ci
-
-      - name: Install Playwright browsers
-        working-directory: frontend
-        env:
-          PLAYWRIGHT_BROWSERS_PATH: 0
-        run: |
-          npx playwright --version
-          npx playwright install --with-deps
-
-      - name: Run Go backend tests
-        working-directory: backend
-        env:
-          TEST_DATABASE_URL: postgresql://dive:dive@127.0.0.1:5432/dive
-        run: go test ./...
-
-      - name: Scan Go dependencies for known vulnerabilities
-        working-directory: backend
-        run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
-
-      - name: Audit production npm dependencies
-        working-directory: frontend
-        run: npm audit --omit=dev --audit-level=high
-
-      - name: Run frontend lint
-        working-directory: frontend
-        run: npm run lint
-
-      - name: Check frontend formatting
-        working-directory: frontend
-        run: npm run format:check
-
-      - name: Check frontend structure
-        working-directory: frontend
-        run: npm run check:structure
-
-      - name: Check API contract coverage
-        working-directory: frontend
-        run: npm run check:contracts
-
-      - name: Run frontend tests and build
-        working-directory: frontend
-        env:
-          PLAYWRIGHT_BROWSERS_PATH: 0
-        run: npm run build
-
-  build-image:
-    runs-on: ubuntu-latest
-    needs:
-      - fetch-artifacts
-      - quality-gate
-
-    steps:
-      - name: Download source artifact
-        uses: actions/download-artifact@v8
-        with:
-          name: ${{ env.SOURCE_ARTIFACT_NAME }}
-          path: ${{ runner.temp }}/artifacts
-
-      - name: Extract source artifact
-        run: |
-          set -euo pipefail
-          tar -xzf "${RUNNER_TEMP}/artifacts/repo-source.tar.gz" -C "${GITHUB_WORKSPACE}"
-
-      - name: Set up Node
-        uses: actions/setup-node@v7
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
-
-      - name: Install frontend dependencies
-        working-directory: frontend
-        run: npm ci
-
-      - name: Build frontend release assets
-        working-directory: frontend
-        run: npm run build:app
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
-
-      - name: Build Docker image artifact
-        uses: docker/build-push-action@v7
-        with:
-          file: Dockerfile
-          platforms: linux/amd64
-          pull: true
-          push: false
-          tags: ${{ env.LOCAL_IMAGE_TAG }}
-          outputs: type=docker,dest=${{ runner.temp }}/divevault-image.tar
-          labels: |
-            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
-            org.opencontainers.image.revision=${{ github.sha }}
-            org.opencontainers.image.version=${{ needs.fetch-artifacts.outputs.version_tag }}
-
-      - name: Scan Docker image for vulnerabilities
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
-        with:
-          input: ${{ runner.temp }}/divevault-image.tar
-          severity: CRITICAL,HIGH
-          ignore-unfixed: true
-          exit-code: "1"
-
-      - name: Upload Docker image artifact
-        uses: actions/upload-artifact@v7
-        with:
-          name: ${{ env.IMAGE_ARTIFACT_NAME }}
-          path: ${{ runner.temp }}/divevault-image.tar
-          if-no-files-found: error
-
-  test-built-image:
-    runs-on: ubuntu-latest
-    needs:
-      - fetch-artifacts
-      - build-image
-
-    steps:
-      - name: Download source artifact
-        uses: actions/download-artifact@v8
-        with:
-          name: ${{ env.SOURCE_ARTIFACT_NAME }}
-          path: ${{ runner.temp }}/artifacts
-
-      - name: Extract source artifact
-        run: |
-          set -euo pipefail
-          tar -xzf "${RUNNER_TEMP}/artifacts/repo-source.tar.gz" -C "${GITHUB_WORKSPACE}"
+          ref: ${{ needs.build.outputs.source_ref }}
 
       - name: Set up Node
         uses: actions/setup-node@v7
@@ -310,18 +194,17 @@ jobs:
           npx playwright --version
           npx playwright install --with-deps
 
-      - name: Download Docker image artifact
-        uses: actions/download-artifact@v8
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v4
         with:
-          name: ${{ env.IMAGE_ARTIFACT_NAME }}
-          path: ${{ runner.temp }}/artifacts
-
-      - name: Load Docker image
-        run: docker load --input "${RUNNER_TEMP}/artifacts/divevault-image.tar"
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Start image test stack
         run: |
           set -euo pipefail
+          docker pull "${IMAGE_REF}"
           docker network create divevault-full-app-test
           docker run --detach --name divevault-postgres --network divevault-full-app-test \
             --env POSTGRES_USER=dive \
@@ -353,7 +236,7 @@ jobs:
             --env CORS_ORIGIN=http://127.0.0.1:8000 \
             --env DB_POOL_SIZE=0 \
             --env METRICS_ENABLED=disabled \
-            "${LOCAL_IMAGE_TAG}"
+            "${IMAGE_REF}"
 
       - name: Wait for image test stack
         run: |
@@ -394,214 +277,176 @@ jobs:
             frontend/test-results
           if-no-files-found: ignore
 
+  # The full application test runs on amd64; this proves the arm64 variant of
+  # the same digest starts, migrates and serves health checks.
+  smoke-test-arm64:
+    runs-on: ubuntu-24.04-arm
+    needs: build
+    permissions:
+      contents: read
+      packages: read
+    env:
+      IMAGE_REF: ${{ needs.build.outputs.image }}@${{ needs.build.outputs.digest }}
+
+    steps:
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Start arm64 image and check health
+        run: |
+          set -euo pipefail
+          docker pull --platform linux/arm64 "${IMAGE_REF}"
+          docker network create divevault-arm64
+          docker run --detach --name divevault-postgres --network divevault-arm64 \
+            --env POSTGRES_USER=dive --env POSTGRES_PASSWORD=dive --env POSTGRES_DB=dive \
+            postgres:17
+          for attempt in {1..60}; do
+            docker exec divevault-postgres pg_isready -U dive -d dive && break
+            [[ "${attempt}" == "60" ]] && { docker logs divevault-postgres >&2; exit 1; }
+            sleep 2
+          done
+          docker run --detach --name divevault-backend --network divevault-arm64 \
+            --platform linux/arm64 \
+            --publish 127.0.0.1:8000:8000 \
+            --env DATABASE_URL=postgresql://dive:dive@divevault-postgres:5432/dive \
+            --env AUTH_JWT_SECRET=arm64-smoke-test-secret-0123456789abcdef0123 \
+            --env STARTUP_MIGRATIONS=enabled \
+            --env HOST=0.0.0.0 \
+            --env PORT=8000 \
+            "${IMAGE_REF}"
+          for attempt in {1..60}; do
+            if curl -fsS "${FULL_APP_BASE_URL}/health"; then
+              docker exec divevault-backend /app/divevault healthcheck
+              exit 0
+            fi
+            sleep 2
+          done
+          docker logs divevault-backend >&2 || true
+          exit 1
+
   publish:
     runs-on: ubuntu-latest
     needs:
-      - fetch-artifacts
-      - test-built-image
-    if: github.ref == 'refs/heads/master'
+      - build
+      - scan
+      - test-image
+      - smoke-test-arm64
+    if: needs.build.outputs.publish == 'true'
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    env:
+      IMAGE: ${{ needs.build.outputs.image }}
+      DIGEST: ${{ needs.build.outputs.digest }}
+      TAGS: ${{ needs.build.outputs.tags }}
+
+    steps:
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Tag tested digest
+        run: |
+          set -euo pipefail
+          args=()
+          while IFS= read -r tag; do
+            [[ -n "${tag}" ]] && args+=(--tag "${tag}")
+          done <<< "${TAGS}"
+          if [[ "${#args[@]}" == "0" ]]; then
+            echo "No image tags were resolved for publishing." >&2
+            exit 1
+          fi
+          docker buildx imagetools create "${args[@]}" "${IMAGE}@${DIGEST}"
+          docker buildx imagetools inspect "${IMAGE}@${DIGEST}"
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+
+      - name: Sign image (keyless, GitHub OIDC)
+        run: cosign sign --yes "${IMAGE}@${DIGEST}"
+
+      - name: Summarize published image
+        run: |
+          {
+            echo "### Published image"
+            echo ""
+            echo "\`${IMAGE}@${DIGEST}\`"
+            echo ""
+            echo "Tags:"
+            while IFS= read -r tag; do
+              [[ -n "${tag}" ]] && echo "- \`${tag}\`"
+            done <<< "${TAGS}"
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+  release:
+    runs-on: ubuntu-latest
+    needs:
+      - build
+      - publish
+    if: ${{ inputs.release_tag }}
     permissions:
       contents: write
-      packages: write
-    outputs:
-      published_image_tag: ${{ steps.publish-tags.outputs.published_image_tag }}
+    env:
+      GH_TOKEN: ${{ github.token }}
+      IMAGE: ${{ needs.build.outputs.image }}
+      DIGEST: ${{ needs.build.outputs.digest }}
 
     steps:
       - name: Checkout
         uses: actions/checkout@v7
         with:
-          fetch-depth: 1
+          ref: ${{ needs.build.outputs.source_ref }}
+          fetch-depth: 0
 
-      - name: Download Docker image artifact
-        uses: actions/download-artifact@v8
-        with:
-          name: ${{ env.IMAGE_ARTIFACT_NAME }}
-          path: ${{ runner.temp }}/artifacts
-
-      - name: Load Docker image
-        run: docker load --input "${RUNNER_TEMP}/artifacts/divevault-image.tar"
-
-      - name: Login to GitHub Container Registry
-        uses: docker/login-action@v4
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Publish Docker image tags
-        id: publish-tags
-        env:
-          TAGS: ${{ needs.fetch-artifacts.outputs.tags }}
+      - name: Add image and migration notes, then publish release
         run: |
           set -euo pipefail
-          first_tag=""
-          while IFS= read -r tag; do
-            if [[ -z "${tag}" ]]; then
-              continue
-            fi
-            if [[ -z "${first_tag}" ]]; then
-              first_tag="${tag}"
-            fi
-            docker tag "${LOCAL_IMAGE_TAG}" "${tag}"
-            docker push "${tag}"
-          done <<< "${TAGS}"
-          if [[ -z "${first_tag}" ]]; then
-            echo "No image tags were resolved for publishing." >&2
-            exit 1
+          notes="${RUNNER_TEMP}/release-notes.md"
+          gh release view "${RELEASE_TAG}" --json body --jq .body > "${notes}"
+
+          # Idempotent: a re-run via workflow_dispatch must not append twice.
+          if ! grep -q '^## Container image' "${notes}"; then
+            version="${RELEASE_TAG#v}"
+            previous_tag="$(git describe --tags --abbrev=0 --match 'v[0-9]*' "${RELEASE_TAG}^" 2>/dev/null || true)"
+            {
+              echo ""
+              if [[ -n "${previous_tag}" ]] && ! git diff --quiet "${previous_tag}" "${RELEASE_TAG}" -- backend/internal/migrations; then
+                schema="$(sed -nE 's/^const CurrentSchemaVersion = ([0-9]+)$/\1/p' backend/internal/migrations/migrations.go)"
+                echo "## Database migrations"
+                echo ""
+                echo "This release changes the database schema (now version ${schema})."
+                echo "Back up your database before upgrading. With \`STARTUP_MIGRATIONS=disabled\`, run \`divevault migrate\` before starting the new version."
+                echo ""
+              fi
+              echo "## Container image"
+              echo ""
+              echo '```'
+              echo "docker pull ${IMAGE}:${version}"
+              echo '```'
+              echo ""
+              echo "Platforms: \`linux/amd64\`, \`linux/arm64\`. Digest: \`${DIGEST}\`"
+              echo ""
+              echo "Verify the signature:"
+              echo ""
+              echo '```'
+              echo "cosign verify ${IMAGE}@${DIGEST} \\"
+              echo "  --certificate-identity-regexp '^https://github.com/${GITHUB_REPOSITORY}/' \\"
+              echo "  --certificate-oidc-issuer https://token.actions.githubusercontent.com"
+              echo '```'
+            } >> "${notes}"
           fi
-          echo "published_image_tag=${first_tag}" >> "${GITHUB_OUTPUT}"
 
-  test-published-image:
-    runs-on: ubuntu-latest
-    needs:
-      - fetch-artifacts
-      - publish
-    if: github.ref == 'refs/heads/master'
-    permissions:
-      contents: read
-      packages: read
-
-    steps:
-      - name: Download source artifact
-        uses: actions/download-artifact@v8
-        with:
-          name: ${{ env.SOURCE_ARTIFACT_NAME }}
-          path: ${{ runner.temp }}/artifacts
-
-      - name: Extract source artifact
-        run: |
-          set -euo pipefail
-          tar -xzf "${RUNNER_TEMP}/artifacts/repo-source.tar.gz" -C "${GITHUB_WORKSPACE}"
-
-      - name: Set up Node
-        uses: actions/setup-node@v7
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
-
-      - name: Install frontend dependencies
-        working-directory: frontend
-        run: npm ci
-
-      - name: Install Playwright browsers
-        working-directory: frontend
-        env:
-          PLAYWRIGHT_BROWSERS_PATH: 0
-        run: |
-          npx playwright --version
-          npx playwright install --with-deps
-
-      - name: Login to GitHub Container Registry
-        uses: docker/login-action@v4
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Pull published Docker image
-        env:
-          PUBLISHED_IMAGE_TAG: ${{ needs.publish.outputs.published_image_tag }}
-        run: docker pull "${PUBLISHED_IMAGE_TAG}"
-
-      - name: Start published image test stack
-        env:
-          PUBLISHED_IMAGE_TAG: ${{ needs.publish.outputs.published_image_tag }}
-        run: |
-          set -euo pipefail
-          docker network create divevault-published-full-app-test
-          docker run --detach --name divevault-published-postgres --network divevault-published-full-app-test \
-            --env POSTGRES_USER=dive \
-            --env POSTGRES_PASSWORD=dive \
-            --env POSTGRES_DB=dive \
-            postgres:17
-
-          for attempt in {1..60}; do
-            if docker exec divevault-published-postgres pg_isready -U dive -d dive; then
-              break
-            fi
-            if [[ "${attempt}" == "60" ]]; then
-              docker logs divevault-published-postgres >&2 || true
-              exit 1
-            fi
-            sleep 2
-          done
-
-          docker run --detach --name divevault-published-backend --network divevault-published-full-app-test \
-            --publish 127.0.0.1:8000:8000 \
-            --env DATABASE_URL=postgresql://dive:dive@divevault-published-postgres:5432/dive \
-            --env AUTH_JWT_SECRET=full-application-test-secret-0123456789abcdef \
-            --env AUTH_JWT_ISSUER=divevault.full-application-test \
-            --env AUTH_JWT_AUDIENCE=divevault.full-application-test \
-            --env STARTUP_MIGRATIONS=enabled \
-            --env FRONTEND_DIR=/app/frontend/dist \
-            --env HOST=0.0.0.0 \
-            --env PORT=8000 \
-            --env CORS_ORIGIN=http://127.0.0.1:8000 \
-            --env DB_POOL_SIZE=0 \
-            --env METRICS_ENABLED=disabled \
-            "${PUBLISHED_IMAGE_TAG}"
-
-      - name: Wait for published image test stack
-        run: |
-          set -euo pipefail
-          for attempt in {1..60}; do
-            if curl -fsS "${FULL_APP_BASE_URL}/health"; then
-              exit 0
-            fi
-            sleep 2
-          done
-          docker logs divevault-published-backend >&2 || true
-          exit 1
-
-      - name: Run full application test against published image
-        working-directory: frontend
-        env:
-          PLAYWRIGHT_BROWSERS_PATH: 0
-          FULL_APP_BASE_URL: ${{ env.FULL_APP_BASE_URL }}
-        run: npm run test:full-app:deployed
-
-      - name: Stop published image test stack
-        if: always()
-        run: |
-          docker logs divevault-published-backend > "${RUNNER_TEMP}/divevault-published-backend.log" 2>&1 || true
-          docker logs divevault-published-postgres > "${RUNNER_TEMP}/divevault-published-postgres.log" 2>&1 || true
-          docker rm -f divevault-published-backend divevault-published-postgres || true
-          docker network rm divevault-published-full-app-test || true
-
-      - name: Upload published image full application diagnostics
-        if: failure()
-        uses: actions/upload-artifact@v7
-        with:
-          name: published-image-full-application-diagnostics
-          path: |
-            ${{ runner.temp }}/divevault-published-backend.log
-            ${{ runner.temp }}/divevault-published-postgres.log
-            frontend/playwright-report
-            frontend/test-results
-          if-no-files-found: ignore
-
-  release:
-    runs-on: ubuntu-latest
-    needs:
-      - fetch-artifacts
-      - test-published-image
-    if: needs.fetch-artifacts.outputs.publish_version_tags == 'true'
-    permissions:
-      contents: write
-
-    steps:
-      - name: Download source artifact
-        uses: actions/download-artifact@v8
-        with:
-          name: ${{ env.SOURCE_ARTIFACT_NAME }}
-          path: ${{ runner.temp }}/artifacts
-
-      - name: Publish GitHub release
-        uses: softprops/action-gh-release@v3
-        with:
-          tag_name: ${{ needs.fetch-artifacts.outputs.version_tag }}
-          name: ${{ needs.fetch-artifacts.outputs.version_tag }}
-          generate_release_notes: true
-          make_latest: true
-          files: ${{ runner.temp }}/artifacts/repo-source.tar.gz
+          latest_flag="--latest"
+          [[ "${RELEASE_TAG}" == *-* ]] && latest_flag="--prerelease"
+          gh release edit "${RELEASE_TAG}" --notes-file "${notes}" --draft=false "${latest_flag}"

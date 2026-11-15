@@ -11,7 +11,7 @@ This directory contains a baseline Kubernetes deployment for DiveVault with:
 ## How to use
 
 1. Build and publish your image.
-2. Update `ghcr.io/your-org/divevault:0.4.0` in `divevault.yaml` to your registry and a pinned release tag or digest.
+2. Update `ghcr.io/your-org/divevault:<version>` in `divevault.yaml` to your registry and a pinned release tag (for example `0.5.0`) or digest. Avoid moving tags such as `latest` or `edge`.
 3. Update Secret values in `divevault.yaml`. `AUTH_JWT_SECRET` must be at least 32 random characters (`openssl rand -base64 48`); the backend refuses to start otherwise.
 4. Run migrations first:
 
