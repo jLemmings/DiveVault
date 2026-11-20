@@ -20,7 +20,7 @@ services:
         condition: service_healthy
 
   postgres:
-    image: postgres:18-alpine
+    image: postgres:19-alpine
     environment:
       POSTGRES_DB: dive
       POSTGRES_USER: dive
