@@ -53,7 +53,7 @@ spec:
       containers:
         - name: migrate
           # Pin a released version (or digest) instead of a moving tag.
-          image: ghcr.io/your-org/divevault:0.4.0 # x-release-please-version
+          image: ghcr.io/your-org/divevault:0.7.0 # x-release-please-version
           imagePullPolicy: IfNotPresent
           command: ["/app/divevault", "migrate"]
           securityContext:
@@ -95,7 +95,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: backend
-          image: ghcr.io/your-org/divevault:0.4.0 # x-release-please-version
+          image: ghcr.io/your-org/divevault:0.7.0 # x-release-please-version
           imagePullPolicy: IfNotPresent
           securityContext:
             allowPrivilegeEscalation: false
