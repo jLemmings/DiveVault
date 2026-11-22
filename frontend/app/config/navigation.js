@@ -1,39 +1,9 @@
+// The four places topside. Settings live under the diver's name, which is the fifth tab on a phone.
 export const NAV_ITEMS = [
-  {
-    id: "dashboard",
-    label: "Dashboard",
-    mobileLabel: "Dashboard",
-    icon: "dashboard",
-    mobileIcon: "dashboard",
-    eyebrow: "Dive overview",
-    title: "Logbook"
-  },
-  {
-    id: "logs",
-    label: "Dive logs",
-    mobileLabel: "Logs",
-    icon: "waves",
-    mobileIcon: "sailing",
-    eyebrow: "Dive logs",
-    title: "Dive log database"
-  },
-  { id: "map", label: "Map", mobileLabel: "Map", icon: "map", mobileIcon: "map", eyebrow: "Dive map", title: "Map" },
-  {
-    id: "equipment",
-    label: "Equipment",
-    mobileLabel: "Gear",
-    icon: "scuba_diving",
-    mobileIcon: "scuba_diving",
-    eyebrow: "Gear locker",
-    title: "Equipment"
-  },
-  {
-    id: "settings",
-    label: "Settings",
-    mobileLabel: "Settings",
-    icon: "settings",
-    mobileIcon: "settings",
-    eyebrow: "System configuration",
-    title: "System config"
-  }
+  { id: "logbook", path: "/", label: "Logbook", views: ["logbook", "dive", "edit", "create"] },
+  { id: "imports", path: "/imports", label: "Imports", views: ["imports", "importFile"] },
+  { id: "sites", path: "/map", label: "Sites", views: ["sites"] },
+  { id: "gear", path: "/equipment", label: "Gear", views: ["gear"] }
 ];
+
+export const ACCOUNT_VIEWS = ["diver", "application"];

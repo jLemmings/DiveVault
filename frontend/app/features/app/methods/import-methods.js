@@ -1,197 +1,38 @@
-import {
-  importDraftSeed,
-  isImportComplete,
-  effectiveImportDraft,
-  missingImportFields,
-  paddedDiveIndex,
-  isCommittedDive
-} from "~/shared/utils/core.js";
-import { encodePathSegment } from "~/routing/routes.js";
+import { importDraftSeed, isCommittedDive, missingImportFields } from "~/shared/utils/core.js";
 import { updateDiveLogbook } from "~/shared/api/dives.js";
-import { uploadCsv, uploadSubsurface } from "~/shared/api/imports.js";
+import { waiting } from "~/shared/utils/logbook.js";
+import { importPath } from "~/routing/routes.js";
 
-// Import queue: draft handling, CSV/Subsurface uploads and committing imported dives.
+const LOGBOOK_KEYS = ["site", "buddy", "guide", "weather_description", "visibility", "wetsuit_description", "weight_description", "notes"];
+
+// Drafts of imported and logged dives: only unsaved edits are held here, on top of what the server has.
 export function createImportMethods() {
   return {
-    syncImportDrafts() {
-      const nextDrafts = {};
-      this.dives.forEach((dive) => {
-        const diveId = String(dive.id);
-        nextDrafts[diveId] = importDraftSeed(dive);
-      });
-      this.importDrafts = nextDrafts;
+    draftFor(dive) {
+      if (!dive) return null;
+      const seed = importDraftSeed(dive);
+      const neverChosen = !isCommittedDive(dive) && !Array.isArray(dive.fields?.logbook?.equipment_ids);
+      if (neverChosen && this.profileEquipmentSelectionEnabled) seed.equipment_ids = this.defaultEquipmentIds;
+      return { ...seed, ...this.draftEdits[String(dive.id)] };
     },
-    resolvePendingImportId(dives = this.dives, drafts = this.importDrafts, preferredId = null) {
-      const pending = dives.filter((dive) => !isImportComplete(effectiveImportDraft(dive, drafts[String(dive.id)])));
-      if (preferredId && pending.some((dive) => String(dive.id) === String(preferredId))) {
-        return preferredId;
-      }
-      return pending[0]?.id || null;
-    },
-    isPendingImportId(diveId, dives = this.dives, drafts = this.importDrafts) {
-      return dives.some(
-        (dive) => String(dive.id) === String(diveId) && !isImportComplete(effectiveImportDraft(dive, drafts[String(dive.id)]))
-      );
-    },
-    async openImportQueue(diveId = null) {
-      this.closeMobileAccountMenu();
-      this.activeView = "imports";
-      this.selectedDiveId = null;
-      this.selectedEditDiveId = null;
-      this.importError = "";
-      this.importStatusMessage = "";
-      if (this.isAuthenticated) {
-        await this.fetchDives();
-      }
-      this.selectedImportId = diveId ? this.resolvePendingImportId(this.dives, this.importDrafts, diveId) : null;
-      await this.navigateToAppRoute(this.selectedImportId ? `/imports/${encodePathSegment(this.selectedImportId)}` : "/imports");
-    },
-    async selectImportDive(diveId) {
-      this.closeMobileAccountMenu();
-      this.activeView = "imports";
-      this.selectedDiveId = null;
-      this.selectedEditDiveId = null;
-      this.selectedImportId = this.resolvePendingImportId(this.dives, this.importDrafts, diveId);
-      this.importError = "";
-      this.importStatusMessage = "";
-      await this.navigateToAppRoute(this.selectedImportId ? `/imports/${encodePathSegment(this.selectedImportId)}` : "/imports");
-    },
-    async backToImportQueue() {
-      this.closeMobileAccountMenu();
-      this.activeView = "imports";
-      this.selectedDiveId = null;
-      this.selectedImportId = null;
-      this.selectedEditDiveId = null;
-      await this.navigateToAppRoute("/imports");
-    },
-    async openDiveEditor(diveId) {
-      this.closeMobileAccountMenu();
-      this.activeView = "edit";
-      this.selectedDiveId = null;
-      this.selectedImportId = null;
-      this.selectedEditDiveId = diveId;
-      this.importError = "";
-      this.importStatusMessage = "";
-      if (this.isAuthenticated) {
-        await this.fetchDives();
-      }
-      if (!this.selectedEditDive) {
-        this.selectedEditDiveId = null;
-        await this.navigateToAppRoute("/logs");
-        return;
-      }
-      await this.navigateToAppRoute(`/logs/${encodePathSegment(diveId)}/edit`);
-    },
-    async closeDiveEditor() {
-      this.closeMobileAccountMenu();
-      if (!this.selectedEditDiveId) {
-        this.activeView = "logs";
-        await this.navigateToAppRoute("/logs");
-        return;
-      }
-      this.activeView = "logs";
-      this.selectedDiveId = this.selectedEditDiveId;
-      this.selectedEditDiveId = null;
-      await this.navigateToAppRoute(`/logs/${encodePathSegment(this.selectedDiveId)}`);
-    },
-    updateImportDraft(diveId, key, value) {
+    updateDraft(diveId, key, value) {
       const id = String(diveId);
-      const dive = this.dives.find((entry) => String(entry.id) === id);
-      const currentDraft = effectiveImportDraft(dive, this.importDrafts[id]);
-      this.importDrafts = {
-        ...this.importDrafts,
-        [id]: {
-          ...currentDraft,
-          [key]: value,
-          status: "imported"
-        }
-      };
-      this.importStatusMessage = "";
-      this.importError = "";
+      this.draftEdits = { ...this.draftEdits, [id]: { ...this.draftEdits[id], [key]: value } };
+      this.clearNotices();
     },
-    async uploadCsvImport(file, options = {}) {
-      if (!file) return false;
-      const dryRun = options.dryRun === true;
-      const navigateToQueue = options.navigateToQueue !== false;
-      const setImportFeedback = options.setImportFeedback !== false;
-      if (setImportFeedback) {
-        this.importError = "";
-        this.importStatusMessage = "";
-      }
-      const refreshAfterImport = options.refreshDives !== false;
-      try {
-        const csvText = await file.text();
-        const response = await uploadCsv(this.apiClient(), new Blob([csvText], { type: "text/csv; charset=utf-8" }), {
-          dryRun,
-          timeoutMs: 30000
-        });
-        const payload = await response.json().catch(() => null);
-        if (!response.ok) {
-          throw new Error(payload?.error || `API returned ${response.status}`);
-        }
-        if (!dryRun && refreshAfterImport) {
-          await this.fetchDives();
-        }
-        if (!dryRun && setImportFeedback) {
-          this.importStatusMessage = `CSV import processed ${payload.rows || 0} row(s): ${payload.inserted || 0} new, ${payload.duplicates || 0} duplicate.`;
-        }
-        if (!dryRun && navigateToQueue) {
-          this.activeView = "imports";
-          this.selectedImportId = this.resolvePendingImportId(this.dives, this.importDrafts, null);
-          await this.navigateToAppRoute(this.selectedImportId ? `/imports/${encodePathSegment(this.selectedImportId)}` : "/imports");
-        }
-        return payload;
-      } catch (error) {
-        if (setImportFeedback) {
-          this.importError = error?.message || "Unable to import CSV file.";
-        }
-        throw error;
-      }
+    discardDraft(diveId) {
+      const remaining = { ...this.draftEdits };
+      delete remaining[String(diveId)];
+      this.draftEdits = remaining;
     },
-    async uploadSubsurfaceImport(file, options = {}) {
-      if (!file) return false;
-      const dryRun = options.dryRun === true;
-      const refreshAfterImport = options.refreshDives !== false;
-      const response = await uploadSubsurface(this.apiClient(), file, { dryRun, timeoutMs: 30000 });
-      const payload = await response.json().catch(() => null);
-      if (!response.ok) {
-        throw new Error(payload?.error || `API returned ${response.status}`);
-      }
-      if (!dryRun && refreshAfterImport) {
-        await this.fetchDives();
-      }
-      return payload;
-    },
-    async persistImportDraft(diveId, draft, commit = false) {
-      const beginPressureInput = String(draft.begin_pressure_bar || "").trim();
-      const endPressureInput = String(draft.end_pressure_bar || "").trim();
-      const beginPressure = beginPressureInput === "" ? null : Number.parseFloat(beginPressureInput);
-      const endPressure = endPressureInput === "" ? null : Number.parseFloat(endPressureInput);
-      if (beginPressureInput && (!Number.isFinite(beginPressure) || beginPressure < 0 || beginPressure > 400)) {
-        throw new Error("Entry tank pressure must be between 0 and 400 bar.");
-      }
-      if (endPressureInput && (!Number.isFinite(endPressure) || endPressure < 0 || endPressure > 400)) {
-        throw new Error("Exit tank pressure must be between 0 and 400 bar.");
-      }
-      if (beginPressure !== null && endPressure !== null && endPressure > beginPressure) {
-        throw new Error("Exit tank pressure cannot be higher than entry tank pressure.");
-      }
-
+    async persistDraft(diveId, draft, commit) {
+      // The backend replaces the logbook and never edits tanks, so only logbook fields are sent.
       const response = await updateDiveLogbook(this.apiClient(), diveId, {
         commit,
-        tank_volume_l: draft.tank_volume_l || null,
-        begin_pressure_bar: draft.begin_pressure_bar || null,
-        end_pressure_bar: draft.end_pressure_bar || null,
         logbook: {
-          site: draft.site,
-          buddy: draft.buddy,
-          guide: draft.guide,
-          weather_description: draft.weather_description,
-          visibility: draft.visibility,
-          wetsuit_description: draft.wetsuit_description,
-          weight_description: draft.weight_description,
-          notes: draft.notes,
-          equipment_ids: Array.isArray(draft.equipment_ids) ? draft.equipment_ids : [],
+          ...Object.fromEntries(LOGBOOK_KEYS.map((key) => [key, draft[key]])),
+          ...(commit ? { completed_at: draft.completed_at || new Date().toISOString() } : {}),
+          equipment_ids: draft.equipment_ids,
           status: commit ? "complete" : "imported"
         }
       });
@@ -201,132 +42,77 @@ export function createImportMethods() {
       }
       return payload;
     },
-    async saveImportDraft(diveId, commit = false) {
+    async saveDraft(diveId, commit = false) {
       const id = String(diveId);
       const dive = this.dives.find((entry) => String(entry.id) === id);
       if (!dive) {
-        this.importError = "Dive could not be found for metadata update.";
+        this.noticeError = "That dive could not be found.";
         return false;
       }
-
       const wasCommitted = isCommittedDive(dive);
-      const draft = effectiveImportDraft(dive, this.importDrafts[id]);
+      const shouldCommit = commit || wasCommitted;
+      const draft = this.draftFor(dive);
       const missing = missingImportFields(draft, this.profileRequiredLogbookFields);
-      if ((commit || wasCommitted) && missing.length) {
-        this.importError = `${missing[0].label} is required before completing this record.`;
+      if (shouldCommit && missing.length) {
+        this.noticeError = this.$tx("{field} is required before this dive can go in the logbook.", { field: this.$tx(missing[0].label) });
         return false;
       }
 
-      this.savingImportId = id;
-      this.importError = "";
-      this.importStatusMessage = "";
+      this.clearNotices();
+      this.savingDiveId = id;
       try {
-        const shouldCommit = commit || wasCommitted;
-        const updatedDive = await this.persistImportDraft(diveId, draft, shouldCommit);
-        const nextDives = this.dives.map((entry) => (String(entry.id) === id ? updatedDive : entry));
-        const nextDrafts = {
-          ...this.importDrafts,
-          [id]: importDraftSeed(updatedDive)
-        };
-
-        this.dives = nextDives;
-        this.importDrafts = nextDrafts;
-        this.importStatusMessage =
-          shouldCommit && !wasCommitted
-            ? `${paddedDiveIndex(updatedDive, nextDives)} committed to the registry.`
-            : wasCommitted
-              ? `${paddedDiveIndex(updatedDive, nextDives)} metadata updated.`
-              : `Draft saved for ${paddedDiveIndex(updatedDive)}.`;
-
-        if (shouldCommit && !wasCommitted) {
-          this.selectedImportId = this.resolvePendingImportId(nextDives, nextDrafts, null);
-          await this.navigateToAppRoute(this.selectedImportId ? `/imports/${encodePathSegment(this.selectedImportId)}` : "/imports");
+        const queue = waiting(this.dives).map((entry) => String(entry.id));
+        const updated = await this.persistDraft(diveId, draft, shouldCommit);
+        this.discardDraft(id);
+        this.dives = this.dives.map((entry) => (String(entry.id) === id ? updated : entry));
+        const site = updated?.fields?.logbook?.site || this.$tx("The dive");
+        if (wasCommitted) {
+          this.notice = "Logbook updated.";
+        } else if (shouldCommit) {
+          this.notice = this.$tx("{site} is in your logbook.", { site });
+          const following = queue[queue.indexOf(id) + 1] ?? queue.find((entry) => entry !== id);
+          await this.navigate(importPath(following), { keepNotice: true, replace: true });
+        } else {
+          this.notice = "Draft saved.";
         }
         return true;
       } catch (error) {
-        this.importError = error.message || "Unable to save import metadata.";
+        this.noticeError = error.message || "Could not save the dive.";
         return false;
       } finally {
-        this.savingImportId = null;
+        this.savingDiveId = null;
       }
     },
-    async applyBuddyGuideToPendingImports(diveId) {
-      const id = String(diveId);
-      const sourceDive = this.dives.find((entry) => String(entry.id) === id);
-      if (!sourceDive) {
-        this.importError = "Dive could not be found for bulk metadata update.";
-        return false;
-      }
-
-      const sourceDraft = effectiveImportDraft(sourceDive, this.importDrafts[id]);
+    async applyPeopleToWaiting({ buddy = "", guide = "" }) {
       const updates = {};
-      if (typeof sourceDraft.buddy === "string" && sourceDraft.buddy.trim()) {
-        updates.buddy = sourceDraft.buddy;
-      }
-      if (typeof sourceDraft.guide === "string" && sourceDraft.guide.trim()) {
-        updates.guide = sourceDraft.guide;
-      }
-
-      const updateKeys = Object.keys(updates);
-      if (!updateKeys.length) {
-        this.importError = "Enter a buddy or guide before applying the values across imported dives.";
-        this.importStatusMessage = "";
+      if (buddy.trim()) updates.buddy = buddy.trim();
+      if (guide.trim()) updates.guide = guide.trim();
+      if (!Object.keys(updates).length) {
+        this.noticeError = "Enter a buddy or guide first.";
         return false;
       }
 
-      const pendingDives = this.dives.filter(
-        (entry) => !isImportComplete(effectiveImportDraft(entry, this.importDrafts[String(entry.id)]))
-      );
-      if (!pendingDives.length) {
-        this.importError = "There are no imported dives to review.";
-        this.importStatusMessage = "";
-        return false;
-      }
-
-      this.bulkImportSavePending = true;
-      this.importError = "";
-      this.importStatusMessage = "";
-
-      let nextDives = this.dives.slice();
-      let nextDrafts = { ...this.importDrafts };
-      let updatedCount = 0;
-
+      this.clearNotices();
+      this.bulkSaving = true;
+      let count = 0;
       try {
-        for (const pendingDive of pendingDives) {
-          const pendingId = String(pendingDive.id);
-          const currentDraft = effectiveImportDraft(pendingDive, nextDrafts[pendingId]);
-          const updatedDive = await this.persistImportDraft(
-            pendingDive.id,
-            {
-              ...currentDraft,
-              ...updates,
-              status: "imported"
-            },
-            false
-          );
-
-          nextDives = nextDives.map((entry) => (String(entry.id) === pendingId ? updatedDive : entry));
-          nextDrafts = {
-            ...nextDrafts,
-            [pendingId]: importDraftSeed(updatedDive)
-          };
-          updatedCount += 1;
+        for (const dive of waiting(this.dives)) {
+          const updated = await this.persistDraft(dive.id, { ...this.draftFor(dive), ...updates }, false);
+          this.dives = this.dives.map((entry) => (String(entry.id) === String(dive.id) ? updated : entry));
+          this.discardDraft(dive.id);
+          count += 1;
         }
-
-        this.dives = nextDives;
-        this.importDrafts = nextDrafts;
-        this.selectedImportId = this.resolvePendingImportId(nextDives, nextDrafts, id);
-
-        const appliedLabel = updateKeys.length === 2 ? "buddy and guide" : updateKeys[0];
-        this.importStatusMessage = `Applied ${appliedLabel} to ${updatedCount} imported ${updatedCount === 1 ? "dive" : "dives"}. Dive sites were left unchanged.`;
+        this.notice = this.$tn(
+          count,
+          "Saved on {count} dive. Sites were left as they were.",
+          "Saved on {count} dives. Sites were left as they were."
+        );
         return true;
       } catch (error) {
-        this.dives = nextDives;
-        this.importDrafts = nextDrafts;
-        this.importError = error.message || "Unable to apply buddy and guide across imported dives.";
+        this.noticeError = error.message || "Could not save the buddy and guide.";
         return false;
       } finally {
-        this.bulkImportSavePending = false;
+        this.bulkSaving = false;
       }
     }
   };

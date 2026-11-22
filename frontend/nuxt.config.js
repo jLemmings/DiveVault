@@ -1,9 +1,14 @@
+import { statfsSync } from "node:fs";
 import path from "node:path";
 import { defineNuxtConfig } from "nuxt/config";
 import { DEFAULT_LOCALE, NUXT_LOCALES } from "./app/i18n/locales.js";
 import { PRERENDER_ROUTES } from "./app/routing/routes.js";
 
 const repoRoot = path.resolve(__dirname, "..");
+// A Windows folder mounted into Linux (dev container, WSL) is a 9p file system, which passes on no change
+// events, so there the dev server has to poll. Everywhere else it keeps the native watchers.
+const V9FS_MAGIC = 0x01021997;
+const needsPolling = process.platform === "linux" && statfsSync(__dirname).type === V9FS_MAGIC;
 const apiTarget = process.env.VITE_API_PROXY_TARGET || "http://127.0.0.1:8000";
 
 export default defineNuxtConfig({
@@ -21,7 +26,7 @@ export default defineNuxtConfig({
   },
   // Fonts are bundled and self-hosted: no third-party requests (privacy) and
   // compatible with the backend's strict Content-Security-Policy.
-  css: ["@fontsource-variable/manrope", "material-symbols/outlined.css", "~/assets/styles.css"],
+  css: ["~/assets/fonts.css", "~/assets/styles.css"],
   alias: {
     "#features": path.resolve(__dirname, "app/features"),
     "#i18n": path.resolve(__dirname, "app/i18n"),
@@ -114,6 +119,8 @@ export default defineNuxtConfig({
       autoprefixer: {}
     }
   },
+  // Nuxt hands these options to Vite's watcher as well as its own.
+  watchers: needsPolling ? { chokidar: { usePolling: true, interval: 500, binaryInterval: 2000 } } : {},
   devtools: { enabled: false },
   typescript: { shim: false },
   vite: {

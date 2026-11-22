@@ -1,407 +1,585 @@
+import { readFileSync, readdirSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { expect, test } from "@playwright/test";
 
-import { gotoAndWait, installAppMocks } from "./helpers/app-fixtures.js";
+import { baseData, buildDive, gotoAndWait, installAppMocks } from "./helpers/app-fixtures.js";
 
-async function chooseComboboxOption(page, name, optionName) {
-  await page.getByRole("combobox", { name }).first().click();
-  await page.getByRole("option", { name: optionName, exact: true }).click();
+const frontendRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const OWNER = {
+  id: "owner_avery",
+  firstName: "Avery",
+  lastName: "Marlow",
+  role: "admin",
+  isOwner: true,
+  primaryEmailAddress: { emailAddress: "avery@example.com" },
+  emailAddresses: [{ emailAddress: "avery@example.com" }]
+};
+const USERS = [
+  {
+    id: "owner_avery",
+    email: "avery.longname@example.com",
+    first_name: "Avery",
+    last_name: "Marlow",
+    role: "admin",
+    is_active: true,
+    last_login_at: "2026-04-07T10:00:00Z"
+  },
+  {
+    id: "user_kai",
+    email: "kai.with-a-long-email-address@example.com",
+    first_name: "Kai",
+    last_name: "Reef",
+    role: "user",
+    is_active: true,
+    last_login_at: "2026-04-07T11:00:00Z"
+  }
+];
+
+function mainNav(page) {
+  return page.getByRole("navigation", { name: "Main" }).filter({ visible: true });
 }
 
-test("renders login flows with the local auth screen", async ({ page }, testInfo) => {
-  testInfo.setTimeout(60000);
+function requestBody(page, method, pathname) {
+  return page
+    .waitForRequest((request) => request.method() === method && new URL(request.url()).pathname === pathname)
+    .then((request) => request.postDataJSON());
+}
+
+async function overflow(page) {
+  return page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+}
+
+test.beforeEach(async ({ page }) => {
+  // The chart must not depend on the tile service while testing.
+  await page.route("https://server.arcgisonline.com/**", (route) => route.abort());
+});
+
+test("renders sign-in and registration, and signs in", async ({ page }) => {
   await installAppMocks(page, {
     signedIn: false,
-    authStatus: {
-      initialized: false,
-      bootstrap_registration_open: true,
-      public_registration_enabled: false,
-      public_registration_open: true
-    }
+    authStatus: { initialized: false, bootstrap_registration_open: true, public_registration_open: true }
   });
   await gotoAndWait(page);
 
-  const authPanel = page.locator(".auth-panel");
-  await expect(page.getByRole("heading", { name: "Welcome back" })).toBeVisible();
-  await expect(page.getByPlaceholder("Email")).toBeVisible();
-  await expect(authPanel.getByRole("button", { name: "Sign in" })).toBeVisible();
-  await expect(authPanel.getByRole("button", { name: "Create account" })).toBeVisible();
-  await expect(page.getByLabel("Language")).toBeVisible();
-  await page.getByRole("combobox", { name: "Language" }).click();
-  await expect(page.getByRole("option")).toHaveText(["English", "Deutsch", "Français"]);
-  await page.keyboard.press("Escape");
+  await expect(page.getByRole("heading", { name: "Sign in" })).toBeVisible();
+  await expect(page.getByLabel("Language").locator("option")).toHaveText(["English", "Deutsch", "Français"]);
 
-  await authPanel.getByRole("button", { name: "Create account" }).click();
-  await expect(page.getByRole("heading", { name: "Create your DiveVault account" })).toBeVisible();
-  await expect(page.getByPlaceholder("First name")).toBeVisible();
-  await expect(page.getByPlaceholder("Last name")).toBeVisible();
+  await page.getByRole("button", { name: "Create an account" }).click();
+  await expect(page.getByRole("heading", { name: "Create your account" })).toBeVisible();
+  await expect(page.getByText("The first account becomes the owner of this DiveVault.")).toBeVisible();
+  await expect(page.getByLabel("First name")).toBeVisible();
+  await expect(page.getByLabel("Last name")).toBeVisible();
 
-  await authPanel.getByRole("button", { name: "Sign in" }).click();
-  await expect(page.getByRole("heading", { name: "Welcome back" })).toBeVisible();
-  await page.getByPlaceholder("Email").fill("avery@example.com");
-  await page.getByPlaceholder("Password").fill("Password123!");
-  await authPanel.getByRole("button", { name: "Sign in" }).click();
-  await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible();
+  await page.getByRole("button", { name: "I already have an account" }).click();
+  await page.getByLabel("Email").fill("avery@example.com");
+  await page.getByLabel("Password", { exact: true }).fill("Password123!");
+  await page.getByLabel("Password", { exact: true }).press("Enter");
+  await expect(page.getByRole("heading", { name: /1 dive, 53 minutes underwater/ })).toBeVisible();
 });
 
-test("hides the public account prompt when registration is closed", async ({ page }) => {
-  await installAppMocks(page, {
-    signedIn: false,
-    authStatus: {
-      initialized: true,
-      bootstrap_registration_open: false,
-      public_registration_enabled: false,
-      public_registration_open: false
-    }
-  });
+test("registers a new account", async ({ page }) => {
+  await installAppMocks(page, { signedIn: false, authStatus: { public_registration_open: true } });
   await gotoAndWait(page);
 
-  await expect(page.getByRole("heading", { name: "Welcome back" })).toBeVisible();
-  await expect(page.getByText("Need an account?")).toBeHidden();
-  await expect(page.getByRole("button", { name: "Create account" })).toBeHidden();
+  await page.getByRole("button", { name: "Create an account" }).click();
+  await page.getByLabel("First name").fill("Lea");
+  await page.getByLabel("Email").fill("lea@example.com");
+  await page.getByLabel("Password", { exact: true }).fill("Password123!");
+  const sent = requestBody(page, "POST", "/api/auth/register");
+  await page.getByRole("button", { name: "Create account", exact: true }).click();
+  expect(await sent).toMatchObject({ email: "lea@example.com", first_name: "Lea" });
+  await expect(page.getByText("Account created. Sign in with your new credentials.")).toBeVisible();
 });
 
-test("covers dashboard, logs, dive detail, and logbook editing", async ({ page }) => {
-  await installAppMocks(page);
+test("hides registration when it is closed", async ({ page }) => {
+  await installAppMocks(page, { signedIn: false });
   await gotoAndWait(page);
 
-  await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible();
-  await expect(page.getByRole("banner").getByText("Avery Marlow")).toBeVisible();
-
-  await page.getByRole("button", { name: "Dive logs" }).click();
-  await expect(page.getByRole("heading", { name: "Dive logs", exact: true })).toBeVisible();
-  await page.getByPlaceholder("Search dive logs...").fill("Blue Hole");
-  const visibleLogRow = page.locator("article[role='button']:visible").filter({ hasText: "Blue Hole" }).first();
-  await expect(visibleLogRow).toBeVisible();
-  await expect(visibleLogRow).toContainText("#0001");
-  await expect(visibleLogRow).not.toContainText("##0001");
-  await expect(visibleLogRow.locator(".material-symbols-outlined", { hasText: "checkroom" }).first()).toBeVisible();
-  await expect(visibleLogRow).toContainText("5mm full suit");
-  await expect(visibleLogRow.locator(".material-symbols-outlined", { hasText: "fitness_center" }).first()).toBeVisible();
-  await expect(visibleLogRow).toContainText("8 kg integrated");
-
-  await visibleLogRow.focus();
-  await page.keyboard.press("Enter");
-  await expect(page.getByText("Back to logs")).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Logbook details" })).toBeVisible();
-  await expect(page.locator("article:visible", { hasText: "Suit" }).filter({ hasText: "5mm full suit" }).first()).toBeVisible();
-  await expect(page.locator("p:visible", { hasText: "18 m / excellent" }).first()).toBeVisible();
-  await expect(page.locator("p:visible", { hasText: "5mm full suit" }).first()).toBeVisible();
-  await expect(page.locator("p:visible", { hasText: "8 kg integrated" }).first()).toBeVisible();
-  await expect(page.locator("p:visible", { hasText: "Light current with scattered clouds." }).first()).toBeVisible();
-  await expect(page.getByText("Samples", { exact: true })).toBeHidden();
-
-  await page.getByRole("button", { name: "Edit dive" }).click();
-  await expect(page.getByText("Logbook entry")).toBeVisible();
-  await page
-    .locator("textarea[placeholder='Conditions, wildlife, route, incidents, visibility, buoyancy notes...']:visible")
-    .fill("Updated from Playwright coverage.");
-  await page.getByRole("button", { name: "Save logbook changes" }).click();
-  await expect(page.getByText("metadata updated.")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Sign in" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Create an account" })).toHaveCount(0);
 });
 
-test("navigates between desktop sidebar sections from logs", async ({ page }) => {
+test("moves between the four places and the diver's pages", async ({ page }) => {
   await installAppMocks(page);
-  await gotoAndWait(page, "/logs");
+  await gotoAndWait(page);
+  const nav = mainNav(page);
 
-  await expect(page.getByRole("heading", { name: "Dive logs", exact: true })).toBeVisible();
+  await expect(nav.getByRole("link")).toHaveText([/Logbook/, /Imports\s*1/, /Sites/, /Gear/]);
+  await nav.getByRole("link", { name: /Imports/ }).click();
+  await expect(page).toHaveURL(/\/imports$/);
+  await expect(page.getByRole("heading", { name: "1 dive waiting to surface" })).toBeVisible();
 
-  await page.getByRole("button", { name: "Dashboard" }).click();
-  await expect(page).toHaveURL(/\/$/);
-  await expect(page.getByRole("heading", { name: "Dashboard", exact: true })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Recent dives" })).toBeVisible();
-  const sidebarBox = await page.locator("aside").first().boundingBox();
-  const dashboardRailBox = await page.locator(".dashboard-side-rail").boundingBox();
-  expect(dashboardRailBox?.x).toBeGreaterThanOrEqual((sidebarBox?.x || 0) + (sidebarBox?.width || 0) - 1);
+  await nav.getByRole("link", { name: "Sites" }).click();
+  await expect(page).toHaveURL(/\/map$/);
+  await expect(page.getByRole("heading", { name: "Sites", exact: true })).toBeVisible();
 
-  await page.getByRole("button", { name: "Dive logs" }).click();
-  await expect(page).toHaveURL(/\/logs$/);
-  await expect(page.getByPlaceholder("Search dive logs...")).toBeVisible();
-  const logsBox = await page.locator(".dashboard-command-center").boundingBox();
-  expect(logsBox?.x).toBeGreaterThanOrEqual((sidebarBox?.x || 0) + (sidebarBox?.width || 0) - 1);
-
-  await page.getByRole("button", { name: "Equipment" }).click();
+  await nav.getByRole("link", { name: "Gear" }).click();
   await expect(page).toHaveURL(/\/equipment$/);
-  await expect(page.getByRole("heading", { name: "Equipment", exact: true })).toBeVisible();
-  const equipmentBox = await page.locator(".dashboard-command-center").boundingBox();
-  expect(equipmentBox?.x).toBeGreaterThanOrEqual((sidebarBox?.x || 0) + (sidebarBox?.width || 0) - 1);
+  await expect(page.getByRole("heading", { name: "Kit list" })).toBeVisible();
 
-  await page.getByRole("button", { name: "Settings" }).click();
+  await page.getByRole("banner").getByRole("link", { name: "Avery Marlow" }).click();
   await expect(page).toHaveURL(/\/settings$/);
-  await expect(page.getByRole("heading", { name: "Settings", exact: true })).toBeVisible();
-  const settingsBox = await page.locator(".dashboard-command-center").boundingBox();
-  expect(settingsBox?.x).toBeGreaterThanOrEqual((sidebarBox?.x || 0) + (sidebarBox?.width || 0) - 1);
+  await page.getByRole("link", { name: "Application, data and access" }).click();
+  await expect(page).toHaveURL(/\/settings\/application$/);
+
+  await page.goBack();
+  await expect(page.getByRole("heading", { name: "Certification cards" })).toBeVisible();
 });
 
-test("covers the import queue and import completion flow", async ({ page }) => {
-  await installAppMocks(page);
-  await gotoAndWait(page, "/#imports");
+for (const [address, heading] of [
+  ["/logs", "Every dive"],
+  ["/#logs", "Every dive"],
+  ["/#imports", "1 dive waiting to surface"],
+  ["/settings/diver-details", "Certification cards"],
+  ["/settings/buddies", "Buddies"],
+  ["/settings/data-management", "Take your dives with you"],
+  ["/settings/backup", "Back up"],
+  ["/settings/dive-sites", "Sites"]
+]) {
+  test(`keeps the earlier address ${address} working`, async ({ page }) => {
+    await installAppMocks(page);
+    await gotoAndWait(page, address);
+    await expect(page.getByRole("heading", { name: heading, exact: true })).toBeVisible();
+  });
+}
 
-  await expect(page.getByRole("heading", { name: "Imported dives" })).toBeVisible();
-  await page.getByRole("button", { name: "Edit imported dive" }).first().click();
+test("covers the logbook, dive detail, and logbook editing", async ({ page }) => {
+  const data = baseData();
+  data.profile.logbook_display_fields = ["wetsuit_description", "weight_description"];
+  await installAppMocks(page, { data });
+  await gotoAndWait(page);
 
-  await page.locator("input[placeholder='Blue Hole / House Reef']:visible").fill("House Reef");
-  await chooseComboboxOption(page, "Tank volume", "15L");
-  await page.getByRole("button", { name: "Complete record" }).click();
+  await expect(page.getByRole("button", { name: /Blue Hole, .*24\.8 m, 53 min/ })).toBeVisible();
+  await page.getByLabel("Search").fill("Blue Hole");
+  const row = page.getByRole("row").filter({ hasText: "Blue Hole" });
+  await expect(row).toContainText("5mm full suit");
+  await expect(row).toContainText("8 kg integrated");
+  await expect(row).toContainText("110 bar");
 
-  await expect(page.locator("div:visible").filter({ hasText: "committed to the registry." }).first()).toBeVisible();
+  await row.getByRole("link", { name: "Blue Hole" }).press("Enter");
+  await expect(page).toHaveURL(/\/logs\/101$/);
+  await expect(page.getByRole("heading", { name: "Blue Hole" })).toBeVisible();
+  await expect(page.getByRole("slider", { name: "Recorded depth profile" })).toBeVisible();
+  for (const text of ["18 m / excellent", "Light current with scattered clouds.", "Nitrox 32", "200 to 90 bar"]) {
+    await expect(page.getByText(text, { exact: true })).toBeVisible();
+  }
+
+  await page.getByRole("link", { name: "Edit logbook" }).click();
+  await page.getByLabel("Notes", { exact: true }).fill("Updated from Playwright coverage.");
+  const sent = requestBody(page, "PUT", "/api/dives/101/logbook");
+  await page.getByRole("button", { name: "Save changes" }).click();
+  expect((await sent).logbook).toMatchObject({
+    notes: "Updated from Playwright coverage.",
+    site: "Blue Hole",
+    status: "complete",
+    completed_at: "2026-03-15T12:00:00Z"
+  });
+  await expect(page.getByText("Logbook updated.")).toBeVisible();
 });
 
-test("creates a manual dive entry outside the importer workflow", async ({ page }) => {
+test("sorts, filters, and pages the logbook", async ({ page }) => {
+  const data = baseData();
+  data.dives = Array.from({ length: 12 }, (_, index) =>
+    buildDive({
+      id: 300 + index,
+      site: index % 2 ? "House Reef" : "Blue Hole",
+      max_depth_m: 10 + index,
+      started_at: `2026-03-${String(index + 1).padStart(2, "0")}T09:00:00Z`
+    })
+  );
+  await installAppMocks(page, { data });
+  await gotoAndWait(page);
+  const rows = page.locator("tbody tr");
+
+  await expect(rows).toHaveCount(10);
+  await expect(rows.first()).toContainText("21.0 m");
+  await page.getByRole("button", { name: "Older dives" }).click();
+  await expect(rows).toHaveCount(2);
+
+  await page.getByRole("button", { name: "Max depth" }).click();
+  await expect(rows.first()).toContainText("21.0 m");
+  await page.getByRole("button", { name: "Max depth" }).click();
+  await expect(rows.first()).toContainText("10.0 m");
+
+  await page.locator("summary", { hasText: "All sites" }).click();
+  await page.getByRole("checkbox", { name: "House Reef" }).check();
+  await expect(rows).toHaveCount(6);
+  await expect(rows.first()).toContainText("House Reef");
+});
+
+test("shows a waiting import's fields and completes it", async ({ page }) => {
   await installAppMocks(page);
-  await gotoAndWait(page, "/#logs");
+  await gotoAndWait(page, "/imports");
 
-  await page.getByRole("button", { name: "New entry" }).click();
-  await expect(page.getByRole("heading", { name: "Manual dive entry" })).toBeVisible();
+  await page.getByLabel("Buddy").fill("Sage");
+  const draft = requestBody(page, "PUT", "/api/dives/202/logbook");
+  await page.getByRole("button", { name: "Save draft" }).click();
+  expect(await draft).toMatchObject({ commit: false, logbook: { buddy: "Sage", status: "imported" } });
+  await expect(page.getByText("Draft saved.", { exact: true })).toBeVisible();
 
-  await page.locator("input[type='date']:visible").fill("2026-04-06");
-  await page.locator("input[type='time']:visible").fill("09:15");
-  await page.getByPlaceholder("45").fill("52");
-  await page.getByPlaceholder("18.0").fill("21.4");
-  await page.getByPlaceholder("27").fill("26");
-  await chooseComboboxOption(page, "Tank volume", "12L");
-  await page.getByPlaceholder("House Reef").fill("Cathedral");
-  await page.keyboard.press("Tab");
-  await page.getByRole("button", { name: "Save as reusable dive site" }).click();
-  await expect(page.getByRole("heading", { name: "Add dive site" })).toBeVisible();
-  await page.getByPlaceholder("Blue Hole, Dahab, Egypt").fill("Blue Hole, Dahab, Egypt");
-  await page.getByRole("button", { name: "Search GPS from location" }).click();
-  await page.getByRole("textbox", { name: "Country" }).fill("Egypt");
-  await page.getByRole("button", { name: "Save dive site" }).click();
-  await expect(page.getByText("Cathedral added to your saved dive sites.")).toBeVisible();
-  await page.locator("input[placeholder='8 kg integrated + 1 kg trim']:visible").fill("6 kg belt");
-  await page
-    .getByPlaceholder("Conditions, wildlife, route, entry, navigation, visibility...")
-    .fill("Manual shore dive logged without dive computer telemetry.");
-  await page.getByRole("button", { name: "Create dive log" }).click();
+  await page.getByLabel("Where was it? Required").fill("House Reef");
+  const committed = requestBody(page, "PUT", "/api/dives/202/logbook");
+  await page.getByRole("button", { name: "Add to logbook", exact: true }).click();
+  expect(await committed).toMatchObject({ commit: true, logbook: { site: "House Reef", buddy: "Sage", status: "complete" } });
+  await expect(page.getByText("House Reef is in your logbook.")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Every dive has surfaced" })).toBeVisible();
+});
+
+test("applies one buddy to every waiting dive and opens the next after saving", async ({ page }) => {
+  const data = baseData();
+  data.dives.push(buildDive({ id: 203, site: "", buddy: "", status: "imported", started_at: "2026-03-19T09:00:00Z" }));
+  await installAppMocks(page, { data });
+  await gotoAndWait(page, "/imports");
+
+  const queue = page.getByRole("complementary");
+  await queue.getByLabel("Buddy").fill("Jonah");
+  await queue.getByRole("button", { name: "Use for all 2 dives" }).click();
+  await expect(page.getByText("Saved on 2 dives. Sites were left as they were.")).toBeVisible();
+
+  await page.getByRole("button", { name: "Blue Hole", exact: true }).click();
+  await page.getByRole("button", { name: "Add to logbook, open next" }).click();
+  await expect(page).toHaveURL(/\/imports\/203$/);
+  await expect(page.locator(".import-dive").getByLabel("Buddy")).toHaveValue("Jonah");
+});
+
+test("creates a manual dive entry and a site along the way", async ({ page }) => {
+  await installAppMocks(page);
+  await gotoAndWait(page);
+
+  await page.getByRole("link", { name: "Log a dive" }).click();
+  await page.getByLabel("Date", { exact: true }).fill("2026-04-06");
+  await page.getByLabel("Start time").fill("09:15");
+  await page.getByLabel("Time underwater, minutes").fill("52");
+  await page.getByLabel("Max depth, metres").fill("21.4");
+  await page.getByLabel("Water, °C").fill("26");
+  await page.getByLabel("Tank size, litres").selectOption("12");
+  await page.getByLabel("Pressure in, bar").fill("200");
+  await page.getByLabel("Pressure out, bar").fill("70");
+  await page.getByLabel("Dive site, required").fill("Cathedral");
+  await page.getByRole("button", { name: "Save as a new site" }).click();
+
+  const dialog = page.getByRole("dialog", { name: "Add a site" });
+  await dialog.getByLabel("Location").fill("Dahab, Egypt");
+  await dialog.getByRole("button", { name: "Find by location" }).click();
+  await expect(dialog.getByLabel("Latitude")).toHaveValue("25.3104");
+  await expect(dialog.getByLabel("Country")).toHaveValue("Egypt");
+  await dialog.getByRole("button", { name: "Save site" }).click();
+  await expect(page.getByText("Cathedral added to your sites.")).toBeVisible();
+
+  await page.getByLabel("Weights").fill("6 kg belt");
+  const sent = requestBody(page, "POST", "/api/dives");
+  await page.getByRole("button", { name: "Add to logbook" }).click();
+  expect(await sent).toMatchObject({
+    max_depth_m: 21.4,
+    duration_seconds: 3120,
+    samples: [],
+    fields: {
+      manual_entry: true,
+      temperature_surface_c: 26,
+      tanks: [{ volume: 12, beginpressure_bar: 200, endpressure_bar: 70 }],
+      logbook: { site: "Cathedral", status: "complete", weight_description: "6 kg belt", equipment_ids: ["equipment-1"] }
+    }
+  });
 
   await expect(page.getByRole("heading", { name: "Cathedral" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Back to logs" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Dive profile" })).toBeHidden();
-  await expect(page.getByRole("heading", { name: "Profile points" })).toBeHidden();
-  await expect(page.getByText("Avg depth", { exact: true })).toBeHidden();
-  await expect(page.getByText("Samples", { exact: true })).toBeHidden();
-  await expect(page.getByText("0 telemetry points")).toBeHidden();
-  await expect(page.locator("p:visible", { hasText: "6 kg belt" }).first()).toBeVisible();
-
-  await page.goto("/#imports");
-  await expect(page.getByRole("heading", { name: "Imported dives" })).toBeVisible();
-  await expect(page.locator("body")).toContainText("1 Imported");
+  // Nothing recorded means a plumb line, never an invented curve.
+  await expect(page.getByRole("img", { name: "Plumb line to the deepest point" })).toBeVisible();
+  await expect(page.getByRole("slider")).toHaveCount(0);
+  await expect(page.getByText("6 kg belt")).toBeVisible();
 });
 
-test("covers settings profile loading and public sharing updates", async ({ page }) => {
-  await installAppMocks(page);
-  await gotoAndWait(page, "/#settings/diver-details");
-
-  await expect(page.getByRole("heading", { name: "Settings", exact: true })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Diver details" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Certifications and PDFs" })).toBeVisible();
-  await expect(page.getByText("Public dive profile")).toBeHidden();
-
-  const settingsRail = page.locator(".settings-section-nav");
-  await settingsRail.getByRole("button", { name: /Application/ }).click();
-  await expect(page.getByRole("heading", { name: "Application version" })).toBeVisible();
-  await expect(page.getByText(/^v\d+\.\d+\.\d+/)).toBeVisible();
-  await expect(page.getByText("Public dive profile")).toBeVisible();
-
-  await page.getByRole("checkbox", { name: "Make my completed dives public" }).check();
-  await page.getByRole("button", { name: "Save sharing" }).click();
-  await expect(page.getByText("Public dive profile enabled.")).toBeVisible();
-
-  await settingsRail.getByRole("button", { name: /Dive sites/ }).click();
-  await expect(page.getByRole("heading", { name: "Saved dive sites" })).toBeVisible();
-  await expect(page.locator(".dive-theme-map")).toHaveCount(0);
-  await page.getByRole("button", { name: "Edit site" }).click();
-  await expect(page.locator(".dive-theme-map")).toHaveCount(0);
-  await page.getByRole("button", { name: "Map", exact: true }).click();
-  await expect(page.locator(".dive-theme-map.leaflet-container")).toBeVisible();
-  await settingsRail.getByRole("button", { name: /Data management/ }).click();
-  await expect(page.getByRole("heading", { name: "Exports and desktop sync" })).toBeVisible();
-  await expect(page.getByRole("button", { name: /Import dives \(CSV\)/ })).toBeVisible();
-  await expect(page.getByRole("button", { name: /Import Subsurface export/ })).toBeVisible();
-  await settingsRail.getByRole("button", { name: /Backup/ }).click();
-  await expect(page.getByRole("heading", { name: "Backup and restore" })).toBeVisible();
-});
-
-test("covers extracted settings lists and user management", async ({ page }) => {
-  const ownerUser = {
-    id: "owner_avery",
-    firstName: "Avery",
-    lastName: "Marlow",
-    role: "admin",
-    isOwner: true,
-    primaryEmailAddress: {
-      emailAddress: "avery@example.com"
-    },
-    emailAddresses: [
-      {
-        emailAddress: "avery@example.com"
-      }
-    ]
-  };
-  await installAppMocks(page, {
-    user: ownerUser,
-    authUsers: [
-      {
-        id: "owner_avery",
-        email: "avery@example.com",
-        first_name: "Avery",
-        last_name: "Marlow",
-        role: "admin",
-        is_active: true,
-        created_at: "2026-04-01T09:00:00Z",
-        updated_at: "2026-04-01T09:00:00Z",
-        last_login_at: "2026-04-07T10:00:00Z"
-      },
-      {
-        id: "user_kai",
-        email: "kai@example.com",
-        first_name: "Kai",
-        last_name: "Reef",
-        role: "user",
-        is_active: true,
-        created_at: "2026-04-02T09:00:00Z",
-        updated_at: "2026-04-02T09:00:00Z",
-        last_login_at: "2026-04-07T11:00:00Z"
-      }
-    ]
-  });
-  await gotoAndWait(page, "/#settings/buddies");
-
-  const settingsRail = page.locator(".settings-section-nav");
-  await expect(page.getByRole("heading", { name: "Saved dive buddy list" })).toBeVisible();
-  await page.getByPlaceholder("Filter buddies").fill("Kai");
-  await expect(page.getByRole("heading", { name: "Kai" })).toBeVisible();
-  await page.getByRole("button", { name: "Edit buddy" }).click();
-  await page.getByRole("textbox", { name: "Buddy name" }).fill("Kai Reef");
-  await page.getByRole("button", { name: "Save buddy" }).click();
-  await expect(page.getByText("Buddies updated.")).toBeVisible();
-
-  await settingsRail.getByRole("button", { name: /Dive guide/ }).click();
-  await expect(page.getByRole("heading", { name: "Saved guide list" })).toBeVisible();
-  await page.getByPlaceholder("Filter guides").fill("Mina");
-  await page.getByRole("button", { name: "Edit guide" }).click();
-  await page.getByRole("textbox", { name: "Guide name" }).fill("Mina Reef");
-  await page.getByRole("button", { name: "Save guide" }).click();
-  await expect(page.getByText("Guides updated.")).toBeVisible();
-
-  await settingsRail.getByRole("button", { name: /Manage users/ }).click();
-  await expect(page.getByRole("heading", { name: "Invites and access control" })).toBeVisible();
-  await page.getByLabel("Allow direct account creation").check();
-  await page.getByRole("button", { name: "Save access policy" }).click();
-  await expect(page.getByText("Public registration enabled.")).toBeVisible();
-  await page.getByPlaceholder("second-user@example.com").fill("buddy@example.com");
-  await page.getByRole("button", { name: "Create invite" }).click();
-  await expect(page.getByText("Invitation created for buddy@example.com.")).toBeVisible();
-  await expect(page.getByText("kai@example.com")).toBeVisible();
-});
-
-test("keeps user management settings inside narrow mobile viewports", async ({ page }) => {
+test("logs a dive in two steps on a phone", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
-  await installAppMocks(page, {
-    user: {
-      id: "owner_avery",
-      firstName: "Avery",
-      lastName: "Marlow",
-      role: "admin",
-      isOwner: true,
-      primaryEmailAddress: {
-        emailAddress: "avery@example.com"
-      },
-      emailAddresses: [
-        {
-          emailAddress: "avery@example.com"
-        }
-      ]
-    },
-    authUsers: [
-      {
-        id: "owner_avery",
-        email: "avery.longname@example.com",
-        first_name: "Avery",
-        last_name: "Marlow",
-        role: "admin",
-        is_active: true,
-        created_at: "2026-04-01T09:00:00Z",
-        updated_at: "2026-04-01T09:00:00Z",
-        last_login_at: "2026-04-07T10:00:00Z"
-      },
-      {
-        id: "user_kai",
-        email: "kai.with-a-long-email-address@example.com",
-        first_name: "Kai",
-        last_name: "Reef",
-        role: "user",
-        is_active: true,
-        created_at: "2026-04-02T09:00:00Z",
-        updated_at: "2026-04-02T09:00:00Z",
-        last_login_at: "2026-04-07T11:00:00Z"
-      }
-    ]
+  await installAppMocks(page);
+  await gotoAndWait(page, "/logs/create");
+
+  await page.getByRole("button", { name: "Next: people and notes" }).click();
+  await expect(page.getByRole("alert")).toContainText("Enter the max depth.");
+  await expect(page.getByRole("alert")).toContainText("Dive site is required.");
+
+  await page.getByLabel("Dive site, required").fill("House Reef");
+  await page.getByLabel("Max depth, m", { exact: true }).fill("12.5");
+  await page.getByRole("button", { name: "Next: people and notes" }).click();
+  await page.getByLabel("Buddy").fill("Sage");
+  await page.getByRole("button", { name: "Add to logbook" }).click();
+  await expect(page.getByRole("heading", { name: "House Reef" })).toBeVisible();
+});
+
+test("edits sites on the chart page", async ({ page }) => {
+  await installAppMocks(page);
+  await gotoAndWait(page, "/map");
+
+  await expect(page.locator(".site-chart-sea.leaflet-container")).toBeVisible();
+  await expect(page.locator(".sounding").filter({ hasText: "Blue Hole" })).toContainText("248");
+  await page.getByLabel("Location", { exact: true }).fill("South Andros");
+  const sent = requestBody(page, "PUT", "/api/profile");
+  await page.getByRole("button", { name: "Save site" }).click();
+  expect(await sent).toEqual({
+    dive_sites: [{ id: "site-1", name: "Blue Hole", location: "South Andros", country: "Bahamas", latitude: 26.508, longitude: -77.089 }]
   });
-  await gotoAndWait(page, "/#settings/manage-users");
+  await expect(page.getByText("Site saved.")).toBeVisible();
 
-  await expect(page.getByRole("heading", { name: "Invites and access control" })).toBeVisible();
+  await page.getByRole("button", { name: "Show them" }).click();
+  await expect(page.getByLabel("Search")).toHaveValue("Blue Hole");
+});
 
-  const overflow = await page.evaluate(() => ({
-    documentWidth: document.documentElement.clientWidth,
-    scrollWidth: document.documentElement.scrollWidth,
-    bodyScrollWidth: document.body.scrollWidth
-  }));
-  expect(overflow.scrollWidth).toBeLessThanOrEqual(overflow.documentWidth + 1);
-  expect(overflow.bodyScrollWidth).toBeLessThanOrEqual(overflow.documentWidth + 1);
+test("manages gear and marks it serviced", async ({ page }) => {
+  await installAppMocks(page);
+  await gotoAndWait(page, "/equipment");
 
-  for (const selector of [".settings-panel", ".settings-action-card", ".settings-item-card"]) {
-    const boxes = await page.locator(selector).evaluateAll((elements) =>
-      elements
-        .map((element) => {
-          const rect = element.getBoundingClientRect();
-          return { height: rect.height, left: rect.left, right: rect.right, width: rect.width };
-        })
-        .filter((box) => box.width > 0 && box.height > 0)
-    );
-    for (const box of boxes) {
-      expect(box.left).toBeGreaterThanOrEqual(-1);
-      expect(box.right).toBeLessThanOrEqual(overflow.documentWidth + 1);
-      expect(box.width).toBeGreaterThan(0);
-    }
+  await expect(page.getByRole("heading", { name: "Your regulator is due for service" })).toBeVisible();
+  await page.getByRole("button", { name: "Add gear" }).click();
+  const dialog = page.getByRole("dialog", { name: "Add gear" });
+  await dialog.getByRole("textbox", { name: "Kind" }).fill("BCD");
+  await dialog.getByLabel("Year bought").fill("2025");
+  await dialog.getByLabel("Bought from").fill("Reef Shop");
+  await dialog.getByLabel("Brand").fill("Scubapro");
+  await dialog.getByLabel("Every, dives").fill("50");
+  await dialog.getByLabel("On every dive, as part of my usual kit").check();
+  await dialog.getByRole("button", { name: "Save gear" }).click();
+  await expect(page.getByText("Gear saved.")).toBeVisible();
+  await expect(page.getByRole("row").filter({ hasText: "Scubapro Reef Shop BCD" })).toContainText("12 months or 50 dives");
+
+  const regulator = page.getByRole("row").filter({ hasText: "Aqualung" });
+  await regulator.getByRole("button", { name: "Mark serviced" }).click();
+  await expect(page.getByText("Marked as serviced.")).toBeVisible();
+  // A service stamped later than the booked date clears it.
+  await expect(page.getByRole("heading", { name: "Your regulator is due for service" })).toHaveCount(0);
+
+  // Saving the list afterwards must not lose that stamp.
+  await regulator.getByRole("button", { name: "Edit" }).click();
+  const sent = requestBody(page, "PUT", "/api/equipment");
+  await page.getByRole("dialog").getByRole("button", { name: "Save gear" }).click();
+  const saved = (await sent).equipment.find((item) => item.id === "equipment-1");
+  expect(saved.last_serviced_at).toBe("2026-04-07T12:00:00Z");
+});
+
+test("edits the diver's lists and shares the logbook", async ({ page }) => {
+  await installAppMocks(page);
+  await gotoAndWait(page, "/settings");
+
+  await page.getByRole("button", { name: "Edit Kai" }).click();
+  await page.getByLabel("Name", { exact: true }).fill("Kai Reef");
+  const list = requestBody(page, "PUT", "/api/profile");
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+  expect(await list).toEqual({ buddies: [{ id: "buddy-1", name: "Kai Reef" }] });
+  await expect(page.getByText("List saved.")).toBeVisible();
+
+  await page.getByRole("button", { name: "Add a guide" }).click();
+  await page.getByLabel("Name", { exact: true }).fill("Noor");
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(page.getByText("Noor", { exact: true })).toBeVisible();
+
+  await page.getByLabel("Anyone with the link can see my dives").check();
+  await page.getByLabel("Link name").fill("Avery Dives");
+  const sharing = requestBody(page, "PUT", "/api/profile");
+  await page.getByRole("button", { name: "Save sharing" }).click();
+  expect(await sharing).toEqual({ public_dives_enabled: true, public_slug: "avery-dives" });
+  await expect(page.getByText("Your logbook is public.")).toBeVisible();
+  await expect(page.getByRole("link", { name: "See it" })).toHaveAttribute("href", /\/public\/avery-dives$/);
+});
+
+test("adds a certification card", async ({ page }) => {
+  await installAppMocks(page);
+  await gotoAndWait(page, "/settings");
+
+  await page.getByRole("button", { name: "Add a card" }).click();
+  const dialog = page.getByRole("dialog", { name: "Add a card" });
+  await dialog.getByLabel("Certification").fill("Rescue Diver");
+  await dialog.getByLabel("Agency").fill("PADI");
+  await dialog.getByRole("button", { name: "Save card" }).click();
+  await expect(page.getByText("Card saved.")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Attach PDF" })).toBeVisible();
+});
+
+test("saves application choices as they change", async ({ page }) => {
+  await installAppMocks(page);
+  await gotoAndWait(page, "/settings/application");
+
+  await expect(page.getByText(/^DiveVault v\d+\.\d+\.\d+/)).toBeVisible();
+  const sent = requestBody(page, "PUT", "/api/profile");
+  await page.getByRole("group", { name: "Required to log a dive" }).getByLabel("Buddy").check();
+  expect(await sent).toEqual({ required_logbook_fields: ["site", "buddy"] });
+  await expect(page.getByText("Saved.", { exact: true })).toBeVisible();
+
+  for (const name of ["Download CSV", "Download PDF", "Download backup", "Choose a backup"]) {
+    await expect(page.getByRole("button", { name })).toBeEnabled();
   }
+  await expect(page.getByRole("heading", { name: "Who can sign in" })).toHaveCount(0);
+
+  await page.getByLabel("Theme").selectOption("dark");
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+  await page.reload();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
 });
 
-test("manages equipment inventory and service schedule", async ({ page }) => {
-  await installAppMocks(page);
-  await gotoAndWait(page, "/#equipment");
+test("covers the owner's user management", async ({ page }) => {
+  await installAppMocks(page, { user: OWNER, authUsers: USERS });
+  await gotoAndWait(page, "/settings/manage-users");
 
-  await expect(page.getByRole("heading", { name: "Equipment", exact: true })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Aqualung Blue Shop Regulator" }).first()).toBeVisible();
-  await expect(page.getByPlaceholder("Search equipment...")).toBeVisible();
+  await page.getByLabel("Anyone can register").check();
+  await expect(page.getByText("Anyone can register now.")).toBeVisible();
 
-  await page.getByRole("button", { name: "New entry" }).click();
-  await expect(page.getByRole("heading", { name: "New equipment" })).toBeVisible();
-  await page.getByRole("textbox", { name: "Category" }).fill("BCD");
-  await page.getByRole("textbox", { name: "Year bought" }).fill("2025");
-  await page.getByRole("textbox", { name: "Vendor" }).fill("Reef Shop");
-  await page.getByRole("textbox", { name: "Brand" }).fill("Scubapro");
-  await page.getByRole("textbox", { name: "Warranty" }).fill("3 years");
-  await page.getByPlaceholder("100").fill("50");
-  await page.getByLabel("Use by default on each dive").check();
-  await page.getByRole("button", { name: "Save gear" }).click();
-  await expect(page.getByText("Equipment inventory saved.")).toBeVisible();
+  await page.getByRole("button", { name: "Invite someone" }).click();
+  const invite = page.getByRole("dialog", { name: "Invite someone" });
+  await invite.getByLabel("Email").fill("buddy@example.com");
+  await invite.getByRole("button", { name: "Make invitation" }).click();
+  await expect(invite.getByText("Invitation made for buddy@example.com. Send them this link.")).toBeVisible();
+  await expect(invite.getByLabel("Invitation link")).toHaveValue(/invite_token=test-invite-token/);
+  await invite.getByRole("button", { name: "Close" }).click();
 
-  await expect(page.getByRole("heading", { name: "Due for service" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Scubapro Reef Shop BCD" }).first()).toBeVisible();
-  const savedEquipmentCard = page.locator("article").filter({ hasText: "Scubapro Reef Shop BCD" });
-  await expect(savedEquipmentCard.getByText("Next service")).toBeVisible();
-  await expect(savedEquipmentCard.getByText(/dives left|Dive interval not set/)).toBeVisible();
-  await expect(
-    page.locator("article").filter({ hasText: "Aqualung Blue Shop Regulator" }).getByRole("button", { name: "Mark serviced" })
-  ).toBeHidden();
+  const kai = page.getByRole("row").filter({ hasText: "Kai Reef" });
+  await kai.getByRole("button", { name: "Deactivate" }).click();
+  await expect(kai).toContainText("deactivated");
 });
 
-test("covers the public profile route", async ({ page }) => {
+test("approves Dive Sync from the address the Windows app opens", async ({ page }) => {
   await installAppMocks(page);
+  let approval;
+  await page.route("**/api/cli-auth/approve", async (route) => {
+    approval = { body: route.request().postDataJSON(), authorization: route.request().headers().authorization };
+    await route.fulfill({ contentType: "application/json", body: JSON.stringify({ status: "approved", email: "avery@example.com" }) });
+  });
+  await gotoAndWait(page, "/settings/cli-auth/ABC123");
+
+  await expect(page.getByRole("button", { name: "Allow Dive Sync" })).toBeVisible();
+  expect(approval).toBeUndefined();
+  await page.getByRole("button", { name: "Allow Dive Sync" }).click();
+  await expect(page.getByText(/Dive Sync is allowed/)).toBeVisible();
+  expect(approval).toEqual({ body: { code: "ABC123" }, authorization: "Bearer playwright-token" });
+});
+
+test("previews a Subsurface file before importing it", async ({ page }) => {
+  await installAppMocks(page);
+  const sent = [];
+  await page.route("**/api/imports/subsurface**", async (route) => {
+    const dryRun = new URL(route.request().url()).searchParams.has("dry_run");
+    sent.push({ dryRun, type: route.request().headers()["content-type"] });
+    const dives = [
+      { row_number: 1, site: "Dunraven", started_at: "2026-03-01T09:00:00", valid: true, duplicate: false },
+      { row_number: 2, site: "", started_at: "2026-03-02T09:00:00", valid: true, duplicate: false },
+      { row_number: 3, site: "Blue Hole", started_at: "2026-03-15T08:30:00", valid: true, duplicate: true }
+    ];
+    const summary = { rows: 3, ready_rows: 2, duplicates: 1, invalid_rows: 0, inserted: 2, dives };
+    await route.fulfill({ contentType: "application/json", body: JSON.stringify(dryRun ? { dry_run: true, summary } : summary) });
+  });
+  await gotoAndWait(page, "/imports/file");
+
+  await page.locator("input[type=file]").setInputFiles({ name: "trip.ssrf", mimeType: "", buffer: Buffer.from("<divelog/>") });
+  await expect(page.getByRole("heading", { name: "2 dives ready, 1 already in your logbook" })).toBeVisible();
+  await expect(page.getByRole("row").filter({ hasText: "Dunraven" })).toContainText("Goes into the logbook");
+  await expect(page.getByRole("row").filter({ hasText: "No site" })).toContainText("Waits in Imports");
+  expect(sent).toEqual([{ dryRun: true, type: "application/xml" }]);
+
+  await page.getByRole("button", { name: "Import 2 dives" }).click();
+  await expect(page.getByText("2 dives imported.")).toBeVisible();
+  expect(sent[1]).toEqual({ dryRun: false, type: "application/xml" });
+});
+
+test("blocks a file with a broken row", async ({ page }) => {
+  await installAppMocks(page);
+  await page.route("**/api/imports/csv**", (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        summary: { ready_rows: 1, dives: [{ row_number: 4, valid: false, errors: ["max_depth_m is required"] }] }
+      })
+    })
+  );
+  await gotoAndWait(page, "/imports/file");
+
+  await page.locator("input[type=file]").setInputFiles({ name: "trip.csv", mimeType: "text/csv", buffer: Buffer.from("site\nReef") });
+  await expect(page.getByRole("alert")).toContainText("Row 4 of trip.csv can't be read (max_depth_m is required)");
+  await expect(page.getByRole("button", { name: "Import 1 dive" })).toBeDisabled();
+});
+
+test("never saves lists or gear that failed to load", async ({ page }) => {
+  await installAppMocks(page);
+  await page.route(/\/api\/(profile|equipment)$/, (route) =>
+    route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ error: "Database unavailable" }) })
+  );
+  await gotoAndWait(page, "/settings");
+
+  await expect(page.getByRole("alert")).toContainText("Database unavailable");
+  await expect(page.getByRole("button", { name: "Add a buddy" })).toBeDisabled();
+  await mainNav(page).getByRole("link", { name: "Gear" }).click();
+  await expect(page.getByRole("button", { name: "Add gear" })).toBeDisabled();
+});
+
+test("covers the public profile without drawing unfinished imports", async ({ page }) => {
+  await installAppMocks(page);
+  await page.route("**/api/public/divers/**", (route) => {
+    const { dives, profile } = baseData();
+    dives[1].fields.logbook.site = "Secret draft";
+    return route.fulfill({ contentType: "application/json", body: JSON.stringify({ diver: { name: profile.name }, dives }) });
+  });
   await gotoAndWait(page, "/public/avery-marlow");
 
-  await expect(page.getByText("Public dive log")).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Avery Marlow" })).toBeVisible();
-  await expect(page.getByText("Blue Hole")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Avery Marlow's dives" })).toBeVisible();
+  await expect(page.getByText("Secret draft")).toHaveCount(0);
+  await page.getByRole("row").getByRole("button", { name: "Blue Hole" }).click();
+  await expect(page.getByRole("heading", { name: "Blue Hole" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Edit logbook" })).toHaveCount(0);
+});
+
+for (const width of [320, 390]) {
+  test(`keeps every page inside a ${width}px screen`, async ({ page }) => {
+    test.setTimeout(90000);
+    await page.setViewportSize({ width, height: 844 });
+    await installAppMocks(page, { user: OWNER, authUsers: USERS });
+    for (const address of [
+      "/",
+      "/logs/101",
+      "/logs/101/edit",
+      "/logs/create",
+      "/imports",
+      "/imports/202",
+      "/imports/file",
+      "/map",
+      "/equipment",
+      "/settings",
+      "/settings/application",
+      "/public/avery-marlow"
+    ]) {
+      await gotoAndWait(page, address);
+      await expect(page.locator("h1:visible, h2:visible, form:visible").first()).toBeVisible();
+      expect(await overflow(page), address).toBeLessThanOrEqual(1);
+    }
+  });
+}
+
+for (const [locale, navigation, heading] of [
+  ["de", ["Logbuch", "Importe", "Plätze", "Material"], "Alle Tauchgänge"],
+  ["fr", ["Carnet", "Imports", "Sites", "Matériel"], "Toutes les plongées"]
+]) {
+  test(`draws the logbook in ${locale}`, async ({ page }) => {
+    await installAppMocks(page);
+    await page.addInitScript((code) => window.localStorage.setItem("divevault.preferredLocale", code), locale);
+    await gotoAndWait(page);
+    await expect(page.getByRole("heading", { name: heading })).toBeVisible();
+    for (const label of navigation) await expect(page.getByRole("banner").getByRole("link", { name: label })).toBeVisible();
+    await expect(page.getByRole("cell", { name: "24,8 m" })).toBeVisible();
+  });
+}
+
+test("has German and French for every literal string on screen", () => {
+  const read = (file) => readFileSync(path.join(frontendRoot, file), "utf8");
+  const files = readdirSync(path.join(frontendRoot, "app"), { recursive: true })
+    .map(String)
+    .filter((file) => /\.(vue|js)$/.test(file));
+  const used = new Set();
+  for (const file of files) {
+    const source = read(path.join("app", file));
+    for (const match of source.matchAll(/\$tx\(\s*(["'])((?:(?!\1).)+)\1\s*[,)]/g)) used.add(match[2]);
+    for (const match of source.matchAll(/\$tn\([^"']*?(["'])((?:(?!\1).)+)\1,\s*(["'])((?:(?!\3).)+)\3/g)) used.add(match[2]).add(match[4]);
+  }
+  expect(used.size).toBeGreaterThan(300);
+  for (const locale of ["en", "de", "fr"]) {
+    const messages = JSON.parse(read(`i18n/locales/${locale}.json`));
+    expect(
+      [...used].filter((key) => !(key in messages)),
+      locale
+    ).toEqual([]);
+  }
 });

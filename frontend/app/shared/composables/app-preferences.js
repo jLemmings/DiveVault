@@ -21,10 +21,6 @@ function createPreferenceState() {
   };
 }
 
-function translate(key, fallback = key, params = {}) {
-  return i18n.t(key, fallback, params);
-}
-
 async function setLocale(app, locale) {
   const normalizedLocale = normalizeLocale(locale, SUPPORTED_LOCALES);
   await i18n.setLocale(normalizedLocale);
@@ -81,12 +77,4 @@ async function initializePreferences(app) {
   attachSystemThemeListener(app);
 }
 
-export {
-  createPreferenceState,
-  detachSystemThemeListener,
-  initializePreferences,
-  setLocale,
-  setThemePreference,
-  syncSystemTheme,
-  translate
-};
+export { createPreferenceState, detachSystemThemeListener, initializePreferences, setLocale, setThemePreference, syncSystemTheme };

@@ -2,39 +2,30 @@
 import { loginWithPassword, registerUser } from "~/shared/composables/auth.js";
 import { authStatusUrl } from "~/shared/api/endpoints.js";
 import { LOCALES } from "~/i18n/locales.js";
+import BrandMark from "~/shared/components/chart/BrandMark.vue";
+import TideLine from "~/shared/components/chart/TideLine.vue";
+import SeaSwell from "~/shared/components/chart/SeaSwell.vue";
 
-const AUTH_VIEW_SIGNIN = "signin";
-const AUTH_VIEW_REGISTER = "register";
 export default {
   name: "LoginView",
+  components: { BrandMark, TideLine, SeaSwell },
   props: {
-    currentLocale: {
-      type: String,
-      default: "en"
-    },
-    setLocale: {
-      type: Function,
-      default: null
-    }
+    currentLocale: { type: String, default: "en" },
+    setLocale: { type: Function, required: true }
   },
   data() {
-    const inviteToken = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("invite_token") || "" : "";
     return {
-      authView: AUTH_VIEW_SIGNIN,
+      locales: LOCALES,
+      registering: false,
       email: "",
       password: "",
       firstName: "",
       lastName: "",
-      inviteToken,
-      authStatus: {
-        initialized: false,
-        bootstrap_registration_open: false,
-        public_registration_enabled: false,
-        public_registration_open: false,
-        invite: null
-      },
-      loading: false,
       showPassword: false,
+      inviteToken: new URLSearchParams(window.location.search).get("invite_token") || "",
+      authStatus: { bootstrap_registration_open: false, public_registration_open: false, invite: null },
+      demoMode: Boolean(window.__APP_CONFIG__?.demoMode),
+      loading: false,
       error: "",
       message: ""
     };
@@ -43,54 +34,19 @@ export default {
     canRegister() {
       return Boolean(this.authStatus.public_registration_open || this.authStatus.invite);
     },
-    availableLanguages() {
-      return LOCALES.map((locale) => ({
-        value: locale.code,
-        label: locale.name
-      }));
-    },
-    selectedLocale() {
-      return this.availableLanguages.some((language) => language.value === this.currentLocale) ? this.currentLocale : "en";
-    },
-    demoMode() {
-      return Boolean(typeof window !== "undefined" && window.__APP_CONFIG__?.demoMode);
-    },
-    showAlternateAccountPrompt() {
-      return this.authView === AUTH_VIEW_REGISTER || this.canRegister;
-    },
-    isInviteRegistration() {
-      return Boolean(this.inviteToken && this.authStatus.invite);
-    },
-    authHeading() {
-      return this.authView === AUTH_VIEW_REGISTER ? "Create your DiveVault account" : "Welcome back";
-    },
-    authEyebrow() {
-      return this.authView === AUTH_VIEW_REGISTER ? "Secure account setup" : "DiveVault access";
-    },
-    authSummary() {
-      if (this.isInviteRegistration) {
-        return `This invitation reserves access for ${this.authStatus.invite.email}.`;
-      }
-      if (this.authView === AUTH_VIEW_REGISTER) {
-        return "Create a local account to sync logs, manage your dive archive, and approve desktop imports.";
-      }
-      return "Sign in to access your dive archive, imports, profile, and system controls.";
+    registerNote() {
+      if (this.inviteToken && this.authStatus.invite)
+        return this.$tx("This invitation is for {email}.", { email: this.authStatus.invite.email });
+      if (this.authStatus.bootstrap_registration_open) return this.$tx("The first account becomes the owner of this DiveVault.");
+      return "";
     },
     submitLabel() {
-      if (this.loading) {
-        return this.authView === AUTH_VIEW_REGISTER ? "Creating account" : "Signing in";
-      }
-      return this.authView === AUTH_VIEW_REGISTER ? "Create account" : "Sign in";
-    },
-    alternateActionLabel() {
-      return this.authView === AUTH_VIEW_REGISTER ? "Sign in" : "Create account";
-    },
-    alternateActionCopy() {
-      return this.authView === AUTH_VIEW_REGISTER ? "Already provisioned?" : "Need an account?";
+      if (this.loading) return this.registering ? this.$tx("Creating your account…") : this.$tx("Signing in…");
+      return this.registering ? this.$tx("Create account") : this.$tx("Sign in");
     }
   },
-  async mounted() {
-    await this.loadAuthStatus();
+  mounted() {
+    this.loadAuthStatus();
   },
   methods: {
     async loadAuthStatus() {
@@ -98,68 +54,57 @@ export default {
         const query = this.inviteToken ? `?invite_token=${encodeURIComponent(this.inviteToken)}` : "";
         const response = await fetch(authStatusUrl(query));
         const payload = await response.json().catch(() => ({}));
-        if (!response.ok) {
-          throw new Error(payload?.error || "Unable to load authentication state");
-        }
+        if (!response.ok) throw new Error(payload?.error || "Unable to load sign-in options.");
         this.authStatus = {
-          initialized: Boolean(payload?.initialized),
           bootstrap_registration_open: Boolean(payload?.bootstrap_registration_open),
-          public_registration_enabled: Boolean(payload?.public_registration_enabled),
           public_registration_open: Boolean(payload?.public_registration_open),
           invite: payload?.invite || null
         };
-        if (this.authStatus.invite) {
-          this.authView = AUTH_VIEW_REGISTER;
-          this.email = this.authStatus.invite.email || this.email;
-          this.firstName = this.authStatus.invite.first_name || this.firstName;
-          this.lastName = this.authStatus.invite.last_name || this.lastName;
+        const { invite } = this.authStatus;
+        if (invite) {
+          this.registering = true;
+          this.email = invite.email || this.email;
+          this.firstName = invite.first_name || this.firstName;
+          this.lastName = invite.last_name || this.lastName;
         }
       } catch (error) {
         this.error = error?.message || "Unable to load sign-in options.";
       }
     },
-    async handleLocaleChange(value) {
-      const locale = value?.target?.value || value || "en";
-      if (typeof this.setLocale === "function") {
-        await this.setLocale(locale);
-      }
-    },
-    async submitSignIn() {
-      this.loading = true;
+    toggleMode() {
+      this.registering = !this.registering;
       this.error = "";
-      try {
-        await loginWithPassword(this.email.trim(), this.password);
-      } catch (error) {
-        this.error = error?.message || "Login failed.";
-      } finally {
-        this.loading = false;
-      }
+      this.message = "";
     },
-    async submitRegister() {
+    async submit() {
       this.loading = true;
       this.error = "";
       this.message = "";
       try {
-        await registerUser({
-          email: this.email.trim(),
-          password: this.password,
-          first_name: this.firstName.trim(),
-          last_name: this.lastName.trim(),
-          invite_token: this.inviteToken || undefined
-        });
-        this.authView = AUTH_VIEW_SIGNIN;
-        this.message = "Account created. Sign in with your new credentials.";
-        if (this.inviteToken && typeof window !== "undefined") {
-          const url = new URL(window.location.href);
-          url.searchParams.delete("invite_token");
-          window.history.replaceState({}, "", url.toString());
-          this.inviteToken = "";
-          this.authStatus.invite = null;
-        }
+        if (this.registering) await this.register();
+        else await loginWithPassword(this.email.trim(), this.password);
       } catch (error) {
-        this.error = error?.message || "Registration failed.";
+        this.error = error?.message || "That didn't work. Try again.";
       } finally {
         this.loading = false;
+      }
+    },
+    async register() {
+      await registerUser({
+        email: this.email.trim(),
+        password: this.password,
+        first_name: this.firstName.trim(),
+        last_name: this.lastName.trim(),
+        invite_token: this.inviteToken || undefined
+      });
+      this.registering = false;
+      this.message = "Account created. Sign in with your new credentials.";
+      if (this.inviteToken) {
+        const url = new URL(window.location.href);
+        url.searchParams.delete("invite_token");
+        window.history.replaceState(window.history.state, "", url.toString());
+        this.inviteToken = "";
+        this.authStatus.invite = null;
       }
     }
   }
@@ -167,163 +112,184 @@ export default {
 </script>
 
 <template>
-  <div class="abyssal-auth-shell auth-stage relative min-h-screen overflow-hidden bg-surface text-on-surface">
-    <div class="auth-stage-wave auth-stage-wave-back"></div>
-    <div class="auth-stage-wave auth-stage-wave-front"></div>
-    <div class="auth-stage-caustics"></div>
-    <div class="absolute right-4 top-4 z-20 sm:right-6 sm:top-6">
-      <label class="sr-only" for="login-language">Language</label>
-      <USelect
-        id="login-language"
-        :model-value="selectedLocale"
-        :items="availableLanguages"
-        @update:model-value="handleLocaleChange"
-        aria-label="Language"
-        class="rounded-xl border border-outline-variant/60 bg-surface-container-high/55 px-3 py-2 text-xs font-semibold text-secondary outline-none transition-colors hover:border-outline-variant hover:text-on-surface focus:border-primary"
-      />
-    </div>
-
-    <div
-      class="relative z-10 mx-auto flex min-h-screen w-full max-w-7xl items-center justify-center px-4 py-4 sm:px-5 sm:py-8 md:px-8 lg:px-10"
-    >
-      <div class="w-full max-w-[34rem]">
-        <div class="mx-auto mb-4 flex max-w-[28rem] flex-col items-center px-2 text-center sm:mb-7">
-          <div class="flex h-40 w-full max-w-[30rem] items-center justify-center sm:h-52">
-            <img src="/logo-headline.png" alt="DiveVault" class="max-h-full w-full object-contain" />
-          </div>
-        </div>
-
-        <section
-          class="auth-panel auth-panel-centered relative overflow-hidden rounded-xl border border-outline-variant/60 px-4 py-5 sm:rounded-xl sm:px-8 sm:py-8 lg:px-10 lg:py-10"
-        >
-          <div class="relative">
-            <h2 class="font-headline text-[2rem] font-bold tracking-tight text-on-surface sm:text-[2.6rem] sm:leading-[1.02]">
-              {{ authHeading }}
-            </h2>
-            <p class="mt-3 max-w-[30rem] text-sm leading-6 text-secondary sm:mt-4 sm:leading-7">{{ authSummary }}</p>
-          </div>
-
-          <div
-            v-if="demoMode"
-            class="relative mt-5 rounded-xl border border-outline-variant/60 bg-primary/10 px-4 py-4 text-sm text-on-surface sm:mt-6"
-          >
-            <div class="flex items-start gap-3">
-              <span class="material-symbols-outlined mt-0.5 text-[20px] text-primary">info</span>
-              <div class="min-w-0">
-                <p class="font-label text-xs font-medium text-primary">Demo mode</p>
-                <p class="mt-1 leading-6 text-secondary">
-                  This public instance resets on a schedule. Sign in with username
-                  <span class="font-semibold text-on-surface">admin</span> and password
-                  <span class="font-semibold text-on-surface">admin</span>.
-                </p>
-              </div>
-            </div>
-          </div>
-
-          <div
-            v-if="message"
-            class="relative mt-5 rounded-xl border border-outline-variant/60 bg-primary/10 px-4 py-3 text-sm text-primary sm:mt-6"
-          >
-            {{ message }}
-          </div>
-          <div v-if="error" class="relative mt-4 rounded-xl border border-error/25 bg-error-container/20 px-4 py-3 text-sm text-error">
-            {{ error }}
-          </div>
-
-          <div class="relative mt-6 space-y-4 sm:mt-8 sm:space-y-5">
-            <label class="block space-y-2">
-              <span class="font-label text-xs font-medium text-secondary">Email</span>
-              <UInput
-                v-model.trim="email"
-                type="email"
-                autocomplete="email"
-                placeholder="Email"
-                class="auth-input w-full rounded-xl border border-outline-variant/60 px-4 py-3 text-sm text-on-surface outline-none transition-all placeholder:text-secondary/45 sm:py-3.5"
-              />
-            </label>
-
-            <div class="space-y-2">
-              <div class="flex items-center justify-between gap-3">
-                <span class="font-label text-xs font-medium text-secondary">Password</span>
-                <UButton
-                  @click="showPassword = !showPassword"
-                  type="button"
-                  class="text-sm font-semibold text-primary transition-colors hover:text-on-surface"
-                >
-                  {{ showPassword ? "Hide" : "Show" }}
-                </UButton>
-              </div>
-              <UInput
-                v-model="password"
-                :type="showPassword ? 'text' : 'password'"
-                autocomplete="current-password"
-                placeholder="Password"
-                class="auth-input w-full rounded-xl border border-outline-variant/60 px-4 py-3 text-sm text-on-surface outline-none transition-all placeholder:text-secondary/45 sm:py-3.5"
-              />
-            </div>
-
-            <template v-if="authView === 'register'">
-              <div class="grid gap-5 sm:grid-cols-2">
-                <label class="block space-y-2">
-                  <span class="font-label text-xs font-medium text-secondary">First name</span>
-                  <UInput
-                    v-model.trim="firstName"
-                    type="text"
-                    autocomplete="given-name"
-                    placeholder="First name"
-                    class="auth-input w-full rounded-xl border border-outline-variant/60 px-4 py-3 text-sm text-on-surface outline-none transition-all placeholder:text-secondary/45 sm:py-3.5"
-                  />
-                </label>
-                <label class="block space-y-2">
-                  <span class="font-label text-xs font-medium text-secondary">Last name</span>
-                  <UInput
-                    v-model.trim="lastName"
-                    type="text"
-                    autocomplete="family-name"
-                    placeholder="Last name"
-                    class="auth-input w-full rounded-xl border border-outline-variant/60 px-4 py-3 text-sm text-on-surface outline-none transition-all placeholder:text-secondary/45 sm:py-3.5"
-                  />
-                </label>
-              </div>
-            </template>
-          </div>
-
-          <div class="relative mt-6 flex flex-col gap-3 sm:mt-8 sm:flex-row">
-            <UButton
-              v-if="authView === 'signin'"
-              @click="submitSignIn"
-              :disabled="loading"
-              class="auth-primary-button inline-flex min-h-12 flex-1 items-center justify-center rounded-xl px-5 py-3 font-label text-sm font-semibold text-on-primary transition-all hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-70 sm:min-h-13 sm:py-3.5 sm:text-[0.7rem] sm:"
-            >
-              {{ submitLabel }}
-            </UButton>
-            <UButton
-              v-if="authView === 'register'"
-              @click="submitRegister"
-              :disabled="loading"
-              class="auth-primary-button inline-flex min-h-12 flex-1 items-center justify-center rounded-xl px-5 py-3 font-label text-sm font-semibold text-on-primary transition-all hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-70 sm:min-h-13 sm:py-3.5 sm:text-[0.7rem] sm:"
-            >
-              {{ submitLabel }}
-            </UButton>
-            <UButton
-              v-if="canRegister"
-              :key="'auth-toggle-' + authView"
-              @click="authView = authView === 'signin' ? 'register' : 'signin'"
-              type="button"
-              class="inline-flex min-h-12 items-center justify-center rounded-xl border border-outline-variant/60 bg-surface-container-high/40 px-5 py-3 font-label text-sm font-semibold text-primary transition-colors hover:bg-surface-container-high/70 hover:text-on-surface sm:min-h-13 sm:py-3.5 sm:text-[0.7rem] sm:"
-            >
-              {{ alternateActionLabel }}
-            </UButton>
-          </div>
-
-          <div v-if="showAlternateAccountPrompt" class="relative mt-4 flex flex-wrap items-center gap-2 text-xs text-secondary sm:mt-5">
-            <span>{{ alternateActionCopy }}</span>
-            <span v-if="canRegister" class="font-semibold text-primary/80">
-              {{ alternateActionLabel }}
-            </span>
-          </div>
-        </section>
+  <div class="app shelf arrival">
+    <sea-swell tall />
+    <header class="land arrival-top">
+      <label class="field arrival-language">
+        {{ $tx("Language") }}
+        <select :value="currentLocale" @change="setLocale($event.target.value)">
+          <option v-for="language in locales" :key="language.code" :value="language.code">{{ language.name }}</option>
+        </select>
+      </label>
+    </header>
+    <div class="arrival-mast">
+      <div class="arrival-name">
+        <brand-mark />
+        <p>DiveVault</p>
       </div>
     </div>
+    <tide-line />
+    <div class="shoal arrival-shoal"></div>
+    <div class="mid arrival-mid"></div>
+    <main class="arrival-main">
+      <p class="site arrival-line">{{ $tx("Your dives, from the surface down.") }}</p>
+      <form class="stack arrival-form" @submit.prevent="submit">
+        <h1 class="h2">{{ registering ? $tx("Create your account") : $tx("Sign in") }}</h1>
+        <p v-if="demoMode" class="arrival-demo">
+          {{
+            $tx("This is a demo and resets on a schedule. Sign in as {user} with the password {password}.", {
+              user: "admin",
+              password: "admin"
+            })
+          }}
+        </p>
+        <p v-if="registering && registerNote">{{ registerNote }}</p>
+        <p v-if="message" role="status">
+          <strong>{{ $tx(message) }}</strong>
+        </p>
+        <p v-if="error" class="warn" role="alert">
+          <strong>{{ $tx(error) }}</strong>
+        </p>
+        <div v-if="registering" class="form pair">
+          <label class="field">{{ $tx("First name") }}<input v-model="firstName" autocomplete="given-name" /></label>
+          <label class="field">{{ $tx("Last name") }}<input v-model="lastName" autocomplete="family-name" /></label>
+        </div>
+        <!-- The demo signs in as "admin", so this is not an email-type input. -->
+        <label class="field">
+          {{ $tx("Email") }}
+          <input
+            v-model="email"
+            :type="registering ? 'email' : 'text'"
+            inputmode="email"
+            autocapitalize="none"
+            autocomplete="username"
+            required
+          />
+        </label>
+        <label class="field">
+          {{ $tx("Password") }}
+          <input
+            v-model="password"
+            :type="showPassword ? 'text' : 'password'"
+            :autocomplete="registering ? 'new-password' : 'current-password'"
+            required
+          />
+        </label>
+        <label class="check"><input v-model="showPassword" type="checkbox" />{{ $tx("Show password") }}</label>
+        <button class="btn arrival-submit" type="submit" :disabled="loading">{{ submitLabel }}</button>
+        <button v-if="registering || canRegister" type="button" class="link" @click="toggleMode">
+          {{ registering ? $tx("I already have an account") : $tx("Create an account") }}
+        </button>
+      </form>
+    </main>
   </div>
 </template>
+
+<style>
+.arrival {
+  background: var(--shelf);
+}
+
+.arrival-top {
+  justify-content: flex-end !important;
+  padding-top: 22px;
+  padding-bottom: 0;
+}
+
+.arrival-language {
+  width: 150px;
+}
+
+.arrival-mast {
+  padding: 34px var(--gutter) 22px;
+}
+
+.arrival-name {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 28px;
+  max-width: 1040px;
+  margin: 0 auto;
+}
+
+.arrival-name svg {
+  width: 150px;
+}
+
+.arrival-name p {
+  font-size: clamp(56px, 9vw, 108px);
+  font-weight: 800;
+  line-height: 1;
+}
+
+.arrival-shoal {
+  flex: none;
+  height: 34px;
+}
+
+.arrival-mid {
+  flex: none;
+  height: 24px;
+}
+
+.app.arrival > .arrival-main {
+  flex: 1 0 auto;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-content: flex-start;
+  align-items: flex-start;
+  gap: 34px 90px;
+  width: 100%;
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 56px var(--gutter) 90px;
+}
+
+.arrival-line {
+  flex: 1 1 300px;
+  font-size: 44px;
+  font-weight: 700;
+  line-height: 1.12;
+}
+
+.arrival-form {
+  flex: 1 1 300px;
+  gap: 18px;
+  min-width: 0;
+}
+
+.arrival-form .arrival-submit {
+  align-self: stretch;
+}
+
+.arrival-demo {
+  padding: 10px 12px;
+  background: var(--shoal);
+}
+
+@media (max-width: 700px) {
+  .arrival-mast {
+    padding-top: 8px;
+    padding-bottom: 12px;
+  }
+
+  .arrival-name svg {
+    width: 88px;
+  }
+
+  .app.arrival > .arrival-main {
+    gap: 22px;
+    padding-top: 26px;
+  }
+
+  .arrival-line {
+    flex-basis: 100%;
+    font-size: 30px;
+  }
+
+  .arrival-form {
+    flex-basis: 100%;
+  }
+}
+</style>

@@ -18,6 +18,7 @@ export function createManualDiveDraft() {
     wetsuitDescription: "",
     weightDescription: "",
     notes: "",
-    equipment_ids: []
+    // null until touched: the usual kit is ticked for a new dive.
+    equipment_ids: null
   };
 }

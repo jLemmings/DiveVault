@@ -1,780 +1,411 @@
 <script>
 import { logbookRequirementFieldOptions, missingImportFields } from "~/shared/utils/core.js";
-import MetadataAutocompleteField from "~/shared/components/MetadataAutocomplete.vue";
-import { equipmentTitle, normalizeName, serviceStatusForDive, sortNamedCollection } from "~/shared/utils/equipment-dive.js";
+import { phoneScreen } from "~/shared/composables/phone-screen.js";
+import TideLine from "~/shared/components/chart/TideLine.vue";
+import ChartNote from "~/shared/components/chart/ChartNote.vue";
+import SiteField from "~/shared/components/logbook/SiteField.vue";
+import DiveFields from "~/shared/components/logbook/DiveFields.vue";
+import KitList from "~/shared/components/logbook/KitList.vue";
 
-function emptyDiveSiteDraft(name = "") {
-  return {
-    name,
-    location: "",
-    country: "",
-    latitude: "",
-    longitude: ""
-  };
+const TANK_SIZES = ["9", "12", "15"];
+const WATER_ISSUE_FIELDS = new Set(["date", "time", "depth", "duration", "water", "pressure", "site"]);
+
+function optionalNumber(value) {
+  const text = String(value ?? "").trim();
+  return text ? Number.parseFloat(text) : null;
 }
 
+// Laid out in the order it was dived: going in, at the bottom, coming up.
 export default {
   name: "ManualDiveEntryView",
-  components: {
-    MetadataAutocompleteField
+  components: { TideLine, ChartNote, SiteField, DiveFields, KitList },
+  mixins: [phoneScreen],
+  props: {
+    draft: { type: Object, required: true },
+    requiredFields: { type: Array, required: true },
+    diveSites: { type: Array, required: true },
+    buddies: { type: Array, required: true },
+    guides: { type: Array, required: true },
+    equipment: { type: Array, required: true },
+    equipmentEnabled: Boolean,
+    creating: Boolean,
+    createDiveSite: { type: Function, required: true },
+    searchLocation: { type: Function, required: true },
+    error: { type: String, default: "" }
   },
-  props: [
-    "draft",
-    "requiredLogbookFields",
-    "diveSites",
-    "buddies",
-    "guides",
-    "equipment",
-    "defaultEquipmentIds",
-    "equipmentSelectionEnabled",
-    "creating",
-    "errorMessage",
-    "updateDraft",
-    "createManualDive",
-    "closeCreator",
-    "createDiveSite",
-    "searchDiveSiteLocation"
-  ],
+  emits: ["change", "create", "cancel"],
   data() {
-    return {
-      tankVolumeOptions: [
-        { label: "9L", value: "9" },
-        { label: "12L", value: "12" },
-        { label: "15L", value: "15" }
-      ],
-      pendingDiveSiteDraft: null,
-      pendingDiveSiteLookupLoading: false,
-      pendingDiveSiteSubmitting: false,
-      diveSiteCreateError: "",
-      diveSiteCreateStatus: ""
-    };
+    return { tankSizes: TANK_SIZES, step: 1, attempted: false };
   },
   computed: {
-    savedDiveSites() {
-      return sortNamedCollection(this.diveSites);
-    },
-    savedBuddies() {
-      return sortNamedCollection(this.buddies);
-    },
-    savedGuides() {
-      return sortNamedCollection(this.guides);
-    },
-    selectedDiveSite() {
-      const siteName = normalizeName(this.draft?.site);
-      if (!siteName) return null;
-      return this.savedDiveSites.find((site) => normalizeName(site.name) === siteName) || null;
-    },
-    canCreateDiveSite() {
-      const siteName = typeof this.draft?.site === "string" ? this.draft.site.trim() : "";
-      return Boolean(siteName) && !this.selectedDiveSite;
-    },
-    pendingDiveSiteCreationOpen() {
-      return Boolean(this.pendingDiveSiteDraft);
-    },
-    validationItems() {
+    issues() {
+      const { draft } = this;
       const issues = [];
-      const durationMinutes = Number.parseFloat(this.draft?.durationMinutes);
-      const maxDepthM = Number.parseFloat(this.draft?.maxDepthM);
-      const temperatureValue = typeof this.draft?.temperatureC === "string" ? this.draft.temperatureC.trim() : "";
-      const temperatureC = temperatureValue ? Number.parseFloat(temperatureValue) : null;
-      const tankVolumeValue = typeof this.draft?.tankVolumeL === "string" ? this.draft.tankVolumeL.trim() : "";
-      const beginPressureValue = typeof this.draft?.beginPressureBar === "string" ? this.draft.beginPressureBar.trim() : "";
-      const endPressureValue = typeof this.draft?.endPressureBar === "string" ? this.draft.endPressureBar.trim() : "";
-      const beginPressure = beginPressureValue ? Number.parseFloat(beginPressureValue) : null;
-      const endPressure = endPressureValue ? Number.parseFloat(endPressureValue) : null;
-
-      if (!String(this.draft?.date || "").trim()) issues.push("Start date is required.");
-      if (!String(this.draft?.time || "").trim()) issues.push("Start time is required.");
-      if (!Number.isFinite(durationMinutes) || durationMinutes <= 0) issues.push("Duration must be greater than zero.");
-      if (!Number.isFinite(maxDepthM) || maxDepthM < 0) issues.push("Max depth must be zero or greater.");
-      if (temperatureValue && !Number.isFinite(temperatureC)) issues.push("Temperature must be a valid number.");
-      if (tankVolumeValue && !this.tankVolumeOptions.some((option) => option.value === tankVolumeValue))
-        issues.push("Tank volume must be 9L, 12L, or 15L.");
-      if (beginPressureValue && (!Number.isFinite(beginPressure) || beginPressure < 0 || beginPressure > 400))
-        issues.push("Entry tank pressure must be between 0 and 400 bar.");
-      if (endPressureValue && (!Number.isFinite(endPressure) || endPressure < 0 || endPressure > 400))
-        issues.push("Exit tank pressure must be between 0 and 400 bar.");
-      if (beginPressure !== null && endPressure !== null && endPressure > beginPressure)
-        issues.push("Exit tank pressure cannot be higher than entry tank pressure.");
-      for (const field of missingImportFields(
-        {
-          site: this.draft?.site,
-          buddy: this.draft?.buddy,
-          guide: this.draft?.guide,
-          weather_description: this.draft?.weatherDescription,
-          visibility: this.draft?.visibility,
-          wetsuit_description: this.draft?.wetsuitDescription,
-          weight_description: this.draft?.weightDescription,
-          notes: this.draft?.notes
-        },
-        this.requiredLogbookFields
-      )) {
+      const add = (key, text) => issues.push({ key, text });
+      const duration = Number.parseFloat(draft.durationMinutes);
+      const depth = Number.parseFloat(draft.maxDepthM);
+      const water = optionalNumber(draft.temperatureC);
+      const begin = optionalNumber(draft.beginPressureBar);
+      const end = optionalNumber(draft.endPressureBar);
+      const badPressure = (value) => value !== null && !(value >= 0 && value <= 400);
+      if (!draft.date) add("date", this.$tx("Enter the date."));
+      if (!draft.time) add("time", this.$tx("Enter the start time."));
+      if (!(duration > 0)) add("duration", this.$tx("Enter the minutes underwater."));
+      if (!(depth >= 0)) add("depth", this.$tx("Enter the max depth."));
+      if (water !== null && !Number.isFinite(water)) add("water", this.$tx("Enter the water temperature as a number."));
+      if (badPressure(begin) || badPressure(end)) add("pressure", this.$tx("Pressures must be between 0 and 400 bar."));
+      else if (begin !== null && end !== null && end > begin) add("pressure", this.$tx("Pressure out can't be higher than pressure in."));
+      const logbook = {
+        site: draft.site,
+        buddy: draft.buddy,
+        guide: draft.guide,
+        weather_description: draft.weatherDescription,
+        visibility: draft.visibility,
+        wetsuit_description: draft.wetsuitDescription,
+        weight_description: draft.weightDescription,
+        notes: draft.notes
+      };
+      for (const field of missingImportFields(logbook, this.requiredFields)) {
         const option = logbookRequirementFieldOptions.find((entry) => entry.key === field.key) || field;
-        issues.push(`${option.label} is required.`);
+        add(field.key, this.$tx("{field} is required.", { field: this.$tx(option.label) }));
       }
       return issues;
     },
-    canSubmit() {
-      return this.validationItems.length === 0;
+    // The first phone screen is the dive itself; people and notes come after.
+    stepIssues() {
+      return this.isPhone && this.step === 1 ? this.issues.filter((issue) => WATER_ISSUE_FIELDS.has(issue.key)) : this.issues;
     },
-    selectedEquipmentIds() {
-      return Array.isArray(this.draft?.equipment_ids) ? this.draft.equipment_ids.map(String) : [];
+    startedAt() {
+      return this.draft.date ? `${this.draft.date}T${this.draft.time || "00:00"}` : "";
     },
-    draftDateTime() {
-      const date = String(this.draft?.date || "").trim();
-      const time = String(this.draft?.time || "").trim() || "00:00";
-      return date ? `${date}T${time}` : "";
-    },
-    equipmentGroups() {
-      const groups = new Map();
-      for (const item of Array.isArray(this.equipment) ? this.equipment : []) {
-        const category = item?.category || item?.type || "Other";
-        if (!groups.has(category)) groups.set(category, []);
-        groups.get(category).push(item);
-      }
-      return [...groups.entries()].map(([category, items]) => ({
-        category,
-        items: items.sort((left, right) => equipmentTitle(left).localeCompare(equipmentTitle(right), undefined, { sensitivity: "base" }))
-      }));
-    },
-    selectedEquipmentStatus() {
-      const lookup = new Map((Array.isArray(this.equipment) ? this.equipment : []).map((item) => [String(item.id), item]));
-      return this.selectedEquipmentIds.map((id) => {
-        const item = lookup.get(id);
-        const service = serviceStatusForDive(item, this.draftDateTime);
-        return { id, item, name: equipmentTitle(item || { name: id }), ...service };
-      });
-    },
-    invalidSelectedEquipment() {
-      return this.selectedEquipmentStatus.filter((item) => item.status === "unknown" || item.status === "overdue");
+    notesNeeded() {
+      return this.requiredFields.includes("notes") && !this.draft.notes.trim();
     }
   },
   methods: {
-    t(key, fallback = key, params = {}) {
-      return typeof this.$t === "function" ? this.$t(key, fallback, params) : fallback;
+    change(key, value) {
+      this.$emit("change", key, value);
     },
-    updateField(key, value) {
-      if (typeof this.updateDraft !== "function") return;
-      this.updateDraft(key, value);
-      if (key === "site") {
-        this.clearDiveSiteCreateFeedback();
-      }
-    },
-    updateSite(value) {
-      this.updateField("site", value);
-    },
-    updateBuddy(value) {
-      this.updateField("buddy", value);
-    },
-    updateGuide(value) {
-      this.updateField("guide", value);
-    },
-    equipmentTitle,
-    serviceStatusForDive,
-    equipmentChecked(equipmentId) {
-      return this.selectedEquipmentIds.includes(String(equipmentId));
-    },
-    equipmentWarning(item) {
-      return ["unknown", "overdue"].includes(serviceStatusForDive(item, this.draftDateTime).status);
-    },
-    toggleEquipment(equipmentId) {
-      const id = String(equipmentId);
-      const nextIds = this.equipmentChecked(id)
-        ? this.selectedEquipmentIds.filter((entry) => entry !== id)
-        : [...this.selectedEquipmentIds, id];
-      this.updateField("equipment_ids", nextIds);
-    },
-    useDefaultEquipment() {
-      this.updateField("equipment_ids", Array.isArray(this.defaultEquipmentIds) ? [...this.defaultEquipmentIds] : []);
-    },
-    clearEquipment() {
-      this.updateField("equipment_ids", []);
-    },
-    clearDiveSiteCreateFeedback() {
-      this.diveSiteCreateError = "";
-      this.diveSiteCreateStatus = "";
-    },
-    openDiveSiteCreateDialog() {
-      const siteName = typeof this.draft?.site === "string" ? this.draft.site.trim() : "";
-      if (!siteName) return;
-      this.pendingDiveSiteDraft = emptyDiveSiteDraft(siteName);
-      this.pendingDiveSiteLookupLoading = false;
-      this.pendingDiveSiteSubmitting = false;
-      this.diveSiteCreateError = "";
-      this.diveSiteCreateStatus = "";
-    },
-    closeDiveSiteCreateDialog() {
-      if (this.pendingDiveSiteSubmitting) return;
-      this.pendingDiveSiteDraft = null;
-      this.pendingDiveSiteLookupLoading = false;
-      this.diveSiteCreateError = "";
-    },
-    validatePendingDiveSite() {
-      const draft = this.pendingDiveSiteDraft;
-      if (!draft) return "Nothing to save.";
-      if (!String(draft.name || "").trim()) {
-        return "Enter a site name before saving the dive site.";
-      }
-      return "";
-    },
-    formatDiveSiteSuggestionDetail(site) {
-      if (!site) return "";
-      const parts = [];
-      if (typeof site.location === "string" && site.location.trim()) {
-        parts.push(site.location.trim());
-      }
-      if (typeof site.country === "string" && site.country.trim()) {
-        parts.push(site.country.trim());
-      }
-      const latitude = site.latitude ?? site.lat;
-      const longitude = site.longitude ?? site.lon;
-      if (
-        latitude !== null &&
-        latitude !== undefined &&
-        latitude !== "" &&
-        longitude !== null &&
-        longitude !== undefined &&
-        longitude !== ""
-      ) {
-        parts.push("GPS ready");
-      }
-      return parts.join(" / ");
-    },
-    async searchPendingDiveSiteGps() {
-      const draft = this.pendingDiveSiteDraft;
-      if (!draft || typeof this.searchDiveSiteLocation !== "function") return;
-      const query = typeof draft.location === "string" ? draft.location.trim() : "";
-      if (!query) {
-        this.diveSiteCreateError = "Enter a location before searching for GPS coordinates.";
+    submit() {
+      this.attempted = true;
+      if (this.stepIssues.length || this.creating) return;
+      if (this.isPhone && this.step === 1) {
+        this.step = 2;
+        this.attempted = false;
+        window.scrollTo(0, 0);
         return;
       }
-
-      this.pendingDiveSiteLookupLoading = true;
-      this.diveSiteCreateError = "";
-      try {
-        const result = await this.searchDiveSiteLocation(query);
-        if (!result) {
-          this.diveSiteCreateError = `No coordinates found for "${query}".`;
-          return;
-        }
-
-        this.pendingDiveSiteDraft = {
-          ...draft,
-          country: typeof result.country === "string" ? result.country : draft.country,
-          latitude: String(result.latitude),
-          longitude: String(result.longitude)
-        };
-      } catch (error) {
-        this.diveSiteCreateError = error?.message || "Could not search for GPS coordinates.";
-      } finally {
-        this.pendingDiveSiteLookupLoading = false;
-      }
-    },
-    async saveCurrentDiveSite() {
-      if (!this.pendingDiveSiteDraft || typeof this.createDiveSite !== "function") return;
-
-      const validationError = this.validatePendingDiveSite();
-      if (validationError) {
-        this.diveSiteCreateError = validationError;
-        return;
-      }
-
-      this.pendingDiveSiteSubmitting = true;
-      this.diveSiteCreateError = "";
-      this.diveSiteCreateStatus = "";
-      try {
-        const savedSite = await this.createDiveSite({
-          name: String(this.pendingDiveSiteDraft.name || "").trim(),
-          location: String(this.pendingDiveSiteDraft.location || "").trim(),
-          country: String(this.pendingDiveSiteDraft.country || "").trim(),
-          latitude: this.pendingDiveSiteDraft.latitude === "" ? null : Number.parseFloat(this.pendingDiveSiteDraft.latitude),
-          longitude: this.pendingDiveSiteDraft.longitude === "" ? null : Number.parseFloat(this.pendingDiveSiteDraft.longitude)
-        });
-        if (savedSite?.name && savedSite.name !== this.draft?.site) {
-          this.updateSite(savedSite.name);
-        }
-        this.diveSiteCreateStatus = `${savedSite?.name || this.pendingDiveSiteDraft.name} added to your saved dive sites.`;
-        this.pendingDiveSiteDraft = null;
-      } catch (error) {
-        this.diveSiteCreateError = error?.message || "Could not save the dive site.";
-      } finally {
-        this.pendingDiveSiteSubmitting = false;
-      }
-    },
-    submitForm() {
-      if (!this.canSubmit || this.creating || typeof this.createManualDive !== "function") {
-        return;
-      }
-      this.createManualDive();
+      this.$emit("create");
     }
   }
 };
 </script>
 
 <template>
-  <section class="space-y-8 text-on-surface">
-    <header class="space-y-5">
-      <UButton
-        @click="closeCreator()"
-        class="inline-flex items-center gap-2 bg-surface-container-high px-4 py-3 font-label text-sm font-semibold text-on-surface transition-colors hover:text-primary"
-      >
-        <span class="material-symbols-outlined text-sm">arrow_back</span>
-        Back to logs
-      </UButton>
-      <section class="border border-outline-variant/60 bg-surface-container-low p-8 shadow-panel">
-        <div class="flex flex-wrap items-center gap-3">
-          <span class="bg-primary/10 px-3 py-1 font-label text-xs font-medium text-primary">Manual entry</span>
-          <span class="bg-surface-container-high px-3 py-1 font-label text-xs font-medium text-secondary">No dive computer</span>
-        </div>
-        <h3 class="mt-5 font-headline text-5xl font-bold tracking-tight">Manual dive entry</h3>
-        <p class="mt-4 max-w-3xl text-sm leading-7 text-on-surface-variant">Log a dive by hand when you didn't use a dive computer.</p>
-      </section>
-      <div v-if="errorMessage" class="border border-error/20 bg-error-container/20 px-5 py-4 text-sm text-on-error-container shadow-panel">
-        {{ errorMessage }}
-      </div>
+  <form class="page manual" :class="`step-${step}`" novalidate @submit.prevent="submit">
+    <header class="land spread phone-only">
+      <h1 class="h1">{{ $tx("Log a dive") }}</h1>
+      <button type="button" class="link" @click="$emit('cancel')">{{ $tx("Cancel") }}</button>
     </header>
-
-    <form @submit.prevent="submitForm" class="space-y-6">
-      <section class="space-y-6 border border-outline-variant/60 bg-surface-container-low p-8 shadow-panel">
+    <div class="topside manual-top">
+      <div class="desk-only">
         <div>
-          <p class="font-label text-xs font-medium text-primary">Dive basics</p>
-          <h4 class="mt-2 font-headline text-3xl font-bold tracking-tight">Dive details</h4>
+          <h1 class="h1">{{ $tx("Log a dive") }}</h1>
+          <p class="soft big">{{ $tx("Fill it in the way you dived it: in, down, and up.") }}</p>
         </div>
+      </div>
+      <site-field
+        v-if="isPhone && step === 1"
+        class="manual-site"
+        :model-value="draft.site"
+        :label="$tx('Dive site, required')"
+        :placeholder="$tx('Choose or type a site')"
+        :sites="diveSites"
+        :create-site="createDiveSite"
+        :search-location="searchLocation"
+        @update:model-value="change('site', $event)"
+      />
+      <div class="manual-when">
+        <label class="field">{{ $tx("Date") }}<input type="date" :value="draft.date" @input="change('date', $event.target.value)" /></label>
+        <label class="field"
+          >{{ $tx("Start time") }}<input type="time" :value="draft.time" @input="change('time', $event.target.value)"
+        /></label>
+      </div>
+      <button v-if="isPhone && step === 2" type="button" class="link" @click="step = 1">{{ $tx("Back to the dive") }}</button>
+    </div>
+    <tide-line />
+    <chart-note :error="error" />
 
-        <div class="grid gap-4 md:grid-cols-2">
-          <label class="space-y-2">
-            <span class="font-label text-xs font-medium text-secondary">Date</span>
-            <UInput
-              :value="draft.date"
-              @input="updateField('date', $event.target.value)"
-              type="date"
-              class="w-full border border-outline-variant/60 bg-background/35 px-4 py-3 text-sm text-on-surface focus:border-primary focus:ring-1 focus:ring-primary"
-            />
+    <div class="descent">
+      <svg class="descent-water" viewBox="0 0 1280 380" preserveAspectRatio="none" aria-hidden="true">
+        <rect class="b1" width="1280" height="64" />
+        <rect class="b2" y="64" width="1280" height="150" />
+        <rect class="b3" y="214" width="1280" height="166" />
+        <path class="trace now dash" vector-effect="non-scaling-stroke" d="M290 0C310 170 380 278 486 286M794 286C900 278 970 170 990 0" />
+      </svg>
+      <fieldset class="leg leg-in">
+        <legend class="h2">{{ $tx("Going in") }}</legend>
+        <div class="leg-fields">
+          <label class="field">
+            {{ isPhone ? $tx("Tank, litres") : $tx("Tank size, litres") }}
+            <select :value="draft.tankVolumeL" @change="change('tankVolumeL', $event.target.value)">
+              <option value="">{{ $tx("Not noted") }}</option>
+              <option v-for="size in tankSizes" :key="size" :value="size">{{ size }}</option>
+            </select>
           </label>
-          <label class="space-y-2">
-            <span class="font-label text-xs font-medium text-secondary">Start time</span>
-            <UInput
-              :value="draft.time"
-              @input="updateField('time', $event.target.value)"
-              type="time"
-              class="w-full border border-outline-variant/60 bg-background/35 px-4 py-3 text-sm text-on-surface focus:border-primary focus:ring-1 focus:ring-primary"
-            />
-          </label>
-          <label class="space-y-2">
-            <span class="font-label text-xs font-medium text-secondary">Duration</span>
-            <UInput
-              :value="draft.durationMinutes"
-              @input="updateField('durationMinutes', $event.target.value)"
+          <label class="field">
+            {{ isPhone ? $tx("Pressure, bar") : $tx("Pressure in, bar") }}
+            <input
               type="number"
-              min="1"
-              step="1"
-              placeholder="45"
-              class="ui-number-input w-full border border-outline-variant/60 bg-background/35 px-4 py-3 text-sm text-on-surface placeholder:text-secondary/50 focus:border-primary focus:ring-1 focus:ring-primary"
+              min="0"
+              max="400"
+              placeholder="200"
+              :value="draft.beginPressureBar"
+              @input="change('beginPressureBar', $event.target.value)"
             />
           </label>
-          <label class="space-y-2">
-            <span class="font-label text-xs font-medium text-secondary">Max depth</span>
-            <UInput
-              :value="draft.maxDepthM"
-              @input="updateField('maxDepthM', $event.target.value)"
+        </div>
+      </fieldset>
+      <fieldset class="leg leg-bottom">
+        <legend class="h2">{{ $tx("At the bottom") }}</legend>
+        <div class="leg-fields">
+          <label class="field">
+            {{ isPhone ? $tx("Max depth, m") : $tx("Max depth, metres") }}
+            <input
               type="number"
               min="0"
               step="0.1"
               placeholder="18.0"
-              class="ui-number-input w-full border border-outline-variant/60 bg-background/35 px-4 py-3 text-sm text-on-surface placeholder:text-secondary/50 focus:border-primary focus:ring-1 focus:ring-primary"
+              :value="draft.maxDepthM"
+              @input="change('maxDepthM', $event.target.value)"
             />
           </label>
-          <label class="space-y-2">
-            <span class="font-label text-xs font-medium text-secondary">Water temperature</span>
-            <UInput
-              :value="draft.temperatureC"
-              @input="updateField('temperatureC', $event.target.value)"
+          <label class="field">
+            {{ $tx("Water, °C") }}
+            <input
               type="number"
-              step="0.1"
-              placeholder="27"
-              class="ui-number-input w-full border border-outline-variant/60 bg-background/35 px-4 py-3 text-sm text-on-surface placeholder:text-secondary/50 focus:border-primary focus:ring-1 focus:ring-primary"
+              step="any"
+              placeholder="26"
+              :value="draft.temperatureC"
+              @input="change('temperatureC', $event.target.value)"
             />
           </label>
         </div>
-
-        <div class="grid gap-4 md:grid-cols-4">
-          <label class="space-y-2 md:col-span-2">
-            <span class="font-label text-xs font-medium text-secondary">Dive site</span>
-            <metadata-autocomplete-field
-              :model-value="draft.site"
-              @update:model-value="updateSite"
-              :options="savedDiveSites"
-              placeholder="House Reef"
-              input-class="w-full border border-outline-variant/60 bg-background/35 px-4 py-3 pr-12 text-sm text-on-surface placeholder:text-secondary/50 focus:border-primary focus:ring-1 focus:ring-primary"
-              :option-detail="formatDiveSiteSuggestionDetail"
-            />
-            <p class="text-xs leading-5 text-on-surface-variant">
-              {{
-                savedDiveSites.length
-                  ? "Search saved dive sites from Settings or enter a custom value."
-                  : "No saved dive sites yet. Add them in Settings to reuse them here."
-              }}
-            </p>
-            <div v-if="canCreateDiveSite || diveSiteCreateStatus || diveSiteCreateError" class="space-y-2">
-              <UButton
-                v-if="canCreateDiveSite"
-                type="button"
-                @click="openDiveSiteCreateDialog()"
-                class="inline-flex items-center gap-2 bg-surface-container-high px-3 py-2 font-label text-sm font-semibold text-primary disabled:opacity-50"
-              >
-                <span class="material-symbols-outlined text-sm">add_location_alt</span>
-                Save as reusable dive site
-              </UButton>
-              <p v-if="diveSiteCreateStatus" class="text-xs leading-5 text-primary">{{ diveSiteCreateStatus }}</p>
-              <p v-if="diveSiteCreateError" class="text-xs leading-5 text-on-error-container">{{ diveSiteCreateError }}</p>
-            </div>
-          </label>
-
-          <label class="space-y-2">
-            <span class="font-label text-xs font-medium text-secondary">Buddy</span>
-            <metadata-autocomplete-field
-              :model-value="draft.buddy"
-              @update:model-value="updateBuddy"
-              :options="savedBuddies"
-              placeholder="Diver name"
-              input-class="w-full border border-outline-variant/60 bg-background/35 px-4 py-3 pr-12 text-sm text-on-surface placeholder:text-secondary/50 focus:border-primary focus:ring-1 focus:ring-primary"
+      </fieldset>
+      <fieldset class="leg leg-up">
+        <legend class="h2">{{ $tx("Coming up") }}</legend>
+        <div class="leg-fields">
+          <label class="field">
+            {{ isPhone ? $tx("Minutes") : $tx("Time underwater, minutes") }}
+            <input
+              type="number"
+              min="1"
+              step="any"
+              placeholder="45"
+              :value="draft.durationMinutes"
+              @input="change('durationMinutes', $event.target.value)"
             />
           </label>
-
-          <label class="space-y-2">
-            <span class="font-label text-xs font-medium text-secondary">Guide</span>
-            <metadata-autocomplete-field
-              :model-value="draft.guide"
-              @update:model-value="updateGuide"
-              :options="savedGuides"
-              placeholder="Guide or instructor"
-              input-class="w-full border border-outline-variant/60 bg-background/35 px-4 py-3 pr-12 text-sm text-on-surface placeholder:text-secondary/50 focus:border-primary focus:ring-1 focus:ring-primary"
+          <label class="field">
+            {{ isPhone ? $tx("Pressure, bar") : $tx("Pressure out, bar") }}
+            <input
+              type="number"
+              min="0"
+              max="400"
+              placeholder="70"
+              :value="draft.endPressureBar"
+              @input="change('endPressureBar', $event.target.value)"
             />
           </label>
         </div>
-
-        <div class="grid gap-4 md:grid-cols-4">
-          <label class="space-y-2">
-            <span class="font-label text-xs font-medium text-secondary">{{ t("Weather", "Weather") }}</span>
-            <UInput
-              :value="draft.weatherDescription"
-              @input="updateField('weatherDescription', $event.target.value)"
-              type="text"
-              :placeholder="t('manualDive.weather.placeholder', 'Sunny, overcast, current building')"
-              class="w-full border border-outline-variant/60 bg-background/35 px-4 py-3 text-sm text-on-surface placeholder:text-secondary/50 focus:border-primary focus:ring-1 focus:ring-primary"
-            />
-          </label>
-          <label class="space-y-2">
-            <span class="font-label text-xs font-medium text-secondary">{{ t("Visibility", "Visibility") }}</span>
-            <UInput
-              :value="draft.visibility"
-              @input="updateField('visibility', $event.target.value)"
-              type="text"
-              :placeholder="t('manualDive.visibility.placeholder', '18 m / excellent')"
-              class="w-full border border-outline-variant/60 bg-background/35 px-4 py-3 text-sm text-on-surface placeholder:text-secondary/50 focus:border-primary focus:ring-1 focus:ring-primary"
-            />
-          </label>
-          <label class="space-y-2">
-            <span class="font-label text-xs font-medium text-secondary">{{ t("Wetsuit", "Wetsuit") }}</span>
-            <UInput
-              :value="draft.wetsuitDescription"
-              @input="updateField('wetsuitDescription', $event.target.value)"
-              type="text"
-              :placeholder="t('manualDive.wetsuit.placeholder', '5mm full suit')"
-              class="w-full border border-outline-variant/60 bg-background/35 px-4 py-3 text-sm text-on-surface placeholder:text-secondary/50 focus:border-primary focus:ring-1 focus:ring-primary"
-            />
-          </label>
-          <label class="space-y-2">
-            <span class="font-label text-xs font-medium text-secondary">{{ t("Weights", "Weights") }}</span>
-            <UInput
-              :value="draft.weightDescription"
-              @input="updateField('weightDescription', $event.target.value)"
-              type="text"
-              :placeholder="t('manualDive.weights.placeholder', '8 kg integrated + 1 kg trim')"
-              class="w-full border border-outline-variant/60 bg-background/35 px-4 py-3 text-sm text-on-surface placeholder:text-secondary/50 focus:border-primary focus:ring-1 focus:ring-primary"
-            />
-          </label>
-        </div>
-
-        <div class="grid gap-4 md:grid-cols-[minmax(0,1fr)_16rem]">
-          <label class="space-y-2">
-            <span class="font-label text-xs font-medium text-secondary">Notes</span>
-            <UTextarea
-              :value="draft.notes"
-              @input="updateField('notes', $event.target.value)"
-              rows="12"
-              placeholder="Conditions, wildlife, route, entry, navigation, visibility..."
-              class="min-h-[18rem] w-full resize-y border border-outline-variant/60 bg-surface-container-high/35 px-5 py-4 text-sm leading-7 text-on-surface placeholder:text-secondary/50 focus:border-primary focus:ring-1 focus:ring-primary"
-            ></UTextarea>
-          </label>
-
-          <div class="space-y-4">
-            <label class="space-y-2">
-              <span class="font-label text-xs font-medium text-secondary">Tank volume</span>
-              <USelect
-                :model-value="draft.tankVolumeL"
-                :items="[{ label: 'Select tank size', value: '' }, ...tankVolumeOptions]"
-                @update:model-value="updateField('tankVolumeL', $event)"
-                class="w-full border border-outline-variant/60 bg-background/35 px-4 py-3 text-sm text-on-surface focus:border-primary focus:ring-1 focus:ring-primary"
-              />
-            </label>
-            <div class="grid gap-3 sm:grid-cols-2 md:grid-cols-1">
-              <label class="space-y-2">
-                <span class="font-label text-xs font-medium text-secondary">Entry pressure</span>
-                <UInput
-                  :value="draft.beginPressureBar"
-                  @input="updateField('beginPressureBar', $event.target.value)"
-                  type="number"
-                  min="0"
-                  max="400"
-                  step="1"
-                  placeholder="200"
-                  class="ui-number-input w-full border border-outline-variant/60 bg-background/35 px-4 py-3 text-sm text-on-surface placeholder:text-secondary/50 focus:border-primary focus:ring-1 focus:ring-primary"
-                />
-              </label>
-              <label class="space-y-2">
-                <span class="font-label text-xs font-medium text-secondary">Exit pressure</span>
-                <UInput
-                  :value="draft.endPressureBar"
-                  @input="updateField('endPressureBar', $event.target.value)"
-                  type="number"
-                  min="0"
-                  max="400"
-                  step="1"
-                  placeholder="70"
-                  class="ui-number-input w-full border border-outline-variant/60 bg-background/35 px-4 py-3 text-sm text-on-surface placeholder:text-secondary/50 focus:border-primary focus:ring-1 focus:ring-primary"
-                />
-              </label>
-            </div>
-            <div class="border border-outline-variant/60 bg-background/35 p-4">
-              <p class="font-label text-xs font-medium text-primary">About manual entries</p>
-              <p class="mt-3 text-sm leading-6 text-on-surface-variant">
-                Use this for dives without a dive computer. Dives from the DiveVault importer go through Imports instead.
-              </p>
-            </div>
-          </div>
-        </div>
-
-        <section v-if="equipmentSelectionEnabled" class="space-y-4 border border-outline-variant/60 bg-surface-container-high/18 p-5">
-          <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-            <div>
-              <p class="font-label text-xs font-medium text-secondary">
-                {{ t("manualDive.equipment.title", "Equipment used") }}
-              </p>
-              <p class="mt-2 text-sm leading-6" :class="invalidSelectedEquipment.length ? 'text-tertiary' : 'text-primary'">
-                {{
-                  invalidSelectedEquipment.length
-                    ? t("manualDive.equipment.warning", "Selected gear has service warnings, but the dive can still be saved.")
-                    : selectedEquipmentIds.length
-                      ? t("manualDive.equipment.ready", "Selected gear will be attached to this dive.")
-                      : t("manualDive.equipment.empty", "No equipment selected. This is optional.")
-                }}
-              </p>
-            </div>
-            <div class="flex flex-wrap gap-2">
-              <UButton
-                @click="useDefaultEquipment()"
-                type="button"
-                class="bg-surface-container-high px-3 py-2 font-label text-sm font-semibold text-primary"
-                >{{ t("Use defaults", "Use defaults") }}</UButton
-              >
-              <UButton
-                @click="clearEquipment()"
-                type="button"
-                class="bg-background/30 px-3 py-2 font-label text-sm font-semibold text-secondary"
-                >{{ t("Clear", "Clear") }}</UButton
-              >
-            </div>
-          </div>
-          <div v-if="equipmentGroups.length" class="grid gap-4 lg:grid-cols-2">
-            <div v-for="group in equipmentGroups" :key="'manual-equipment-' + group.category" class="space-y-2">
-              <p class="font-label text-xs font-medium text-secondary">{{ group.category }}</p>
-              <UButton
-                v-for="item in group.items"
-                :key="'manual-equipment-item-' + item.id"
-                type="button"
-                @click="toggleEquipment(item.id)"
-                class="flex w-full items-center justify-between gap-3 border px-4 py-3 text-left transition-colors"
-                :class="
-                  equipmentChecked(item.id)
-                    ? equipmentWarning(item)
-                      ? 'border-tertiary/45 bg-tertiary/10 text-on-surface'
-                      : 'border-primary/35 bg-primary/10 text-on-surface'
-                    : 'border-outline-variant/60 bg-background/20 text-secondary hover:border-outline-variant'
-                "
-              >
-                <span>
-                  <span class="block text-sm font-semibold">{{ equipmentTitle(item) }}</span>
-                  <span class="mt-1 block text-xs" :class="equipmentWarning(item) ? 'text-tertiary' : 'text-primary'">{{
-                    serviceStatusForDive(item, draftDateTime).label
-                  }}</span>
-                </span>
-                <span class="material-symbols-outlined text-base">{{
-                  equipmentChecked(item.id) ? "check_circle" : "radio_button_unchecked"
-                }}</span>
-              </UButton>
-            </div>
-          </div>
-          <p v-else class="text-sm leading-6 text-on-surface-variant">
-            {{ t("manualDive.equipment.noneAvailable", "Add equipment in the Equipment section to reuse it here.") }}
-          </p>
-          <div
-            v-if="invalidSelectedEquipment.length"
-            class="space-y-1 border border-tertiary/30 bg-tertiary/10 px-4 py-3 text-sm text-tertiary"
-          >
-            <p v-for="item in invalidSelectedEquipment" :key="'manual-invalid-equipment-' + item.id">{{ item.name }}: {{ item.label }}</p>
-          </div>
-        </section>
-      </section>
-
-      <section class="space-y-6 border border-outline-variant/60 bg-surface-container-low p-6 shadow-panel">
-        <div>
-          <p class="font-label text-xs font-medium text-primary">Create entry</p>
-          <h4 class="mt-2 font-headline text-3xl font-bold tracking-tight">Ready to save</h4>
-          <p class="mt-3 text-sm leading-6 text-on-surface-variant">The dive goes straight into your logbook.</p>
-        </div>
-
-        <div class="space-y-3">
-          <div
-            v-for="issue in validationItems"
-            :key="issue"
-            class="flex items-center gap-3 border border-error/20 bg-error-container/10 px-4 py-3"
-          >
-            <span class="material-symbols-outlined text-sm text-tertiary">warning</span>
-            <span class="text-sm text-on-surface">{{ issue }}</span>
-          </div>
-          <div v-if="!validationItems.length" class="flex items-center gap-3 border border-outline-variant/60 bg-primary/10 px-4 py-3">
-            <span class="material-symbols-outlined text-sm text-primary">task_alt</span>
-            <span class="text-sm text-on-surface">The manual dive can be created immediately.</span>
-          </div>
-        </div>
-
-        <div class="space-y-3">
-          <UButton
-            type="submit"
-            :disabled="creating || !canSubmit"
-            class="w-full bg-primary px-5 py-4 font-label text-sm font-semibold text-on-primary transition-all hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {{ creating ? "Creating dive log..." : "Create dive log" }}
-          </UButton>
-          <UButton
-            type="button"
-            @click="closeCreator()"
-            :disabled="creating"
-            class="w-full bg-surface-container-high px-5 py-4 font-label text-sm font-semibold text-on-surface transition-colors hover:text-primary disabled:opacity-50"
-          >
-            Cancel
-          </UButton>
-        </div>
-      </section>
-    </form>
-
-    <div
-      v-if="pendingDiveSiteCreationOpen"
-      @click.self="closeDiveSiteCreateDialog"
-      class="fixed inset-0 z-[55] flex items-center justify-center bg-background/88 px-6 py-8"
-    >
-      <div class="settings-modal-card">
-        <div class="flex items-start justify-between gap-4">
-          <div>
-            <p class="font-label text-xs font-medium text-primary">New entry</p>
-            <h3 class="mt-3 font-headline text-2xl font-bold tracking-tight text-on-surface">Add dive site</h3>
-            <p class="mt-3 text-sm text-secondary">This entry stays out of the list until you save it here.</p>
-          </div>
-          <UButton
-            type="button"
-            @click="closeDiveSiteCreateDialog"
-            :disabled="pendingDiveSiteSubmitting"
-            class="settings-button settings-button-ghost"
-          >
-            Close
-          </UButton>
-        </div>
-
-        <div v-if="diveSiteCreateError" class="settings-feedback mt-5 border-error/20 bg-error-container/20 text-on-error-container">
-          {{ diveSiteCreateError }}
-        </div>
-
-        <div class="settings-modal-section mt-6">
-          <label class="space-y-2">
-            <span class="font-label text-xs font-medium text-secondary">Site name</span>
-            <UInput v-model="pendingDiveSiteDraft.name" type="text" class="settings-input" placeholder="North Wall / Training Reef" />
-          </label>
-          <div class="settings-side-panel settings-modal-subsection">
-            <div class="settings-modal-section">
-              <div class="settings-modal-header">
-                <div>
-                  <p class="font-label text-xs font-medium text-primary">GPS lookup</p>
-                  <p class="settings-modal-copy mt-2 text-sm text-secondary">
-                    Search from the location text, then adjust latitude and longitude if needed.
-                  </p>
-                </div>
-                <UButton
-                  type="button"
-                  @click="searchPendingDiveSiteGps"
-                  :disabled="pendingDiveSiteLookupLoading || pendingDiveSiteSubmitting"
-                  class="settings-button settings-button-secondary settings-modal-lookup-button"
-                >
-                  {{ pendingDiveSiteLookupLoading ? "Searching GPS" : "Search GPS from location" }}
-                </UButton>
-              </div>
-              <label class="space-y-2">
-                <span class="font-label text-xs font-medium text-secondary">Location</span>
-                <UInput v-model="pendingDiveSiteDraft.location" type="text" class="settings-input" placeholder="Blue Hole, Dahab, Egypt" />
-              </label>
-              <div class="settings-modal-site-grid">
-                <label class="space-y-2">
-                  <span class="font-label text-xs font-medium text-secondary">Country</span>
-                  <UInput v-model="pendingDiveSiteDraft.country" type="text" class="settings-input" placeholder="Egypt" />
-                </label>
-                <label class="space-y-2">
-                  <span class="font-label text-xs font-medium text-secondary">Latitude</span>
-                  <UInput
-                    v-model="pendingDiveSiteDraft.latitude"
-                    type="number"
-                    step="any"
-                    min="-90"
-                    max="90"
-                    class="settings-input ui-number-input"
-                    placeholder="25.1234"
-                  />
-                </label>
-                <label class="space-y-2">
-                  <span class="font-label text-xs font-medium text-secondary">Longitude</span>
-                  <UInput
-                    v-model="pendingDiveSiteDraft.longitude"
-                    type="number"
-                    step="any"
-                    min="-180"
-                    max="180"
-                    class="settings-input ui-number-input"
-                    placeholder="-80.4567"
-                  />
-                </label>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div class="settings-modal-actions">
-          <UButton
-            type="button"
-            @click="closeDiveSiteCreateDialog"
-            :disabled="pendingDiveSiteSubmitting"
-            class="settings-button settings-button-ghost"
-          >
-            Cancel
-          </UButton>
-          <UButton
-            type="button"
-            @click="saveCurrentDiveSite"
-            :disabled="pendingDiveSiteSubmitting"
-            class="settings-button settings-button-primary"
-          >
-            {{ pendingDiveSiteSubmitting ? "Saving..." : "Save dive site" }}
-          </UButton>
-        </div>
-      </div>
+      </fieldset>
     </div>
-  </section>
+
+    <div class="cols pad manual-words">
+      <section class="main stack manual-about">
+        <h2 class="h2">{{ $tx("About the dive") }}</h2>
+        <dive-fields :draft="draft" manual :required="requiredFields" :buddies="buddies" :guides="guides" @change="change">
+          <template #before>
+            <site-field
+              v-if="!isPhone"
+              class="span-two"
+              :model-value="draft.site"
+              :label="$tx('Dive site, required')"
+              :placeholder="$tx('Choose a saved site or type a new one')"
+              :sites="diveSites"
+              :create-site="createDiveSite"
+              :search-location="searchLocation"
+              @update:model-value="change('site', $event)"
+            />
+          </template>
+        </dive-fields>
+        <label class="field" :class="{ need: notesNeeded }">
+          {{ notesNeeded ? $tx("Notes, required") : $tx("Notes") }}
+          <textarea
+            rows="3"
+            :value="draft.notes"
+            :placeholder="$tx('What did you see?')"
+            @input="change('notes', $event.target.value)"
+          ></textarea>
+        </label>
+      </section>
+      <section class="side stack manual-end">
+        <template v-if="equipmentEnabled && (!isPhone || step === 2)">
+          <h2 class="h2">{{ $tx("Your usual kit") }}</h2>
+          <kit-list :equipment="equipment" :selected="draft.equipment_ids" :date="startedAt" @change="change('equipment_ids', $event)" />
+        </template>
+        <ul v-if="attempted && stepIssues.length" class="warn" role="alert">
+          <li v-for="issue in stepIssues" :key="issue.text">{{ issue.text }}</li>
+        </ul>
+        <div class="row">
+          <button class="btn" type="submit" :disabled="creating">
+            <template v-if="creating">{{ $tx("Saving…") }}</template>
+            <template v-else-if="isPhone && step === 1">{{ $tx("Next: people and notes") }}</template>
+            <template v-else>{{ $tx("Add to logbook") }}</template>
+          </button>
+          <button type="button" class="link desk-only" @click="$emit('cancel')">{{ $tx("Cancel") }}</button>
+        </div>
+      </section>
+    </div>
+  </form>
 </template>
+
+<style>
+.manual-when {
+  display: grid;
+  grid-template-columns: minmax(0, 160px) minmax(0, 132px);
+  gap: 14px 24px;
+}
+
+.descent {
+  position: relative;
+  display: flex;
+  flex: none;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px 24px;
+  min-height: 380px;
+  padding: 20px var(--gutter) 26px;
+  overflow: hidden;
+}
+
+.app .descent-water {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  max-width: none;
+  height: 100%;
+}
+
+.leg {
+  position: relative;
+  flex: 0 1 220px;
+}
+
+.leg legend {
+  padding: 0 0 2px;
+}
+
+.leg-fields {
+  display: grid;
+  gap: 14px 18px;
+}
+
+.leg-bottom {
+  flex-basis: 280px;
+  margin-top: 170px !important;
+}
+
+.leg-bottom .leg-fields {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: end;
+}
+
+.manual-words {
+  gap: 22px 56px;
+}
+
+.manual-end {
+  flex-basis: 260px;
+}
+
+@media (max-width: 1000px) {
+  .descent-water path {
+    display: none;
+  }
+}
+
+@media (max-width: 700px) {
+  .manual-top {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    padding-top: 6px;
+    padding-bottom: 6px;
+  }
+
+  .manual-when {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px 18px;
+  }
+
+  .descent {
+    display: block;
+    min-height: 0;
+    padding: 0;
+  }
+
+  .descent-water {
+    display: none;
+  }
+
+  .leg {
+    display: flow-root;
+    width: 100%;
+    margin-top: 0 !important;
+    padding: 16px var(--gutter) 18px !important;
+  }
+
+  .leg legend {
+    float: left;
+    width: 100%;
+    padding-bottom: 6px;
+    font-size: 19px;
+    font-weight: 700;
+  }
+
+  .leg-fields {
+    clear: both;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: end;
+  }
+
+  .leg-in {
+    background: var(--shoal);
+  }
+
+  .leg-bottom {
+    background: var(--mid);
+  }
+
+  .leg-up {
+    background: var(--shelf);
+  }
+
+  .step-1 .manual-about,
+  .step-2 .descent,
+  .step-2 .manual-when {
+    display: none;
+  }
+
+  .manual-end .btn {
+    flex: 1;
+  }
+
+  .step-1 .manual-words {
+    margin-top: auto;
+    padding-top: 12px;
+    padding-bottom: 12px;
+  }
+}
+</style>

@@ -1,618 +1,236 @@
 <script>
-function createEquipmentId() {
-  return `equipment-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-}
+import { i18n } from "~/i18n/index.js";
+import { equipmentTitle, gearService } from "~/shared/utils/equipment-dive.js";
+import { shortDate } from "~/shared/utils/format.js";
+import TideLine from "~/shared/components/chart/TideLine.vue";
+import ChartNote from "~/shared/components/chart/ChartNote.vue";
+import GearDepths from "./GearDepths.vue";
+import GearDialog from "./GearDialog.vue";
 
-const EQUIPMENT_ICON_OPTIONS = [
-  { icon: "scuba_diving", label: "Diver" },
-  { icon: "air", label: "Regulator" },
-  { icon: "watch", label: "Computer" },
-  { icon: "water", label: "Fins" },
-  { icon: "backpack", label: "BCD" },
-  { icon: "opacity", label: "Tank" },
-  { icon: "visibility", label: "Mask" },
-  { icon: "fitness_center", label: "Weights" },
-  { icon: "flashlight_on", label: "Torch" },
-  { icon: "photo_camera", label: "Camera" },
-  { icon: "waves", label: "Exposure" },
-  { icon: "build", label: "Tools" }
-];
-
-function emptyEquipment() {
-  return {
-    id: createEquipmentId(),
-    name: "",
-    category: "Regulator",
-    icon: "scuba_diving",
-    year_bought: "",
-    vendor: "",
-    brand: "",
-    model: "",
-    serial: "",
-    warranty: "",
-    next_service_due: "",
-    max_dives_before_service: "",
-    track_service: true,
-    service_tag: "",
-    service_interval_months: "12",
-    last_service_date: "",
-    is_default: false
-  };
-}
-
-function normalizeEquipment(items) {
-  if (!Array.isArray(items)) return [];
-  return items.map((item, index) => ({
-    id: item?.id || `equipment-${index + 1}`,
-    name: item?.name || [item?.brand, item?.vendor, item?.model, item?.category || item?.type].filter(Boolean).join(" "),
-    category: item?.category || item?.type || "",
-    icon: item?.icon || "scuba_diving",
-    year_bought: item?.year_bought ? String(item.year_bought) : "",
-    vendor: item?.vendor || "",
-    brand: item?.brand || "",
-    model: item?.model || "",
-    serial: item?.serial || "",
-    warranty: item?.warranty || "",
-    next_service_due: item?.next_service_due || "",
-    max_dives_before_service: item?.max_dives_before_service ? String(item.max_dives_before_service) : "",
-    track_service: item?.track_service !== false,
-    service_tag: item?.service_tag || "",
-    service_interval_months: item?.service_interval_months ? String(item.service_interval_months) : "",
-    last_service_date: item?.last_service_date || item?.last_serviced_at?.slice?.(0, 10) || "",
-    is_default: Boolean(item?.is_default || item?.is_standard),
-    service_status: item?.service_status || "unknown",
-    service_due_date: item?.service_due_date || "",
-    dives_remaining_before_service: item?.dives_remaining_before_service
-  }));
-}
-
-function equipmentPayload(item) {
-  return {
-    id: item.id,
-    name: item.name.trim(),
-    category: item.category.trim(),
-    icon: item.icon || "scuba_diving",
-    type: item.category.trim(),
-    year_bought: item.year_bought ? Number.parseInt(item.year_bought, 10) : null,
-    vendor: item.vendor.trim(),
-    brand: item.brand.trim(),
-    model: item.model.trim(),
-    serial: item.serial.trim(),
-    warranty: item.warranty.trim(),
-    next_service_due: item.next_service_due,
-    service_interval_months: item.service_interval_months ? Number.parseInt(item.service_interval_months, 10) : null,
-    last_service_date: item.last_service_date,
-    max_dives_before_service: item.max_dives_before_service ? Number.parseInt(item.max_dives_before_service, 10) : null,
-    track_service: item.track_service !== false,
-    service_tag: item.service_tag.trim(),
-    is_default: Boolean(item.is_default)
-  };
-}
-
-function defaultMissingServiceData(item) {
-  if (!item?.is_default) return false;
-  return !item.last_service_date || !item.service_interval_months;
-}
-
-function daysUntilService(item) {
-  const dueDate = item?.service_due_date || item?.next_service_due || "";
-  if (!dueDate) return null;
-  const dueTime = Date.parse(`${dueDate}T00:00:00`);
-  if (!Number.isFinite(dueTime)) return null;
-  const today = new Date();
-  const todayTime = Date.UTC(today.getFullYear(), today.getMonth(), today.getDate());
-  return Math.ceil((dueTime - todayTime) / 86400000);
-}
-
-function clampPercent(value) {
-  if (!Number.isFinite(value)) return 0;
-  return Math.max(0, Math.min(100, value));
-}
+const ORDER = { overdue: 0, due_soon: 1, serviced: 1, unknown: 2, untracked: 3 };
 
 export default {
   name: "EquipmentView",
-  props: ["equipment", "searchText", "setSearchText", "saving", "statusMessage", "errorMessage", "saveEquipment"],
-  data() {
-    return {
-      drafts: normalizeEquipment(this.equipment),
-      editing: false,
-      editingItemId: null
-    };
+  components: { TideLine, ChartNote, GearDepths, GearDialog },
+  props: {
+    equipment: { type: Array, required: true },
+    dives: { type: Array, required: true },
+    loaded: Boolean,
+    saving: Boolean,
+    servicingId: { type: String, default: null },
+    saveEquipment: { type: Function, required: true },
+    markServiced: { type: Function, required: true },
+    status: { type: String, default: "" },
+    error: { type: String, default: "" }
   },
-  watch: {
-    equipment: {
-      handler(value) {
-        if (!this.editing) {
-          this.drafts = normalizeEquipment(value);
-        }
-      },
-      deep: true
-    }
+  emits: ["retry"],
+  data() {
+    return { query: "", editing: null };
   },
   computed: {
-    visibleDrafts() {
-      const query = typeof this.searchText === "string" ? this.searchText.trim().toLowerCase() : "";
-      if (!query) return this.drafts;
-      return this.drafts.filter((item) =>
-        [item.name, item.category, item.brand, item.model, item.serial].join(" ").toLowerCase().includes(query)
-      );
-    },
-    defaultCount() {
-      return this.drafts.filter((item) => item.is_default).length;
-    },
-    editingItem() {
-      if (!this.editingItemId) return null;
-      return this.drafts.find((item) => String(item.id) === String(this.editingItemId)) || null;
-    },
-    serviceTimeline() {
-      return this.drafts
-        .filter((item) => item.track_service !== false)
+    rows() {
+      return this.equipment
         .map((item) => {
-          const dueDate = item.service_due_date || item.next_service_due || "";
-          const dueTime = dueDate ? Date.parse(`${dueDate}T00:00:00`) : Number.POSITIVE_INFINITY;
-          const divesRemaining = Number.isFinite(Number(item.dives_remaining_before_service))
-            ? Number(item.dives_remaining_before_service)
-            : Number.POSITIVE_INFINITY;
-          const statusRank =
-            item.service_status === "overdue" || defaultMissingServiceData(item)
-              ? 0
-              : item.service_status === "due_soon"
-                ? 1
-                : Number.isFinite(dueTime)
-                  ? 2
-                  : 3;
+          const service = gearService(item, this.dives);
+          const title = equipmentTitle(item) || this.$tx("Unnamed gear");
+          const kind = item.category || item.type || "";
           return {
-            ...item,
-            timelineDueDate: dueDate,
-            timelineDueTime: dueTime,
-            timelineDivesRemaining: divesRemaining,
-            timelineStatusRank: statusRank
+            id: String(item.id),
+            item,
+            service,
+            title,
+            kind,
+            // Category names are the short form; a name is used where there is none.
+            short: kind ? this.$tx(kind) : title,
+            note: this.noteFor(service),
+            overdue: service.status === "overdue",
+            usual: Boolean(item.is_default || item.is_standard)
           };
         })
-        .sort((left, right) => {
-          if (left.timelineStatusRank !== right.timelineStatusRank) return left.timelineStatusRank - right.timelineStatusRank;
-          if (left.timelineDueTime !== right.timelineDueTime) return left.timelineDueTime - right.timelineDueTime;
-          if (left.timelineDivesRemaining !== right.timelineDivesRemaining)
-            return left.timelineDivesRemaining - right.timelineDivesRemaining;
-          return String(left.name || left.category || "").localeCompare(String(right.name || right.category || ""));
-        })
-        .slice(0, 6);
+        .sort(
+          (left, right) =>
+            ORDER[left.service.status] - ORDER[right.service.status] ||
+            right.service.urgency - left.service.urgency ||
+            left.title.localeCompare(right.title)
+        );
     },
-    equipmentIconOptions() {
-      return EQUIPMENT_ICON_OPTIONS;
+    visible() {
+      const query = this.query.trim().toLowerCase();
+      if (!query) return this.rows;
+      return this.rows.filter((row) =>
+        [row.title, row.kind, row.item.brand, row.item.model, row.item.serial, row.item.service_tag].join(" ").toLowerCase().includes(query)
+      );
+    },
+    heading() {
+      if (!this.loaded) return this.$tx("Gear");
+      if (!this.rows.length) return this.$tx("Hang up your gear");
+      const overdue = this.rows.filter((row) => row.overdue);
+      if (overdue.length > 1) return this.$tx("{count} pieces of gear are due for service", { count: overdue.length });
+      if (overdue.length) {
+        let gear = overdue[0].short;
+        // English reads "your regulator" but keeps "your BCD"; German nouns keep their capital.
+        if (i18n.locale === "en" && /^[A-Z][a-z]/.test(gear)) gear = gear[0].toLowerCase() + gear.slice(1);
+        return this.$tx("Your {gear} is due for service", { gear });
+      }
+      if (this.rows.some((row) => row.usual && row.service.status === "unknown"))
+        return this.$tx("Your usual kit is missing service dates");
+      return this.$tx("Your gear is ready to dive");
     }
   },
   methods: {
-    defaultMissingServiceData,
-    daysUntilService,
-    beginEdit() {
-      this.drafts = normalizeEquipment(this.equipment);
-      this.editing = true;
-      this.editingItemId = null;
-    },
-    beginEditItem(id) {
-      if (!this.editing) {
-        this.drafts = normalizeEquipment(this.equipment);
+    noteFor({ status, limitedBy, days, divesLeft }) {
+      if (status === "untracked") return this.$tx("not tracked");
+      if (status === "unknown") return this.$tx("no service date");
+      if (limitedBy === "dives") {
+        if (divesLeft === 0) return this.$tx("due now");
+        if (divesLeft < 0) return this.$tn(-divesLeft, "{count} dive overdue", "{count} dives overdue");
+        return this.$tn(divesLeft, "{count} dive left", "{count} dives left");
       }
-      this.editing = true;
-      this.editingItemId = String(id);
-    },
-    cancelEdit() {
-      this.drafts = normalizeEquipment(this.equipment);
-      this.editing = false;
-      this.editingItemId = null;
-    },
-    addItem() {
-      const item = emptyEquipment();
-      if (!this.editing) {
-        this.drafts = normalizeEquipment(this.equipment);
+      if (days === 0) return this.$tx("due today");
+      const months = Math.round(Math.abs(days) / 30.44);
+      if (days < 0) {
+        return Math.abs(days) < 61
+          ? this.$tn(-days, "{count} day overdue", "{count} days overdue")
+          : this.$tn(months, "{count} month overdue", "{count} months overdue");
       }
-      this.editing = true;
-      this.editingItemId = String(item.id);
-      this.drafts = [item, ...this.drafts];
+      return days < 61
+        ? this.$tn(days, "{count} day left", "{count} days left")
+        : this.$tn(months, "{count} month left", "{count} months left");
     },
-    updateSearch(value) {
-      if (typeof this.setSearchText === "function") {
-        this.setSearchText(value);
-      }
+    lastLabel({ service }) {
+      if (service.status === "untracked") return this.$tx("Not tracked");
+      return service.last ? shortDate(service.last.toISOString()) : this.$tx("None");
     },
-    removeItem(id) {
-      this.drafts = this.drafts.filter((item) => item.id !== id);
+    everyLabel({ item, service }) {
+      if (service.status === "untracked") return this.$tx("Not tracked");
+      const months = Number(item.service_interval_months);
+      const dives = Number(item.max_dives_before_service);
+      const parts = [];
+      if (months > 0) parts.push(this.$tn(months, "{count} month", "{count} months"));
+      if (dives > 0) parts.push(this.$tn(dives, "{count} dive", "{count} dives"));
+      if (!parts.length) return this.$tx("None");
+      return parts.length === 2 ? this.$tx("{time} or {dives}", { time: parts[0], dives: parts[1] }) : parts[0];
     },
-    async removeAndSave(id) {
-      this.removeItem(id);
-      await this.save();
+    openById(id) {
+      const row = this.rows.find((entry) => entry.id === id);
+      if (row) this.editing = { item: row.item };
     },
-    updateItem(id, key, value) {
-      this.drafts = this.drafts.map((item) => (item.id === id ? { ...item, [key]: value } : item));
+    async save(next) {
+      const exists = this.equipment.some((item) => String(item.id) === String(next.id));
+      const list = exists ? this.equipment.map((item) => (String(item.id) === String(next.id) ? next : item)) : [next, ...this.equipment];
+      if (await this.saveEquipment(list)) this.editing = null;
     },
-    async save() {
-      const savedEquipment = await this.saveEquipment(this.drafts.map(equipmentPayload));
-      if (savedEquipment) {
-        this.drafts = normalizeEquipment(Array.isArray(savedEquipment) ? savedEquipment : this.equipment);
-        this.editing = false;
-        this.editingItemId = null;
-      }
-    },
-    timelineMeta(item) {
-      if (defaultMissingServiceData(item)) return "Service interval missing";
-      const details = [];
-      if (item.timelineDueDate)
-        details.push(item.service_status === "overdue" ? `Overdue since ${item.timelineDueDate}` : `Due ${item.timelineDueDate}`);
-      if (Number.isFinite(item.timelineDivesRemaining)) details.push(`${item.timelineDivesRemaining} dives left`);
-      return details.length ? details.join(" / ") : "No service schedule set";
-    },
-    serviceCountdownLabel(item) {
-      const days = daysUntilService(item);
-      if (days === null) return "No date";
-      if (days < 0) return `${Math.abs(days)} Days Overdue`;
-      if (days === 0) return "Due today";
-      return `${days} Days`;
-    },
-    serviceCountdownDivesLabel(item) {
-      const divesRemaining = Number(item?.dives_remaining_before_service);
-      return Number.isFinite(divesRemaining) ? `${divesRemaining} dives left` : "Dive interval not set";
-    },
-    serviceCountdownLastServiceLabel(item) {
-      return item?.last_service_date ? `Last Service: ${item.last_service_date}` : "Last Service: not set";
-    },
-    countdownDonutStyle(item) {
-      const days = daysUntilService(item);
-      const intervalMonths = Number(item?.service_interval_months);
-      const totalDays = Number.isFinite(intervalMonths) && intervalMonths > 0 ? intervalMonths * 30.44 : 365;
-      const daysPercent = days === null ? 0 : clampPercent((Math.max(days, 0) / totalDays) * 100);
-      const divesRemaining = Number(item?.dives_remaining_before_service);
-      const maxDives = Number(item?.max_dives_before_service);
-      const divesPercent =
-        Number.isFinite(divesRemaining) && Number.isFinite(maxDives) && maxDives > 0
-          ? clampPercent((Math.max(divesRemaining, 0) / maxDives) * 100)
-          : 0;
-      return {
-        "--days-progress": `${daysPercent}%`,
-        "--dives-progress": `${divesPercent}%`,
-        "--days-progress-value": daysPercent,
-        "--dives-progress-value": divesPercent
-      };
+    async remove(item) {
+      if (!window.confirm(this.$tx("Remove {gear}? This cannot be undone.", { gear: equipmentTitle(item) }))) return;
+      if (await this.saveEquipment(this.equipment.filter((entry) => String(entry.id) !== String(item.id)))) this.editing = null;
     }
   }
 };
 </script>
 
 <template>
-  <section class="dashboard-command-center text-on-surface">
-    <div class="flex flex-col justify-end gap-3 lg:flex-row lg:items-center">
-      <div class="flex flex-col gap-3 sm:flex-row sm:items-center">
-        <div class="relative min-w-[18rem] flex-1 sm:w-[24rem] sm:flex-none">
-          <span class="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-lg text-on-surface-variant">search</span>
-          <UInput
-            :value="searchText"
-            @input="updateSearch($event.target.value)"
-            type="text"
-            class="w-full rounded-xl border border-outline-variant/60 bg-surface-container-high/70 py-3 pl-12 pr-4 text-sm font-label text-on-surface placeholder:text-on-surface-variant/50 focus:ring-1 focus:ring-primary/20"
-            placeholder="Search equipment..."
-          />
-        </div>
-        <UButton
-          @click="addItem"
-          class="flex items-center gap-2 rounded-xl bg-primary px-6 py-3 font-label text-sm font-semibold text-on-primary"
-        >
-          <span class="material-symbols-outlined text-sm">add</span>
-          New entry
-        </UButton>
+  <section class="page">
+    <div class="topside">
+      <div>
+        <h1 class="h1">{{ heading }}</h1>
+        <p class="soft big">{{ $tx("Gear sinks as its service gets closer. Below the line, it is overdue.") }}</p>
       </div>
+      <button type="button" class="btn line" :disabled="!loaded" @click="editing = { item: null }">{{ $tx("Add gear") }}</button>
     </div>
-
-    <div v-if="statusMessage" class="settings-feedback border-outline-variant/60 bg-primary/10 text-primary shadow-panel">
-      {{ statusMessage }}
+    <tide-line />
+    <chart-note :status="status" :error="error" />
+    <div v-if="!loaded" class="shoal pad stack fill">
+      <button v-if="error" type="button" class="btn line" @click="$emit('retry')">{{ $tx("Try again") }}</button>
+      <p v-else>{{ $tx("Loading your gear…") }}</p>
     </div>
-    <div v-if="errorMessage" class="settings-feedback border-error/20 bg-error-container/20 text-on-error-container shadow-panel">
-      {{ errorMessage }}
-    </div>
-
-    <div class="settings-stat-strip">
-      <article class="settings-stat-pill">
-        <p class="settings-stat-pill-label">Items</p>
-        <p class="settings-stat-pill-value">{{ drafts.length }}</p>
-      </article>
-      <article class="settings-stat-pill">
-        <p class="settings-stat-pill-label">Defaults</p>
-        <p class="settings-stat-pill-value">{{ defaultCount }}</p>
-      </article>
-    </div>
-
-    <div class="equipment-page-layout">
-      <aside class="settings-panel settings-card equipment-service-sidebar">
-        <div class="mb-5">
-          <p class="dashboard-micro-label text-secondary">Service timeline</p>
-          <h3 class="mt-2 font-headline text-xl font-bold text-primary">Due for service</h3>
+    <template v-else>
+      <gear-depths :rows="rows" @open="openById" />
+      <div v-if="!rows.length" class="pad stack">
+        <p class="big">{{ $tx("Add a regulator, computer or anything else you service, and tick what comes on every dive.") }}</p>
+      </div>
+      <section v-else class="pad stack kit-section">
+        <div class="row end">
+          <h2 class="h2 grow">{{ $tx("Kit list") }}</h2>
+          <label class="field kit-search">
+            {{ $tx("Find gear") }}<input v-model="query" type="search" :placeholder="$tx('Name, brand or serial')" />
+          </label>
         </div>
-        <div v-if="serviceTimeline.length" class="equipment-service-timeline">
-          <article
-            v-for="item in serviceTimeline"
-            :key="'service-timeline-' + item.id"
-            class="equipment-service-timeline-item"
-            :class="
-              item.service_status === 'overdue' || defaultMissingServiceData(item)
-                ? 'is-urgent'
-                : item.service_status === 'due_soon'
-                  ? 'is-soon'
-                  : ''
-            "
-          >
-            <span class="equipment-service-timeline-dot"></span>
-            <div class="min-w-0">
-              <p class="font-label text-xs font-medium text-secondary">{{ item.category || "Equipment" }}</p>
-              <h4 class="mt-1 truncate font-headline text-base font-bold text-on-surface">{{ item.name || "Unnamed equipment" }}</h4>
-              <p v-if="item.service_tag" class="mt-1 font-label text-xs font-medium text-tertiary">
-                {{ item.service_tag }}
-              </p>
-              <p class="mt-1 text-sm text-on-surface-variant">{{ timelineMeta(item) }}</p>
-            </div>
-          </article>
-        </div>
-        <div v-else class="settings-empty-state">
-          <p class="font-headline text-base font-bold">No service timeline</p>
-          <p class="mt-2 text-sm text-secondary">Add equipment and service data to build the timeline.</p>
-        </div>
-      </aside>
-
-      <section class="min-w-0">
-        <div v-if="!drafts.length" class="settings-empty-state">
-          <p class="font-headline text-lg font-bold">No equipment registered</p>
-          <p class="mt-2 text-sm text-secondary">
-            Add your first item, set its service interval and latest service date, then mark it as default if it should be applied to new
-            imports.
-          </p>
-        </div>
-
-        <div v-else class="equipment-items-grid">
-          <article
-            v-for="item in visibleDrafts"
-            :key="item.id"
-            class="settings-item-card equipment-item-card"
-            :class="defaultMissingServiceData(item) ? 'settings-item-card-error' : ''"
-          >
-            <div class="equipment-item-card-header">
-              <div class="min-w-0">
-                <p class="font-label text-xs font-medium text-secondary">
-                  {{ item.category || "Uncategorized" }}
-                </p>
-                <h4 class="mt-2 font-headline text-2xl font-bold leading-tight">{{ item.name || "Unnamed equipment" }}</h4>
-                <div class="settings-chip-row mt-3">
-                  <span v-if="item.is_default" class="settings-chip is-accent">Default</span>
-                  <span v-if="item.service_tag" class="settings-chip is-accent">{{ item.service_tag }}</span>
-                  <span v-if="item.track_service === false" class="settings-chip">Not tracked</span>
-                </div>
-              </div>
-              <div class="equipment-item-actions">
-                <UButton v-if="!editing" @click="beginEditItem(item.id)" class="settings-button settings-button-secondary">Edit</UButton>
-              </div>
-            </div>
-            <div v-if="item.track_service !== false" class="equipment-service-countdown">
-              <div
-                class="equipment-service-countdown-ring"
-                :style="countdownDonutStyle(item)"
-                :class="
-                  item.service_status === 'overdue' || defaultMissingServiceData(item)
-                    ? 'is-urgent'
-                    : item.service_status === 'due_soon'
-                      ? 'is-soon'
-                      : ''
-                "
-              >
-                <svg class="equipment-service-countdown-svg" viewBox="0 0 100 100" aria-hidden="true">
-                  <circle class="equipment-service-countdown-track is-time" cx="50" cy="50" r="45" pathLength="100"></circle>
-                  <circle class="equipment-service-countdown-progress is-time" cx="50" cy="50" r="45" pathLength="100"></circle>
-                  <circle class="equipment-service-countdown-track is-dives" cx="50" cy="50" r="31" pathLength="100"></circle>
-                  <circle class="equipment-service-countdown-progress is-dives" cx="50" cy="50" r="31" pathLength="100"></circle>
-                </svg>
-                <div class="equipment-service-countdown-center">
-                  <strong>{{
-                    item.dives_remaining_before_service !== null && item.dives_remaining_before_service !== undefined
-                      ? item.dives_remaining_before_service
-                      : "--"
-                  }}</strong>
-                  <span>Dives</span>
-                </div>
-              </div>
-              <div class="equipment-service-countdown-copy">
-                <p class="font-label text-xs font-medium text-secondary">Next service</p>
-                <p class="equipment-service-countdown-layer is-time">
-                  <span></span><strong>{{ serviceCountdownLabel(item) }}</strong>
-                </p>
-                <p class="equipment-service-countdown-layer is-dives"><span></span>{{ serviceCountdownDivesLabel(item) }}</p>
-                <p class="text-xs leading-5 text-on-surface-variant">{{ serviceCountdownLastServiceLabel(item) }}</p>
-              </div>
-            </div>
-          </article>
+        <p v-if="!visible.length" class="big">{{ $tx("No gear matches that.") }}</p>
+        <div v-else class="scroll">
+          <table class="log folds">
+            <thead>
+              <tr>
+                <th>{{ $tx("Item") }}</th>
+                <th>{{ $tx("Kind") }}</th>
+                <th>{{ $tx("Serial") }}</th>
+                <th>{{ $tx("Last service") }}</th>
+                <th>{{ $tx("Every") }}</th>
+                <th>{{ $tx("On every dive") }}</th>
+                <th>
+                  <span class="sr-only">{{ $tx("Actions") }}</span>
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="row in visible" :key="row.id" :class="{ sel: row.overdue }">
+                <td class="free lead">
+                  <strong>{{ row.title }}</strong>
+                  <span v-if="row.item.service_tag" class="soft small gear-tag">{{ row.item.service_tag }}</span>
+                </td>
+                <td :data-label="$tx('Kind')">{{ row.kind ? $tx(row.kind) : $tx("None") }}</td>
+                <td :data-label="$tx('Serial')" :class="{ soft: !row.item.serial }">{{ row.item.serial || $tx("None") }}</td>
+                <td :data-label="$tx('Last service')" :class="row.overdue ? 'warn' : row.service.last ? '' : 'soft'">
+                  {{ lastLabel(row) }}
+                </td>
+                <td :data-label="$tx('Every')" :class="{ soft: row.service.status === 'untracked' }">{{ everyLabel(row) }}</td>
+                <td :data-label="$tx('On every dive')">{{ row.usual ? $tx("Yes") : $tx("No") }}</td>
+                <td class="line-actions">
+                  <button
+                    v-if="row.service.status !== 'untracked'"
+                    type="button"
+                    class="link"
+                    :disabled="saving || servicingId !== null"
+                    @click="markServiced(row.id)"
+                  >
+                    {{ servicingId === row.id ? $tx("Saving…") : $tx("Mark serviced") }}
+                  </button>
+                  <button type="button" class="link" :disabled="saving" @click="editing = { item: row.item }">{{ $tx("Edit") }}</button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
         </div>
       </section>
-    </div>
+    </template>
 
-    <div
-      v-if="editing && editingItem"
-      class="fixed inset-0 z-[560] flex items-center justify-center bg-background/88 px-6 py-8"
-      @click.self="cancelEdit"
-    >
-      <section class="settings-modal-card equipment-edit-modal">
-        <div class="settings-modal-header">
-          <div>
-            <p class="dashboard-micro-label text-secondary">Equipment</p>
-            <h3 class="mt-2 font-headline text-2xl font-bold text-primary">{{ editingItem.name || "New equipment" }}</h3>
-          </div>
-          <UButton type="button" @click="cancelEdit" :disabled="saving" class="settings-button settings-button-ghost">Close</UButton>
-        </div>
-
-        <div class="mt-6 grid gap-4 md:grid-cols-2">
-          <label class="space-y-2">
-            <span class="font-label text-xs font-medium text-secondary">Name</span>
-            <UInput
-              :value="editingItem.name"
-              @input="updateItem(editingItem.id, 'name', $event.target.value)"
-              class="settings-input"
-              placeholder="Equipment name"
-            />
-          </label>
-          <label class="space-y-2">
-            <span class="font-label text-xs font-medium text-secondary">Category</span>
-            <UInput
-              :value="editingItem.category"
-              @input="updateItem(editingItem.id, 'category', $event.target.value)"
-              class="settings-input"
-              placeholder="Regulator"
-            />
-          </label>
-          <fieldset class="space-y-3 md:col-span-2">
-            <legend class="font-label text-xs font-medium text-secondary">Icon</legend>
-            <div class="grid grid-cols-4 gap-2 md:grid-cols-6">
-              <UButton
-                v-for="option in equipmentIconOptions"
-                :key="'equipment-icon-' + option.icon"
-                type="button"
-                @click="updateItem(editingItem.id, 'icon', option.icon)"
-                class="flex items-center gap-2 rounded-xl border px-3 py-2 text-left transition-colors"
-                :class="
-                  editingItem.icon === option.icon
-                    ? 'border-primary bg-primary/15 text-primary'
-                    : 'border-outline-variant/60 bg-background/20 text-on-surface-variant hover:border-outline-variant hover:text-primary'
-                "
-                :aria-pressed="editingItem.icon === option.icon"
-                :title="option.label"
-              >
-                <span class="material-symbols-outlined text-xl">{{ option.icon }}</span>
-                <span class="truncate text-xs font-bold">{{ option.label }}</span>
-              </UButton>
-            </div>
-          </fieldset>
-          <label class="space-y-2">
-            <span class="font-label text-xs font-medium text-secondary">Year bought</span>
-            <UInput
-              :value="editingItem.year_bought"
-              @input="updateItem(editingItem.id, 'year_bought', $event.target.value)"
-              class="settings-input"
-              placeholder="2024"
-            />
-          </label>
-          <label class="space-y-2">
-            <span class="font-label text-xs font-medium text-secondary">Vendor</span>
-            <UInput
-              :value="editingItem.vendor"
-              @input="updateItem(editingItem.id, 'vendor', $event.target.value)"
-              class="settings-input"
-              placeholder="Dive shop"
-            />
-          </label>
-          <label class="space-y-2">
-            <span class="font-label text-xs font-medium text-secondary">Brand</span>
-            <UInput
-              :value="editingItem.brand"
-              @input="updateItem(editingItem.id, 'brand', $event.target.value)"
-              class="settings-input"
-              placeholder="Aqualung"
-            />
-          </label>
-          <label class="space-y-2">
-            <span class="font-label text-xs font-medium text-secondary">Model</span>
-            <UInput
-              :value="editingItem.model"
-              @input="updateItem(editingItem.id, 'model', $event.target.value)"
-              class="settings-input"
-              placeholder="MK25"
-            />
-          </label>
-          <label class="space-y-2">
-            <span class="font-label text-xs font-medium text-secondary">Serial</span>
-            <UInput
-              :value="editingItem.serial"
-              @input="updateItem(editingItem.id, 'serial', $event.target.value)"
-              class="settings-input"
-              placeholder="Serial number"
-            />
-          </label>
-          <label class="space-y-2">
-            <span class="font-label text-xs font-medium text-secondary">Warranty</span>
-            <UInput
-              :value="editingItem.warranty"
-              @input="updateItem(editingItem.id, 'warranty', $event.target.value)"
-              class="settings-input"
-              placeholder="2 years, shop receipt, serial number..."
-            />
-          </label>
-          <label class="space-y-2">
-            <span class="font-label text-xs font-medium text-secondary">Max dives before service</span>
-            <UInput
-              :value="editingItem.max_dives_before_service"
-              @input="updateItem(editingItem.id, 'max_dives_before_service', $event.target.value)"
-              class="settings-input"
-              placeholder="100"
-            />
-          </label>
-          <label class="space-y-2">
-            <span class="font-label text-xs font-medium text-secondary">Service tag</span>
-            <UInput
-              :value="editingItem.service_tag"
-              @input="updateItem(editingItem.id, 'service_tag', $event.target.value)"
-              class="settings-input"
-              placeholder="Primary regulator, travel kit..."
-            />
-          </label>
-          <label class="space-y-2">
-            <span class="font-label text-xs font-medium text-secondary">Service interval months</span>
-            <UInput
-              :value="editingItem.service_interval_months"
-              @input="updateItem(editingItem.id, 'service_interval_months', $event.target.value)"
-              type="number"
-              min="1"
-              class="settings-input"
-            />
-          </label>
-          <label class="space-y-2">
-            <span class="font-label text-xs font-medium text-secondary">Latest service date</span>
-            <UInput
-              :value="editingItem.last_service_date"
-              @input="updateItem(editingItem.id, 'last_service_date', $event.target.value)"
-              class="settings-input"
-              placeholder="YYYY-MM-DD"
-            />
-          </label>
-          <label class="flex items-start gap-3 rounded-xl border border-outline-variant/60 bg-background/20 p-4 md:col-span-2">
-            <UCheckbox
-              :model-value="editingItem.track_service !== false"
-              @update:model-value="updateItem(editingItem.id, 'track_service', $event)"
-              class="mt-1"
-              :ui="{ base: 'h-5 w-5 rounded border-primary/20 bg-surface-container-high text-primary focus:ring-primary/30' }"
-            />
-            <span>
-              <span class="block text-sm font-semibold">Track next service</span>
-              <span class="mt-1 block text-xs leading-5 text-secondary"
-                >Show this item in the service timeline and calculate due dates or dives remaining.</span
-              >
-            </span>
-          </label>
-          <label class="flex items-start gap-3 rounded-xl border border-outline-variant/60 bg-background/20 p-4 md:col-span-2">
-            <UCheckbox
-              :model-value="editingItem.is_default"
-              @update:model-value="updateItem(editingItem.id, 'is_default', $event)"
-              class="mt-1"
-              :ui="{ base: 'h-5 w-5 rounded border-primary/20 bg-surface-container-high text-primary focus:ring-primary/30' }"
-            />
-            <span>
-              <span class="block text-sm font-semibold">Use by default on each dive</span>
-              <span class="mt-1 block text-xs leading-5 text-secondary">Defaults are applied to new imported dives.</span>
-            </span>
-          </label>
-        </div>
-
-        <div class="settings-modal-actions">
-          <UButton type="button" @click="removeAndSave(editingItem.id)" :disabled="saving" class="settings-button settings-button-danger"
-            >Remove</UButton
-          >
-          <UButton type="button" @click="cancelEdit" :disabled="saving" class="settings-button settings-button-ghost">Cancel</UButton>
-          <UButton type="button" @click="save" :disabled="saving" class="settings-button settings-button-primary">{{
-            saving ? "Saving" : "Save gear"
-          }}</UButton>
-        </div>
-      </section>
-    </div>
+    <gear-dialog
+      v-if="editing"
+      :item="editing.item"
+      :saving="saving"
+      :error="error"
+      @close="editing = null"
+      @save="save"
+      @remove="remove"
+    />
   </section>
 </template>
+
+<style>
+.kit-section {
+  padding-top: 14px;
+}
+
+.kit-search {
+  width: 280px;
+}
+
+.gear-tag {
+  display: block;
+}
+
+@media (max-width: 700px) {
+  .kit-search {
+    width: 100%;
+  }
+}
+</style>
