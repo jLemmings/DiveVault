@@ -12,8 +12,9 @@ RUN npm run build:app
 
 FROM --platform=$BUILDPLATFORM golang:1.27.4-bookworm AS backend-build
 
-ARG TARGETOS=linux
-ARG TARGETARCH=amd64
+# Set by BuildKit. Do not add defaults: they override the target platform.
+ARG TARGETOS
+ARG TARGETARCH
 
 WORKDIR /src/backend
 

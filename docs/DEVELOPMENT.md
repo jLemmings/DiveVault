@@ -200,11 +200,16 @@ CI additionally runs `govulncheck`, `npm audit --omit=dev --audit-level=high`, a
 Releases are driven by [release-please](https://github.com/googleapis/release-please) and Conventional Commits:
 
 1. PRs are squash-merged, and the PR title becomes the commit message. The `PR Title` workflow enforces Conventional Commit titles (`feat: …`, `fix: …`, `deps: …`, `chore: …`). Use `feat!:` or a `BREAKING CHANGE:` footer for breaking changes.
-2. On every push to `master`, the `Release` workflow keeps a release PR open (`chore(master): release X.Y.Z`). That PR bumps `version.txt`, `frontend/package.json` and the image tags in `examples/`, and updates `CHANGELOG.md`. Only `feat`, `fix`, `perf`, `revert` and `deps` commits produce a release; the other types are hidden from the changelog.
+2. On every push to `master`, the `Release` workflow keeps a release PR open (`chore(master): release X.Y.Z`). That PR bumps `version.txt`, `frontend/package.json`, `frontend/package-lock.json` and the image tags in `examples/`, and updates `CHANGELOG.md`. Only `feat`, `fix`, `perf`, `revert` and `deps` commits produce a release; the other types are hidden from the changelog.
 3. Merging the release PR creates the `vX.Y.Z` tag and a draft GitHub release, then calls the `Backend Image` workflow for that tag.
 4. `Backend Image` builds `linux/amd64` and `linux/arm64` once and pushes the result untagged by digest. It Trivy-scans that digest, runs the full application test against it (amd64) plus an arm64 smoke test, and then tags the tested digest. It signs the image with cosign, adds image, signature and migration notes to the release, and publishes the release.
 
-To force a specific version, put a `Release-As: 1.2.3` footer in a commit message on `master`. To rebuild an existing release image, run `Backend Image` manually with `release_tag: vX.Y.Z`.
+To force a specific version, put a `Release-As: 1.2.3` footer in a commit message on `master`. To rebuild an existing release image, run `Backend Image` manually with `release_tag: vX.Y.Z`; `latest`, `X.Y` and `X` only move if that tag is the highest release.
+
+The process depends on two rules:
+
+- The `Release` workflow needs a way to open PRs. Either set the `RELEASE_PLEASE_TOKEN` Actions secret to a fine-grained PAT for this repository (read and write on Contents, Issues and Pull requests; renew it before it expires), or enable **Settings > Actions > General > Allow GitHub Actions to create and approve pull requests**. Only with the token do checks run on the release PR.
+- Never create `v*` tags or GitHub releases by hand. They do not build an image or update the version files, and they block release-please from using that version. (`v0.6.0` was created this way and has no image.)
 
 Image tags on `ghcr.io/jlemmings/divevault`:
 

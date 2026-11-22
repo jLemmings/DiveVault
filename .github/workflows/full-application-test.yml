@@ -156,3 +156,30 @@ jobs:
             frontend/playwright-report
             frontend/test-results
           if-no-files-found: ignore
+
+  # Master pushes are the first to run the image on arm64, so catch a wrong
+  # architecture here, before it is merged.
+  image-platforms:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
+
+      - name: Build release platforms
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
+        with:
+          context: .
+          file: Dockerfile
+          platforms: linux/amd64,linux/arm64
+          outputs: type=local,dest=${{ runner.temp }}/image
+          cache-from: type=gha
+
+      - name: Check binary architectures
+        run: |
+          set -euo pipefail
+          file "${RUNNER_TEMP}/image/linux_amd64/app/divevault" | grep -F "x86-64"
+          file "${RUNNER_TEMP}/image/linux_arm64/app/divevault" | grep -F "ARM aarch64"
