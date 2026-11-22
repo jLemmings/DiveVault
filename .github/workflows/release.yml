@@ -23,6 +23,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      # Needed to create the "autorelease: *" labels that track release PRs.
+      issues: write
       pull-requests: write
     outputs:
       release_created: ${{ steps.release.outputs.release_created }}
@@ -33,10 +35,10 @@ jobs:
         id: release
         uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
         with:
-          # PRs opened with GITHUB_TOKEN do not trigger pull_request workflows,
-          # so the release PR gets no checks. Set RELEASE_PLEASE_TOKEN (a
-          # fine-grained PAT or GitHub App token with contents + pull-requests
-          # write) if branch protection requires checks on every PR.
+          # RELEASE_PLEASE_TOKEN is a fine-grained PAT for this repository with
+          # contents, issues and pull-requests write. With it, Actions does not
+          # need permission to create PRs and the release PR gets checks. The
+          # GITHUB_TOKEN fallback needs that repository setting and gets none.
           token: ${{ secrets.RELEASE_PLEASE_TOKEN || secrets.GITHUB_TOKEN }}
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
