@@ -96,7 +96,7 @@ Before deploying, review image tags, database settings, ingress, secrets, and wh
 - Import queue for reviewing dive computer data before it becomes part of the logbook.
 - Detailed dive pages with telemetry, location maps, site details, buddies, guides, equipment, and notes.
 - Manual dive entry when no computer import is available.
-- Dashboard with recent activity, dive statistics, and a world imagery map.
+- A logbook where recent dives hang from the waterline as depth profiles, and a nautical chart of your sites with your deepest dive at each.
 - Saved dive sites, buddies, guides, certifications, and equipment.
 - Public profile sharing for selected dives.
 - Backup and restore tools for self-hosted instances.
@@ -106,7 +106,7 @@ Before deploying, review image tags, database settings, ingress, secrets, and wh
 
 DiveVault keeps raw imports separate from finished logbook entries. Imported dives arrive in a review queue where they can be enriched with missing metadata, corrected, or discarded. Once approved, the dive moves into the main logbook.
 
-The companion importer handles device reads and upload requests. The web app also imports spreadsheet CSV files and Subsurface XML/SSRF exports from Settings -> Data Management. See the [migration and import guide](./docs/MIGRATION.md) for CSV columns, Subsurface export steps, limits, and review workflow details.
+The companion importer handles device reads and upload requests. The web app also imports spreadsheet CSV files and Subsurface XML/SSRF exports from Imports -> Import a file. See the [migration and import guide](./docs/MIGRATION.md) for CSV columns, Subsurface export steps, limits, and review workflow details.
 
 ## Developer Docs
 

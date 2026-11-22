@@ -1,10 +1,7 @@
-import { nextTick, watch } from "vue";
 import { DEFAULT_LOCALE, LOCALES, SUPPORTED_LOCALE_SET, getTranslationCredits } from "./locales.js";
 
 export { DEFAULT_LOCALE, LOCALES, getTranslationCredits };
 
-const ORIGINAL_TEXT_NODES = new WeakMap();
-const ORIGINAL_ATTRIBUTES = new WeakMap();
 let activeComposer = null;
 
 function normalizeLookupKey(value) {
@@ -42,59 +39,21 @@ function composerHasMessage(composer, key, locale = composerLocaleValue(composer
 
 function translateMessage(key, fallback = key, params = {}) {
   const normalizedKey = normalizeLookupKey(key);
-  const normalizedFallback = normalizeLookupKey(fallback);
   const candidates = [key, normalizedKey].filter(Boolean);
   const messageKey = candidates.find((candidate) => composerHasMessage(activeComposer, candidate));
   if (messageKey && typeof activeComposer?.t === "function") {
     return activeComposer.t(messageKey, params);
   }
-  return interpolate(fallback || normalizedFallback, params);
+  return interpolate(fallback || normalizedKey, params);
 }
 
-function translateTextValue(value, translate) {
-  if (typeof value !== "string") return value;
-  const trimmed = value.trim();
-  if (!trimmed) return value;
-  const normalizedText = normalizeLookupKey(trimmed);
-  const translated = translate(normalizedText, normalizedText);
-  if (translated === normalizedText) return value;
-  const leadingWhitespace = value.match(/^\s*/)?.[0] || "";
-  const trailingWhitespace = value.match(/\s*$/)?.[0] || "";
-  return `${leadingWhitespace}${translated}${trailingWhitespace}`;
+// The English sentence is the key.
+export function tx(text, params = {}) {
+  return text ? translateMessage(text, text, params) : "";
 }
 
-function translateRenderedElement(root, translate) {
-  if (!root || typeof root !== "object") return;
-  const queue = [root];
-  while (queue.length) {
-    const current = queue.shift();
-    if (!current) continue;
-    if (current.nodeType === 3) {
-      const originalText = ORIGINAL_TEXT_NODES.get(current) ?? current.textContent;
-      ORIGINAL_TEXT_NODES.set(current, originalText);
-      const nextText = translateTextValue(originalText, translate);
-      if (nextText !== current.textContent) {
-        current.textContent = nextText;
-      }
-      continue;
-    }
-    if (current.nodeType !== 1) continue;
-    const element = current;
-    if (element.hasAttribute("data-i18n-skip")) continue;
-    const storedAttributes = ORIGINAL_ATTRIBUTES.get(element) || {};
-    ["placeholder", "title", "aria-label"].forEach((attributeName) => {
-      if (!element.hasAttribute(attributeName)) return;
-      const originalValue = storedAttributes[attributeName] ?? element.getAttribute(attributeName);
-      storedAttributes[attributeName] = originalValue;
-      const currentValue = element.getAttribute(attributeName);
-      const nextValue = translateTextValue(originalValue, translate);
-      if (nextValue !== currentValue) {
-        element.setAttribute(attributeName, nextValue);
-      }
-    });
-    ORIGINAL_ATTRIBUTES.set(element, storedAttributes);
-    queue.push(...element.childNodes);
-  }
+export function txCount(count, one, many, params = {}) {
+  return tx(count === 1 ? one : many, { count, ...params });
 }
 
 export const i18n = {
@@ -104,6 +63,7 @@ export const i18n = {
   async setLocale(nextLocale) {
     const normalizedLocale = SUPPORTED_LOCALE_SET.has(nextLocale) ? nextLocale : DEFAULT_LOCALE;
     await setComposerLocale(activeComposer, normalizedLocale);
+    if (typeof document !== "undefined") document.documentElement.lang = this.locale;
     return this.locale;
   },
   t: translateMessage
@@ -111,23 +71,8 @@ export const i18n = {
 
 export function installI18n(nuxtApp) {
   activeComposer = nuxtApp.$i18n;
-  // Temporary bridge while hardcoded UI strings are converted to explicit useI18n/$t bindings.
-  nuxtApp.vueApp.config.globalProperties.$t = (key, fallback = key, params = {}) => i18n.t(key, fallback, params);
-  watch(
-    () => i18n.locale,
-    async () => {
-      await nextTick();
-      if (typeof document !== "undefined") {
-        translateRenderedElement(document.body, nuxtApp.vueApp.config.globalProperties.$t);
-      }
-    }
-  );
-  nuxtApp.vueApp.mixin({
-    mounted() {
-      translateRenderedElement(this.$el, nuxtApp.vueApp.config.globalProperties.$t);
-    },
-    updated() {
-      translateRenderedElement(this.$el, nuxtApp.vueApp.config.globalProperties.$t);
-    }
-  });
+  // Every string is translated where it is rendered, so Vue keeps ownership of the text it draws.
+  const globals = nuxtApp.vueApp.config.globalProperties;
+  globals.$tx = tx;
+  globals.$tn = txCount;
 }

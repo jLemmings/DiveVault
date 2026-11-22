@@ -10,7 +10,10 @@ This document is for contributors and maintainers. The main README is intentiona
 - Frontend: Nuxt-powered Vue 3 app under `frontend/`, with Nuxt UI registered as the component library.
 - Frontend entrypoint: `frontend/app/app.vue`, which wraps the app in Nuxt UI's app provider and mounts the DiveVault shell.
 - Frontend shell: `frontend/app/components/DiveVaultApp.vue`; the current route/state controller is `frontend/app/features/app/AppRouteController.vue`.
-- Large Options API components keep cohesive method groups in factory modules that are spread into `methods` (for example `features/app/methods/*.js` and `features/settings/methods/*.js`, following `shared/composables/settings-collection-options.js`).
+- Large Options API components keep cohesive method groups in factory modules that are spread into `methods` (for example `features/app/methods/*.js`).
+- The "Sounding" design lives in `frontend/app/assets/styles.css` (colour tokens, type, bands, controls) and `frontend/app/shared/components/chart/` (waterline, profiles, site chart). Colour carries meaning: navy is topside, the blues are depth bands, blue is action or selection, red is trouble only (`--warn`, never `--act`). Anything inside a topside element picks up the topside colours by itself, so use the plain tokens there too. Water features such as site names are italic.
+- Every string on screen goes through `$tx("English sentence")` or `$tn(count, "one", "many")`. The English sentence is the key in all three files under `frontend/i18n/locales/`.
+- The address is the only record of the open page: read it from `router.currentRoute`, not `useRoute()`, as the app has no `<NuxtPage>`.
 - Frontend route records and path-to-state mapping live together in `frontend/app/routing/routes.js`.
 - Feature views live under `frontend/app/features/`; reusable cross-feature code lives under `frontend/app/shared/{components,composables,utils}`.
 - Frontend env: loaded from the repository root by Nuxt configuration in `frontend/nuxt.config.js`.
@@ -32,6 +35,10 @@ separate terminals within the same development container. Open
 Nuxt proxies API requests to the backend inside the container.
 Stop either server with Ctrl+C in its terminal, or use **Tasks: Terminate Task**.
 Restart the backend task after changing Go code; Nuxt reloads frontend changes.
+When the repository is mounted from Windows, file-change events don't reach the
+container, so `frontend/nuxt.config.js` switches the watchers to polling and changes
+can take a second or two to show. Edits to `nuxt.config.js` or `.env` are not
+picked up there: restart the frontend task after changing them.
 
 PostgreSQL runs in a companion container with a persistent named volume. The
 development container supplies `DATABASE_URL` and enables startup migrations;
@@ -234,7 +241,7 @@ Frontend responsibilities:
 
 - Import review queue.
 - Dive logbook, detail, creation, and editing flows.
-- Dashboard, maps, saved locations, equipment, settings, and public profile views.
+- Logbook, sites chart, gear, account and application settings, and public profile views.
 - Browser approval flow for desktop sync requests.
 
 ## Related Upstream Projects

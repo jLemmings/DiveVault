@@ -8,7 +8,7 @@ and then commit the dive.
 ## Before You Import
 
 1. Start DiveVault and sign in.
-2. Open `Settings` and review the required logbook fields for your instance.
+2. Open your name, then `Application, data and access`, and review what is required to log a dive.
 3. Make a backup of the source system before exporting.
 4. Import a small sample first when migrating a large logbook.
 
@@ -23,9 +23,9 @@ normalized into one row per dive.
 
 In the web app:
 
-1. Open `Settings`.
-2. Go to `Data Management`.
-3. Choose `Import Dives (CSV)`.
+1. Open `Imports`.
+2. Choose `Import a file`.
+3. Choose `Choose a file`.
 4. Select a `.csv` file.
 5. Review the preview table.
 6. Confirm the import when every row is valid.
@@ -115,9 +115,9 @@ In Subsurface:
 
 In DiveVault:
 
-1. Open `Settings`.
-2. Go to `Data Management`.
-3. Choose `Import Subsurface Export`.
+1. Open `Imports`.
+2. Choose `Import a file`.
+3. Choose `Choose a file`.
 4. Select the exported `.xml`, `.ssrf`, `.gz`, or `.zip` file.
 5. Review the preview table.
 6. Confirm the import when every dive is valid.
@@ -209,7 +209,7 @@ Common Subsurface errors:
 
 ## Full DiveVault Backup Restore
 
-Use `Settings` -> `Backup` -> `Import From Backup` only when restoring a
+Use `Application, data and access` -> `Choose a backup` only when restoring a
 DiveVault backup archive. Backup restore is different from CSV and Subsurface
 migration: it restores DiveVault account data, saved lists, PDFs, imported dive
 state, and logbook records from a DiveVault backup file.

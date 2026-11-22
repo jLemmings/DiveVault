@@ -1,562 +1,213 @@
 <script>
 import { DiveDetailView } from "~/features/logbook/index.js";
-import {
-  buildDiveSequenceMap,
-  diveTitle,
-  diveDeviceLabel,
-  formatDate,
-  formatDepth,
-  durationShort,
-  numberOrZero,
-  parseDate,
-  paddedDiveIndex
-} from "~/shared/utils/core.js";
-import { coordinateLabel, diveCoordinates, diveSiteName, escapeHtml, markerDiameter, normalizeSiteName } from "~/shared/utils/dive-map.js";
+import { parseJson, apiError } from "~/shared/api/client.js";
 import { publicDiverUrl } from "~/shared/api/endpoints.js";
-import { loadLeaflet } from "~/shared/utils/leaflet-loader.js";
+import { isCommittedDive } from "~/shared/utils/core.js";
+import { diveCoordinates } from "~/shared/utils/dive-map.js";
+import { formatNumber, longDate, metres, minutes } from "~/shared/utils/format.js";
+import { logbookTotals, maxDepthOf, newestFirst, siteOf } from "~/shared/utils/logbook.js";
+import { buildSites } from "~/shared/utils/sites.js";
+import { PATHS } from "~/routing/routes.js";
+import BrandMark from "~/shared/components/chart/BrandMark.vue";
+import TideLine from "~/shared/components/chart/TideLine.vue";
+import SeaSwell from "~/shared/components/chart/SeaSwell.vue";
+import HangingDives from "~/shared/components/chart/HangingDives.vue";
+import SiteChart from "~/shared/components/chart/SiteChart.vue";
+import ChartLink from "~/shared/components/ChartLink.vue";
+
+const FIRST_LINES = 20;
 
 export default {
   name: "PublicProfileView",
-  components: {
-    DiveDetailView
-  },
-  props: {
-    slug: {
-      type: String,
-      default: ""
-    }
-  },
+  components: { DiveDetailView, BrandMark, TideLine, SeaSwell, HangingDives, SiteChart, ChartLink },
+  props: { slug: { type: String, default: "" } },
   data() {
     return {
+      paths: PATHS,
       loading: true,
       error: "",
       diver: null,
       dives: [],
-      stats: {},
-      selectedDiveId: null,
-      diveMap: null,
-      diveTileLayer: null,
-      diveMarkerLayer: null,
-      leaflet: null,
-      leafletLoadPromise: null,
-      mapViewportInitialized: false
+      selectedId: null,
+      selectedSite: "",
+      chartShown: false,
+      allShown: false
     };
   },
   computed: {
     selectedDive() {
-      return this.dives.find((dive) => String(dive.id) === String(this.selectedDiveId)) || null;
+      return this.dives.find((dive) => String(dive.id) === String(this.selectedId)) || null;
     },
-    diveMapMarkers() {
-      const markers = new Map();
-
-      this.dives.forEach((dive) => {
-        const coordinates = diveCoordinates(dive);
-        if (!coordinates) return;
-
-        const siteName = diveSiteName(dive);
-        const key = normalizeSiteName(siteName) || `${coordinates.lat.toFixed(4)}:${coordinates.lon.toFixed(4)}`;
-        const existing = markers.get(key);
-        const diveDate = parseDate(dive?.started_at);
-        const siteLabel = siteName || diveTitle(dive);
-
-        if (existing) {
-          existing.count += 1;
-          if (diveDate && (!existing.latestDiveDate || diveDate > existing.latestDiveDate)) {
-            existing.latestDiveDate = diveDate;
-            existing.representativeId = dive.id;
-            existing.label = siteLabel;
-          }
-          return;
-        }
-
-        markers.set(key, {
-          key,
-          count: 1,
-          label: siteLabel,
-          representativeId: dive.id,
-          latestDiveDate: diveDate,
-          latitude: coordinates.lat,
-          longitude: coordinates.lon
-        });
-      });
-
-      return Array.from(markers.values()).sort((left, right) => {
-        if (right.count !== left.count) return right.count - left.count;
-        return (right.latestDiveDate?.getTime() || 0) - (left.latestDiveDate?.getTime() || 0);
-      });
+    title() {
+      return this.diver?.name ? this.$tx("{name}'s dives", { name: this.diver.name }) : this.$tx("A diver's logbook");
     },
-    mappedDiveCount() {
-      return this.diveMapMarkers.reduce((sum, marker) => sum + marker.count, 0);
+    totals() {
+      return logbookTotals(this.dives);
     },
-    mappedSiteCount() {
-      return this.diveMapMarkers.length;
+    timeUnderwater() {
+      const { seconds } = this.totals;
+      return seconds < 5400 ? minutes(seconds) : `${formatNumber(Math.round(seconds / 3600))} h`;
     },
-    diveSequenceMap() {
-      return buildDiveSequenceMap(this.dives);
+    lines() {
+      return this.allShown ? this.dives : this.dives.slice(0, FIRST_LINES);
     },
-    totalHoursLabel() {
-      return `${numberOrZero(this.stats?.totalHours).toFixed(1)}h`;
+    sites() {
+      return buildSites([], this.dives);
     },
-    maxDepthLabel() {
-      return formatDepth(this.stats?.maxDepth);
+    hasPositions() {
+      return this.dives.some((dive) => diveCoordinates(dive));
     }
   },
   watch: {
-    slug: {
-      immediate: true,
-      handler() {
-        this.fetchPublicProfile();
-      }
-    },
-    diveMapMarkers: {
-      handler() {
-        this.$nextTick(() => this.syncDiveMap({ reframe: !this.mapViewportInitialized }));
-      },
-      deep: true
-    }
-  },
-  mounted() {
-    window.addEventListener("resize", this.handleMapResize);
-  },
-  beforeUnmount() {
-    window.removeEventListener("resize", this.handleMapResize);
-    if (this.diveMap) {
-      this.diveMap.remove();
-      this.diveMap = null;
-      this.diveTileLayer = null;
-      this.diveMarkerLayer = null;
-    }
+    slug: { immediate: true, handler: "load" }
   },
   methods: {
-    formatDate,
-    formatDepth,
-    formatDurationShort: durationShort,
-    diveTitle,
-    diveDeviceLabel,
-    displayDiveIndex(dive) {
-      return paddedDiveIndex(dive, this.diveSequenceMap);
+    longDate,
+    metres,
+    minutes,
+    maxDepthOf,
+    siteOf,
+    // Saved locations aren't published, so there is only what the dive itself says.
+    place(dive) {
+      const location = dive.fields?.location;
+      if (typeof location === "string") return location;
+      if (location?.name) return location.name;
+      const position = diveCoordinates(dive);
+      if (!position) return "";
+      const { lat, lon } = position;
+      return `${formatNumber(Math.abs(lat), 2)} ${lat >= 0 ? "N" : "S"}, ${formatNumber(Math.abs(lon), 2)} ${lon >= 0 ? "E" : "W"}`;
     },
-    diveSiteLabel(dive) {
-      return diveSiteName(dive) || "Unspecified site";
-    },
-    openDive(diveId) {
-      this.selectedDiveId = diveId;
-    },
-    closeDive() {
-      this.selectedDiveId = null;
-    },
-    async fetchPublicProfile() {
-      if (!this.slug) {
-        this.error = "Missing public profile slug.";
-        this.loading = false;
-        return;
-      }
-
+    async load() {
       this.loading = true;
       this.error = "";
+      this.selectedId = null;
       try {
-        const response = await fetch(publicDiverUrl(this.slug), {
-          credentials: "omit"
-        });
-        const payload = await response.json().catch(() => null);
-        if (!response.ok) {
-          throw new Error(payload?.error || `API returned ${response.status}`);
-        }
-
+        const response = await fetch(publicDiverUrl(this.slug), { credentials: "omit" });
+        const payload = await parseJson(response);
+        if (!response.ok) throw apiError(payload, response);
         this.diver = payload?.diver || null;
-        this.dives = Array.isArray(payload?.dives) ? payload.dives : [];
-        this.stats = payload?.stats && typeof payload.stats === "object" ? payload.stats : {};
-        this.selectedDiveId = null;
-        this.$nextTick(() => this.syncDiveMap({ reframe: true }));
+        // Only finished dives are drawn: imports that are still waiting are not for showing.
+        this.dives = newestFirst((Array.isArray(payload?.dives) ? payload.dives : []).filter(isCommittedDive));
       } catch (error) {
-        this.error = error?.message || "Could not load the public dive profile.";
-        this.diver = null;
+        this.error = error?.message || "Could not load the public logbook.";
         this.dives = [];
-        this.stats = {};
       } finally {
         this.loading = false;
       }
     },
-    handleMapResize() {
-      if (!this.diveMap) return;
-      this.diveMap.invalidateSize(false);
+    open(id) {
+      this.selectedId = id;
+      window.scrollTo(0, 0);
     },
-    async ensureLeaflet() {
-      if (this.leaflet) return this.leaflet;
-      if (!this.leafletLoadPromise) {
-        this.leafletLoadPromise = loadLeaflet().then((leaflet) => {
-          this.leaflet = leaflet;
-          return leaflet;
-        });
-      }
-      return this.leafletLoadPromise;
-    },
-    async initializeDiveMap() {
-      if (this.diveMap || !this.$refs.diveMapCanvas) return;
-      const L = await this.ensureLeaflet();
-      if (this.diveMap || !this.$refs.diveMapCanvas) return;
-
-      const map = L.map(this.$refs.diveMapCanvas, {
-        zoomControl: false,
-        attributionControl: false,
-        scrollWheelZoom: true,
-        zoomSnap: 0.25,
-        zoomDelta: 0.5,
-        minZoom: 1.5,
-        maxZoom: 12,
-        worldCopyJump: true
-      });
-
-      L.control.zoom({ position: "bottomright" }).addTo(map);
-
-      this.diveTileLayer = L.tileLayer("https://server.arcgisonline.com/arcgis/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}", {
-        maxZoom: 16,
-        className: "dive-theme-map-tiles",
-        referrerPolicy: "origin"
-      });
-      this.diveTileLayer.addTo(map);
-      this.diveMarkerLayer = L.layerGroup().addTo(map);
-      map.on("zoomend", () => this.syncDiveMap({ preserveViewport: true }));
-      this.diveMap = map;
-    },
-    diveMarkerIcon(marker) {
-      const L = this.leaflet;
-      if (!L) return null;
-      const size = markerDiameter(marker.count) + 10;
-      return L.divIcon({
-        className: "dive-map-marker-shell",
-        iconSize: [size, size],
-        iconAnchor: [size / 2, size / 2],
-        popupAnchor: [0, -Math.round(size / 2)],
-        html: `
-          <span class="dive-map-marker-ring" style="width:${size}px;height:${size}px;">
-            <span class="dive-map-marker-core"><span class="dive-map-marker-count">${marker.count}</span></span>
-          </span>
-        `
-      });
-    },
-    diveMarkerBubble(marker) {
-      const diveLabel = marker.count === 1 ? "1 dive" : `${marker.count} dives`;
-      const locationLabel = marker.siteCount > 1 ? `${marker.siteCount} sites in this area` : marker.label;
-      const sitePreview =
-        marker.siteCount > 1
-          ? `${marker.siteLabels.slice(0, 3).join(" / ")}${marker.siteCount > 3 ? ` +${marker.siteCount - 3} more` : ""}`
-          : "";
-      return `
-        <div class="dive-map-info-bubble">
-          <p class="dive-map-info-title">${escapeHtml(locationLabel)}</p>
-          <p class="dive-map-info-meta">${escapeHtml(diveLabel)} | ${escapeHtml(coordinateLabel(marker.latitude, "N", "S"))} / ${escapeHtml(coordinateLabel(marker.longitude, "E", "W"))}</p>
-          ${sitePreview ? `<p class="dive-map-info-sites">${escapeHtml(sitePreview)}</p>` : ""}
-        </div>
-      `;
-    },
-    clusterRadiusForZoom(zoom) {
-      if (zoom >= 9.5) return 0;
-      if (zoom >= 8.5) return 18;
-      if (zoom >= 7.5) return 24;
-      if (zoom >= 6.5) return 30;
-      if (zoom >= 5.5) return 38;
-      return 48;
-    },
-    baseDisplayMarker(marker) {
-      return {
-        key: marker.key,
-        count: marker.count,
-        siteCount: 1,
-        label: marker.label,
-        siteLabels: [marker.label],
-        representativeId: marker.representativeId,
-        latestDiveDate: marker.latestDiveDate,
-        latitude: marker.latitude,
-        longitude: marker.longitude,
-        sourceMarkers: [marker]
-      };
-    },
-    displayDiveMapMarkers() {
-      if (!this.diveMapMarkers.length) return [];
-
-      const zoom = this.diveMap?.getZoom?.() ?? 4.25;
-      const clusterRadius = this.clusterRadiusForZoom(zoom);
-      const L = this.leaflet;
-
-      if (!this.diveMap || !L || clusterRadius <= 0) {
-        return this.diveMapMarkers
-          .map((marker) => this.baseDisplayMarker(marker))
-          .sort((left, right) => {
-            if (right.count !== left.count) return right.count - left.count;
-            return (right.latestDiveDate?.getTime() || 0) - (left.latestDiveDate?.getTime() || 0);
-          });
-      }
-
-      const clusters = [];
-
-      this.diveMapMarkers.forEach((marker) => {
-        const point = this.diveMap.project(L.latLng(marker.latitude, marker.longitude), zoom);
-        let nearestCluster = null;
-        let nearestDistance = Number.POSITIVE_INFINITY;
-
-        clusters.forEach((cluster) => {
-          const distance = point.distanceTo(cluster.projectedCenter);
-          if (distance <= clusterRadius && distance < nearestDistance) {
-            nearestCluster = cluster;
-            nearestDistance = distance;
-          }
-        });
-
-        if (nearestCluster) {
-          nearestCluster.count += marker.count;
-          nearestCluster.siteCount += 1;
-          nearestCluster.latitudeTotal += marker.latitude * marker.count;
-          nearestCluster.longitudeTotal += marker.longitude * marker.count;
-          nearestCluster.projectedXTotal += point.x * marker.count;
-          nearestCluster.projectedYTotal += point.y * marker.count;
-          nearestCluster.projectedCenter = L.point(
-            nearestCluster.projectedXTotal / nearestCluster.count,
-            nearestCluster.projectedYTotal / nearestCluster.count
-          );
-          nearestCluster.sourceMarkers.push(marker);
-          if (!nearestCluster.siteLabels.includes(marker.label)) {
-            nearestCluster.siteLabels.push(marker.label);
-          }
-          if (marker.latestDiveDate && (!nearestCluster.latestDiveDate || marker.latestDiveDate > nearestCluster.latestDiveDate)) {
-            nearestCluster.latestDiveDate = marker.latestDiveDate;
-            nearestCluster.representativeId = marker.representativeId;
-            nearestCluster.label = marker.label;
-          }
-          return;
-        }
-
-        clusters.push({
-          key: marker.key,
-          count: marker.count,
-          siteCount: 1,
-          label: marker.label,
-          siteLabels: [marker.label],
-          representativeId: marker.representativeId,
-          latestDiveDate: marker.latestDiveDate,
-          latitudeTotal: marker.latitude * marker.count,
-          longitudeTotal: marker.longitude * marker.count,
-          projectedXTotal: point.x * marker.count,
-          projectedYTotal: point.y * marker.count,
-          projectedCenter: point,
-          sourceMarkers: [marker]
-        });
-      });
-
-      return clusters.map((cluster, index) => ({
-        key: cluster.siteCount > 1 ? `cluster-${index}-${cluster.representativeId}` : cluster.key,
-        count: cluster.count,
-        siteCount: cluster.siteCount,
-        label: cluster.label,
-        siteLabels: cluster.siteLabels,
-        representativeId: cluster.representativeId,
-        latestDiveDate: cluster.latestDiveDate,
-        latitude: cluster.latitudeTotal / cluster.count,
-        longitude: cluster.longitudeTotal / cluster.count,
-        sourceMarkers: cluster.sourceMarkers
-      }));
-    },
-    zoomIntoMarkerSector(marker) {
-      const L = this.leaflet;
-      if (!this.diveMap || !L) return;
-
-      const sourceMarkers = Array.isArray(marker?.sourceMarkers) ? marker.sourceMarkers : [];
-      const positions = sourceMarkers.map((entry) => L.latLng(entry.latitude, entry.longitude));
-
-      if (!positions.length) {
-        this.diveMap.flyTo([marker.latitude, marker.longitude], Math.min((this.diveMap.getZoom?.() || 4.25) + 2, 10), { duration: 0.45 });
-        return;
-      }
-
-      if (positions.length === 1) {
-        this.openDive(marker.representativeId);
-        this.diveMap.flyTo(positions[0], Math.min((this.diveMap.getZoom?.() || 4.25) + 2, 10), { duration: 0.45 });
-        return;
-      }
-
-      this.diveMap.flyToBounds(L.latLngBounds(positions), {
-        padding: [72, 72],
-        maxZoom: 11.5,
-        duration: 0.45
-      });
-    },
-    async syncDiveMap(options = {}) {
-      if (!this.$refs.diveMapCanvas) return;
-      await this.initializeDiveMap();
-      if (!this.diveMap || !this.diveMarkerLayer) return;
-      const L = this.leaflet;
-      if (!L) return;
-
-      const { preserveViewport = false, reframe = false } = options;
-      this.diveMarkerLayer.clearLayers();
-      const displayMarkers = this.displayDiveMapMarkers();
-
-      if (!displayMarkers.length) {
-        if (!preserveViewport) {
-          this.diveMap.setView([18, 8], 1.75);
-        }
-        this.mapViewportInitialized = false;
-        this.handleMapResize();
-        return;
-      }
-
-      const bounds = [];
-      displayMarkers.forEach((marker) => {
-        const position = L.latLng(marker.latitude, marker.longitude);
-        bounds.push(position);
-
-        const leafletMarker = L.marker(position, {
-          icon: this.diveMarkerIcon(marker)
-        });
-        leafletMarker.bindTooltip(this.diveMarkerBubble(marker), {
-          className: "dive-map-tooltip",
-          direction: "top",
-          offset: [0, -8]
-        });
-        leafletMarker.on("click", () => this.zoomIntoMarkerSector(marker));
-        leafletMarker.addTo(this.diveMarkerLayer);
-      });
-
-      if (!preserveViewport && (reframe || !this.mapViewportInitialized)) {
-        if (bounds.length === 1) {
-          this.diveMap.setView(bounds[0], 4.25);
-        } else {
-          this.diveMap.fitBounds(L.latLngBounds(bounds), {
-            paddingTopLeft: [36, 72],
-            paddingBottomRight: [36, 112],
-            maxZoom: 5.5
-          });
-        }
-        this.mapViewportInitialized = true;
-      }
-
-      this.handleMapResize();
+    openRow(event, id) {
+      if (!event.target.closest("button")) this.open(id);
     }
   }
 };
 </script>
 
 <template>
-  <div class="min-h-screen bg-background px-4 py-6 text-on-background md:px-8 md:py-8">
-    <div class="mx-auto max-w-7xl">
-      <section v-if="loading" class="bg-surface-container-low p-10 shadow-panel">
-        <p class="font-headline text-2xl font-bold">Loading public dive profile...</p>
-        <p class="mt-2 text-on-surface-variant">Fetching the published dive log and map.</p>
-      </section>
-
-      <section v-else-if="error" class="bg-error-container/25 p-10 shadow-panel">
-        <p class="font-headline text-2xl font-bold text-on-error-container">Public profile unavailable</p>
-        <p class="mt-2 text-sm text-on-error-container">{{ error }}</p>
-      </section>
-
-      <section v-else class="space-y-8">
-        <div class="relative overflow-hidden bg-surface-container-low p-8 shadow-panel">
-          <div class="relative z-10 flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
-            <div>
-              <p class="font-label text-xs font-medium text-primary">Public dive log</p>
-              <h1 class="mt-3 font-headline text-4xl font-bold tracking-tight text-on-surface md:text-5xl">
-                {{ diver?.name || "DiveVault Diver" }}
-              </h1>
-            </div>
-            <div class="grid grid-cols-3 gap-3">
-              <div class="rounded-xl bg-surface-container-high px-5 py-4">
-                <p class="font-label text-xs font-medium text-secondary">Dives</p>
-                <p class="mt-2 font-headline text-3xl font-bold text-primary">{{ stats.totalDives || dives.length }}</p>
-              </div>
-              <div class="rounded-xl bg-surface-container-high px-5 py-4">
-                <p class="font-label text-xs font-medium text-secondary">Hours</p>
-                <p class="mt-2 font-headline text-3xl font-bold">{{ totalHoursLabel }}</p>
-              </div>
-              <div class="rounded-xl bg-surface-container-high px-5 py-4">
-                <p class="font-label text-xs font-medium text-secondary">Max depth</p>
-                <p class="mt-2 font-headline text-3xl font-bold">{{ maxDepthLabel }}</p>
-              </div>
-            </div>
+  <div class="app public">
+    <sea-swell />
+    <header class="land spread public-top">
+      <chart-link class="brand" :to="paths.logbook"><brand-mark />DiveVault</chart-link>
+      <chart-link class="link" :to="paths.logbook">{{ $tx("Sign in") }}</chart-link>
+    </header>
+    <main>
+      <template v-if="loading || error">
+        <div class="topside">
+          <h1 class="h1">{{ error ? $tx("This logbook isn't public") : $tx("Reading the logbook…") }}</h1>
+        </div>
+        <tide-line />
+        <p v-if="error" class="pad big" role="alert">{{ $tx(error) }}</p>
+      </template>
+      <dive-detail-view v-else-if="selectedDive" :dive="selectedDive" :all-dives="dives" public-view @close="selectedId = null" />
+      <template v-else>
+        <div class="topside public-head">
+          <h1 class="h1 display">{{ title }}</h1>
+          <div class="readings">
+            <p>
+              <strong>{{ totals.count }}</strong><span>{{ totals.count === 1 ? $tx("dive") : $tx("dives") }}</span>
+            </p>
+            <p>
+              <strong>{{ timeUnderwater }}</strong><span>{{ $tx("underwater") }}</span>
+            </p>
+            <p v-if="totals.deepest !== null">
+              <strong>{{ metres(totals.deepest) }}</strong><span>{{ $tx("deepest") }}</span>
+            </p>
           </div>
         </div>
-
-        <section class="rounded-xl bg-surface-container-low p-6 shadow-panel">
-          <div class="mb-6 flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-            <div>
-              <p class="font-label text-xs font-medium text-primary">Published dive map</p>
-              <h2 class="mt-2 font-headline text-3xl font-bold tracking-tight text-on-surface">Dive map</h2>
+        <tide-line />
+        <p v-if="!dives.length" class="pad big">{{ $tx("No finished dives to show yet.") }}</p>
+        <template v-else>
+          <hanging-dives :dives="dives" plumb @open="open" />
+          <section class="pad stack public-log">
+            <div class="row between">
+              <h2 class="h2">{{ $tx("Logbook") }}</h2>
+              <button v-if="hasPositions" type="button" class="link" :aria-expanded="chartShown" @click="chartShown = !chartShown">
+                {{ chartShown ? $tx("Hide the chart of sites") : $tx("Show the chart of sites") }}
+              </button>
             </div>
-            <div class="flex flex-wrap gap-3">
-              <span class="bg-surface-container-high px-4 py-3 font-label text-xs font-medium text-primary"
-                >{{ mappedDiveCount }} mapped dives</span
-              >
-              <span class="bg-surface-container-high px-4 py-3 font-label text-xs font-medium text-tertiary"
-                >{{ mappedSiteCount }} unique sites</span
-              >
+            <site-chart v-if="chartShown" :sites="sites" :selected-key="selectedSite" @select="selectedSite = $event" />
+            <div class="scroll">
+              <table class="log folds">
+                <thead>
+                  <tr>
+                    <th>{{ $tx("Date") }}</th>
+                    <th>{{ $tx("Site") }}</th>
+                    <th>{{ $tx("Location") }}</th>
+                    <th class="n">{{ $tx("Max depth") }}</th>
+                    <th class="n">{{ $tx("Time") }}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="dive in lines" :key="dive.id" class="open" @click="openRow($event, dive.id)">
+                    <td>{{ longDate(dive.started_at) }}</td>
+                    <td class="site">
+                      <button type="button" class="public-site" @click="open(dive.id)">{{ siteOf(dive) || $tx("No site") }}</button>
+                    </td>
+                    <td :data-label="place(dive) ? $tx('Location') : undefined">{{ place(dive) }}</td>
+                    <td class="n" :data-label="$tx('Max depth')">{{ metres(maxDepthOf(dive)) }}</td>
+                    <td class="n" :data-label="$tx('Time')">{{ minutes(dive.duration_seconds) }}</td>
+                  </tr>
+                </tbody>
+              </table>
             </div>
-          </div>
-          <div class="dive-map-shell relative overflow-hidden border border-outline-variant/60 bg-surface-container-low shadow-panel">
-            <div ref="diveMapCanvas" class="dive-theme-map"></div>
-          </div>
-        </section>
-
-        <dive-detail-view
-          v-if="selectedDive"
-          :dive="selectedDive"
-          :all-dives="dives"
-          :dive-sites="[]"
-          :public-view="true"
-          :close-detail="closeDive"
-        ></dive-detail-view>
-
-        <section class="space-y-5">
-          <div class="flex items-center justify-between gap-4">
-            <div>
-              <p class="font-label text-xs font-medium text-primary">Published entries</p>
-              <h2 class="mt-2 font-headline text-3xl font-bold tracking-tight text-on-surface">Dive log</h2>
-            </div>
-          </div>
-
-          <div v-if="!dives.length" class="rounded-xl bg-surface-container-low p-8 shadow-panel">
-            <p class="font-headline text-2xl font-bold">No public dives available</p>
-            <p class="mt-2 text-secondary">This diver has not published any completed dives yet.</p>
-          </div>
-
-          <div v-else class="grid grid-cols-1 gap-4 xl:grid-cols-2">
-            <article
-              v-for="dive in dives"
-              :key="dive.id"
-              @click="openDive(dive.id)"
-              @keyup.enter="openDive(dive.id)"
-              tabindex="0"
-              role="button"
-              class="rounded-xl bg-surface-container-low p-6 shadow-panel transition-colors hover:bg-surface-container-high focus:bg-surface-container-high focus:outline-none"
-            >
-              <div class="flex items-start justify-between gap-4">
-                <div>
-                  <p class="font-label text-xs font-medium text-secondary">
-                    {{ formatDate(dive.started_at) }}
-                  </p>
-                  <h3 class="mt-2 font-headline text-2xl font-bold tracking-tight text-on-surface">{{ diveTitle(dive) }}</h3>
-                  <p class="mt-2 text-sm text-secondary">{{ diveSiteLabel(dive) }}</p>
-                </div>
-                <span class="rounded-xl bg-surface-container-high px-3 py-2 font-label text-xs font-medium text-primary">{{
-                  displayDiveIndex(dive)
-                }}</span>
-              </div>
-              <div class="mt-6 grid grid-cols-3 gap-3">
-                <div class="rounded-xl bg-surface-container-high px-4 py-3">
-                  <p class="font-label text-xs font-medium text-secondary">Depth</p>
-                  <p class="mt-2 font-headline text-xl font-bold text-primary">{{ formatDepth(dive.max_depth_m) }}</p>
-                </div>
-                <div class="rounded-xl bg-surface-container-high px-4 py-3">
-                  <p class="font-label text-xs font-medium text-secondary">Duration</p>
-                  <p class="mt-2 font-headline text-xl font-bold">{{ formatDurationShort(dive.duration_seconds) }}</p>
-                </div>
-                <div class="rounded-xl bg-surface-container-high px-4 py-3">
-                  <p class="font-label text-xs font-medium text-secondary">Computer</p>
-                  <p class="mt-2 text-sm font-semibold text-on-surface">{{ diveDeviceLabel(dive) }}</p>
-                </div>
-              </div>
-            </article>
-          </div>
-        </section>
-      </section>
-    </div>
+            <button v-if="lines.length < dives.length" type="button" class="link" @click="allShown = true">
+              {{ $tx("Show all {count} dives", { count: dives.length }) }}
+            </button>
+          </section>
+        </template>
+      </template>
+    </main>
   </div>
 </template>
+
+<style>
+.public-head {
+  padding-top: 24px;
+  padding-bottom: 12px;
+}
+
+.public-log {
+  padding-top: 8px;
+  padding-bottom: 100px;
+}
+
+.public-log .site-chart {
+  min-height: 480px;
+}
+
+.public-site {
+  padding: 0;
+  border: 0;
+  background: none;
+  font-style: italic;
+}
+
+@media (max-width: 700px) {
+  .public-log .n {
+    text-align: left;
+  }
+}
+</style>

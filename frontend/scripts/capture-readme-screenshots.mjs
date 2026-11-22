@@ -199,23 +199,6 @@ async function stopServer(server) {
   });
 }
 
-async function waitForDashboardMap(page) {
-  await page.waitForSelector(".dive-theme-map", { state: "visible", timeout: 15000 });
-  try {
-    await page.waitForFunction(
-      () => {
-        const tiles = Array.from(document.querySelectorAll(".leaflet-tile"));
-        if (!tiles.length) return false;
-        return tiles.some((tile) => tile.classList.contains("leaflet-tile-loaded"));
-      },
-      { timeout: 20000 }
-    );
-  } catch {
-    console.warn("Map tiles did not finish loading; capturing the rendered map shell.");
-  }
-  await page.waitForTimeout(1500);
-}
-
 async function forceDarkTheme(page) {
   await page.addInitScript((key) => {
     window.localStorage.setItem(key, "dark");
@@ -255,27 +238,27 @@ async function main() {
     await captureRoute(browser, {
       name: "dashboard",
       route: "",
-      waitFor: waitForDashboardMap
+      waitFor: (page) => page.getByRole("heading", { name: "Every dive" }).waitFor()
     });
     await captureRoute(browser, {
       name: "logs",
-      route: "#logs",
-      waitFor: (page) => page.getByRole("heading", { name: "Dive logs", exact: true }).waitFor()
+      route: "logs/1010",
+      waitFor: (page) => page.getByRole("slider", { name: "Recorded depth profile" }).waitFor()
     });
     await captureRoute(browser, {
       name: "imports",
-      route: "#imports",
-      waitFor: (page) => page.getByRole("heading", { name: "Imported dives" }).waitFor()
+      route: "imports",
+      waitFor: (page) => page.getByRole("heading", { name: /waiting to surface/ }).waitFor()
     });
     await captureRoute(browser, {
       name: "equipment",
-      route: "#equipment",
-      waitFor: (page) => page.getByRole("heading", { name: "Equipment", exact: true }).waitFor()
+      route: "equipment",
+      waitFor: (page) => page.getByRole("heading", { name: "Kit list" }).waitFor()
     });
     await captureRoute(browser, {
       name: "settings",
-      route: "#settings/diver-details",
-      waitFor: (page) => page.getByRole("heading", { name: "Settings", exact: true }).waitFor()
+      route: "settings",
+      waitFor: (page) => page.getByRole("heading", { name: "Certification cards" }).waitFor()
     });
   } finally {
     await browser.close();

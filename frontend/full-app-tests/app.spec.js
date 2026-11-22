@@ -4,19 +4,14 @@ const TEST_EMAIL = process.env.FULL_APP_TEST_EMAIL || `full-app-diver-${Date.now
 const TEST_PASSWORD = process.env.FULL_APP_TEST_PASSWORD || "FullAppPass123!";
 const TEST_SITE = "Full Stack Reef";
 
-async function chooseComboboxOption(page, name, optionName) {
-  await page.getByRole("combobox", { name }).first().click();
-  await page.getByRole("option", { name: optionName, exact: true }).click();
-}
-
-async function waitForDashboardOrAuthError(page) {
-  const dashboard = page.getByRole("heading", { name: "Dashboard" });
-  const authError = page.getByText(/Invalid email or password|Unable to sign in|Login failed|User account is inactive/i);
+async function waitForLogbookOrAuthError(page) {
+  const logbook = page.getByRole("banner").getByRole("link", { name: "Log a dive" });
+  const authError = page.getByText(/Invalid email or password|Unable to sign in|User account is inactive/i);
 
   await Promise.race([
-    dashboard.waitFor({ state: "visible", timeout: 30000 }),
+    logbook.waitFor({ state: "visible", timeout: 30000 }),
     authError.waitFor({ state: "visible", timeout: 30000 }).then(async () => {
-      throw new Error(`Sign-in failed for ${TEST_EMAIL} before reaching the dashboard: ${await authError.textContent()}`);
+      throw new Error(`Sign-in failed for ${TEST_EMAIL} before reaching the logbook: ${await authError.textContent()}`);
     })
   ]);
 }
@@ -24,7 +19,7 @@ async function waitForDashboardOrAuthError(page) {
 test("runs auth, frontend, and backend against a deployed app stack", async ({ page, request }) => {
   await page.goto("/");
 
-  await expect(page.getByRole("heading", { name: "Welcome back" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Sign in" })).toBeVisible();
 
   let expectedCreatedAccount = null;
   const statusResponse = await request.get("/api/auth/status");
@@ -32,14 +27,14 @@ test("runs auth, frontend, and backend against a deployed app stack", async ({ p
   const statusPayload = await statusResponse.json();
   const hasExplicitCredentials = Boolean(process.env.FULL_APP_TEST_EMAIL && process.env.FULL_APP_TEST_PASSWORD);
   if (statusPayload.public_registration_open && !hasExplicitCredentials) {
-    await page.getByRole("button", { name: "Create account" }).click();
-    await expect(page.getByRole("heading", { name: "Create your DiveVault account" })).toBeVisible();
+    await page.getByRole("button", { name: "Create an account" }).click();
+    await expect(page.getByRole("heading", { name: "Create your account" })).toBeVisible();
 
-    await page.getByPlaceholder("Email").fill(TEST_EMAIL);
-    await page.getByPlaceholder("Password").fill(TEST_PASSWORD);
-    await page.getByPlaceholder("First name").fill("Full");
-    await page.getByPlaceholder("Last name").fill("Stack");
-    await page.getByRole("button", { name: "Create account" }).click();
+    await page.getByLabel("Email").fill(TEST_EMAIL);
+    await page.getByLabel("Password", { exact: true }).fill(TEST_PASSWORD);
+    await page.getByLabel("First name").fill("Full");
+    await page.getByLabel("Last name").fill("Stack");
+    await page.getByRole("button", { name: "Create account", exact: true }).click();
     await expect(page.getByText("Account created. Sign in with your new credentials.")).toBeVisible();
     expectedCreatedAccount = {
       email: TEST_EMAIL,
@@ -54,10 +49,10 @@ test("runs auth, frontend, and backend against a deployed app stack", async ({ p
     );
   }
 
-  await page.getByPlaceholder("Email").fill(TEST_EMAIL);
-  await page.getByPlaceholder("Password").fill(TEST_PASSWORD);
+  await page.getByLabel("Email").fill(TEST_EMAIL);
+  await page.getByLabel("Password", { exact: true }).fill(TEST_PASSWORD);
   await page.getByRole("button", { name: "Sign in" }).click();
-  await waitForDashboardOrAuthError(page);
+  await waitForLogbookOrAuthError(page);
 
   const token = await page.evaluate(() => window.localStorage.getItem("divevault_auth_token"));
   expect(token).toBeTruthy();
@@ -74,23 +69,19 @@ test("runs auth, frontend, and backend against a deployed app stack", async ({ p
   }
 
   await page.goto("/logs");
-  await expect(page.getByRole("heading", { name: "Dive logs", exact: true })).toBeVisible({ timeout: 30000 });
-  await page.getByRole("button", { name: "New entry" }).click();
-  await expect(page.getByRole("heading", { name: "Manual dive entry" })).toBeVisible();
+  await page.getByRole("banner").getByRole("link", { name: "Log a dive" }).click({ timeout: 30000 });
+  await expect(page.getByRole("heading", { name: "Log a dive" })).toBeVisible();
 
-  await page.locator("input[type='date']:visible").fill("2026-06-02");
-  await page.locator("input[type='time']:visible").fill("10:30");
-  await page.getByPlaceholder("45").fill("37");
-  await page.getByPlaceholder("18.0").fill("14.2");
-  await chooseComboboxOption(page, "Tank volume", "12L");
-  await page.getByPlaceholder("House Reef").fill(TEST_SITE);
-  await page
-    .getByPlaceholder("Conditions, wildlife, route, entry, navigation, visibility...")
-    .fill("Created by the full application CI pipeline.");
-  await page.getByRole("button", { name: "Create dive log" }).click();
+  await page.getByLabel("Date", { exact: true }).fill("2026-06-02");
+  await page.getByLabel("Start time").fill("10:30");
+  await page.getByLabel("Time underwater, minutes").fill("37");
+  await page.getByLabel("Max depth, metres").fill("14.2");
+  await page.getByLabel("Tank size, litres").selectOption("12");
+  await page.getByLabel("Dive site, required").fill(TEST_SITE);
+  await page.getByLabel("Notes", { exact: true }).fill("Created by the full application CI pipeline.");
+  await page.getByRole("button", { name: "Add to logbook" }).click();
 
   await expect(page.getByRole("heading", { name: TEST_SITE })).toBeVisible({ timeout: 30000 });
-  await expect(page.getByRole("button", { name: "Back to logs" })).toBeVisible();
 
   const divesResponse = await request.get("/api/dives?limit=25&include_samples=1", {
     headers: { Authorization: `Bearer ${token}` }

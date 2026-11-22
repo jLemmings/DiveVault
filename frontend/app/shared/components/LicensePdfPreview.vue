@@ -15,7 +15,6 @@ async function loadPdfJs() {
 
 export default {
   name: "LicensePdfPreview",
-  emits: ["open-preview"],
   props: {
     pdf: {
       type: Object,
@@ -95,23 +94,23 @@ export default {
 </script>
 
 <template>
-  <div>
-    <div v-if="loading" class="rounded border border-outline-variant/60 bg-surface-container-lowest px-4 py-4 text-sm text-secondary">
-      Rendering PDF preview...
-    </div>
-    <div v-else-if="error" class="rounded border border-error/20 bg-error-container/20 px-4 py-4 text-sm text-on-error-container">
-      {{ error }}
-    </div>
-    <div v-else class="space-y-3">
-      <UButton
-        v-for="page in pages"
-        :key="page.pageNumber"
-        type="button"
-        @click="$emit('open-preview', page)"
-        class="block w-full overflow-hidden border border-outline-variant/60 bg-white transition-transform hover:scale-[1.01]"
-      >
-        <img :src="page.image" :alt="`License PDF page ${page.pageNumber}`" class="w-full cursor-zoom-in" />
-      </UButton>
-    </div>
+  <div class="stack">
+    <p v-if="loading" role="status">{{ $tx("Opening the PDF…") }}</p>
+    <p v-else-if="error" class="warn" role="alert">{{ $tx(error) }}</p>
+    <img
+      v-for="page in pages"
+      v-else
+      :key="page.pageNumber"
+      class="pdf-page"
+      :src="page.image"
+      :alt="$tx('Page {number}', { number: page.pageNumber })"
+    />
   </div>
 </template>
+
+<style>
+.pdf-page {
+  width: 100%;
+  height: auto;
+}
+</style>
